@@ -10,12 +10,16 @@ import { NewStudySessionDialog } from "@/components/NewStudySessionDialog"
 import { EditStudySessionDialog } from "@/components/EditStudySessionDialog"
 import { ProjectSettingsDialog } from "@/components/ProjectSettingsDialog"
 import { GradeTrackerDialog } from "@/components/GradeTrackerDialog"
+import { GlobalSearch } from "@/components/GlobalSearch"
+import { DataExport } from "@/components/DataExport"
+import { CustomSubjects } from "@/components/CustomSubjects"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
+import { useGrades } from "@/hooks/useGrades"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { StudySession } from "@/lib/types"
+import type { StudySession, Subject } from "@/lib/types"
 
 function useDarkMode() {
   const [dark, setDark] = useState(() => {
@@ -36,6 +40,7 @@ function useDarkMode() {
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
   const { sessions, addSession, updateSession, deleteSession } = useStudySessions()
+  const { grades, addGrade, deleteGrade, getWeightedScore } = useGrades()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -45,7 +50,31 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [gradesOpen, setGradesOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [subjectsOpen, setSubjectsOpen] = useState(false)
+  const [customSubjects, setCustomSubjects] = useState<Subject[]>(() => {
+    if (typeof window === "undefined") return []
+    const stored = localStorage.getItem("focal-custom-subjects")
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return stored ? JSON.parse(stored) : []
+  })
   const { dark, toggle: toggleDark } = useDarkMode()
+
+  useEffect(() => {
+    localStorage.setItem("focal-custom-subjects", JSON.stringify(customSubjects))
+  }, [customSubjects])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
 
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null
 
@@ -125,6 +154,8 @@ function App() {
       deadlineType?: "sac" | "exam" | "assignment" | "gat"
       gatDate?: string
       examDate?: string
+      isFavorite?: boolean
+      isArchived?: boolean
     }
   ) => {
     try {
@@ -136,14 +167,16 @@ function App() {
   }
 
   const handleDeleteProject = async (id: string) => {
+    const project = projects.find((p) => p.id === id)
+    if (!project) return
+    if (!window.confirm(`Delete "${project.name}"? This will also delete all associated sessions and grades.`)) return
     try {
-      const project = projects.find((p) => p.id === id)
       await deleteProject(id)
       if (selectedId === id) {
         setSelectedId(null)
         setHomeSelected(true)
       }
-      toast.success(`Project "${project?.name}" deleted`)
+      toast.success(`Project "${project.name}" deleted`)
     } catch (e) {
       toast.error(`Failed to delete project: ${String(e)}`)
     }
@@ -202,6 +235,9 @@ function App() {
   }
 
   const handleDeleteStudySession = async (id: string) => {
+    const session = sessions.find((s) => s.id === id)
+    if (!session) return
+    if (!window.confirm(`Delete "${session.title}"? This action cannot be undone.`)) return
     try {
       await deleteSession(id)
       toast.success("Study session deleted")
@@ -247,7 +283,7 @@ function App() {
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden">
-        <div className="w-80 shrink-0">
+        <div className="w-96 shrink-0">
           <Sidebar
             projects={projects}
             selectedId={selectedId}
@@ -261,6 +297,9 @@ function App() {
             fileCounts={fileCounts}
             dark={dark}
             onToggleDark={toggleDark}
+            onOpenSearch={() => setSearchOpen(true)}
+            onOpenExport={() => setExportOpen(true)}
+            onOpenSubjects={() => setSubjectsOpen(true)}
           />
         </div>
         <main className="flex-1 overflow-auto">
@@ -276,9 +315,12 @@ function App() {
           ) : selectedProject ? (
             <ProjectDetail
               project={selectedProject}
+              sessions={sessions.filter((s) => s.projectId === selectedProject.id)}
               onFilesChanged={refreshFileCounts}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenGrades={() => setGradesOpen(true)}
+              onSelectSession={handleSelectSession}
+              onNewSession={() => setSessionDialogOpen(true)}
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
@@ -300,6 +342,7 @@ function App() {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           onSubmit={handleCreateProject}
+          customSubjects={customSubjects}
         />
         <NewStudySessionDialog
           open={sessionDialogOpen}
@@ -322,14 +365,40 @@ function App() {
               open={settingsOpen}
               onOpenChange={setSettingsOpen}
               onSubmit={handleUpdateProject}
+              customSubjects={customSubjects}
             />
             <GradeTrackerDialog
               project={selectedProject}
               open={gradesOpen}
               onOpenChange={setGradesOpen}
+              grades={grades}
+              onAddGrade={async (...args) => { await addGrade(...args) }}
+              onDeleteGrade={deleteGrade}
+              getWeightedScore={getWeightedScore}
             />
           </>
         )}
+        <GlobalSearch
+          projects={projects}
+          sessions={sessions}
+          onSelectProject={handleSelectProject}
+          onSelectSession={handleSelectSession}
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+        />
+        <DataExport
+          projects={projects}
+          sessions={sessions}
+          grades={grades}
+          open={exportOpen}
+          onOpenChange={setExportOpen}
+        />
+        <CustomSubjects
+          customSubjects={customSubjects}
+          onSave={setCustomSubjects}
+          open={subjectsOpen}
+          onOpenChange={setSubjectsOpen}
+        />
         <Toaster />
       </div>
     </TooltipProvider>

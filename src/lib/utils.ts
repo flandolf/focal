@@ -7,6 +7,26 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function getSubjectById(id?: string): Subject | undefined {
+  if (!id) return undefined
+  const builtin = VCE_SUBJECTS.find((s) => s.id === id)
+  if (builtin) return builtin
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem("focal-custom-subjects")
+    if (stored) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const customs: Subject[] = JSON.parse(stored)
+        const found = customs.find((s) => s.id === id)
+        if (found) return found
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return undefined
+}
+
 export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label: string; color: string } {
   switch (type) {
     case "gat":
@@ -20,11 +40,6 @@ export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label:
     default:
       return { icon: "📌", label: "Deadline", color: "#6B7280" }
   }
-}
-
-export function getSubjectById(id?: string): Subject | undefined {
-  if (!id) return undefined
-  return VCE_SUBJECTS.find((s) => s.id === id)
 }
 
 export function formatDeadline(dateString: string): string {

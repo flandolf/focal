@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, Star, Archive } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import { VCE_SUBJECTS, type Project, type DeadlineType, type Unit } from "@/lib/types"
+import { VCE_SUBJECTS, type Project, type DeadlineType, type Unit, type Subject } from "@/lib/types"
 
 const EMOJIS = [
   "📁", "📂", "🗂️", "📄", "📝", "✏️", "🎨", "📊",
@@ -51,7 +51,10 @@ interface ProjectSettingsDialogProps {
     deadlineType?: DeadlineType
     gatDate?: string
     examDate?: string
+    isFavorite?: boolean
+    isArchived?: boolean
   }) => void
+  customSubjects?: Subject[]
 }
 
 export function ProjectSettingsDialog({
@@ -59,6 +62,7 @@ export function ProjectSettingsDialog({
   open,
   onOpenChange,
   onSubmit,
+  customSubjects = [],
 }: ProjectSettingsDialogProps) {
   const [name, setName] = useState(project.name)
   const [description, setDescription] = useState(project.description ?? "")
@@ -75,6 +79,8 @@ export function ProjectSettingsDialog({
   const [subjectId, setSubjectId] = useState(project.subjectId ?? "")
   const [unit, setUnit] = useState<Unit | "">(project.unit ?? "")
   const [deadlineType, setDeadlineType] = useState<DeadlineType | "">(project.deadlineType ?? "")
+  const [isFavorite, setIsFavorite] = useState(project.isFavorite ?? false)
+  const [isArchived, setIsArchived] = useState(project.isArchived ?? false)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -95,6 +101,8 @@ export function ProjectSettingsDialog({
     setUnit(project.unit ?? "")
      
     setDeadlineType(project.deadlineType ?? "")
+    setIsFavorite(project.isFavorite ?? false)
+    setIsArchived(project.isArchived ?? false)
   }, [project])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -110,6 +118,8 @@ export function ProjectSettingsDialog({
       deadlineType: deadlineType || undefined,
       gatDate: gatDate ? String(format(gatDate, "yyyy-MM-dd")) : undefined,
       examDate: examDate ? String(format(examDate, "yyyy-MM-dd")) : undefined,
+      isFavorite,
+      isArchived,
     })
     onOpenChange(false)
   }
@@ -153,6 +163,14 @@ export function ProjectSettingsDialog({
                   {VCE_SUBJECTS.map((subject) => (
                     <option key={subject.id} value={subject.id}>
                       {subject.icon} {subject.name}
+                    </option>
+                  ))}
+                  {customSubjects.length > 0 && (
+                    <option disabled>──────────</option>
+                  )}
+                  {customSubjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.icon} {subject.name} (custom)
                     </option>
                   ))}
                 </select>
@@ -317,6 +335,32 @@ export function ProjectSettingsDialog({
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsFavorite(!isFavorite)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors ${
+                  isFavorite
+                    ? "bg-yellow-50 border-yellow-300 text-yellow-700 dark:bg-yellow-950/20 dark:border-yellow-700 dark:text-yellow-400"
+                    : "border-border text-muted-foreground hover:bg-accent/50"
+                }`}
+              >
+                <Star className={cn("h-4 w-4", isFavorite && "fill-yellow-400")} />
+                Favorite
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsArchived(!isArchived)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors ${
+                  isArchived
+                    ? "bg-muted border-muted-foreground/30 text-muted-foreground"
+                    : "border-border text-muted-foreground hover:bg-accent/50"
+                }`}
+              >
+                <Archive className="h-4 w-4" />
+                Archived
+              </button>
             </div>
           </div>
           <DialogFooter>

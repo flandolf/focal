@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import { VCE_SUBJECTS, type DeadlineType, type Unit } from "@/lib/types"
+import { VCE_SUBJECTS, type DeadlineType, type Unit, type Subject } from "@/lib/types"
 
 const EMOJIS = [
   "📁", "📂", "🗂️", "📄", "📝", "✏️", "🎨", "📊",
@@ -51,12 +51,14 @@ interface NewProjectDialogProps {
     gatDate?: string
     examDate?: string
   }) => void
+  customSubjects?: Subject[]
 }
 
 export function NewProjectDialog({
   open,
   onOpenChange,
   onSubmit,
+  customSubjects = [],
 }: NewProjectDialogProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -134,6 +136,14 @@ export function NewProjectDialog({
                   {VCE_SUBJECTS.map((subject) => (
                     <option key={subject.id} value={subject.id}>
                       {subject.icon} {subject.name}
+                    </option>
+                  ))}
+                  {customSubjects.length > 0 && (
+                    <option disabled>──────────</option>
+                  )}
+                  {customSubjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.icon} {subject.name} (custom)
                     </option>
                   ))}
                 </select>
