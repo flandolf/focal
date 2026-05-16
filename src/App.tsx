@@ -55,16 +55,27 @@ function App() {
     refreshFileCounts()
   }, [refreshFileCounts])
 
-  const handleCreateProject = async (
-    name: string,
-    description?: string,
-    icon?: string,
-    deadline?: string,
-  ) => {
+  const handleCreateProject = async (data: {
+    name: string
+    description?: string
+    icon?: string
+    deadline?: string
+    subjectId?: string
+    unit?: "1" | "2" | "3" | "4"
+    deadlineType?: "sac" | "exam" | "assignment" | "gat"
+  }) => {
     try {
-      const project = await addProject(name, description, icon, deadline)
+      const project = await addProject(
+        data.name,
+        data.description,
+        data.icon,
+        data.deadline,
+        data.subjectId,
+        data.unit,
+        data.deadlineType,
+      )
       setSelectedId(project.id)
-      toast.success(`Project "${name}" created`)
+      toast.success(`Project "${data.name}" created`)
     } catch (e) {
       toast.error(`Failed to create project: ${e}`)
     }
@@ -72,13 +83,18 @@ function App() {
 
   const handleUpdateProject = async (
     id: string,
-    name: string,
-    description?: string,
-    icon?: string,
-    deadline?: string,
+    data: {
+      name: string
+      description?: string
+      icon?: string
+      deadline?: string
+      subjectId?: string
+      unit?: "1" | "2" | "3" | "4"
+      deadlineType?: "sac" | "exam" | "assignment" | "gat"
+    }
   ) => {
     try {
-      await updateProject(id, { name, description, icon, deadline })
+      await updateProject(id, data)
       toast.success(`Project updated`)
     } catch (e) {
       toast.error(`Failed to update project: ${e}`)
@@ -122,10 +138,10 @@ function App() {
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div className="mb-6 w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
-                <FolderOpen className="h-7 w-7 text-muted-foreground/50" />
+              <div className="mb-8 w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center">
+                <FolderOpen className="h-8 w-8 text-muted-foreground/40" />
               </div>
-              <h2 className="text-base font-semibold text-foreground mb-1.5">No project selected</h2>
+              <h2 className="text-lg font-semibold text-foreground mb-2">No project selected</h2>
               <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">
                 Choose a project from the sidebar or create a new one to start organising your files.
               </p>

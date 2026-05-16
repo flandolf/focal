@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge"
 import { formatFileSize, formatDate } from "@/lib/utils"
 import type { FileInfo } from "@/lib/types"
 
@@ -60,22 +59,22 @@ export function FileRow({ file, onOpen }: FileRowProps) {
 
   return (
     <div
-      className="flex items-center gap-3 px-8 py-2.5 hover:bg-accent/30 transition-colors group"
+      className="flex items-center gap-3 px-8 py-2 hover:bg-accent/30 transition-colors group cursor-default"
       onDoubleClick={() => onOpen?.(file)}
     >
-      <span className={`text-[11px] font-semibold tracking-wide w-4 text-center leading-none ${color}`}>
+      <span className={`text-[11px] font-semibold tracking-wide w-4 text-center leading-none shrink-0 ${color}`}>
         {label}
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{file.name}</p>
-        <p className="text-xs text-muted-foreground/70 leading-tight mt-0.5">
+        <p className="text-[11px] text-muted-foreground/60 leading-tight mt-0.5">
           {formatDate(file.modified)}
         </p>
       </div>
-      <Badge variant="secondary" className="text-[11px] font-normal tabular-nums h-5">
+      <span className="text-[11px] text-muted-foreground/70 font-mono tabular-nums w-20 text-right">
         {formatFileSize(file.size)}
-      </Badge>
-      <span className="text-[11px] text-muted-foreground font-mono uppercase w-12 text-right tabular-nums">
+      </span>
+      <span className="text-[11px] text-muted-foreground/50 font-mono uppercase w-12 text-right tabular-nums">
         .{file.extension || "?"}
       </span>
     </div>

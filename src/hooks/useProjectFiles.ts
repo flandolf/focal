@@ -7,26 +7,32 @@ import type { FileInfo } from "@/lib/types"
 export function useProjectFiles(projectName: string | null) {
   const [files, setFiles] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
+  const [currentSubfolder, setCurrentSubfolder] = useState<string | null>(null)
 
-  const loadFiles = useCallback(async () => {
+  const loadFiles = useCallback(async (subfolder: string | null = null) => {
     if (!projectName) {
       setFiles([])
       return
     }
     setLoading(true)
+    setCurrentSubfolder(subfolder)
     try {
+      const folderPath = subfolder 
+        ? `${projectName}/${subfolder}`
+        : projectName
       const result = await invoke<FileInfo[]>("get_project_files", {
-        projectName,
+        projectName: folderPath,
       })
       setFiles(result)
     } catch (e) {
       console.error("Failed to load files:", e)
+      setFiles([])
     } finally {
       setLoading(false)
     }
   }, [projectName])
 
-  const addFiles = useCallback(async () => {
+  const addFiles = useCallback(async (subfolder: string | null = null) => {
     if (!projectName) return
 
     const selected = await open({
@@ -38,11 +44,14 @@ export function useProjectFiles(projectName: string | null) {
     if (!selected || selected.length === 0) return
 
     try {
+      const targetFolder = subfolder 
+        ? `${projectName}/${subfolder}`
+        : projectName
       await invoke("move_files_to_project", {
         files: selected as string[],
-        projectName,
+        projectName: targetFolder,
       })
-      await loadFiles()
+      await loadFiles(subfolder)
       return selected.length
     } catch (e) {
       console.error("Failed to move files:", e)
@@ -51,9 +60,8 @@ export function useProjectFiles(projectName: string | null) {
   }, [projectName, loadFiles])
 
   const removeFile = useCallback(async (_filePath: string) => {
-    // For MVP, just refresh the list (file is already physically gone or we untrack)
-    await loadFiles()
-  }, [loadFiles])
+    await loadFiles(currentSubfolder)
+  }, [loadFiles, currentSubfolder])
 
   return {
     files,
@@ -61,5 +69,6 @@ export function useProjectFiles(projectName: string | null) {
     loadFiles,
     addFiles,
     removeFile,
+    currentSubfolder,
   }
 }
