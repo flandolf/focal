@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Calculator } from "lucide-react"
+import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Calculator, Clock, Calendar } from "lucide-react"
+import { format, parseISO } from "date-fns"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
 import { invoke } from "@tauri-apps/api/core"
@@ -13,24 +14,28 @@ import { FileRow } from "@/components/FileRow"
 import { useProjectFiles } from "@/hooks/useProjectFiles"
 import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
-import type { Project, FileInfo } from "@/lib/types"
+import type { Project, FileInfo, StudySession } from "@/lib/types"
 import type { UnlistenFn } from "@tauri-apps/api/event"
 import { cn } from "@/lib/utils"
 
 interface ProjectDetailProps {
   project: Project
+  sessions: StudySession[]
   onFilesChanged: () => void
   onOpenSettings: () => void
   onOpenGrades?: () => void
+  onSelectSession?: (session: StudySession) => void
+  onNewSession?: () => void
 }
 
-export function ProjectDetail({ project, onFilesChanged, onOpenSettings, onOpenGrades }: ProjectDetailProps) {
+export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onOpenGrades, onSelectSession, onNewSession }: ProjectDetailProps) {
   const { files, loading, loadFiles, addFiles, deleteFiles } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<FileTag[]>([])
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+  const [viewMode, setViewMode] = useState<"files" | "sessions">("files")
 
   useEffect(() => {
     void loadFiles(selectedSubfolder)
@@ -152,6 +157,7 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings, onOpenG
 
   const handleDeleteSelected = async () => {
     if (selectedFiles.size === 0) return
+    if (!window.confirm(`Delete ${selectedFiles.size} file${selectedFiles.size > 1 ? "s" : ""}? This cannot be undone.`)) return
     const paths = Array.from(selectedFiles)
     try {
       await deleteFiles(paths)
@@ -258,7 +264,47 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings, onOpenG
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-1 mt-5 -ml-1">
+        <div className="flex items-center gap-2 mt-5">
+          <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+            <button
+              onClick={() => setViewMode("files")}
+              className={cn(
+                "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                viewMode === "files"
+                  ? "bg-background text-foreground font-medium shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Folder className="h-3.5 w-3.5" />
+              Files
+            </button>
+            <button
+              onClick={() => setViewMode("sessions")}
+              className={cn(
+                "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                viewMode === "sessions"
+                  ? "bg-background text-foreground font-medium shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              Sessions
+              {sessions.length > 0 && (
+                <span className="tabular-nums text-[10px]">{sessions.length}</span>
+              )}
+            </button>
+          </div>
+          <div className="flex-1" />
+          {viewMode === "sessions" && onNewSession && (
+            <Button size="sm" onClick={onNewSession} className="gap-1.5 h-7 text-xs">
+              <Plus className="h-3.5 w-3.5" />
+              New Session
+            </Button>
+          )}
+        </div>
+
+        {viewMode === "files" && (
+        <div className="flex items-center gap-1 mt-2 -ml-1">
           <button
             onClick={() => setSelectedSubfolder(null)}
             className={cn(
@@ -287,10 +333,18 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings, onOpenG
             </button>
           ))}
         </div>
+        )}
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">
-        {loading ? (
+        {viewMode === "sessions" ? (
+          <SessionsView
+            sessions={sessions}
+            projectName={project.name}
+            onSelectSession={onSelectSession}
+            onNewSession={onNewSession}
+          />
+        ) : loading ? (
           <div className="flex-1 flex items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
           </div>
@@ -417,5 +471,118 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings, onOpenG
         )}
       </div>
     </div>
+  )
+}
+
+function SessionsView({
+  sessions,
+  projectName,
+  onSelectSession,
+  onNewSession,
+}: {
+  sessions: StudySession[]
+  projectName: string
+  onSelectSession?: (session: StudySession) => void
+  onNewSession?: () => void
+}) {
+  if (sessions.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+        <div className="mb-6 w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center">
+          <Clock className="h-7 w-7 text-muted-foreground/50" />
+        </div>
+        <p className="text-sm font-medium text-foreground mb-1.5">No study sessions</p>
+        <p className="text-xs text-muted-foreground mb-6 max-w-56 leading-relaxed">
+          Plan study sessions for {projectName} to track your revision time and progress.
+        </p>
+        {onNewSession && (
+          <Button variant="secondary" size="sm" onClick={onNewSession} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Plan Session
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  const sorted = [...sessions].sort(
+    (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+  )
+
+  return (
+    <ScrollArea className="flex-1">
+      <div className="px-8 py-4 space-y-2">
+        {sorted.map((session) => {
+          const start = parseISO(session.startTime)
+          const end = parseISO(session.endTime)
+          const durationMs = end.getTime() - start.getTime()
+          const hours = Math.floor(durationMs / (1000 * 60 * 60))
+          const minutes = Math.round((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+
+          return (
+            <button
+              key={session.id}
+              onClick={() => onSelectSession?.(session)}
+              className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-accent/30 transition-colors group"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{session.title}</p>
+                  {session.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{session.description}</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {format(start, "MMM d, yyyy")}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {format(start, "h:mm a")} — {format(end, "h:mm a")}
+                    </span>
+                    <span>
+                      {hours > 0 ? `${hours}h ` : ""}{minutes}m
+                    </span>
+                  </div>
+                  {session.topics && session.topics.length > 0 && (
+                    <div className="flex gap-1 mt-2 flex-wrap">
+                      {session.topics.map((topic, i) => (
+                        <span
+                          key={i}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                        >
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusBadge status={session.status} />
+                </div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </ScrollArea>
+  )
+}
+
+function StatusBadge({ status }: { status: StudySession["status"] }) {
+  const config = {
+    planned: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    "in-progress": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    completed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  }
+  const labels = {
+    planned: "Planned",
+    "in-progress": "In Progress",
+    completed: "Completed",
+  }
+  return (
+    <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", config[status])}>
+      {labels[status]}
+    </span>
   )
 }
