@@ -48,6 +48,8 @@ interface NewProjectDialogProps {
     subjectId?: string
     unit?: Unit
     deadlineType?: DeadlineType
+    gatDate?: string
+    examDate?: string
   }) => void
 }
 
@@ -60,6 +62,8 @@ export function NewProjectDialog({
   const [description, setDescription] = useState("")
   const [icon, setIcon] = useState("📁")
   const [deadline, setDeadline] = useState<Date | undefined>(undefined)
+  const [gatDate, setGatDate] = useState<Date | undefined>(undefined)
+  const [examDate, setExamDate] = useState<Date | undefined>(undefined)
   const [subjectId, setSubjectId] = useState<string>("")
   const [unit, setUnit] = useState<Unit | "">("")
   const [deadlineType, setDeadlineType] = useState<DeadlineType | "">("")
@@ -75,11 +79,15 @@ export function NewProjectDialog({
       subjectId: subjectId ? String(subjectId) : undefined,
       unit: unit || undefined,
       deadlineType: deadlineType || undefined,
+      gatDate: gatDate ? String(format(gatDate, "yyyy-MM-dd")) : undefined,
+      examDate: examDate ? String(format(examDate, "yyyy-MM-dd")) : undefined,
     })
     setName("")
     setDescription("")
     setIcon("📁")
     setDeadline(undefined)
+    setGatDate(undefined)
+    setExamDate(undefined)
     setSubjectId("")
     setUnit("")
     setDeadlineType("")
@@ -188,6 +196,58 @@ export function NewProjectDialog({
                   />
                 </PopoverContent>
               </Popover>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">GAT Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !gatDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {gatDate ? format(gatDate, "MMM d") : "Pick date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={gatDate}
+                      onSelect={setGatDate}
+                      autoFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">Exam Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !examDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {examDate ? format(examDate, "MMM d") : "Pick date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={examDate}
+                      onSelect={setExamDate}
+                      autoFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
             <div className="space-y-2.5">
               <label className="text-sm font-medium">Icon</label>

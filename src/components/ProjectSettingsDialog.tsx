@@ -49,6 +49,8 @@ interface ProjectSettingsDialogProps {
     subjectId?: string
     unit?: Unit
     deadlineType?: DeadlineType
+    gatDate?: string
+    examDate?: string
   }) => void
 }
 
@@ -59,23 +61,40 @@ export function ProjectSettingsDialog({
   onSubmit,
 }: ProjectSettingsDialogProps) {
   const [name, setName] = useState(project.name)
-  const [description, setDescription] = useState(project.description || "")
-  const [icon, setIcon] = useState(project.icon || "📁")
+  const [description, setDescription] = useState(project.description ?? "")
+  const [icon, setIcon] = useState(project.icon ?? "📁")
   const [deadline, setDeadline] = useState<Date | undefined>(
     project.deadline ? new Date(project.deadline) : undefined
   )
-  const [subjectId, setSubjectId] = useState(project.subjectId || "")
-  const [unit, setUnit] = useState<Unit | "">(project.unit || "")
-  const [deadlineType, setDeadlineType] = useState<DeadlineType | "">(project.deadlineType || "")
+  const [gatDate, setGatDate] = useState<Date | undefined>(
+    project.gatDate ? new Date(project.gatDate) : undefined
+  )
+  const [examDate, setExamDate] = useState<Date | undefined>(
+    project.examDate ? new Date(project.examDate) : undefined
+  )
+  const [subjectId, setSubjectId] = useState(project.subjectId ?? "")
+  const [unit, setUnit] = useState<Unit | "">(project.unit ?? "")
+  const [deadlineType, setDeadlineType] = useState<DeadlineType | "">(project.deadlineType ?? "")
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(project.name)
-    setDescription(project.description || "")
-    setIcon(project.icon || "📁")
+     
+    setDescription(project.description ?? "")
+     
+    setIcon(project.icon ?? "📁")
+     
     setDeadline(project.deadline ? new Date(project.deadline) : undefined)
-    setSubjectId(project.subjectId || "")
-    setUnit(project.unit || "")
-    setDeadlineType(project.deadlineType || "")
+     
+    setGatDate(project.gatDate ? new Date(project.gatDate) : undefined)
+     
+    setExamDate(project.examDate ? new Date(project.examDate) : undefined)
+     
+    setSubjectId(project.subjectId ?? "")
+     
+    setUnit(project.unit ?? "")
+     
+    setDeadlineType(project.deadlineType ?? "")
   }, [project])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -89,6 +108,8 @@ export function ProjectSettingsDialog({
       subjectId: subjectId ? String(subjectId) : undefined,
       unit: unit || undefined,
       deadlineType: deadlineType || undefined,
+      gatDate: gatDate ? String(format(gatDate, "yyyy-MM-dd")) : undefined,
+      examDate: examDate ? String(format(examDate, "yyyy-MM-dd")) : undefined,
     })
     onOpenChange(false)
   }
@@ -205,6 +226,80 @@ export function ProjectSettingsDialog({
                   Clear deadline
                 </Button>
               )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">GAT Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !gatDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {gatDate ? format(gatDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={gatDate}
+                      onSelect={setGatDate}
+                      autoFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {gatDate && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-auto px-2 py-1 text-xs text-muted-foreground"
+                    onClick={() => setGatDate(undefined)}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">Exam Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !examDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {examDate ? format(examDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={examDate}
+                      onSelect={setExamDate}
+                      autoFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {examDate && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-auto px-2 py-1 text-xs text-muted-foreground"
+                    onClick={() => setExamDate(undefined)}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="space-y-2.5">
               <label className="text-sm font-medium">Icon</label>

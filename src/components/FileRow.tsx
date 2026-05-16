@@ -1,5 +1,8 @@
 import { formatFileSize, formatDate } from "@/lib/utils"
 import type { FileInfo } from "@/lib/types"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+import { Checkbox } from "@/components/ui/checkbox"
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   jpg: { label: "img", color: "text-blue-600 dark:text-blue-400" },
@@ -52,24 +55,66 @@ function getFileTypeLabel(extension: string): { label: string; color: string } {
 interface FileRowProps {
   file: FileInfo
   onOpen?: (file: FileInfo) => void
+  isSelected?: boolean
+  onSelectionChange?: (file: FileInfo, selected: boolean) => void
 }
 
-export function FileRow({ file, onOpen }: FileRowProps) {
+export function FileRow({ file, onOpen, isSelected = false, onSelectionChange }: FileRowProps) {
   const { label, color } = getFileTypeLabel(file.extension)
+  // Support both new tags array and legacy tag field
+  const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
+  const TAG_COLORS: Record<string, string> = {
+    "sac": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    "notes": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    "past-paper": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    "exam": "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+    "resource": "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    "other": "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300",
+  }
+
+  const handleOpenClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.detail === 2) {
+      onOpen?.(file)
+    }
+  }
 
   return (
     <div
-      className="flex items-center gap-3 px-8 py-2 hover:bg-accent/30 transition-colors group cursor-default"
-      onDoubleClick={() => onOpen?.(file)}
+      className={cn(
+        "flex items-center gap-3 px-8 py-3 hover:bg-accent/30 transition-colors group cursor-default",
+        isSelected && "bg-accent/50"
+      )}
+      onMouseDown={handleOpenClick}
     >
+      <Checkbox
+        checked={isSelected}
+        onCheckedChange={(checked: boolean | "indeterminate") => onSelectionChange?.(file, checked === true)}
+        onClick={(e: { stopPropagation: () => void }) => e.stopPropagation()}
+        className="w-4 h-4 shrink-0"
+      />
       <span className={`text-[11px] font-semibold tracking-wide w-4 text-center leading-none shrink-0 ${color}`}>
         {label}
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{file.name}</p>
-        <p className="text-[11px] text-muted-foreground/60 leading-tight mt-0.5">
-          {formatDate(file.modified)}
-        </p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-[11px] text-muted-foreground/60 leading-tight">
+            {formatDate(file.modified)}
+          </p>
+          {fileTags.length > 0 && (
+            <div className="flex gap-1">
+              {fileTags.map((tag) => (
+                <Badge
+                  key={tag}
+                  variant="secondary"
+                  className={cn("text-[10px] px-1.5 py-0.5 font-medium", TAG_COLORS[tag] || TAG_COLORS.other)}
+                >
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <span className="text-[11px] text-muted-foreground/70 font-mono tabular-nums w-20 text-right">
         {formatFileSize(file.size)}

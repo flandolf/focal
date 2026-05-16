@@ -4,11 +4,18 @@ import { Toaster, toast } from "sonner"
 import { FolderOpen } from "lucide-react"
 import { Sidebar } from "@/components/Sidebar"
 import { ProjectDetail } from "@/components/ProjectDetail"
+import { HomeView } from "@/components/HomeView"
 import { NewProjectDialog } from "@/components/NewProjectDialog"
+import { NewStudySessionDialog } from "@/components/NewStudySessionDialog"
+import { EditStudySessionDialog } from "@/components/EditStudySessionDialog"
 import { ProjectSettingsDialog } from "@/components/ProjectSettingsDialog"
+import { GradeTrackerDialog } from "@/components/GradeTrackerDialog"
 import { useProjects } from "@/hooks/useProjects"
+import { useStudySessions } from "@/hooks/useStudySessions"
+import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import type { StudySession } from "@/lib/types"
 
 function useDarkMode() {
   const [dark, setDark] = useState(() => {
@@ -28,13 +35,19 @@ function useDarkMode() {
 
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
+  const { sessions, addSession, updateSession, deleteSession } = useStudySessions()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
+  const [editSessionDialogOpen, setEditSessionDialogOpen] = useState(false)
+  const [selectedSession, setSelectedSession] = useState<StudySession | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [gradesOpen, setGradesOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const { dark, toggle: toggleDark } = useDarkMode()
 
-  const selectedProject = projects.find((p) => p.id === selectedId) || null
+  const selectedProject = projects.find((p) => p.id === selectedId) ?? null
 
   const refreshFileCounts = useCallback(async () => {
     const counts: Record<string, number> = {}
@@ -51,9 +64,23 @@ function App() {
     setFileCounts(counts)
   }, [projects])
 
+  // Check for deadline notifications on app load and when projects change
+  useDeadlineNotifications(projects)
+
   useEffect(() => {
-    refreshFileCounts()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshFileCounts()
   }, [refreshFileCounts])
+
+  const handleSelectProject = (id: string) => {
+    setSelectedId(id)
+    setHomeSelected(false)
+  }
+
+  const handleSelectHome = () => {
+    setSelectedId(null)
+    setHomeSelected(true)
+  }
 
   const handleCreateProject = async (data: {
     name: string
@@ -63,6 +90,8 @@ function App() {
     subjectId?: string
     unit?: "1" | "2" | "3" | "4"
     deadlineType?: "sac" | "exam" | "assignment" | "gat"
+    gatDate?: string
+    examDate?: string
   }) => {
     try {
       const project = await addProject(
@@ -73,11 +102,14 @@ function App() {
         data.subjectId,
         data.unit,
         data.deadlineType,
+        data.gatDate,
+        data.examDate,
       )
       setSelectedId(project.id)
+      setHomeSelected(false)
       toast.success(`Project "${data.name}" created`)
     } catch (e) {
-      toast.error(`Failed to create project: ${e}`)
+      toast.error(`Failed to create project: ${String(e)}`)
     }
   }
 
@@ -91,13 +123,15 @@ function App() {
       subjectId?: string
       unit?: "1" | "2" | "3" | "4"
       deadlineType?: "sac" | "exam" | "assignment" | "gat"
+      gatDate?: string
+      examDate?: string
     }
   ) => {
     try {
       await updateProject(id, data)
       toast.success(`Project updated`)
     } catch (e) {
-      toast.error(`Failed to update project: ${e}`)
+      toast.error(`Failed to update project: ${String(e)}`)
     }
   }
 
@@ -107,11 +141,107 @@ function App() {
       await deleteProject(id)
       if (selectedId === id) {
         setSelectedId(null)
+        setHomeSelected(true)
       }
       toast.success(`Project "${project?.name}" deleted`)
     } catch (e) {
-      toast.error(`Failed to delete project: ${e}`)
+      toast.error(`Failed to delete project: ${String(e)}`)
     }
+  }
+
+  const handleCreateStudySession = async (data: {
+    projectId: string
+    title: string
+    startTime: string
+    endTime: string
+    description?: string
+    topics?: string[]
+    notes?: string
+  }) => {
+    try {
+      await addSession(
+        data.projectId,
+        data.title,
+        data.startTime,
+        data.endTime,
+        data.description,
+        data.topics,
+        data.notes,
+      )
+      toast.success(`Study session "${data.title}" created`)
+      setSessionDialogOpen(false)
+    } catch (e) {
+      toast.error(`Failed to create study session: ${String(e)}`)
+    }
+  }
+
+  const handleEditStudySession = async (data: {
+    id: string
+    title: string
+    startTime: string
+    endTime: string
+    description?: string
+    topics?: string[]
+    notes?: string
+  }) => {
+    try {
+      await updateSession(data.id, {
+        title: data.title,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        description: data.description,
+        topics: data.topics,
+        notes: data.notes,
+      })
+      toast.success("Study session updated")
+      setEditSessionDialogOpen(false)
+      setSelectedSession(null)
+    } catch (e) {
+      toast.error(`Failed to update study session: ${String(e)}`)
+    }
+  }
+
+  const handleDeleteStudySession = async (id: string) => {
+    try {
+      await deleteSession(id)
+      toast.success("Study session deleted")
+      setEditSessionDialogOpen(false)
+      setSelectedSession(null)
+    } catch (e) {
+      toast.error(`Failed to delete study session: ${String(e)}`)
+    }
+  }
+
+  const handleToggleFavorite = async (id: string) => {
+    const project = projects.find((p) => p.id === id)
+    if (!project) return
+    try {
+      await updateProject(id, { isFavorite: !project.isFavorite })
+    } catch (e) {
+      toast.error(`Failed to update project: ${String(e)}`)
+    }
+  }
+
+  const handleToggleArchive = async (id: string) => {
+    const project = projects.find((p) => p.id === id)
+    if (!project) return
+    try {
+      await updateProject(id, { isArchived: !project.isArchived })
+      if (!project.isArchived) {
+        toast.success(`"${project.name}" archived`)
+      } else {
+        toast.success(`"${project.name}" restored`)
+        setSelectedId(project.id)
+        setHomeSelected(false)
+      }
+    } catch (e) {
+      toast.error(`Failed to update project: ${String(e)}`)
+    }
+  }
+
+  const handleSelectSession = (session: StudySession) => {
+    setSelectedSession(session)
+    setEditSessionDialogOpen(true)
   }
 
   return (
@@ -121,20 +251,34 @@ function App() {
           <Sidebar
             projects={projects}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            homeSelected={homeSelected}
+            onSelect={handleSelectProject}
+            onSelectHome={handleSelectHome}
             onDelete={handleDeleteProject}
             onNewProject={() => setDialogOpen(true)}
+            onToggleFavorite={handleToggleFavorite}
+            onToggleArchive={handleToggleArchive}
             fileCounts={fileCounts}
             dark={dark}
             onToggleDark={toggleDark}
           />
         </div>
         <main className="flex-1 overflow-auto">
-          {selectedProject ? (
+          {homeSelected ? (
+            <HomeView
+              projects={projects}
+              sessions={sessions}
+              onSelectProject={handleSelectProject}
+              onSelectSession={handleSelectSession}
+              onNewSession={() => setSessionDialogOpen(true)}
+              onNewProject={() => setDialogOpen(true)}
+            />
+          ) : selectedProject ? (
             <ProjectDetail
               project={selectedProject}
               onFilesChanged={refreshFileCounts}
               onOpenSettings={() => setSettingsOpen(true)}
+              onOpenGrades={() => setGradesOpen(true)}
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
@@ -157,13 +301,34 @@ function App() {
           onOpenChange={setDialogOpen}
           onSubmit={handleCreateProject}
         />
+        <NewStudySessionDialog
+          open={sessionDialogOpen}
+          onOpenChange={setSessionDialogOpen}
+          projects={projects}
+          onSubmit={handleCreateStudySession}
+        />
+        <EditStudySessionDialog
+          open={editSessionDialogOpen}
+          onOpenChange={setEditSessionDialogOpen}
+          projects={projects}
+          session={selectedSession}
+          onSubmit={handleEditStudySession}
+          onDelete={handleDeleteStudySession}
+        />
         {selectedProject && (
-          <ProjectSettingsDialog
-            project={selectedProject}
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            onSubmit={handleUpdateProject}
-          />
+          <>
+            <ProjectSettingsDialog
+              project={selectedProject}
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
+              onSubmit={handleUpdateProject}
+            />
+            <GradeTrackerDialog
+              project={selectedProject}
+              open={gradesOpen}
+              onOpenChange={setGradesOpen}
+            />
+          </>
         )}
         <Toaster />
       </div>

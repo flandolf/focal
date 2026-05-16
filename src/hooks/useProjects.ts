@@ -21,6 +21,8 @@ function normaliseProject(raw: unknown): Project {
     deadlineType: (obj.deadlineType === "sac" || obj.deadlineType === "exam" || obj.deadlineType === "assignment" || obj.deadlineType === "gat") ? obj.deadlineType : undefined,
     gatDate: typeof obj.gatDate === "string" ? obj.gatDate : undefined,
     examDate: typeof obj.examDate === "string" ? obj.examDate : undefined,
+    isFavorite: typeof obj.isFavorite === "boolean" ? obj.isFavorite : false,
+    isArchived: typeof obj.isArchived === "boolean" ? obj.isArchived : false,
   }
 }
 
@@ -45,12 +47,13 @@ export function useProjects() {
 
       if (await exists(filePath)) {
         const content = await readTextFile(filePath)
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const raw = JSON.parse(content)
         const normalised: Project[] = Array.isArray(raw) ? raw.map(normaliseProject) : []
         setProjects(normalised)
       }
     } catch (e) {
-      const msg = `Failed to load projects: ${e}`
+      const msg = `Failed to load projects: ${String(e)}`
       console.error(msg)
       setError(msg)
     } finally {
@@ -69,11 +72,25 @@ export function useProjects() {
     setProjects(updatedProjects)
   }, [])
 
-  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType) => {
+  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, gatDate?: string, examDate?: string) => {
     const sanitised = sanitiseFolderName(name)
     if (!sanitised) {
       throw new Error("Project name cannot be empty after sanitisation")
     }
+    
+    // Get subject-specific folders or use defaults
+    let subfolders = DEFAULT_SUBFOLDERS
+    if (subjectId) {
+      try {
+        const templateFolders = await invoke<string[]>("get_subject_folder_template", { 
+          subjectId,
+        })
+        subfolders = templateFolders
+      } catch (e) {
+        console.warn("Could not get subject folder template, using defaults:", e)
+      }
+    }
+    
     const project: Project = {
       id: generateId(),
       name,
@@ -85,11 +102,13 @@ export function useProjects() {
       subjectId,
       unit,
       deadlineType,
+      gatDate,
+      examDate,
     }
     try {
       await invoke("create_project_with_subfolders", { 
         projectName: sanitised,
-        subfolders: DEFAULT_SUBFOLDERS,
+        subfolders,
       })
     } catch (e) {
       console.warn("Could not create project folder on disk:", e)
@@ -115,10 +134,11 @@ export function useProjects() {
   }, [projects, saveProjects])
 
   const getProjectById = useCallback((id: string) => {
-    return projects.find((p) => p.id === id) || null
+    return projects.find((p) => p.id === id) ?? null
   }, [projects])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
     loadProjects()
   }, [loadProjects])
 

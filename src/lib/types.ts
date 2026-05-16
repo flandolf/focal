@@ -4,6 +4,21 @@ export type FileTag = "sac" | "notes" | "past-paper" | "exam" | "resource" | "ot
 
 export type Unit = "1" | "2" | "3" | "4";
 
+export type StudySessionStatus = "planned" | "in-progress" | "completed";
+
+export interface StudySession {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string;
+  startTime: string; // ISO date
+  endTime: string; // ISO date
+  status: StudySessionStatus;
+  topics?: string[]; // Topics covered in the session
+  notes?: string;
+  created_at: string;
+}
+
 export interface Subject {
   id: string;
   name: string;
@@ -31,6 +46,23 @@ export const VCE_SUBJECTS: Subject[] = [
 
 export const DEFAULT_SUBFOLDERS = ["SACs", "Notes", "Past-Papers", "Exam-Revision", "Resources"];
 
+export const SUBJECT_FOLDER_TEMPLATES: Record<string, string[]> = {
+  "eng": ["Essays", "Texts", "Writing Practice", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "eng-lang": ["Language Analysis", "Written & Spoken", "SACs", "Notes", "Vocabulary", "Past-Papers", "Exam-Revision"],
+  "lit": ["Primary Texts", "Critical Analysis", "Essay Plans", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "mm": ["Unit 1 Notes", "Unit 2 Notes", "Formulas", "Practice Problems", "SACs", "Past-Papers", "Exam-Revision"],
+  "sm": ["Unit 3 Notes", "Unit 4 Notes", "Proofs", "Challenge Problems", "SACs", "Past-Papers", "Exam-Revision"],
+  "fm": ["Statistics", "Financial Math", "Practice Sets", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "chem": ["Experiment Reports", "Equations", "Electron Configurations", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "phys": ["Experiment Reports", "Formulas", "Problem Sets", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "bio": ["Practicals", "Diagrams", "Key Concepts", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "psych": ["Research Studies", "Theories", "Case Studies", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "hist": ["Primary Sources", "Essay Plans", "Timelines", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "geo": ["Case Studies", "Fieldwork", "Maps & Diagrams", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "econ": ["Case Studies", "Data & Graphs", "Models", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+  "bm": ["Reports", "Case Studies", "Strategies", "SACs", "Notes", "Past-Papers", "Exam-Revision"],
+};
+
 export interface Project {
   id: string;
   name: string;
@@ -44,6 +76,8 @@ export interface Project {
   deadlineType?: DeadlineType;
   gatDate?: string;
   examDate?: string;
+  isFavorite?: boolean;
+  isArchived?: boolean;
 }
 
 export interface FileInfo {
@@ -52,6 +86,28 @@ export interface FileInfo {
   size: number;
   modified: number;
   extension: string;
-  tag?: FileTag;
+  tag?: FileTag; // Legacy field for backward compatibility
+  tags?: FileTag[];
   subfolder?: string;
+  isFavorite?: boolean;
+}
+
+export interface SearchResult {
+  file: FileInfo;
+  projectFolder: string;
+}
+
+export type GradeType = "sac" | "exam" | "assignment" | "practice";
+
+export interface GradeEntry {
+  id: string;
+  projectId: string;
+  title: string;
+  score: number;
+  maxScore: number;
+  weight: number; // percentage weight of this assessment
+  type: GradeType;
+  date?: string;
+  notes?: string;
+  created_at: string;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { FolderOpen, Plus, FolderUp, Loader2, Calendar, Settings, Folder } from "lucide-react"
+import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Calculator } from "lucide-react"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
 import { invoke } from "@tauri-apps/api/core"
@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"
 import { FileRow } from "@/components/FileRow"
 import { useProjectFiles } from "@/hooks/useProjectFiles"
 import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo } from "@/lib/utils"
-import { DEFAULT_SUBFOLDERS } from "@/lib/types"
-import type { Project } from "@/lib/types"
+import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
+import type { Project, FileInfo } from "@/lib/types"
 import type { UnlistenFn } from "@tauri-apps/api/event"
 import { cn } from "@/lib/utils"
 
@@ -20,15 +21,19 @@ interface ProjectDetailProps {
   project: Project
   onFilesChanged: () => void
   onOpenSettings: () => void
+  onOpenGrades?: () => void
 }
 
-export function ProjectDetail({ project, onFilesChanged, onOpenSettings }: ProjectDetailProps) {
-  const { files, loading, loadFiles, addFiles, currentSubfolder } = useProjectFiles(project.folder_path)
+export function ProjectDetail({ project, onFilesChanged, onOpenSettings, onOpenGrades }: ProjectDetailProps) {
+  const { files, loading, loadFiles, addFiles, deleteFiles } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedTags, setSelectedTags] = useState<FileTag[]>([])
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    loadFiles(selectedSubfolder)
+    void loadFiles(selectedSubfolder)
   }, [project.id, selectedSubfolder, loadFiles])
 
   useEffect(() => {
@@ -61,7 +66,7 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings }: Proje
                   projectName: targetFolder,
                 })
                   .then(() => {
-                    loadFiles(selectedSubfolder)
+                    void loadFiles(selectedSubfolder)
                     onFilesChanged()
                   })
                   .catch((e) => {
@@ -79,7 +84,7 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings }: Proje
       }
     }
 
-    setup()
+    void setup()
 
     return () => {
       unlisten?.()
@@ -113,6 +118,50 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings }: Proje
     }
   }
 
+  const filteredFiles = files.filter((file) => {
+    // Filter by search query
+    if (searchQuery && !file.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false
+    }
+    // Filter by tags - support both new tags array and legacy tag field
+    if (selectedTags.length > 0) {
+      const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
+      return selectedTags.some(tag => fileTags.includes(tag))
+    }
+    return true
+  })
+
+  const handleFileSelectionChange = (file: FileInfo, selected: boolean) => {
+    const newSelected = new Set(selectedFiles)
+    if (selected) {
+      newSelected.add(file.path)
+    } else {
+      newSelected.delete(file.path)
+    }
+    setSelectedFiles(newSelected)
+  }
+
+  const handleSelectAll = () => {
+    const allPaths = new Set(filteredFiles.map(f => f.path))
+    setSelectedFiles(allPaths)
+  }
+
+  const handleClearSelection = () => {
+    setSelectedFiles(new Set())
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedFiles.size === 0) return
+    const paths = Array.from(selectedFiles)
+    try {
+      await deleteFiles(paths)
+      setSelectedFiles(new Set())
+      onFilesChanged()
+    } catch (e) {
+      console.error("Batch delete failed:", e)
+    }
+  }
+
   const subject = getSubjectById(project.subjectId)
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
 
@@ -133,7 +182,7 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings }: Proje
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
-              <span className="text-2xl leading-none">{project.icon || "📄"}</span>
+              <span className="text-2xl leading-none">{project.icon ?? "📄"}</span>
               <h2 className="text-xl font-semibold tracking-tight">{project.name}</h2>
               {project.unit && (
                 <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">
@@ -184,6 +233,16 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings }: Proje
               </TooltipTrigger>
               <TooltipContent side="bottom">Settings</TooltipContent>
             </Tooltip>
+            {onOpenGrades && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onOpenGrades}>
+                    <Calculator className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Grades</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={handleOpenFolder} className="gap-1.5 h-8">
@@ -251,16 +310,106 @@ export function ProjectDetail({ project, onFilesChanged, onOpenSettings }: Proje
           </div>
         ) : (
           <>
+            <div className="flex items-center gap-3 px-8 py-4 border-b">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/50" />
+                <Input
+                  placeholder="Search files..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery("")}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 px-8 py-3 border-b flex-wrap">
+              <span className="text-xs text-muted-foreground font-medium">Filter:</span>
+              {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTags(
+                    selectedTags.includes(tag)
+                      ? selectedTags.filter(t => t !== tag)
+                      : [...selectedTags, tag]
+                  )}
+                  className={cn(
+                    "px-2.5 py-1 text-xs rounded-md transition-colors",
+                    selectedTags.includes(tag)
+                      ? "bg-primary text-primary-foreground font-medium"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  )}
+                >
+                  {tag}
+                </button>
+              ))}
+              {selectedTags.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedTags([])}
+                  className="h-6 px-2 text-xs"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
             <div className="flex items-center gap-3 px-8 py-2 text-[11px] text-muted-foreground/70 font-medium uppercase tracking-wider border-b">
               <span className="w-4 shrink-0" />
               <span className="flex-1">Name</span>
               <span className="w-20 text-right">Size</span>
               <span className="w-16 text-right">Type</span>
             </div>
+            {selectedFiles.size > 0 && (
+              <div className="flex items-center gap-3 px-8 py-3 bg-accent/20 border-b">
+                <span className="text-xs font-medium">{selectedFiles.size} selected</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSelectAll}
+                  className="h-7 px-2 text-xs"
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearSelection}
+                  className="h-7 px-2 text-xs"
+                >
+                  Clear
+                </Button>
+                <div className="flex-1" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDeleteSelected}
+                  className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Delete
+                </Button>
+              </div>
+            )}
             <ScrollArea className="flex-1">
               <div className="divide-y">
-                {files.map((file) => (
-                  <FileRow key={file.path} file={file} onOpen={handleOpenFile} />
+                {filteredFiles.map((file) => (
+                  <FileRow
+                    key={file.path}
+                    file={file}
+                    onOpen={handleOpenFile}
+                    isSelected={selectedFiles.has(file.path)}
+                    onSelectionChange={handleFileSelectionChange}
+                  />
                 ))}
               </div>
             </ScrollArea>
