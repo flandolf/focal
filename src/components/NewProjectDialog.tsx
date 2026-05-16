@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import { VCE_SUBJECTS, type DeadlineType, type Unit } from "@/lib/types"
 
 const EMOJIS = [
   "📁", "📂", "🗂️", "📄", "📝", "✏️", "🎨", "📊",
@@ -22,10 +23,32 @@ const EMOJIS = [
   "📱", "🌐", "📚", "🎓", "🏆", "🎵", "🎬", "📸",
 ]
 
+const DEADLINE_TYPES: { value: DeadlineType; label: string; icon: string }[] = [
+  { value: "sac", label: "SAC", icon: "📝" },
+  { value: "exam", label: "Exam", icon: "📅" },
+  { value: "assignment", label: "Assignment", icon: "📋" },
+  { value: "gat", label: "GAT", icon: "🎯" },
+]
+
+const UNITS: { value: Unit; label: string }[] = [
+  { value: "1", label: "Unit 1" },
+  { value: "2", label: "Unit 2" },
+  { value: "3", label: "Unit 3" },
+  { value: "4", label: "Unit 4" },
+]
+
 interface NewProjectDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (name: string, description?: string, icon?: string, deadline?: string) => void
+  onSubmit: (data: {
+    name: string
+    description?: string
+    icon?: string
+    deadline?: string
+    subjectId?: string
+    unit?: Unit
+    deadlineType?: DeadlineType
+  }) => void
 }
 
 export function NewProjectDialog({
@@ -37,20 +60,29 @@ export function NewProjectDialog({
   const [description, setDescription] = useState("")
   const [icon, setIcon] = useState("📁")
   const [deadline, setDeadline] = useState<Date | undefined>(undefined)
+  const [subjectId, setSubjectId] = useState<string>("")
+  const [unit, setUnit] = useState<Unit | "">("")
+  const [deadlineType, setDeadlineType] = useState<DeadlineType | "">("")
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    onSubmit(
-      name.trim(),
-      description.trim() || undefined,
-      icon,
-      deadline ? format(deadline, "yyyy-MM-dd") : undefined,
-    )
+    onSubmit({
+      name: String(name.trim()),
+      description: description.trim() ? String(description.trim()) : undefined,
+      icon: String(icon),
+      deadline: deadline ? String(format(deadline, "yyyy-MM-dd")) : undefined,
+      subjectId: subjectId ? String(subjectId) : undefined,
+      unit: unit || undefined,
+      deadlineType: deadlineType || undefined,
+    })
     setName("")
     setDescription("")
     setIcon("📁")
     setDeadline(undefined)
+    setSubjectId("")
+    setUnit("")
+    setDeadlineType("")
     onOpenChange(false)
   }
 
@@ -64,25 +96,8 @@ export function NewProjectDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-5 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Icon</label>
-              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-0.5">
-                {EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setIcon(e)}
-                    className={`text-lg w-9 h-9 flex items-center justify-center rounded-md transition-colors ${
-                      icon === e ? "bg-accent ring-2 ring-ring" : "hover:bg-accent/50"
-                    }`}
-                  >
-                    {e}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
+          <div className="space-y-5 py-5">
+            <div className="space-y-2.5">
               <label className="text-sm font-medium">Name</label>
               <Input
                 placeholder="e.g. English Language Assignment"
@@ -91,7 +106,7 @@ export function NewProjectDialog({
                 autoFocus
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <label className="text-sm font-medium">Description</label>
               <Input
                 placeholder="Optional — brief description of the project"
@@ -99,8 +114,58 @@ export function NewProjectDialog({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Deadline</label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">Subject</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={subjectId}
+                  onChange={(e) => setSubjectId(e.target.value)}
+                >
+                  <option value="">No subject</option>
+                  {VCE_SUBJECTS.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.icon} {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">Unit</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value as Unit | "")}
+                >
+                  <option value="">None</option>
+                  {UNITS.map((u) => (
+                    <option key={u.value} value={u.value}>{u.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              <label className="text-sm font-medium">Deadline Type</label>
+              <div className="flex gap-1.5">
+                {DEADLINE_TYPES.map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setDeadlineType(deadlineType === type.value ? "" : type.value)}
+                    className={cn(
+                      "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                      deadlineType === type.value
+                        ? "bg-accent ring-2 ring-ring"
+                        : "bg-muted hover:bg-muted/80"
+                    )}
+                  >
+                    {type.icon} {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              <label className="text-sm font-medium">Deadline Date</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -111,7 +176,7 @@ export function NewProjectDialog({
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {deadline ? format(deadline, "PPP") : "Pick a date"}
+                    {deadline ? format(deadline, "MMM d") : "Pick date"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -123,17 +188,23 @@ export function NewProjectDialog({
                   />
                 </PopoverContent>
               </Popover>
-              {deadline && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-1 h-auto px-2 py-1 text-xs text-muted-foreground"
-                  onClick={() => setDeadline(undefined)}
-                >
-                  Clear deadline
-                </Button>
-              )}
+            </div>
+            <div className="space-y-2.5">
+              <label className="text-sm font-medium">Icon</label>
+              <div className="flex flex-wrap gap-1">
+                {EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setIcon(e)}
+                    className={`text-base w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                      icon === e ? "bg-accent ring-2 ring-ring" : "hover:bg-accent/50"
+                    }`}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>

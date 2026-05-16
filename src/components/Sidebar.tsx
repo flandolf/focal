@@ -1,7 +1,7 @@
 import { Plus, Trash2, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn, formatDeadline, isOverdue, sortProjectsByDeadline } from "@/lib/utils"
+import { cn, formatDeadline, isOverdue, sortProjectsByDeadline, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
 import type { Project } from "@/lib/types"
 
 interface SidebarProps {
@@ -29,9 +29,9 @@ export function Sidebar({
 
   return (
     <div className="flex flex-col h-full bg-sidebar border-r">
-      <div className="px-4 pt-4 pb-3 border-b">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col px-4 pt-5 pb-4 gap-3 border-b">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
             <span className="text-lg leading-none">🎯</span>
             <h1 className="font-semibold text-base tracking-tight">Focal</h1>
           </div>
@@ -47,19 +47,19 @@ export function Sidebar({
       <ScrollArea className="flex-1">
         <div className="p-2">
           {sorted.length > 0 ? (
-            <div className="space-y-0.5">
+            <div className="flex flex-col gap-0.5">
               {sorted.map((project) => (
                 <div
                   key={project.id}
                   className={cn(
-                    "group relative flex items-center gap-2.5 px-3 py-2 pr-10 rounded-md cursor-pointer transition-colors",
+                    "group flex items-start gap-3 px-3 py-2.5 rounded-md cursor-pointer transition-colors",
                     selectedId === project.id
                       ? "bg-accent text-accent-foreground"
                       : "hover:bg-accent/50 text-muted-foreground hover:text-foreground"
                   )}
                   onClick={() => onSelect(project.id)}
                 >
-                  <span className="text-base leading-none shrink-0">{project.icon || "📄"}</span>
+                  <span className="text-base leading-none shrink-0 mt-0.5">{project.icon || "📄"}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium truncate">{project.name}</p>
@@ -69,20 +69,47 @@ export function Sidebar({
                         </span>
                       )}
                     </div>
-                    {project.deadline && (
-                      <p className={cn(
-                        "text-xs leading-tight",
-                        isOverdue(project.deadline) ? "text-destructive" : "text-muted-foreground/70"
-                      )}>
-                        {formatDeadline(project.deadline)}
-                      </p>
+                    {(project.subjectId || project.deadline) && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {project.subjectId && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                            style={{
+                              backgroundColor: getSubjectById(project.subjectId)?.color + "20",
+                              color: getSubjectById(project.subjectId)?.color
+                            }}
+                          >
+                            {getSubjectById(project.subjectId)?.shortCode}
+                          </span>
+                        )}
+                        {project.deadline && (
+                          <>
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                              style={{
+                                backgroundColor: getDeadlineTypeInfo(project.deadlineType).color + "20",
+                                color: getDeadlineTypeInfo(project.deadlineType).color
+                              }}
+                            >
+                              {getDeadlineTypeInfo(project.deadlineType).icon}
+                              {getDeadlineTypeInfo(project.deadlineType).label}
+                            </span>
+                            <span className={cn(
+                              "text-xs leading-tight",
+                              isOverdue(project.deadline) ? "text-destructive" : "text-muted-foreground/70"
+                            )}>
+                              {formatDeadline(project.deadline)}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
                     aria-label={`Delete ${project.name}`}
-                    className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                    className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDelete(project.id)
@@ -94,7 +121,7 @@ export function Sidebar({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-10">
+            <p className="text-sm text-muted-foreground text-center py-12 px-4 leading-relaxed">
               No projects yet
             </p>
           )}

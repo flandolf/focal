@@ -59,6 +59,16 @@
   --z-modal: 400;
   --z-toast: 500;
   --z-tooltip: 600;
+
+  /* 4pt spacing scale — semantic names */
+  --space-2xs: 0.25rem;   /* 4px — micro gaps */
+  --space-xs: 0.5rem;     /* 8px — tight sibling spacing */
+  --space-sm: 0.75rem;    /* 12px — related elements */
+  --space-md: 1rem;       /* 16px — standard gap */
+  --space-lg: 1.5rem;     /* 24px — section internal */
+  --space-xl: 2rem;       /* 32px — section separation */
+  --space-2xl: 3rem;      /* 48px — major grouping */
+  --space-3xl: 4rem;      /* 64px — page-level rhythm */
 }
 
 :root {

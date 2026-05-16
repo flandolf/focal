@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import type { Project } from "@/lib/types"
+import { VCE_SUBJECTS, type Project, type DeadlineType, type Unit } from "@/lib/types"
 
 const EMOJIS = [
   "📁", "📂", "🗂️", "📄", "📝", "✏️", "🎨", "📊",
@@ -23,11 +23,33 @@ const EMOJIS = [
   "📱", "🌐", "📚", "🎓", "🏆", "🎵", "🎬", "📸",
 ]
 
+const DEADLINE_TYPES: { value: DeadlineType; label: string; icon: string }[] = [
+  { value: "sac", label: "SAC", icon: "📝" },
+  { value: "exam", label: "Exam", icon: "📅" },
+  { value: "assignment", label: "Assignment", icon: "📋" },
+  { value: "gat", label: "GAT", icon: "🎯" },
+]
+
+const UNITS: { value: Unit; label: string }[] = [
+  { value: "1", label: "Unit 1" },
+  { value: "2", label: "Unit 2" },
+  { value: "3", label: "Unit 3" },
+  { value: "4", label: "Unit 4" },
+]
+
 interface ProjectSettingsDialogProps {
   project: Project
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (id: string, name: string, description?: string, icon?: string, deadline?: string) => void
+  onSubmit: (id: string, data: {
+    name: string
+    description?: string
+    icon?: string
+    deadline?: string
+    subjectId?: string
+    unit?: Unit
+    deadlineType?: DeadlineType
+  }) => void
 }
 
 export function ProjectSettingsDialog({
@@ -42,24 +64,32 @@ export function ProjectSettingsDialog({
   const [deadline, setDeadline] = useState<Date | undefined>(
     project.deadline ? new Date(project.deadline) : undefined
   )
+  const [subjectId, setSubjectId] = useState(project.subjectId || "")
+  const [unit, setUnit] = useState<Unit | "">(project.unit || "")
+  const [deadlineType, setDeadlineType] = useState<DeadlineType | "">(project.deadlineType || "")
 
   useEffect(() => {
     setName(project.name)
     setDescription(project.description || "")
     setIcon(project.icon || "📁")
     setDeadline(project.deadline ? new Date(project.deadline) : undefined)
+    setSubjectId(project.subjectId || "")
+    setUnit(project.unit || "")
+    setDeadlineType(project.deadlineType || "")
   }, [project])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    onSubmit(
-      project.id,
-      name.trim(),
-      description.trim() || undefined,
-      icon,
-      deadline ? format(deadline, "yyyy-MM-dd") : undefined,
-    )
+    onSubmit(String(project.id), {
+      name: String(name.trim()),
+      description: description.trim() ? String(description.trim()) : undefined,
+      icon: String(icon),
+      deadline: deadline ? String(format(deadline, "yyyy-MM-dd")) : undefined,
+      subjectId: subjectId ? String(subjectId) : undefined,
+      unit: unit || undefined,
+      deadlineType: deadlineType || undefined,
+    })
     onOpenChange(false)
   }
 
@@ -73,25 +103,8 @@ export function ProjectSettingsDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-5 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Icon</label>
-              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-0.5">
-                {EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setIcon(e)}
-                    className={`text-lg w-9 h-9 flex items-center justify-center rounded-md transition-colors ${
-                      icon === e ? "bg-accent ring-2 ring-ring" : "hover:bg-accent/50"
-                    }`}
-                  >
-                    {e}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
+          <div className="space-y-5 py-5">
+            <div className="space-y-2.5">
               <label className="text-sm font-medium">Name</label>
               <Input
                 value={name}
@@ -99,7 +112,7 @@ export function ProjectSettingsDialog({
                 autoFocus
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <label className="text-sm font-medium">Description</label>
               <Input
                 placeholder="Brief description of the project"
@@ -107,8 +120,58 @@ export function ProjectSettingsDialog({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Deadline</label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">Subject</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={subjectId}
+                  onChange={(e) => setSubjectId(e.target.value)}
+                >
+                  <option value="">No subject</option>
+                  {VCE_SUBJECTS.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.icon} {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2.5">
+                <label className="text-sm font-medium">Unit</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value as Unit | "")}
+                >
+                  <option value="">None</option>
+                  {UNITS.map((u) => (
+                    <option key={u.value} value={u.value}>{u.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              <label className="text-sm font-medium">Deadline Type</label>
+              <div className="flex gap-1.5">
+                {DEADLINE_TYPES.map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setDeadlineType(deadlineType === type.value ? "" : type.value)}
+                    className={cn(
+                      "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                      deadlineType === type.value
+                        ? "bg-accent ring-2 ring-ring"
+                        : "bg-muted hover:bg-muted/80"
+                    )}
+                  >
+                    {type.icon} {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              <label className="text-sm font-medium">Deadline Date</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -142,6 +205,23 @@ export function ProjectSettingsDialog({
                   Clear deadline
                 </Button>
               )}
+            </div>
+            <div className="space-y-2.5">
+              <label className="text-sm font-medium">Icon</label>
+              <div className="flex flex-wrap gap-1">
+                {EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setIcon(e)}
+                    className={`text-base w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                      icon === e ? "bg-accent ring-2 ring-ring" : "hover:bg-accent/50"
+                    }`}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>

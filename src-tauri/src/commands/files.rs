@@ -126,3 +126,20 @@ pub fn create_project_folder(project_name: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
     Ok(project_dir.to_string_lossy().to_string())
 }
+
+#[tauri::command]
+pub fn create_project_with_subfolders(project_name: String, subfolders: Vec<String>) -> Result<String, String> {
+    let projects_dir = get_documents_dir()?;
+    let project_dir = projects_dir.join(&project_name);
+    
+    std::fs::create_dir_all(&project_dir)
+        .map_err(|e| format!("Failed to create project directory: {}", e))?;
+    
+    for subfolder in subfolders {
+        let subfolder_path = project_dir.join(&subfolder);
+        std::fs::create_dir_all(&subfolder_path)
+            .map_err(|e| format!("Failed to create subfolder {}: {}", subfolder, e))?;
+    }
+    
+    Ok(project_dir.to_string_lossy().to_string())
+}

@@ -1,9 +1,30 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Project } from "@/lib/types"
+import type { Project, DeadlineType, Subject } from "@/lib/types"
+import { VCE_SUBJECTS } from "@/lib/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label: string; color: string } {
+  switch (type) {
+    case "gat":
+      return { icon: "🎯", label: "GAT", color: "#9333EA" }
+    case "sac":
+      return { icon: "📝", label: "SAC", color: "#EA580C" }
+    case "exam":
+      return { icon: "📅", label: "Exam", color: "#DC2626" }
+    case "assignment":
+      return { icon: "📋", label: "Assignment", color: "#2563EB" }
+    default:
+      return { icon: "📌", label: "Deadline", color: "#6B7280" }
+  }
+}
+
+export function getSubjectById(id?: string): Subject | undefined {
+  if (!id) return undefined
+  return VCE_SUBJECTS.find((s) => s.id === id)
 }
 
 export function formatDeadline(dateString: string): string {
@@ -25,8 +46,17 @@ export function isOverdue(dateString: string): boolean {
   return date.getTime() < now.getTime()
 }
 
+const DEADLINE_TYPE_PRIORITY: Record<DeadlineType, number> = {
+  gat: 0,
+  sac: 1,
+  exam: 2,
+  assignment: 3,
+}
+
 export function sortProjectsByDeadline(projects: Project[]): Project[] {
   return [...projects].sort((a, b) => {
+    const now = Date.now()
+    
     if (!a.deadline && !b.deadline) return 0
     if (!a.deadline) return 1
     if (!b.deadline) return -1
@@ -34,12 +64,16 @@ export function sortProjectsByDeadline(projects: Project[]): Project[] {
     const dateA = new Date(a.deadline).getTime()
     const dateB = new Date(b.deadline).getTime()
     
-    const now = Date.now()
     const aOverdue = dateA < now
     const bOverdue = dateB < now
     
     if (aOverdue && !bOverdue) return -1
     if (!aOverdue && bOverdue) return 1
+    
+    const typeA = a.deadlineType ? DEADLINE_TYPE_PRIORITY[a.deadlineType] ?? 4 : 4
+    const typeB = b.deadlineType ? DEADLINE_TYPE_PRIORITY[b.deadlineType] ?? 4 : 4
+    
+    if (typeA !== typeB) return typeA - typeB
     
     return dateA - dateB
   })
