@@ -13,6 +13,9 @@ pub fn run() {
             commands::files::get_project_file_count,
             commands::files::create_project_folder,
             commands::files::create_project_with_subfolders,
+            commands::files::get_subject_folder_template,
+            commands::files::search_files_all_projects,
+            commands::files::delete_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

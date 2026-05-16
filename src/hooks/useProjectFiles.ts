@@ -48,7 +48,7 @@ export function useProjectFiles(projectName: string | null) {
         ? `${projectName}/${subfolder}`
         : projectName
       await invoke("move_files_to_project", {
-        files: selected as string[],
+        files: selected,
         projectName: targetFolder,
       })
       await loadFiles(subfolder)
@@ -63,12 +63,23 @@ export function useProjectFiles(projectName: string | null) {
     await loadFiles(currentSubfolder)
   }, [loadFiles, currentSubfolder])
 
+  const deleteFiles = useCallback(async (filePaths: string[]) => {
+    try {
+      await invoke<number>("delete_files", { filePaths })
+      await loadFiles(currentSubfolder)
+    } catch (e) {
+      console.error("Failed to delete files:", e)
+      throw e
+    }
+  }, [loadFiles, currentSubfolder])
+
   return {
     files,
     loading,
     loadFiles,
     addFiles,
     removeFile,
+    deleteFiles,
     currentSubfolder,
   }
 }
