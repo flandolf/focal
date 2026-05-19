@@ -63,6 +63,15 @@ export function useProjectFiles(projectName: string | null) {
     await loadFiles(currentSubfolder)
   }, [loadFiles, currentSubfolder])
 
+  const renameFile = useCallback(async (filePath: string, newName: string) => {
+    try {
+      await invoke<string>("rename_file", { filePath, newName })
+      await loadFiles(currentSubfolder)
+    } catch (e) {
+      console.error("Failed to rename file:", e)
+      throw e
+    }
+  }, [loadFiles, currentSubfolder])
   const deleteFiles = useCallback(async (filePaths: string[]) => {
     try {
       await invoke<number>("delete_files", { filePaths })
@@ -79,6 +88,7 @@ export function useProjectFiles(projectName: string | null) {
     loadFiles,
     addFiles,
     removeFile,
+    renameFile,
     deleteFiles,
     currentSubfolder,
   }

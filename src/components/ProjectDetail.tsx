@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Calculator, Clock, Calendar } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { openPath } from "@tauri-apps/plugin-opener"
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Input } from "@/components/ui/input"
 import { FileRow } from "@/components/FileRow"
+import { AutoRenameButton } from "@/components/AutoRenameButton"
 import { useProjectFiles } from "@/hooks/useProjectFiles"
 import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
@@ -29,7 +30,7 @@ interface ProjectDetailProps {
 }
 
 export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onOpenGrades, onSelectSession, onNewSession }: ProjectDetailProps) {
-  const { files, loading, loadFiles, addFiles, deleteFiles } = useProjectFiles(project.folder_path)
+  const { files, loading, loadFiles, addFiles, renameFile, deleteFiles } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -122,6 +123,30 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       console.error("Failed to open file:", e)
     }
   }
+
+  const handleRenameFile = async (file: FileInfo, newName: string) => {
+    try {
+      await renameFile(file.path, newName)
+      onFilesChanged()
+    } catch (e) {
+      console.error("Failed to rename file:", e)
+    }
+  }
+
+
+  const handleApplyAutoRenames = useCallback(
+    async (renames: { filePath: string; newName: string }[]) => {
+      for (const { filePath, newName } of renames) {
+        try {
+          await renameFile(filePath, newName)
+        } catch (e) {
+          console.error(`Failed to rename ${filePath}:`, e)
+        }
+      }
+      onFilesChanged()
+    },
+    [renameFile, onFilesChanged],
+  )
 
   const filteredFiles = files.filter((file) => {
     // Filter by search query
@@ -461,6 +486,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     key={file.path}
                     file={file}
                     onOpen={handleOpenFile}
+                    onRename={handleRenameFile}
                     isSelected={selectedFiles.has(file.path)}
                     onSelectionChange={handleFileSelectionChange}
                   />
@@ -470,6 +496,13 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           </>
         )}
       </div>
+
+      {viewMode === "files" && files.length > 0 && (
+        <AutoRenameButton
+          files={filteredFiles}
+          onApplyRenames={handleApplyAutoRenames}
+        />
+      )}
     </div>
   )
 }

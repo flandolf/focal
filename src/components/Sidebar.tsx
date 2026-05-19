@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Plus, Trash2, Sun, Moon, Home, Star, Archive, Search, Database, Palette } from "lucide-react"
+import { Plus, Trash2, Home, Star, Archive, Search, Database, Palette, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StudyTimer } from "@/components/StudyTimer"
@@ -19,8 +19,7 @@ interface SidebarProps {
   onToggleFavorite?: (id: string) => void
   onToggleArchive?: (id: string) => void
   fileCounts: Record<string, number>
-  dark: boolean
-  onToggleDark: () => void
+  onOpenSettings?: () => void
   onOpenSearch?: () => void
   onOpenExport?: () => void
   onOpenSubjects?: () => void
@@ -37,8 +36,7 @@ export function Sidebar({
   onToggleFavorite,
   onToggleArchive,
   fileCounts,
-  dark,
-  onToggleDark,
+  onOpenSettings,
   onOpenSearch,
   onOpenExport,
   onOpenSubjects,
@@ -74,13 +72,15 @@ export function Sidebar({
                 <Search className="h-3.5 w-3.5" />
               </button>
             )}
-            <button
-              onClick={onToggleDark}
-              className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
-              aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            </button>
+            {onOpenSettings && (
+              <button
+                onClick={onOpenSettings}
+                className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+                aria-label="Settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </div>
 

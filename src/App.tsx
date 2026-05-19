@@ -13,6 +13,7 @@ import { GradeTrackerDialog } from "@/components/GradeTrackerDialog"
 import { GlobalSearch } from "@/components/GlobalSearch"
 import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
+import { SettingsDialog } from "@/components/SettingsDialog"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useGrades } from "@/hooks/useGrades"
@@ -53,6 +54,7 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [subjectsOpen, setSubjectsOpen] = useState(false)
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [customSubjects, setCustomSubjects] = useState<Subject[]>(() => {
     if (typeof window === "undefined") return []
     const stored = localStorage.getItem("focal-custom-subjects")
@@ -295,8 +297,7 @@ function App() {
             onToggleFavorite={handleToggleFavorite}
             onToggleArchive={handleToggleArchive}
             fileCounts={fileCounts}
-            dark={dark}
-            onToggleDark={toggleDark}
+            onOpenSettings={() => setAppSettingsOpen(true)}
             onOpenSearch={() => setSearchOpen(true)}
             onOpenExport={() => setExportOpen(true)}
             onOpenSubjects={() => setSubjectsOpen(true)}
@@ -399,6 +400,13 @@ function App() {
           open={subjectsOpen}
           onOpenChange={setSubjectsOpen}
         />
+        <SettingsDialog
+          open={appSettingsOpen}
+          onOpenChange={setAppSettingsOpen}
+          dark={dark}
+          onToggleDark={toggleDark}
+        />
+
         <Toaster />
       </div>
     </TooltipProvider>

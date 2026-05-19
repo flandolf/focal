@@ -16,6 +16,8 @@ pub fn run() {
             commands::files::get_subject_folder_template,
             commands::files::search_files_all_projects,
             commands::files::delete_files,
+            commands::files::rename_file,
+            commands::files::get_file_content_previews,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

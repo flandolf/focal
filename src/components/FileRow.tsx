@@ -1,9 +1,11 @@
 import { formatFileSize, formatDate } from "@/lib/utils"
+import { useState, useRef, useCallback } from "react"
 import type { FileInfo } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 
+import { Pencil, X, Check } from "lucide-react"
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   jpg: { label: "img", color: "text-blue-600 dark:text-blue-400" },
   jpeg: { label: "img", color: "text-blue-600 dark:text-blue-400" },
@@ -55,11 +57,12 @@ function getFileTypeLabel(extension: string): { label: string; color: string } {
 interface FileRowProps {
   file: FileInfo
   onOpen?: (file: FileInfo) => void
+  onRename?: (file: FileInfo, newName: string) => void
   isSelected?: boolean
   onSelectionChange?: (file: FileInfo, selected: boolean) => void
 }
 
-export function FileRow({ file, onOpen, isSelected = false, onSelectionChange }: FileRowProps) {
+export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectionChange }: FileRowProps) {
   const { label, color } = getFileTypeLabel(file.extension)
   // Support both new tags array and legacy tag field
   const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
@@ -77,6 +80,29 @@ export function FileRow({ file, onOpen, isSelected = false, onSelectionChange }:
       onOpen?.(file)
     }
   }
+
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState("")
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  const startRename = useCallback(() => {
+    setRenameValue(file.name)
+    setIsRenaming(true)
+    requestAnimationFrame(() => renameInputRef.current?.select())
+  }, [file.name])
+
+  const cancelRename = useCallback(() => {
+    setIsRenaming(false)
+    setRenameValue("")
+  }, [])
+
+  const confirmRename = useCallback(() => {
+    const trimmed = renameValue.trim()
+    if (trimmed && trimmed !== file.name) {
+      onRename?.(file, trimmed)
+    }
+    setIsRenaming(false)
+  }, [renameValue, file, onRename])
 
   return (
     <div
@@ -96,7 +122,47 @@ export function FileRow({ file, onOpen, isSelected = false, onSelectionChange }:
         {label}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{file.name}</p>
+        {isRenaming ? (
+          <div className="flex items-center gap-1">
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmRename()
+                if (e.key === "Escape") cancelRename()
+              }}
+              onBlur={confirmRename}
+              className="text-sm font-medium bg-background border border-primary/50 rounded px-1.5 py-0.5 w-full outline-none focus:border-primary"
+              autoFocus
+            />
+            <button
+              onClick={(e) => { e.stopPropagation(); confirmRename() }}
+              className="shrink-0 p-0.5 rounded hover:bg-accent text-emerald-600 dark:text-emerald-400"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); cancelRename() }}
+              className="shrink-0 p-0.5 rounded hover:bg-accent text-muted-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium truncate">{file.name}</p>
+            {onRename && (
+              <button
+                onClick={(e) => { e.stopPropagation(); startRename() }}
+                className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2 mt-1">
           <p className="text-[11px] text-muted-foreground/60 leading-tight">
             {formatDate(file.modified)}
