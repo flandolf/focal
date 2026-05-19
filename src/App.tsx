@@ -9,14 +9,12 @@ import { NewProjectDialog } from "@/components/NewProjectDialog"
 import { NewStudySessionDialog } from "@/components/NewStudySessionDialog"
 import { EditStudySessionDialog } from "@/components/EditStudySessionDialog"
 import { ProjectSettingsDialog } from "@/components/ProjectSettingsDialog"
-import { GradeTrackerDialog } from "@/components/GradeTrackerDialog"
 import { GlobalSearch } from "@/components/GlobalSearch"
 import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
 import { SettingsDialog } from "@/components/SettingsDialog"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
-import { useGrades } from "@/hooks/useGrades"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -41,7 +39,6 @@ function useDarkMode() {
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
   const { sessions, addSession, updateSession, deleteSession } = useStudySessions()
-  const { grades, addGrade, deleteGrade, getWeightedScore } = useGrades()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -49,7 +46,6 @@ function App() {
   const [editSessionDialogOpen, setEditSessionDialogOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<StudySession | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [gradesOpen, setGradesOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [searchOpen, setSearchOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -171,7 +167,7 @@ function App() {
   const handleDeleteProject = async (id: string) => {
     const project = projects.find((p) => p.id === id)
     if (!project) return
-    if (!window.confirm(`Delete "${project.name}"? This will also delete all associated sessions and grades.`)) return
+    if (!window.confirm(`Delete "${project.name}"? This will also delete all associated sessions.`)) return
     try {
       await deleteProject(id)
       if (selectedId === id) {
@@ -319,17 +315,15 @@ function App() {
               sessions={sessions.filter((s) => s.projectId === selectedProject.id)}
               onFilesChanged={refreshFileCounts}
               onOpenSettings={() => setSettingsOpen(true)}
-              onOpenGrades={() => setGradesOpen(true)}
               onSelectSession={handleSelectSession}
               onNewSession={() => setSessionDialogOpen(true)}
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div className="mb-8 w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center">
-                <FolderOpen className="h-8 w-8 text-muted-foreground/40" />
+              <div className="mb-6 w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center">
+                <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
               </div>
-              <h2 className="text-lg font-semibold text-foreground mb-2">No project selected</h2>
-              <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">
+              <p className="text-sm text-muted-foreground mb-6 max-w-56 leading-relaxed">
                 Choose a project from the sidebar or create a new one to start organising your files.
               </p>
               <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
@@ -360,24 +354,13 @@ function App() {
           onDelete={handleDeleteStudySession}
         />
         {selectedProject && (
-          <>
-            <ProjectSettingsDialog
-              project={selectedProject}
-              open={settingsOpen}
-              onOpenChange={setSettingsOpen}
-              onSubmit={handleUpdateProject}
-              customSubjects={customSubjects}
-            />
-            <GradeTrackerDialog
-              project={selectedProject}
-              open={gradesOpen}
-              onOpenChange={setGradesOpen}
-              grades={grades}
-              onAddGrade={async (...args) => { await addGrade(...args) }}
-              onDeleteGrade={deleteGrade}
-              getWeightedScore={getWeightedScore}
-            />
-          </>
+          <ProjectSettingsDialog
+            project={selectedProject}
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            onSubmit={handleUpdateProject}
+            customSubjects={customSubjects}
+          />
         )}
         <GlobalSearch
           projects={projects}
@@ -390,7 +373,6 @@ function App() {
         <DataExport
           projects={projects}
           sessions={sessions}
-          grades={grades}
           open={exportOpen}
           onOpenChange={setExportOpen}
         />

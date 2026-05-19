@@ -162,7 +162,7 @@ export function Sidebar({
                     "group relative flex items-start gap-2.5 px-3 py-2 rounded-md cursor-pointer transition-colors",
                     selectedId === project.id
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "hover:bg-sidebar-accent/50 text-muted-foreground hover:text-foreground",
+                      : "hover:bg-sidebar-accent/50 text-sidebar-foreground hover:text-foreground",
                     project.isArchived && "opacity-60"
                   )}
                   onClick={() => onSelect(project.id)}
@@ -276,7 +276,7 @@ export function Sidebar({
 
       {/* Footer utilities */}
       {(onOpenExport != null || onOpenSubjects != null) && (
-        <div className="px-3 pt-2 pb-1">
+        <div className="border-t border-sidebar-border px-3 pt-2.5 pb-2">
           <div className="flex items-center gap-0.5">
             {onOpenExport && (
               <button

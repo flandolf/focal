@@ -11,19 +11,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import type { Project, StudySession, GradeEntry } from "@/lib/types"
+import type { Project, StudySession } from "@/lib/types"
 
 interface DataExportProps {
   projects: Project[]
   sessions: StudySession[]
-  grades: GradeEntry[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 type ExportFormat = "json" | "csv"
 
-export function DataExport({ projects, sessions, grades, open, onOpenChange }: DataExportProps) {
+export function DataExport({ projects, sessions, open, onOpenChange }: DataExportProps) {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState(false)
@@ -37,7 +36,6 @@ export function DataExport({ projects, sessions, grades, open, onOpenChange }: D
         version: "0.1.0",
         projects,
         sessions,
-        grades,
       }
 
       const content =
@@ -68,7 +66,7 @@ export function DataExport({ projects, sessions, grades, open, onOpenChange }: D
   }
 
   const handleImport = () => {
-    if (!window.confirm("Import will overwrite all existing projects, sessions, and grades. Continue?")) return
+    if (!window.confirm("Import will overwrite all existing projects and sessions. Continue?")) return
     const input = document.createElement("input")
     input.type = "file"
     input.accept = ".json"
@@ -103,11 +101,6 @@ export function DataExport({ projects, sessions, grades, open, onOpenChange }: D
           await writeTextFile(`${baseDir}sessions.json`, JSON.stringify(data.sessions, null, 2))
         }
 
-        // Restore grades
-        if (data.grades && Array.isArray(data.grades)) {
-          await writeTextFile(`${baseDir}grades.json`, JSON.stringify(data.grades, null, 2))
-        }
-
         setDone(true)
         setTimeout(() => {
           setDone(false)
@@ -129,7 +122,7 @@ export function DataExport({ projects, sessions, grades, open, onOpenChange }: D
         <DialogHeader>
           <DialogTitle>Export & Backup</DialogTitle>
           <DialogDescription>
-            Export all your projects, sessions, and grades.
+            Export all your projects and sessions.
           </DialogDescription>
         </DialogHeader>
 
@@ -157,7 +150,7 @@ export function DataExport({ projects, sessions, grades, open, onOpenChange }: D
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="grid grid-cols-2 gap-3 text-center">
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-lg font-semibold">{projects.length}</p>
               <p className="text-xs text-muted-foreground">Projects</p>
@@ -165,10 +158,6 @@ export function DataExport({ projects, sessions, grades, open, onOpenChange }: D
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-lg font-semibold">{sessions.length}</p>
               <p className="text-xs text-muted-foreground">Sessions</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-lg font-semibold">{grades.length}</p>
-              <p className="text-xs text-muted-foreground">Grades</p>
             </div>
           </div>
 
@@ -205,7 +194,6 @@ export function DataExport({ projects, sessions, grades, open, onOpenChange }: D
 function toCsv(data: {
   projects: Project[]
   sessions: StudySession[]
-  grades: GradeEntry[]
 }): string {
   const sections: string[] = []
 
@@ -246,28 +234,6 @@ function toCsv(data: {
         csvEscape(s.topics?.join("; ") ?? ""),
         csvEscape(s.notes ?? ""),
         csvEscape(s.created_at),
-      ].join(",")
-    )
-  }
-
-  sections.push("")
-  sections.push("# Grades")
-  sections.push(
-    "id,projectId,title,score,maxScore,weight,type,date,notes,created_at"
-  )
-  for (const g of data.grades) {
-    sections.push(
-      [
-        csvEscape(g.id),
-        csvEscape(g.projectId),
-        csvEscape(g.title),
-        String(g.score),
-        String(g.maxScore),
-        String(g.weight),
-        csvEscape(g.type),
-        csvEscape(g.date ?? ""),
-        csvEscape(g.notes ?? ""),
-        csvEscape(g.created_at),
       ].join(",")
     )
   }
