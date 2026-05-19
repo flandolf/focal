@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 
+const DEFAULT_CONTENT_PREVIEW_CHARS: usize = 1200;
+const MAX_CONTENT_PREVIEW_CHARS: usize = 4000;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileInfo {
     pub name: String,
@@ -14,6 +17,53 @@ pub struct FileInfo {
     pub subfolder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_favorite: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileContentPreview {
+    pub file_path: String,
+    pub content: String,
+}
+
+fn is_text_like_extension(extension: &str) -> bool {
+    let ext = extension.to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        "txt"
+            | "md"
+            | "markdown"
+            | "csv"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "json"
+            | "html"
+            | "css"
+            | "xml"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "ini"
+            | "log"
+            | "rs"
+            | "py"
+            | "java"
+            | "kt"
+            | "swift"
+            | "go"
+            | "c"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "sql"
+            | "sh"
+            | "zsh"
+            | "bat"
+            | "ps1"
+            | "tex"
+            | "rtf"
+    )
 }
 
 fn get_documents_dir() -> Result<PathBuf, String> {
@@ -202,6 +252,81 @@ pub fn delete_files(file_paths: Vec<String>) -> Result<usize, String> {
         }
     }
     Ok(deleted)
+}
+#[tauri::command]
+pub fn rename_file(file_path: String, new_name: String) -> Result<String, String> {
+    let src = PathBuf::from(&file_path);
+    if !src.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+    if !src.is_file() {
+        return Err("Cannot rename: path is not a file".to_string());
+    }
+    let parent = src.parent().ok_or("Failed to resolve parent directory")?;
+    let dest = parent.join(&new_name);
+    if dest.exists() {
+        return Err(format!("A file named \"{}\" already exists in this directory", new_name));
+    }
+    std::fs::rename(&src, &dest)
+        .map_err(|e| format!("Failed to rename file: {}", e))?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn get_file_content_previews(
+    file_paths: Vec<String>,
+    max_chars_per_file: Option<usize>,
+) -> Result<Vec<FileContentPreview>, String> {
+    let max_chars = max_chars_per_file
+        .unwrap_or(DEFAULT_CONTENT_PREVIEW_CHARS)
+        .clamp(200, MAX_CONTENT_PREVIEW_CHARS);
+
+    let mut previews = Vec::new();
+
+    for file_path in file_paths {
+        let path = PathBuf::from(&file_path);
+        if !path.exists() || !path.is_file() {
+            continue;
+        }
+
+        let extension = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or_default();
+
+        if !is_text_like_extension(extension) {
+            continue;
+        }
+
+        let bytes = match std::fs::read(&path) {
+            Ok(contents) => contents,
+            Err(_) => continue,
+        };
+
+        if bytes.iter().take(2048).any(|byte| *byte == 0) {
+            continue;
+        }
+
+        let text = match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(_) => continue,
+        };
+
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let mut chars = trimmed.chars();
+        let mut content: String = chars.by_ref().take(max_chars).collect();
+        if chars.next().is_some() {
+            content.push('…');
+        }
+
+        previews.push(FileContentPreview { file_path, content });
+    }
+
+    Ok(previews)
 }
 
 #[tauri::command]
