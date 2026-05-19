@@ -97,17 +97,4 @@ export interface SearchResult {
   projectFolder: string;
 }
 
-export type GradeType = "sac" | "exam" | "assignment" | "practice";
 
-export interface GradeEntry {
-  id: string;
-  projectId: string;
-  title: string;
-  score: number;
-  maxScore: number;
-  weight: number; // percentage weight of this assessment
-  type: GradeType;
-  date?: string;
-  notes?: string;
-  created_at: string;
-}

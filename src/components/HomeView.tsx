@@ -3,7 +3,6 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isTod
 import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDeadline, isOverdue, getSubjectById } from "@/lib/utils"
 import type { Project, StudySession } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -28,19 +27,16 @@ export function HomeView({
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
-  // Get all project deadlines
   const projectsWithDeadlines = projects.filter((p) => p.deadline)
   const overdueProjects = projectsWithDeadlines.filter((p) => p.deadline && isOverdue(p.deadline))
   const upcomingProjects = projectsWithDeadlines.filter((p) => p.deadline && !isOverdue(p.deadline))
 
-  // Get projects due in next 7 days
   const now = new Date()
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
   const dueThisWeek = upcomingProjects
     .filter((p) => p.deadline && parseISO(p.deadline) <= nextWeek)
     .sort((a, b) => parseISO(a.deadline!).getTime() - parseISO(b.deadline!).getTime())
 
-  // Calculate study stats
   const totalStudyMinutes = sessions.reduce((acc, s) => {
     const startMs = new Date(s.startTime).getTime()
     const endMs = new Date(s.endTime).getTime()
@@ -50,7 +46,6 @@ export function HomeView({
 
   const completedSessions = sessions.filter((s) => s.status === "completed").length
 
-  // Per-subject breakdown
   const studyBySubject: Record<string, { minutes: number; icon: string; shortCode: string }> = {}
   sessions.forEach((s) => {
     const project = projects.find((p) => p.id === s.projectId)
@@ -78,76 +73,97 @@ export function HomeView({
     })
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
 
-  // Calendar days
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd })
   const startDayOfWeek = monthStart.getDay()
   const calendarPad = Array.from({ length: startDayOfWeek }, () => null)
 
-  // Map projects to calendar dates
   const deadlinesByDate: Record<string, Project[]> = {}
   projectsWithDeadlines.forEach((p) => {
     if (p.deadline) {
       const dateKey = format(parseISO(p.deadline), "yyyy-MM-dd")
-      if (!deadlinesByDate[dateKey]) {
-        deadlinesByDate[dateKey] = []
-      }
+      if (!deadlinesByDate[dateKey]) deadlinesByDate[dateKey] = []
       deadlinesByDate[dateKey].push(p)
     }
   })
 
-  // Map study sessions to calendar dates
   const sessionsByDate: Record<string, StudySession[]> = {}
   sessions.forEach((s) => {
     const dateKey = format(parseISO(s.startTime), "yyyy-MM-dd")
-    if (!sessionsByDate[dateKey]) {
-      sessionsByDate[dateKey] = []
-    }
+    if (!sessionsByDate[dateKey]) sessionsByDate[dateKey] = []
     sessionsByDate[dateKey].push(s)
   })
 
-  const handlePrevMonth = () => {
-    setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1))
-  }
-
-  const handleNextMonth = () => {
-    setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1))
-  }
-
-  const handleToday = () => {
-    setCurrentMonth(new Date())
-  }
+  const handlePrevMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1))
+  const handleNextMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1))
+  const handleToday = () => setCurrentMonth(new Date())
 
   return (
     <div className="h-full overflow-auto">
-      <div className="px-8 py-8 space-y-8">
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            {overdueProjects.length > 0 ? (
-              <span className="text-destructive font-medium">
-                {overdueProjects.length} overdue • 
-              </span>
-            ) : null}
-            {dueThisWeek.length} due this week
-          </p>
+      <div className="px-8 pt-8 pb-10">
+        {/* Header — compact, actions inline */}
+        <div className="flex items-start justify-between gap-6 mb-10">
+          <div className="space-y-1 min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">
+              {overdueProjects.length > 0 ? (
+                <span className="text-destructive font-medium">
+                  {overdueProjects.length} overdue{overdueProjects.length > 0 ? "" : ""}
+                </span>
+              ) : null}
+              {overdueProjects.length > 0 && dueThisWeek.length > 0 && (
+                <span className="text-muted-foreground/40">{" · "}</span>
+              )}
+              {dueThisWeek.length > 0 && (
+                <span>{dueThisWeek.length} due this week</span>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={onNewProject} className="gap-1.5 h-8">
+              <Plus className="h-3.5 w-3.5" />
+              Project
+            </Button>
+            <Button size="sm" onClick={onNewSession} className="gap-1.5 h-8">
+              <Calendar className="h-3.5 w-3.5" />
+              Plan Session
+            </Button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
-          {/* Calendar */}
+        {/* Overdue banner — not a card, a compact callout */}
+        {overdueProjects.length > 0 && (
+          <div className="mb-8 px-4 py-3 rounded-lg bg-destructive/5 border border-destructive/10">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="h-3.5 w-3.5 text-destructive/70" />
+              <span className="text-xs font-semibold text-destructive/80">
+                {overdueProjects.length} overdue project{overdueProjects.length > 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {overdueProjects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onSelectProject(p.id)}
+                  className="text-xs px-2.5 py-1 rounded-md hover:bg-destructive/10 transition-colors text-left font-medium"
+                >
+                  {p.name}
+                  <span className="text-destructive/60 ml-1.5">{formatDeadline(p.deadline!)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-8">
+          {/* Calendar — dominant, takes 2/3 */}
           <Card className="col-span-2 p-6">
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Assessment Calendar</h2>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handlePrevMonth}
-                    className="h-8 w-8 p-0"
-                  >
+                  <Button variant="ghost" size="sm" onClick={handlePrevMonth} className="h-8 w-8 p-0">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <Button
@@ -161,23 +177,15 @@ export function HomeView({
                   >
                     Today
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleNextMonth}
-                    className="h-8 w-8 p-0"
-                  >
+                  <Button variant="ghost" size="sm" onClick={handleNextMonth} className="h-8 w-8 p-0">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-sm">{format(currentMonth, "MMMM yyyy")}</h3>
-                </div>
+                <h3 className="font-medium text-sm">{format(currentMonth, "MMMM yyyy")}</h3>
 
-                {/* Calendar Grid */}
                 <div className="grid grid-cols-7 gap-1">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                     <div key={day} className="h-8 flex items-center justify-center text-xs font-medium text-muted-foreground">
@@ -207,7 +215,6 @@ export function HomeView({
                       >
                         <div className="text-xs font-medium leading-tight">{date.getDate()}</div>
                         <div className="flex gap-0.5 mt-0.5 flex-wrap">
-                          {/* Project deadlines (larger dots) */}
                           {dayDeadlines.slice(0, 2).map((p, idx) => {
                             const subject = getSubjectById(p.subjectId)
                             return (
@@ -219,7 +226,6 @@ export function HomeView({
                               />
                             )
                           })}
-                          {/* Study sessions (smaller dots) */}
                           {daySessions.slice(0, 2).map((s, idx) => (
                             <div
                               key={`session-${idx}`}
@@ -238,24 +244,6 @@ export function HomeView({
                   })}
                 </div>
 
-                {/* Legend */}
-                <div className="pt-4 border-t">
-                  <div className="text-xs text-muted-foreground space-y-2">
-                    <p className="font-medium mb-2">Legend:</p>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-current" />
-                        <span>Project deadlines (by subject color)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-1 h-1 rounded-full bg-blue-500/60" />
-                        <span>Study sessions</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Selected Day Detail */}
                 {selectedDate && (() => {
                   const dayDeadlines = deadlinesByDate[selectedDate] || []
                   const daySessions = sessionsByDate[selectedDate] || []
@@ -266,12 +254,7 @@ export function HomeView({
                         <p className="text-sm font-semibold">
                           {format(parseISO(selectedDate), "EEEE, MMMM d")}
                         </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs"
-                          onClick={() => setSelectedDate(null)}
-                        >
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSelectedDate(null)}>
                           Close
                         </Button>
                       </div>
@@ -330,183 +313,137 @@ export function HomeView({
             </div>
           </Card>
 
-          {/* Sidebar - Upcoming */}
-          <div className="space-y-4">
-            {/* Quick Actions */}
-            <Card className="p-4 space-y-3">
-              <h3 className="text-sm font-semibold">Quick Actions</h3>
-              <Button
-                onClick={onNewProject}
-                className="w-full gap-2"
-                size="sm"
-                variant="outline"
-              >
-                <Plus className="h-4 w-4" />
-                New Project
-              </Button>
-              <Button
-                onClick={onNewSession}
-                className="w-full gap-2"
-                size="sm"
-              >
-                <Calendar className="h-4 w-4" />
-                Plan Session
-              </Button>
-            </Card>
-
-            {/* Overdue Alert */}
-            {overdueProjects.length > 0 && (
-              <Card className="p-4 border-destructive/20 bg-destructive/5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-destructive" />
-                  <h3 className="text-sm font-semibold text-destructive">
-                    {overdueProjects.length} Overdue
-                  </h3>
-                </div>
-                <ScrollArea className="h-24">
-                  <div className="space-y-1.5 pr-4">
-                    {overdueProjects.map((p) => (
+          {/* Sidebar — de-carded, rhythmic spacing */}
+          <div>
+            {/* Due This Week */}
+            {dueThisWeek.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-sm font-semibold mb-3">Due This Week</h3>
+                <div className="space-y-1">
+                  {dueThisWeek.map((p) => {
+                    const subject = getSubjectById(p.subjectId)
+                    return (
                       <button
                         key={p.id}
                         onClick={() => onSelectProject(p.id)}
-                        className="w-full text-left text-xs p-2 rounded hover:bg-destructive/10 transition-colors"
+                        className="w-full text-left px-3 py-2 rounded-md hover:bg-accent/40 transition-colors group"
                       >
-                        <p className="font-medium text-foreground truncate">{p.name}</p>
-                        <p className="text-destructive/80 text-[10px]">
-                          {formatDeadline(p.deadline!)}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </Card>
-            )}
-
-            {/* This Week */}
-            {dueThisWeek.length > 0 && (
-              <Card className="p-4 space-y-3">
-                <h3 className="text-sm font-semibold">Due This Week</h3>
-                <ScrollArea className="h-40">
-                  <div className="space-y-2 pr-4">
-                    {dueThisWeek.map((p) => {
-                      const subject = getSubjectById(p.subjectId)
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => onSelectProject(p.id)}
-                          className="w-full text-left p-2 rounded border border-border hover:border-primary/50 hover:bg-accent/30 transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium truncate">{p.name}</p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                {formatDeadline(p.deadline!)}
-                              </p>
-                            </div>
-                            {subject && (
-                              <div
-                                className="text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap font-medium flex-shrink-0"
-                                style={{
-                                  backgroundColor: subject.color + "18",
-                                  color: subject.color,
-                                }}
-                              >
-                                {subject.shortCode}
-                              </div>
-                            )}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{p.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {formatDeadline(p.deadline!)}
+                            </p>
                           </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </ScrollArea>
-              </Card>
-            )}
-
-            {/* Upcoming Study Sessions */}
-            {upcomingSessions.length > 0 && (
-              <Card className="p-4 space-y-3">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Study Sessions
-                </h3>
-                <ScrollArea className="h-32">
-                  <div className="space-y-2 pr-4">
-                    {upcomingSessions.slice(0, 5).map((session) => {
-                      const project = projects.find((p) => p.id === session.projectId)
-                      return (
-                        <button
-                          key={session.id}
-                          onClick={() => onSelectSession(session)}
-                          className="w-full text-left text-xs p-2 rounded border border-blue-200/40 bg-blue-50/20 dark:border-blue-900/40 dark:bg-blue-950/20 hover:border-blue-400/60 hover:bg-blue-100/30 dark:hover:bg-blue-900/30 transition-colors"
-                        >
-                          <p className="font-medium truncate">{session.title}</p>
-                          {project && <p className="text-muted-foreground/70 text-[10px] mt-0.5">{project.name}</p>}
-                          <p className="text-muted-foreground text-[10px] mt-1">
-                            {format(parseISO(session.startTime), "MMM d, h:mm a")}
-                          </p>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </ScrollArea>
-              </Card>
-            )}
-
-            {/* Summary Stats */}
-            <Card className="p-4 space-y-3">
-              <h3 className="text-sm font-semibold">Summary</h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total Projects</span>
-                  <span className="font-medium">{projects.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">With Deadlines</span>
-                  <span className="font-medium">{projectsWithDeadlines.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Upcoming Sessions</span>
-                  <span className="font-medium">{upcomingSessions.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Completed</span>
-                  <span className="font-medium">{completedSessions}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total Study Time</span>
-                  <span className="font-medium">{totalStudyHours}h</span>
-                </div>
-              </div>
-              {topSubjects.length > 0 && (
-                <>
-                  <div className="pt-2 border-t">
-                    <p className="text-xs font-medium mb-2 text-muted-foreground">Top Subjects</p>
-                    <div className="space-y-1.5">
-                      {topSubjects.map(([subjectId, info]) => {
-                        const subject = getSubjectById(subjectId)
-                        return (
-                          <div key={subjectId} className="flex items-center justify-between">
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          {subject && (
+                            <div
+                              className="text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap font-medium flex-shrink-0"
                               style={{
-                                backgroundColor: subject?.color + "18",
-                                color: subject?.color,
+                                backgroundColor: subject.color + "14",
+                                color: subject.color,
                               }}
                             >
-                              {info.icon} {info.shortCode}
-                            </span>
-                            <span className="text-xs tabular-nums font-medium">
-                              {Math.round(info.minutes / 60 * 10) / 10}h
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
+                              {subject.shortCode}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Study Sessions — upcoming */}
+            {upcomingSessions.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  Upcoming Sessions
+                </h3>
+                <div className="space-y-1">
+                  {upcomingSessions.slice(0, 5).map((session) => {
+                    const project = projects.find((p) => p.id === session.projectId)
+                    return (
+                      <button
+                        key={session.id}
+                        onClick={() => onSelectSession(session)}
+                        className="w-full text-left px-3 py-2 rounded-md hover:bg-accent/40 transition-colors"
+                      >
+                        <p className="text-xs font-medium truncate">{session.title}</p>
+                        {project && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{project.name}</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {format(parseISO(session.startTime), "MMM d, h:mm a")}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state when nothing is due */}
+            {dueThisWeek.length === 0 && upcomingSessions.length === 0 && overdueProjects.length === 0 && (
+              <p className="text-xs text-muted-foreground/60 leading-relaxed py-4">
+                No deadlines or sessions this week. Add a project to get started.
+              </p>
+            )}
+
+            {/* Divider before summary */}
+            <div className="border-t pt-6 mt-4">
+              <h3 className="text-sm font-semibold mb-4">Summary</h3>
+              <div className="space-y-3 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Projects</span>
+                  <span className="font-medium tabular-nums">{projects.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">With deadlines</span>
+                  <span className="font-medium tabular-nums">{projectsWithDeadlines.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Sessions planned</span>
+                  <span className="font-medium tabular-nums">{upcomingSessions.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Sessions completed</span>
+                  <span className="font-medium tabular-nums">{completedSessions}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Study time</span>
+                  <span className="font-medium tabular-nums">{totalStudyHours}h</span>
+                </div>
+              </div>
+
+              {topSubjects.length > 0 && (
+                <div className="mt-5 pt-4 border-t">
+                  <p className="text-xs font-medium mb-3 text-muted-foreground">Top Subjects</p>
+                  <div className="space-y-2">
+                    {topSubjects.map(([subjectId, info]) => {
+                      const subject = getSubjectById(subjectId)
+                      return (
+                        <div key={subjectId} className="flex items-center justify-between">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                            style={{
+                              backgroundColor: subject?.color + "14",
+                              color: subject?.color,
+                            }}
+                          >
+                            {info.icon} {info.shortCode}
+                          </span>
+                          <span className="text-xs tabular-nums font-medium">
+                            {Math.round(info.minutes / 60 * 10) / 10}h
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
-                </>
+                </div>
               )}
-            </Card>
+            </div>
           </div>
         </div>
       </div>

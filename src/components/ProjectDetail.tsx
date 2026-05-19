@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Calculator, Clock, Calendar } from "lucide-react"
+import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Clock, Calendar } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
@@ -24,12 +24,11 @@ interface ProjectDetailProps {
   sessions: StudySession[]
   onFilesChanged: () => void
   onOpenSettings: () => void
-  onOpenGrades?: () => void
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
 }
 
-export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onOpenGrades, onSelectSession, onNewSession }: ProjectDetailProps) {
+export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onSelectSession, onNewSession }: ProjectDetailProps) {
   const { files, loading, loadFiles, addFiles, renameFile, deleteFiles } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null)
@@ -149,11 +148,9 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   )
 
   const filteredFiles = files.filter((file) => {
-    // Filter by search query
     if (searchQuery && !file.name.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false
     }
-    // Filter by tags - support both new tags array and legacy tag field
     if (selectedTags.length > 0) {
       const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
       return selectedTags.some(tag => fileTags.includes(tag))
@@ -199,7 +196,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   return (
     <div className="flex flex-col h-full relative">
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-[1px] m-4 rounded-xl pointer-events-none">
+        <div className="absolute inset-0 z-modal-backdrop flex items-center justify-center bg-background/80 backdrop-blur-[1px] m-4 rounded-xl pointer-events-none">
           <div className="flex flex-col items-center gap-3">
             <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
               <Plus className="h-7 w-7 text-primary/60" />
@@ -209,7 +206,8 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         </div>
       )}
 
-      <div className="px-8 pt-8 pb-5 border-b">
+      {/* Header */}
+      <div className="px-8 pt-7 pb-5 border-b">
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
@@ -222,14 +220,14 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               )}
             </div>
             {project.description && (
-              <p className="text-sm text-muted-foreground mt-2 max-w-lg leading-relaxed">{project.description}</p>
+              <p className="text-sm text-muted-foreground mt-1.5 max-w-lg leading-relaxed">{project.description}</p>
             )}
-            <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
               {subject && (
                 <span
                   className="text-xs px-2 py-0.5 rounded-md font-medium flex items-center gap-1.5"
                   style={{
-                    backgroundColor: subject.color + "18",
+                    backgroundColor: subject.color + "14",
                     color: subject.color
                   }}
                 >
@@ -241,7 +239,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                   variant={isOverdue(project.deadline) ? "destructive" : "secondary"}
                   className="gap-1 font-normal"
                   style={project.deadlineType ? {
-                    backgroundColor: deadlineInfo.color + "18",
+                    backgroundColor: deadlineInfo.color + "14",
                     color: deadlineInfo.color,
                     border: 'none',
                   } : undefined}
@@ -249,7 +247,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                   {deadlineInfo.icon} {formatDeadline(project.deadline)}
                 </Badge>
               )}
-              <p className="text-xs text-muted-foreground/60 font-mono tracking-tight truncate">
+              <p className="text-[11px] text-muted-foreground/50 font-mono tracking-tight truncate">
                 ~/Documents/Projects/<wbr />
                 {project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}/
               </p>
@@ -264,16 +262,6 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               </TooltipTrigger>
               <TooltipContent side="bottom">Settings</TooltipContent>
             </Tooltip>
-            {onOpenGrades && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onOpenGrades}>
-                    <Calculator className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Grades</TooltipContent>
-              </Tooltip>
-            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={handleOpenFolder} className="gap-1.5 h-8">
@@ -289,7 +277,9 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-5">
+
+        {/* Consolidated toolbar: tabs + subfolder nav + session action */}
+        <div className="flex items-center gap-2 mt-4">
           <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
             <button
               onClick={() => setViewMode("files")}
@@ -319,6 +309,39 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               )}
             </button>
           </div>
+
+          {viewMode === "files" && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setSelectedSubfolder(null)}
+                className={cn(
+                  "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                  selectedSubfolder === null
+                    ? "bg-accent text-accent-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                )}
+              >
+                <Folder className="h-3.5 w-3.5" />
+                All
+              </button>
+              {DEFAULT_SUBFOLDERS.map((folder) => (
+                <button
+                  key={folder}
+                  onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                    selectedSubfolder === folder
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                  )}
+                >
+                  <Folder className="h-3.5 w-3.5" />
+                  {folder}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex-1" />
           {viewMode === "sessions" && onNewSession && (
             <Button size="sm" onClick={onNewSession} className="gap-1.5 h-7 text-xs">
@@ -328,36 +351,56 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           )}
         </div>
 
-        {viewMode === "files" && (
-        <div className="flex items-center gap-1 mt-2 -ml-1">
-          <button
-            onClick={() => setSelectedSubfolder(null)}
-            className={cn(
-              "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
-              selectedSubfolder === null
-                ? "bg-accent text-accent-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+        {/* Search + filter tags — single row, only for files */}
+        {viewMode === "files" && files.length > 0 && (
+          <div className="flex items-center gap-2 mt-3">
+            <div className="flex-1 relative max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+              <Input
+                placeholder="Search files..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-8 text-xs"
+              />
+            </div>
+            {searchQuery && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSearchQuery("")}
+                className="h-7 w-7 p-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
             )}
-          >
-            <Folder className="h-3.5 w-3.5" />
-            All
-          </button>
-          {DEFAULT_SUBFOLDERS.map((folder) => (
-            <button
-              key={folder}
-              onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
-              className={cn(
-                "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
-                selectedSubfolder === folder
-                  ? "bg-accent text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
-            >
-              <Folder className="h-3.5 w-3.5" />
-              {folder}
-            </button>
-          ))}
-        </div>
+            <div className="w-px h-4 bg-border mx-1" />
+            {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setSelectedTags(
+                  selectedTags.includes(tag)
+                    ? selectedTags.filter(t => t !== tag)
+                    : [...selectedTags, tag]
+                )}
+                className={cn(
+                  "px-2 py-0.5 text-[11px] rounded transition-colors",
+                  selectedTags.includes(tag)
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                {tag}
+              </button>
+            ))}
+            {selectedTags.length > 0 && (
+              <button
+                onClick={() => setSelectedTags([])}
+                className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -375,96 +418,36 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           </div>
         ) : files.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-            <div className="mb-6 w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center">
-              <FolderOpen className="h-7 w-7 text-muted-foreground/50" />
+            <div className="mb-5 w-12 h-12 rounded-xl bg-muted/40 flex items-center justify-center">
+              <FolderOpen className="h-6 w-6 text-muted-foreground/40" />
             </div>
-            <p className="text-sm font-medium text-foreground mb-1.5">No files yet</p>
-            <p className="text-xs text-muted-foreground mb-6 max-w-56 leading-relaxed">
-              Drag and drop files here, or select them from your computer to bring them into this project.
+            <p className="text-sm font-medium text-foreground mb-1">No files yet</p>
+            <p className="text-xs text-muted-foreground mb-5 max-w-56 leading-relaxed">
+              Drag and drop files here, or select them from your computer.
             </p>
             <Button variant="secondary" size="sm" onClick={handleAddFiles} className="gap-1.5">
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
               Add Files
             </Button>
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-3 px-8 py-4 border-b">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/50" />
-                <Input
-                  placeholder="Search files..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSearchQuery("")}
-                  className="h-8 w-8 p-0"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 px-8 py-3 border-b flex-wrap">
-              <span className="text-xs text-muted-foreground font-medium">Filter:</span>
-              {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
-                <button
-                  key={tag}
-                  onClick={() => setSelectedTags(
-                    selectedTags.includes(tag)
-                      ? selectedTags.filter(t => t !== tag)
-                      : [...selectedTags, tag]
-                  )}
-                  className={cn(
-                    "px-2.5 py-1 text-xs rounded-md transition-colors",
-                    selectedTags.includes(tag)
-                      ? "bg-primary text-primary-foreground font-medium"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  )}
-                >
-                  {tag}
-                </button>
-              ))}
-              {selectedTags.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedTags([])}
-                  className="h-6 px-2 text-xs"
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
-            <div className="flex items-center gap-3 px-8 py-2 text-[11px] text-muted-foreground/70 font-medium uppercase tracking-wider border-b">
+            {/* Column headers */}
+            <div className="flex items-center gap-3 px-8 py-2 text-[11px] text-muted-foreground/60 font-medium uppercase tracking-wider border-b">
               <span className="w-4 shrink-0" />
               <span className="flex-1">Name</span>
               <span className="w-20 text-right">Size</span>
               <span className="w-16 text-right">Type</span>
             </div>
+
+            {/* Selection bar */}
             {selectedFiles.size > 0 && (
-              <div className="flex items-center gap-3 px-8 py-3 bg-accent/20 border-b">
+              <div className="flex items-center gap-3 px-8 py-2.5 bg-accent/20 border-b">
                 <span className="text-xs font-medium">{selectedFiles.size} selected</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSelectAll}
-                  className="h-7 px-2 text-xs"
-                >
+                <Button variant="ghost" size="sm" onClick={handleSelectAll} className="h-7 px-2 text-xs">
                   Select All
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClearSelection}
-                  className="h-7 px-2 text-xs"
-                >
+                <Button variant="ghost" size="sm" onClick={handleClearSelection} className="h-7 px-2 text-xs">
                   Clear
                 </Button>
                 <div className="flex-1" />
@@ -479,6 +462,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                 </Button>
               </div>
             )}
+
             <ScrollArea className="flex-1">
               <div className="divide-y">
                 {filteredFiles.map((file) => (
@@ -521,16 +505,16 @@ function SessionsView({
   if (sessions.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-        <div className="mb-6 w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center">
-          <Clock className="h-7 w-7 text-muted-foreground/50" />
+        <div className="mb-5 w-12 h-12 rounded-xl bg-muted/40 flex items-center justify-center">
+          <Clock className="h-6 w-6 text-muted-foreground/40" />
         </div>
-        <p className="text-sm font-medium text-foreground mb-1.5">No study sessions</p>
-        <p className="text-xs text-muted-foreground mb-6 max-w-56 leading-relaxed">
+        <p className="text-sm font-medium text-foreground mb-1">No study sessions</p>
+        <p className="text-xs text-muted-foreground mb-5 max-w-56 leading-relaxed">
           Plan study sessions for {projectName} to track your revision time and progress.
         </p>
         {onNewSession && (
           <Button variant="secondary" size="sm" onClick={onNewSession} className="gap-1.5">
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             Plan Session
           </Button>
         )}
