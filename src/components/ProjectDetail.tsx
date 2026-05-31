@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react"
-import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Clock, Calendar, CheckCircle2 } from "lucide-react"
+import { createElement, useEffect, useState, useCallback } from "react"
+import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Clock, Calendar, CheckCircle2, BookOpen, Languages, Library, Calculator, ChartNoAxesColumn, FlaskConical, Atom, Dna, Brain, Landmark, Map, TrendingUp, BriefcaseBusiness, ArrowUp, ArrowDown, Tag, MoveRight, type LucideIcon } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
@@ -10,14 +10,39 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { FileRow } from "@/components/FileRow"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
-import { useProjectFiles } from "@/hooks/useProjectFiles"
+import { useProjectFiles, type SortKey } from "@/hooks/useProjectFiles"
 import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
 import type { Project, FileInfo, StudySession } from "@/lib/types"
 import type { UnlistenFn } from "@tauri-apps/api/event"
 import { cn } from "@/lib/utils"
+
+const PROJECT_ICONS: Record<string, LucideIcon> = {
+  eng: BookOpen,
+  "eng-lang": Languages,
+  lit: Library,
+  mm: Calculator,
+  sm: Calculator,
+  fm: ChartNoAxesColumn,
+  chem: FlaskConical,
+  phys: Atom,
+  bio: Dna,
+  psych: Brain,
+  hist: Landmark,
+  geo: Map,
+  econ: TrendingUp,
+  bm: BriefcaseBusiness,
+}
+
+const FILE_TABLE_GRID = "grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_2rem] min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem_2rem]"
+
+function getProjectIcon(subjectId?: string): LucideIcon {
+  if (subjectId && PROJECT_ICONS[subjectId]) return PROJECT_ICONS[subjectId]
+  return Folder
+}
 
 interface ProjectDetailProps {
   project: Project
@@ -30,13 +55,19 @@ interface ProjectDetailProps {
 }
 
 export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession }: ProjectDetailProps) {
-  const { files, loading, loadFiles, addFiles, renameFile, deleteFiles } = useProjectFiles(project.folder_path)
+  const {
+    files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
+    addFileTags, removeFileTag, toggleFavorite,
+    sortKey, sortAsc, setSortKey, setSortAsc,
+  } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<FileTag[]>([])
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<"files" | "sessions">("files")
+  const [showBulkTagMenu, setShowBulkTagMenu] = useState(false)
+  const [showBulkMoveMenu, setShowBulkMoveMenu] = useState(false)
 
   useEffect(() => {
     void loadFiles(selectedSubfolder)
@@ -133,6 +164,94 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     }
   }
 
+  const handleRemoveTag = async (file: FileInfo, tag: FileTag) => {
+    try {
+      await removeFileTag(file.path, tag)
+      onFilesChanged()
+    } catch (e) {
+      console.error("Failed to remove tag:", e)
+    }
+  }
+
+  const handleAddTag = async (file: FileInfo, tag: FileTag) => {
+    try {
+      await addFileTags([file.path], [tag])
+      onFilesChanged()
+    } catch (e) {
+      console.error("Failed to add tag:", e)
+    }
+  }
+
+  const handleToggleFavorite = async (file: FileInfo) => {
+    try {
+      await toggleFavorite(file.path)
+      onFilesChanged()
+    } catch (e) {
+      console.error("Failed to toggle favorite:", e)
+    }
+  }
+
+  const handleShowInFinder = async (file: FileInfo) => {
+    try {
+      const home = await homeDir()
+      const parentFolder = file.path.substring(0, file.path.lastIndexOf("/"))
+      const fullPath = `${home}Documents/Projects/${parentFolder}`
+      await openPath(fullPath)
+    } catch (e) {
+      console.error("Failed to show in Finder:", e)
+    }
+  }
+
+  const handleCopyPath = async (file: FileInfo) => {
+    try {
+      await navigator.clipboard.writeText(file.path)
+    } catch (e) {
+      console.error("Failed to copy path:", e)
+    }
+  }
+
+  const handleMoveFile = async (file: FileInfo, destSubfolder: string) => {
+    try {
+      const home = await homeDir()
+      const destFolder = `${home}Documents/Projects/${project.folder_path}/${destSubfolder}`
+      await moveFileToFolder(file.path, destFolder)
+      onFilesChanged()
+    } catch (e) {
+      console.error("Failed to move file:", e)
+    }
+  }
+
+  const handleBulkTag = async (tag: FileTag) => {
+    if (selectedFiles.size === 0) return
+    try {
+      await addFileTags(Array.from(selectedFiles), [tag])
+      setSelectedFiles(new Set())
+      onFilesChanged()
+    } catch (e) {
+      console.error("Failed to bulk tag:", e)
+    }
+  }
+
+  const handleBulkMove = async (destSubfolder: string) => {
+    if (selectedFiles.size === 0) return
+    const home = await homeDir()
+    const destFolder = `${home}Documents/Projects/${project.folder_path}/${destSubfolder}`
+    const paths = Array.from(selectedFiles)
+    let moved = 0
+    for (const fp of paths) {
+      try {
+        await moveFileToFolder(fp, destFolder)
+        moved++
+      } catch (e) {
+        console.error(`Failed to move ${fp}:`, e)
+      }
+    }
+    if (moved > 0) {
+      setSelectedFiles(new Set())
+      onFilesChanged()
+    }
+  }
+
 
   const handleApplyAutoRenames = useCallback(
     async (renames: { filePath: string; newName: string }[]) => {
@@ -190,10 +309,9 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       console.error("Batch delete failed:", e)
     }
   }
-
   const subject = getSubjectById(project.subjectId)
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
-
+  const projectIcon = getProjectIcon(project.subjectId)
   return (
     <div className="relative flex h-full flex-col">
       {isDragging && (
@@ -207,225 +325,238 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         </div>
       )}
 
-      <div className="border-b border-border/70 px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex min-w-0 items-center gap-2.5 min-[1200px]:gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background/45 text-lg leading-none shadow-sm min-[1200px]:h-11 min-[1200px]:w-11 min-[1200px]:rounded-2xl min-[1200px]:text-xl">
-                {project.icon ?? "📄"}
-              </span>
-              <div className="min-w-0">
-                <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
-                <p className="truncate text-caption text-muted-foreground font-mono">
-                  ~/Documents/Projects/{project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}
-                </p>
-              </div>
-              {project.isFinished && (
-                <span className="flex items-center gap-1 rounded-lg bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950/40 dark:text-green-400">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Finished
-                </span>
-              )}
-              {project.unit && (
-                <span className="rounded-lg bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  Unit {project.unit}
-                </span>
-              )}
-            </div>
-            {project.description && (
-              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{project.description}</p>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              {subject && (
+      {/* ── IDENTITY ZONE ── */}
+      <div className="border-b border-border/70">
+        <div className="px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3 min-[1200px]:gap-3.5">
                 <span
-                  className="flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium"
-                  style={{
-                    backgroundColor: subject.color + "14",
-                    color: subject.color
-                  }}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-background/45 shadow-sm"
+                  style={subject ? { backgroundColor: subject.color + "14", color: subject.color } : undefined}
                 >
-                  {subject.icon} {subject.name}
+                  {createElement(projectIcon, { className: "h-5 w-5", "aria-hidden": true })}
                 </span>
+                <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
+              </div>
+              <p className="mt-1.5 truncate text-caption text-muted-foreground font-mono">
+                ~/Documents/Projects/{project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}
+              </p>
+              {project.description && (
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{project.description}</p>
               )}
-              {project.deadline && (
-                <Badge
-                  variant={isOverdue(project.deadline) ? "destructive" : "secondary"}
-                  className="gap-1 font-normal"
-                  style={project.deadlineType ? {
-                    backgroundColor: deadlineInfo.color + "14",
-                    color: deadlineInfo.color,
-                    border: 'none',
-                  } : undefined}
-                >
-                  {deadlineInfo.icon} {formatDeadline(project.deadline)}
-                </Badge>
-              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {project.unit && (
+                  <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    Unit {project.unit}
+                  </span>
+                )}
+                {subject && (
+                  <span
+                    className="flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium"
+                    style={{ backgroundColor: subject.color + "14", color: subject.color }}
+                  >
+                    {subject.icon} {subject.name}
+                  </span>
+                )}
+                {project.deadline && (
+                  <Badge
+                    variant={!project.isFinished && isOverdue(project.deadline) ? "destructive" : "secondary"}
+                    className="gap-1 font-normal"
+                    style={project.deadlineType ? { backgroundColor: deadlineInfo.color + "14", color: deadlineInfo.color, border: 'none' } : undefined}
+                  >
+                    {deadlineInfo.icon} {formatDeadline(project.deadline)}
+                  </Badge>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={onOpenSettings}>
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Settings</TooltipContent>
-            </Tooltip>
-            {onToggleFinished && (
+            <div className="flex shrink-0 items-center gap-1.5">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-xl"
-                    onClick={() => onToggleFinished(project.id)}
-                  >
-                    <CheckCircle2 className={cn("h-4 w-4", project.isFinished && "text-green-500")} />
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onOpenSettings}>
+                    <Settings className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {project.isFinished ? "Mark as active" : "Mark as complete"}
-                </TooltipContent>
+                <TooltipContent side="bottom">Settings</TooltipContent>
               </Tooltip>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={handleOpenFolder} className="h-8 gap-1.5 rounded-xl bg-background/45">
-                  <FolderUp className="h-4 w-4" />
-                  <span className="max-[950px]:hidden">Open Folder</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Open in Finder</TooltipContent>
-            </Tooltip>
-            <Button size="sm" onClick={handleAddFiles} className="h-8 gap-1.5 rounded-xl">
-              <Plus className="h-4 w-4" />
-              <span>Add Files</span>
-            </Button>
+              {onToggleFinished && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg"
+                      onClick={() => onToggleFinished(project.id)}>
+                      <CheckCircle2 className={cn("h-4 w-4", project.isFinished && "text-green-500")} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {project.isFinished ? "Mark as active" : "Mark as complete"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={handleOpenFolder} className="h-8 gap-1.5 rounded-lg bg-background/45">
+                    <FolderUp className="h-4 w-4" />
+                    <span className="max-[950px]:hidden">Open Folder</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in Finder</TooltipContent>
+              </Tooltip>
+              <Button size="sm" onClick={handleAddFiles} className="h-8 gap-1.5 rounded-lg">
+                <Plus className="h-4 w-4" />
+                <span>Add Files</span>
+              </Button>
+            </div>
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-0.5 rounded-2xl border border-border/70 bg-background/35 p-1">
-            <button
-              onClick={() => setViewMode("files")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
-                viewMode === "files"
-                  ? "bg-background/80 text-foreground font-medium shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Folder className="h-3.5 w-3.5" />
-              Files
-            </button>
-            <button
-              onClick={() => setViewMode("sessions")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
-                viewMode === "sessions"
-                  ? "bg-background/80 text-foreground font-medium shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              Sessions
-              {sessions.length > 0 && (
-                <span className="tabular-nums text-micro">{sessions.length}</span>
-              )}
-            </button>
-          </div>
-
-          {viewMode === "files" && (
-            <div className="flex min-w-0 max-w-full flex-1 items-center gap-1 overflow-x-auto rounded-2xl bg-background/20 p-1">
+        {/* ── TOOLBAR ZONE ── */}
+        <div className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
               <button
-                onClick={() => setSelectedSubfolder(null)}
+                onClick={() => setViewMode("files")}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
-                  selectedSubfolder === null
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
+                  viewMode === "files"
+                    ? "bg-background text-foreground font-medium shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Folder className="h-3.5 w-3.5" />
-                All
+                Files
               </button>
-              {DEFAULT_SUBFOLDERS.map((folder) => (
+              <button
+                onClick={() => setViewMode("sessions")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
+                  viewMode === "sessions"
+                    ? "bg-background text-foreground font-medium shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Sessions
+                {sessions.length > 0 && (
+                  <span className="tabular-nums text-micro">{sessions.length}</span>
+                )}
+              </button>
+            </div>
+
+            {viewMode === "files" && (
+              <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
                 <button
-                  key={folder}
-                  onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
+                  onClick={() => setSelectedSubfolder(null)}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
-                    selectedSubfolder === folder
-                      ? "bg-accent text-accent-foreground font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                    "rounded-md px-2.5 py-1 text-xs transition-colors",
+                    selectedSubfolder === null
+                      ? "bg-background text-foreground font-medium shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Folder className="h-3.5 w-3.5" />
-                  {folder}
+                  All
                 </button>
-              ))}
-            </div>
-          )}
+                {DEFAULT_SUBFOLDERS.map((folder) => (
+                  <button
+                    key={folder}
+                    onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs transition-colors",
+                      selectedSubfolder === folder
+                        ? "bg-background text-foreground font-medium shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {folder}
+                  </button>
+                ))}
+              </div>
+            )}
 
-          <div className="min-w-4 flex-1" />
-          {viewMode === "sessions" && onNewSession && (
-            <Button size="sm" onClick={onNewSession} className="h-7 gap-1.5 rounded-xl text-xs">
-              <Plus className="h-3.5 w-3.5" />
-              New Session
-            </Button>
-          )}
-        </div>
 
-        {viewMode === "files" && files.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="relative min-w-48 flex-1 max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
-              <Input
-                placeholder="Search files..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 rounded-xl bg-background/45 pl-8 text-xs"
-              />
-            </div>
-            {searchQuery && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSearchQuery("")}
-                className="h-7 w-7 p-0"
-              >
-                <X className="h-3.5 w-3.5" />
+            {viewMode === "files" && files.length > 0 && (
+              <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
+                <button
+                  onClick={() => setSortAsc(!sortAsc)}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  title={`Sort ${sortAsc ? "descending" : "ascending"}`}
+                >
+                  {sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                </button>
+                {(["name", "modified", "size", "extension"] as SortKey[]).map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      if (sortKey === key) setSortAsc(!sortAsc)
+                      else setSortKey(key)
+                    }}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-xs transition-colors",
+                      sortKey === key
+                        ? "bg-background text-foreground font-medium shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {{ name: "Name", modified: "Date", size: "Size", extension: "Type" }[key]}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex-1" />
+            {viewMode === "sessions" && onNewSession && (
+              <Button size="sm" onClick={onNewSession} className="h-7 gap-1.5 rounded-lg text-xs">
+                <Plus className="h-3.5 w-3.5" />
+                New Session
               </Button>
             )}
-            <div className="mx-1 h-4 w-px bg-border" />
-            {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setSelectedTags(
-                  selectedTags.includes(tag)
-                    ? selectedTags.filter(t => t !== tag)
-                    : [...selectedTags, tag]
-                )}
-                className={cn(
-                  "px-2 py-0.5 text-caption rounded transition-colors",
-                  selectedTags.includes(tag)
-                    ? "bg-primary text-primary-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-              >
-                {tag}
-              </button>
-            ))}
-            {selectedTags.length > 0 && (
-              <button
-                onClick={() => setSelectedTags([])}
-                className="text-caption text-muted-foreground hover:text-foreground px-1.5 py-0.5"
-              >
-                Clear
-              </button>
-            )}
           </div>
-        )}
+
+          {viewMode === "files" && files.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="relative min-w-0 flex-1 max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                <Input
+                  placeholder="Search files..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-7 rounded-lg bg-background/45 pl-8 text-xs"
+                />
+              </div>
+              {searchQuery && (
+                <Button variant="ghost" size="sm" onClick={() => setSearchQuery("")} className="h-7 w-7 rounded-lg p-0">
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <div className="mx-0.5 h-4 w-px bg-border/40" />
+              {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTags(
+                    selectedTags.includes(tag)
+                      ? selectedTags.filter(t => t !== tag)
+                      : [...selectedTags, tag]
+                  )}
+                  className={cn(
+                    "rounded-md px-2 py-0.5 text-caption transition-colors",
+                    selectedTags.includes(tag)
+                      ? "bg-primary text-primary-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  )}
+                >
+                  {tag}
+                </button>
+              ))}
+              {selectedTags.length > 0 && (
+                <button
+                  onClick={() => setSelectedTags([])}
+                  className="text-caption text-muted-foreground hover:text-foreground px-1.5 py-0.5"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
@@ -443,7 +574,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           </div>
         ) : files.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center px-5 text-center min-[1200px]:px-8">
-            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-background/35">
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background/35">
               <FolderOpen className="h-6 w-6 text-muted-foreground/40" />
             </div>
             <p className="text-sm font-medium text-foreground mb-1">No files yet</p>
@@ -458,12 +589,16 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         ) : (
           <>
             {/* Column headers */}
-            <div className="grid grid-cols-[1rem_2rem_minmax(0,1fr)_5rem] items-center gap-3 border-b border-border/70 bg-background/18 px-5 py-2 text-caption font-medium uppercase tracking-wider text-muted-foreground/60 min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem] min-[1200px]:px-8">
+            <div className={cn(
+              "grid items-center gap-3 border-b border-border/50 bg-muted/25 px-5 py-2.5 text-xs uppercase tracking-wider text-muted-foreground/70 min-[1200px]:px-8",
+              FILE_TABLE_GRID,
+            )}>
               <span aria-hidden="true" />
               <span aria-hidden="true" />
               <span>Name</span>
               <span className="text-right">Size</span>
               <span className="hidden text-right min-[1000px]:block">Type</span>
+              <span className="sr-only">Actions</span>
             </div>
 
             {/* Selection bar */}
@@ -476,6 +611,69 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                 <Button variant="ghost" size="sm" onClick={handleClearSelection} className="h-7 px-2 text-xs">
                   Clear
                 </Button>
+
+                {/* Bulk tag */}
+                <Popover
+                  open={showBulkTagMenu}
+                  onOpenChange={(open) => {
+                    setShowBulkTagMenu(open)
+                    if (open) setShowBulkMoveMenu(false)
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                    >
+                      <Tag className="h-3 w-3" />
+                      Tag
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-36 gap-1 p-1">
+                    {(["sac", "notes", "past-paper", "exam", "resource", "other"] as FileTag[]).map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => { void handleBulkTag(tag); setShowBulkTagMenu(false) }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs capitalize transition-colors hover:bg-accent"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
+
+                {/* Bulk move */}
+                <Popover
+                  open={showBulkMoveMenu}
+                  onOpenChange={(open) => {
+                    setShowBulkMoveMenu(open)
+                    if (open) setShowBulkTagMenu(false)
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                    >
+                      <MoveRight className="h-3 w-3" />
+                      Move
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-40 gap-1 p-1">
+                    {DEFAULT_SUBFOLDERS.map((folder) => (
+                      <button
+                        key={folder}
+                        onClick={() => { void handleBulkMove(folder); setShowBulkMoveMenu(false) }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent"
+                      >
+                        {folder}
+                      </button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
+
                 <div className="flex-1" />
                 <Button
                   variant="ghost"
@@ -490,15 +688,22 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             )}
 
             <ScrollArea className="min-h-0 flex-1">
-              <div className="divide-y divide-border/70">
+              <div className="divide-y divide-border/60">
                 {filteredFiles.map((file) => (
                   <FileRow
                     key={file.path}
                     file={file}
                     onOpen={handleOpenFile}
                     onRename={handleRenameFile}
+                    onRemoveTag={handleRemoveTag}
+                    onAddTag={handleAddTag}
+                    onToggleFavorite={handleToggleFavorite}
+                    onShowInFinder={handleShowInFinder}
+                    onCopyPath={handleCopyPath}
+                    onMoveFile={handleMoveFile}
                     isSelected={selectedFiles.has(file.path)}
                     onSelectionChange={handleFileSelectionChange}
+                    subfolders={DEFAULT_SUBFOLDERS}
                   />
                 ))}
               </div>
@@ -533,7 +738,7 @@ function SessionsView({
   if (sessions.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-5 min-[1200px]:px-8">
-        <div className="mb-5 w-12 h-12 rounded-xl bg-muted/40 flex items-center justify-center">
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background/35">
           <Clock className="h-6 w-6 text-muted-foreground/40" />
         </div>
         <p className="text-sm font-medium text-foreground mb-1">No study sessions</p>
@@ -556,7 +761,7 @@ function SessionsView({
 
   return (
     <ScrollArea className="flex-1">
-      <div className="space-y-2 px-5 py-4 min-[1200px]:px-8">
+      <div className="space-y-1.5 px-5 py-3 min-[1200px]:px-8">
         {sorted.map((session) => {
           const start = parseISO(session.startTime)
           const end = parseISO(session.endTime)
@@ -569,34 +774,18 @@ function SessionsView({
             <button
               key={session.id}
               onClick={() => onSelectSession?.(session)}
-              className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-accent/30 transition-colors group"
+              className="w-full text-left rounded-lg border border-border/60 bg-background/20 p-3 transition-colors hover:border-border hover:bg-accent/25"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{session.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">{session.title}</p>
+                    <StatusBadge status={session.status} />
+                  </div>
                   {session.description && (
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">{session.description}</p>
                   )}
-                  {sessionSubjects.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {sessionSubjects.map((subjectId) => {
-                        const subject = getSubjectById(subjectId)
-                        return (
-                          <span
-                            key={subjectId}
-                            className="text-micro px-1.5 py-0.5 rounded font-medium"
-                            style={subject ? {
-                              backgroundColor: subject.color + "14",
-                              color: subject.color,
-                            } : undefined}
-                          >
-                            {subject?.shortCode ?? subjectId}
-                          </span>
-                        )
-                      })}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       {format(start, "MMM d, yyyy")}
@@ -605,25 +794,27 @@ function SessionsView({
                       <Clock className="h-3 w-3" />
                       {format(start, "h:mm a")} — {format(end, "h:mm a")}
                     </span>
-                    <span>
-                      {hours > 0 ? `${hours}h ` : ""}{minutes}m
-                    </span>
+                    <span className="tabular-nums">{hours > 0 ? `${hours}h ` : ""}{minutes}m</span>
                   </div>
-                  {session.topics && session.topics.length > 0 && (
-                    <div className="flex gap-1 mt-2 flex-wrap">
-                      {session.topics.map((topic, i) => (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {sessionSubjects.map((subjectId) => {
+                      const subject = getSubjectById(subjectId)
+                      return (
                         <span
-                          key={i}
-                          className="text-micro px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                          key={subjectId}
+                          className="text-micro px-1.5 py-0.5 rounded font-medium"
+                          style={subject ? { backgroundColor: subject.color + "14", color: subject.color } : undefined}
                         >
-                          {topic}
+                          {subject?.shortCode ?? subjectId}
                         </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <StatusBadge status={session.status} />
+                      )
+                    })}
+                    {session.topics && session.topics.length > 0 && session.topics.map((topic, i) => (
+                      <span key={i} className="text-micro px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {topic}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </button>

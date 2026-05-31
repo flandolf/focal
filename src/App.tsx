@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
 import { Toaster, toast } from "sonner"
 import { FolderOpen, Search, Settings } from "lucide-react"
 import { Sidebar } from "@/components/Sidebar"
@@ -25,6 +26,10 @@ import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { CalendarEvent, EventType, StudySession, Subject } from "@/lib/types"
 
+const MOTION_EASE = [0.16, 1, 0.3, 1] as const
+const SHELL_LAYOUT_TRANSITION = { type: "spring", stiffness: 430, damping: 42, mass: 0.85 } as const
+const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
+
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
   const { sessions, addSession, updateSession, deleteSession } = useStudySessions()
@@ -44,13 +49,15 @@ function App() {
   const [exportOpen, setExportOpen] = useState(false)
   const [subjectsOpen, setSubjectsOpen] = useState(false)
   const [settingsView, setSettingsView] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const reduceMotion = useReducedMotion()
   const [customSubjects, setCustomSubjects] = useState<Subject[]>(() => {
     if (typeof window === "undefined") return []
     const stored = localStorage.getItem("focal-custom-subjects")
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return stored ? JSON.parse(stored) : []
   })
-  const { theme, dark, setTheme, toggleDark } = useTheme()
+  const { theme, mode, resolvedDark, setTheme, setMode } = useTheme()
 
   useEffect(() => {
     localStorage.setItem("focal-custom-subjects", JSON.stringify(customSubjects))
@@ -365,8 +372,13 @@ function App() {
     void getCurrentWindow().startDragging().catch(() => undefined)
   }
 
+  const contentKey = settingsView ? "settings" : homeSelected ? "home" : selectedProject ? `project-${selectedProject.id}` : "empty"
+  const layoutTransition = reduceMotion ? { duration: 0 } : SHELL_LAYOUT_TRANSITION
+  const viewTransition = reduceMotion ? { duration: 0 } : VIEW_TRANSITION
+
   return (
     <TooltipProvider>
+      <MotionConfig reducedMotion="user">
       <div className="focal-shell relative h-screen overflow-hidden px-2 pb-2 pt-(--app-titlebar-inset) text-foreground min-[1200px]:px-3 min-[1200px]:pb-3">
         <div
           data-tauri-drag-region
@@ -390,16 +402,21 @@ function App() {
           </button>
         </div>
         <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
-        <div className="pointer-events-none absolute inset-x-8 top-(--app-titlebar-inset) h-px bg-foreground/10" />
         <div
-          className="relative z-10 grid h-full gap-2 min-[1200px]:gap-3"
-          style={{ gridTemplateColumns: "clamp(13rem, 28vw, 21rem) minmax(0, 1fr)" }}
+          className="relative z-10 flex h-full gap-2 min-[1200px]:gap-3"
         >
-          <div className="min-h-0">
+          <motion.div
+            layout
+            className="min-h-0 shrink-0"
+            style={{ width: sidebarCollapsed ? "4.5rem" : "clamp(13rem, 28vw, 21rem)" }}
+            transition={layoutTransition}
+          >
             <Sidebar
               projects={projects}
               selectedId={selectedId}
               homeSelected={homeSelected}
+              isCollapsed={sidebarCollapsed}
+              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
               onSelect={handleSelectProject}
               onSelectHome={handleSelectHome}
               onDelete={handleDeleteProject}
@@ -408,56 +425,72 @@ function App() {
               onToggleArchive={handleToggleArchive}
               onToggleFinished={handleToggleFinished}
               fileCounts={fileCounts}
-              onOpenExport={() => setExportOpen(true)}
-              onOpenSubjects={() => setSubjectsOpen(true)}
             />
-          </div>
-          <main className="glass-panel min-w-0 overflow-hidden rounded-2xl min-[1200px]:rounded-[1.35rem]">
-            {settingsView ? (
-              <SettingsView
-                onBack={() => setSettingsView(false)}
-                theme={theme}
-                dark={dark}
-                onSetTheme={setTheme}
-                onToggleDark={toggleDark}
-              />
-            ) : homeSelected ? (
-              <HomeView
-                projects={projects}
-                sessions={sessions}
-                events={events}
-                onSelectProject={handleSelectProject}
-                onSelectSession={handleSelectSession}
-                onSelectEvent={handleSelectEvent}
-                onNewSession={() => setSessionDialogOpen(true)}
-                onNewEvent={() => setEventDialogOpen(true)}
-                onNewProject={() => setDialogOpen(true)}
-              />
-            ) : selectedProject ? (
-              <ProjectDetail
-                project={selectedProject}
-                sessions={sessions.filter((s) => s.projectId === selectedProject.id)}
-                onFilesChanged={refreshFileCounts}
-                onOpenSettings={() => setSettingsOpen(true)}
-                onToggleFinished={handleToggleFinished}
-                onSelectSession={handleSelectSession}
-                onNewSession={() => setSessionDialogOpen(true)}
-              />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30">
-                  <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
-                </div>
-                <p className="mb-6 max-w-56 text-sm leading-relaxed text-muted-foreground">
-                  Choose a project from the sidebar or create a new one to start organising your files.
-                </p>
-                <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
-                  <FolderOpen className="h-4 w-4" />
-                  New Project
-                </Button>
-              </div>
-            )}
-          </main>
+          </motion.div>
+          <motion.main
+            layout
+            transition={layoutTransition}
+            className="glass-panel min-w-0 flex-1 overflow-hidden rounded-2xl min-[1200px]:rounded-[1.35rem]"
+          >
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div
+                key={contentKey}
+                className="h-full"
+                initial={{ opacity: 0, y: reduceMotion ? 0 : 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: reduceMotion ? 0 : -4 }}
+                transition={viewTransition}
+              >
+                {settingsView ? (
+                  <SettingsView
+                    onBack={() => setSettingsView(false)}
+                    theme={theme}
+                    mode={mode}
+                    resolvedDark={resolvedDark}
+                    setTheme={setTheme}
+                    setMode={setMode}
+                    onOpenExport={() => setExportOpen(true)}
+                    onOpenSubjects={() => setSubjectsOpen(true)}
+                  />
+                ) : homeSelected ? (
+                  <HomeView
+                    projects={projects}
+                    sessions={sessions}
+                    events={events}
+                    onSelectProject={handleSelectProject}
+                    onSelectSession={handleSelectSession}
+                    onSelectEvent={handleSelectEvent}
+                    onNewSession={() => setSessionDialogOpen(true)}
+                    onNewEvent={() => setEventDialogOpen(true)}
+                    onNewProject={() => setDialogOpen(true)}
+                  />
+                ) : selectedProject ? (
+                  <ProjectDetail
+                    project={selectedProject}
+                    sessions={sessions.filter((s) => s.projectId === selectedProject.id)}
+                    onFilesChanged={refreshFileCounts}
+                    onOpenSettings={() => setSettingsOpen(true)}
+                    onToggleFinished={handleToggleFinished}
+                    onSelectSession={handleSelectSession}
+                    onNewSession={() => setSessionDialogOpen(true)}
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                    <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30">
+                      <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
+                    </div>
+                    <p className="mb-6 max-w-56 text-sm leading-relaxed text-muted-foreground">
+                      Choose a project from the sidebar or create a new one to start organising your files.
+                    </p>
+                    <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
+                      <FolderOpen className="h-4 w-4" />
+                      New Project
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </motion.main>
         </div>
         <NewProjectDialog
           open={dialogOpen}
@@ -527,8 +560,9 @@ function App() {
           open={subjectsOpen}
           onOpenChange={setSubjectsOpen}
         />
-        <Toaster />
+        <Toaster closeButton />
       </div>
+      </MotionConfig>
     </TooltipProvider>
   )
 }

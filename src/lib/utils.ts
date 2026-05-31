@@ -107,7 +107,7 @@ export function sortProjectsByDeadline(projects: Project[]): Project[] {
 }
 
 export function formatDate(timestamp: number): string {
-  const date = new Date(timestamp)
+  const date = new Date(timestamp * 1000)
   return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",

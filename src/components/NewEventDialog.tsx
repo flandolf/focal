@@ -92,8 +92,8 @@ export function NewEventDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-5 py-5">
-            <div className="space-y-2.5">
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Title</label>
               <Input
                 placeholder="e.g. Methods exam"
@@ -103,8 +103,8 @@ export function NewEventDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Type</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -118,7 +118,7 @@ export function NewEventDialog({
                   <option value="event">Event</option>
                 </select>
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Subject</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -135,7 +135,7 @@ export function NewEventDialog({
               </div>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Description</label>
               <Input
                 placeholder="Optional notes or requirements"
@@ -144,8 +144,8 @@ export function NewEventDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -171,7 +171,7 @@ export function NewEventDialog({
                 </Popover>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Start Time</label>
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
@@ -185,8 +185,8 @@ export function NewEventDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Duration (minutes)</label>
                 <Input
                   type="number"
@@ -196,7 +196,7 @@ export function NewEventDialog({
                   onChange={(e) => setDuration(e.target.value)}
                 />
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Location</label>
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-muted-foreground" />

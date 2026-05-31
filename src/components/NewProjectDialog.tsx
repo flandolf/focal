@@ -106,26 +106,28 @@ export function NewProjectDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-5 py-5">
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Name</label>
-              <Input
-                placeholder="e.g. English Language Assignment"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Name</label>
+                <Input
+                  placeholder="e.g. English Language Assignment"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <Input
+                  placeholder="Optional — brief description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Description</label>
-              <Input
-                placeholder="Optional — brief description of the project"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Subject</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -148,7 +150,7 @@ export function NewProjectDialog({
                   ))}
                 </select>
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Unit</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -162,7 +164,7 @@ export function NewProjectDialog({
                 </select>
               </div>
             </div>
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Deadline Type</label>
               <div className="flex gap-1.5">
                 {DEADLINE_TYPES.map((type) => (
@@ -171,7 +173,7 @@ export function NewProjectDialog({
                     type="button"
                     onClick={() => setDeadlineType(deadlineType === type.value ? "" : type.value)}
                     className={cn(
-                      "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                      "flex-1 py-1.5 rounded-md text-sm font-medium transition-colors",
                       deadlineType === type.value
                         ? "bg-accent ring-2 ring-ring"
                         : "bg-muted hover:bg-muted/80"
@@ -182,7 +184,7 @@ export function NewProjectDialog({
                 ))}
               </div>
             </div>
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Deadline Date</label>
               <Popover>
                 <PopoverTrigger asChild>
@@ -207,8 +209,8 @@ export function NewProjectDialog({
                 </PopoverContent>
               </Popover>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">GAT Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -233,7 +235,7 @@ export function NewProjectDialog({
                   </PopoverContent>
                 </Popover>
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Exam Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -259,7 +261,7 @@ export function NewProjectDialog({
                 </Popover>
               </div>
             </div>
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Icon</label>
               <div className="flex flex-wrap gap-1">
                 {EMOJIS.map((e) => (

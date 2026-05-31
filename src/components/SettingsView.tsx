@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
-import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput } from "lucide-react"
+import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput, Database, Palette } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -19,17 +19,111 @@ interface OpenRouterModel {
   supported_parameters?: string[]
 }
 
+interface OpenRouterCredits {
+  total_credits: number
+  total_usage: number
+}
+
+interface OpenRouterErrorPayload {
+  code: string
+  message: string
+}
+
+interface OpenRouterCreditsWrapper {
+  data?: OpenRouterCredits
+  error?: OpenRouterErrorPayload
+}
+
+interface EndpointPercentiles {
+  p50: number
+  p75: number
+  p90: number
+  p99: number
+}
+
+interface ModelEndpoint {
+  latency_last_30m: EndpointPercentiles | null
+  throughput_last_30m: EndpointPercentiles | null
+}
+
+interface EndpointsResponse {
+  data: {
+    endpoints: ModelEndpoint[]
+  }
+}
+
+interface PerfData {
+  latency: number | null
+  throughput: number | null
+}
+
 interface SettingsViewProps {
   onBack: () => void
   theme: ThemeId
-  dark: boolean
-  onSetTheme: (theme: ThemeId) => void
-  onToggleDark: () => void
+  // New theme API: mode can be light | dark | system
+  mode: "light" | "dark" | "system"
+  // Resolved dark value according to mode and OS preference
+  resolvedDark: boolean
+  setTheme: (theme: ThemeId) => void
+  setMode: (mode: "light" | "dark" | "system") => void
+  onOpenExport?: () => void
+  onOpenSubjects?: () => void
 }
 
 function supportsStructuredOutput(model: OpenRouterModel): boolean {
   const params = model.supported_parameters ?? []
   return params.includes("structured_outputs")
+}
+
+function supportsFileUploads(model: OpenRouterModel): boolean {
+  const modalities = model.architecture?.input_modalities ?? []
+  return modalities.includes("file")
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isCredits(value: unknown): value is OpenRouterCredits {
+  return (
+    isRecord(value) &&
+    typeof value.total_credits === "number" &&
+    typeof value.total_usage === "number"
+  )
+}
+
+function isErrorPayload(value: unknown): value is OpenRouterErrorPayload {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    typeof value.message === "string"
+  )
+}
+
+function isCreditsWrapper(value: unknown): value is OpenRouterCreditsWrapper {
+  return (
+    isRecord(value) &&
+    (value.data === undefined || isCredits(value.data)) &&
+    (value.error === undefined || isErrorPayload(value.error))
+  )
+}
+
+interface OpenRouterFetchError extends Error {
+  code?: string
+}
+
+function createOpenRouterError(message: string, code?: string): OpenRouterFetchError {
+  const error: OpenRouterFetchError = new Error(message)
+  error.code = code
+  return error
+}
+
+function getErrorDetails(error: unknown): { code?: string; message: string } {
+  if (error instanceof Error) {
+    const code = isRecord(error) && typeof error.code === "string" ? error.code : undefined
+    return { code, message: error.message }
+  }
+  return { message: String(error) }
 }
 
 async function fetchModels(): Promise<OpenRouterModel[]> {
@@ -38,11 +132,149 @@ async function fetchModels(): Promise<OpenRouterModel[]> {
   const data: unknown = await res.json()
   const models = (data as { data?: OpenRouterModel[] }).data ?? []
   return models
-    .filter((m) => supportsStructuredOutput(m))
+    .filter((m) => supportsStructuredOutput(m) && supportsFileUploads(m))
     .sort((a, b) => b.created - a.created)
 }
 
-export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: SettingsViewProps) {
+async function fetchCredits(apiKey: string): Promise<OpenRouterCredits> {
+  const res = await fetch("https://openrouter.ai/api/v1/credits", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  })
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("A Management key is required to view credits")
+    throw new Error("Failed to fetch credits")
+  }
+  const data: unknown = await res.json()
+  const credits = (data as { data?: OpenRouterCredits }).data
+  if (!credits) throw new Error("Invalid response")
+  return credits
+}
+
+// Attempt to call a backend Tauri command if available; fall back to direct fetch
+async function fetchCreditsWithBackend(apiKey: string): Promise<OpenRouterCredits> {
+  try {
+    // Prefer calling the Tauri backend command if available. The backend returns a wrapper
+    // { data?: { total_credits, total_usage }, error?: { code, message } }. We handle both
+    // the wrapper shape and the raw success shape for compatibility.
+    const res = await invoke<unknown>("get_credits", { api_key: apiKey })
+    if (isCredits(res)) {
+      return res
+    }
+    if (isCreditsWrapper(res)) {
+      if (res.data) return res.data
+      if (res.error) {
+        throw createOpenRouterError(res.error.message, res.error.code)
+      }
+    }
+  } catch {
+    // ignore and fallback to direct fetch in non-Tauri environments
+  }
+  return fetchCredits(apiKey)
+}
+
+async function fetchModelEndpoints(
+  modelId: string,
+  apiKey: string,
+): Promise<PerfData> {
+  const res = await fetch(
+    `https://openrouter.ai/api/v1/models/${modelId}/endpoints`,
+    { headers: { Authorization: `Bearer ${apiKey}` } },
+  )
+  if (!res.ok) return { latency: null, throughput: null }
+  const data: unknown = await res.json()
+  const endpoints = (data as EndpointsResponse).data?.endpoints ?? []
+  let bestLatency = Infinity
+  let bestThroughput = 0
+  for (const ep of endpoints) {
+    const lat = ep.latency_last_30m?.p50
+    const tp = ep.throughput_last_30m?.p50
+    if (lat != null && lat < bestLatency) bestLatency = lat
+    if (tp != null && tp > bestThroughput) bestThroughput = tp
+  }
+  return {
+    latency: bestLatency === Infinity ? null : bestLatency,
+    throughput: bestThroughput === 0 ? null : bestThroughput,
+  }
+}
+
+function ModelRow({
+  model,
+  isSelected,
+  onSelect,
+  apiKey,
+  perfCache,
+  enqueuePerfFetch,
+}: {
+  model: OpenRouterModel
+  isSelected: boolean
+  onSelect: () => void
+  apiKey: string
+  perfCache: Map<string, PerfData>
+  enqueuePerfFetch: (id: string) => void
+}) {
+  const rowRef = useRef<HTMLButtonElement>(null)
+  const perf = perfCache.get(model.id) ?? null
+
+  useEffect(() => {
+    if (perf || !apiKey) return
+    const el = rowRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          observer.disconnect()
+          enqueuePerfFetch(model.id)
+        }
+      },
+      { rootMargin: "200px" },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [model.id, apiKey, perf, enqueuePerfFetch])
+
+  return (
+    <button
+      ref={rowRef}
+      onClick={onSelect}
+      className={cn(
+        "w-full text-left px-3 py-2 rounded text-sm transition-colors",
+        isSelected
+          ? "bg-primary/10 text-primary font-medium"
+          : "hover:bg-accent"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate">{model.name}</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {perf?.latency != null && (
+            <span className="text-micro text-muted-foreground tabular-nums">
+              {perf.latency < 1000
+                ? `${perf.latency.toFixed(0)}ms`
+                : `${(perf.latency / 1000).toFixed(1)}s`}
+            </span>
+          )}
+          {perf?.throughput != null && (
+            <span className="text-micro text-muted-foreground tabular-nums">
+              {perf.throughput >= 100
+                ? `${perf.throughput.toFixed(0)}t/s`
+                : `${perf.throughput.toFixed(1)}t/s`}
+            </span>
+          )}
+          <span className="text-micro text-muted-foreground tabular-nums">
+            {model.context_length >= 1000
+              ? `${(model.context_length / 1000).toFixed(0)}k`
+              : model.context_length}
+          </span>
+        </div>
+      </div>
+      <p className="text-caption text-muted-foreground/60 mt-0.5 truncate">
+        {model.id}
+      </p>
+    </button>
+  )
+}
+
+export function SettingsView({ onBack, theme, mode, resolvedDark: _resolvedDark, setTheme, setMode, onOpenExport, onOpenSubjects }: SettingsViewProps) {
   const [key, setKey] = useState(() => getApiKey() ?? "")
   const [model, setModelState] = useState(() => getModel())
   const [models, setModels] = useState<OpenRouterModel[]>([])
@@ -54,6 +286,75 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
   const didFetchRef = useRef(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ name: string; error?: string } | null>(null)
+  const [credits, setCredits] = useState<OpenRouterCredits | null>(null)
+  const [creditsLoading, setCreditsLoading] = useState(false)
+  const [creditsError, setCreditsError] = useState<string | null>(null)
+  // Centralised perf cache (Map modelId -> PerfData) stored in state so updates re-render ModelRow children
+  const [perfCache, setPerfCache] = useState<Map<string, PerfData>>(() => new Map())
+
+  // Queue + concurrency limiter for endpoint fetches
+  const pendingRef = useRef<string[]>([])
+  const activeCountRef = useRef(0)
+  const keyRef = useRef(key)
+  const startQueueRef = useRef<() => void>(() => undefined)
+  const MAX_CONCURRENT_FETCHES = 4
+
+  useEffect(() => {
+    keyRef.current = key
+  }, [key])
+
+  const startQueue = useCallback(() => {
+    startQueueRef.current()
+  }, [])
+
+  useEffect(() => {
+    startQueueRef.current = () => {
+      // Start as many queued requests as allowed
+      while (activeCountRef.current < MAX_CONCURRENT_FETCHES && pendingRef.current.length > 0) {
+        const id = pendingRef.current.shift()
+        const apiKey = keyRef.current
+        if (!id || !apiKey) continue
+        activeCountRef.current += 1
+        void (async (modelId: string) => {
+          try {
+            const data = await fetchModelEndpoints(modelId, apiKey)
+            setPerfCache((prev) => {
+              const next = new Map(prev)
+              next.set(modelId, data)
+              return next
+            })
+          } catch {
+            // On error, store null values so we don't keep retrying endlessly
+            setPerfCache((prev) => {
+              const next = new Map(prev)
+              next.set(modelId, { latency: null, throughput: null })
+              return next
+            })
+          } finally {
+            activeCountRef.current -= 1
+            // schedule next batch
+            setTimeout(startQueue, 0)
+          }
+        })(id)
+      }
+    }
+  }, [startQueue])
+
+  const enqueuePerfFetch = useCallback((modelId: string) => {
+    if (!key) return
+    if (perfCache.has(modelId)) return
+    if (pendingRef.current.includes(modelId)) return
+    pendingRef.current.push(modelId)
+    startQueue()
+  }, [key, perfCache, startQueue])
+
+  // Prefetch top N models when models list or API key becomes available
+  useEffect(() => {
+    const PREFETCH_COUNT = 3
+    if (!key || models.length === 0) return
+    const top = models.slice(0, PREFETCH_COUNT)
+    for (const m of top) enqueuePerfFetch(m.id)
+  }, [models, key, enqueuePerfFetch])
 
   useEffect(() => {
     if (didFetchRef.current) return
@@ -65,12 +366,52 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
       .finally(() => setModelsLoading(false))
   }, [])
 
+  const fetchCreditsFor = useCallback((apiKey: string) => {
+    setCreditsLoading(true)
+    setCreditsError(null)
+    fetchCreditsWithBackend(apiKey)
+      .then(setCredits)
+      .catch((e) => {
+        // Provide friendly messages based on structured error codes from the backend
+        const { code, message } = getErrorDetails(e)
+        if (code === "OPENROUTER_UNAUTHORIZED") {
+          setCreditsError("A Management key is required to view credits")
+        } else if (code === "VALIDATION_ERROR") {
+          setCreditsError(message || "Invalid API key")
+        } else if (code === "NETWORK_ERROR") {
+          setCreditsError("Network error while fetching credits")
+        } else if (code === "OPENROUTER_ERROR") {
+          setCreditsError(message || "OpenRouter returned an error")
+        } else {
+          setCreditsError(message)
+        }
+      })
+      .finally(() => setCreditsLoading(false))
+  }, [])
+
+  const didFetchCreditsRef = useRef(false)
+  useEffect(() => {
+    if (!key) return
+    if (didFetchCreditsRef.current) return
+    didFetchCreditsRef.current = true
+    fetchCreditsFor(key)
+  }, [key, fetchCreditsFor])
+
   const handleKeyChange = useCallback((value: string) => {
     setKey(value)
     setApiKey(value)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }, [])
+    if (!value) {
+      setCredits(null)
+      setCreditsError(null)
+      setCreditsLoading(false)
+      didFetchCreditsRef.current = false
+    } else {
+      didFetchCreditsRef.current = true
+      fetchCreditsFor(value)
+    }
+  }, [fetchCreditsFor])
 
   const handleModelChange = useCallback((value: string) => {
     setModelState(value)
@@ -104,17 +445,22 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
     }
   }, [])
 
-  const filteredModels = modelSearch
+  const filteredModels = (modelSearch
     ? models.filter(
         (m) =>
           m.name.toLowerCase().includes(modelSearch.toLowerCase()) ||
           m.id.toLowerCase().includes(modelSearch.toLowerCase()),
       )
     : models
+  ).sort((a, b) => {
+    if (a.id === model) return -1
+    if (b.id === model) return 1
+    return 0
+  })
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-border/70 px-6 py-4">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border/70 px-6 py-4">
         <button
           onClick={onBack}
           className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -128,27 +474,22 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden">
         <div className="mx-auto max-w-2xl space-y-5 px-6 py-8">
           <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
             <label className="text-sm font-medium">Theme</label>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {([
-                { id: "focal" as ThemeId, name: "Focal", lightBg: "bg-slate-100", darkBg: "bg-slate-800", accent: "bg-blue-500" },
-                { id: "codex" as ThemeId, name: "Codex", lightBg: "bg-indigo-50", darkBg: "bg-indigo-950", accent: "bg-indigo-400" },
-                { id: "claude" as ThemeId, name: "Claude", lightBg: "bg-amber-50", darkBg: "bg-stone-900", accent: "bg-orange-400" },
+                { id: "focal" as ThemeId, name: "Focal", lightBg: "bg-slate-100", accent: "bg-blue-500" },
+                { id: "codex" as ThemeId, name: "Codex", lightBg: "bg-violet-50", accent: "bg-violet-500" },
+                { id: "claude" as ThemeId, name: "Claude", lightBg: "bg-amber-50", accent: "bg-orange-400" },
               ]).map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => {
-                    onSetTheme(t.id)
-                    if (dark) onToggleDark()
-                  }}
+                  onClick={() => setTheme(t.id)}
                   className={cn(
                     "flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-colors",
-                    theme === t.id && !dark
-                      ? "border-primary bg-primary/10"
-                      : "border-border bg-background/30 hover:border-muted-foreground/30"
+                    theme === t.id ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
                   )}
                 >
                   <div className="flex h-8 w-full items-center justify-center gap-1 rounded-md bg-background/60">
@@ -156,37 +497,38 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
                     <div className={cn("h-3 w-3 rounded-sm", t.accent)} />
                   </div>
                   <span className="text-caption font-medium">{t.name}</span>
-                  <span className="text-micro text-muted-foreground">Light</span>
                 </button>
               ))}
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {([
-                { id: "focal" as ThemeId, name: "Focal", bg: "bg-slate-800", accent: "bg-blue-400" },
-                { id: "codex" as ThemeId, name: "Codex", bg: "bg-indigo-950", accent: "bg-indigo-400" },
-                { id: "claude" as ThemeId, name: "Claude", bg: "bg-stone-900", accent: "bg-orange-400" },
-              ]).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    onSetTheme(t.id)
-                    if (!dark) onToggleDark()
-                  }}
-                  className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-colors",
-                    theme === t.id && dark
-                      ? "border-primary bg-primary/10"
-                      : "border-border bg-background/30 hover:border-muted-foreground/30"
-                  )}
-                >
-                  <div className="flex h-8 w-full items-center justify-center gap-1 rounded-md bg-background/60">
-                    <div className={cn("h-3 w-3 rounded-sm", t.bg)} />
-                    <div className={cn("h-3 w-3 rounded-sm", t.accent)} />
-                  </div>
-                  <span className="text-caption font-medium">{t.name}</span>
-                  <span className="text-micro text-muted-foreground">Dark</span>
-                </button>
-              ))}
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={() => setMode("light")}
+                className={cn(
+                  "flex-1 rounded-xl border px-3 py-2 text-sm",
+                  mode === "light" ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
+                )}
+              >
+                Light
+              </button>
+              <button
+                onClick={() => setMode("dark")}
+                className={cn(
+                  "flex-1 rounded-xl border px-3 py-2 text-sm",
+                  mode === "dark" ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
+                )}
+              >
+                Dark
+              </button>
+              <button
+                onClick={() => setMode("system")}
+                className={cn(
+                  "flex-1 rounded-xl border px-3 py-2 text-sm",
+                  mode === "system" ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
+                )}
+              >
+                System
+              </button>
             </div>
           </div>
 
@@ -216,12 +558,44 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
                 <ExternalLink className="h-3 w-3" />
               </a>
             </div>
+            {key && (
+              <div className="mt-3 rounded-xl border border-border/70 bg-background/30 p-3">
+                {creditsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading credits...
+                  </div>
+                ) : creditsError ? (
+                  <div>
+                    <p className="text-xs text-destructive">{creditsError}</p>
+                    {creditsError.includes("Management key") && (
+                      <a
+                        href="https://openrouter.ai/settings/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-caption text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1"
+                      >
+                        Create a Management key
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                ) : credits ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-caption text-muted-foreground/70">Remaining</span>
+                    <span className="text-sm font-medium tabular-nums">
+                      ${(credits.total_credits - credits.total_usage).toFixed(2)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
 
           <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
             <label className="text-sm font-medium">AI Model</label>
             <p className="mt-1 text-caption text-muted-foreground/70">
-              Showing only models that support structured output.
+              Showing only models that support structured output and file uploads. Latency and throughput shown when API key is set.
             </p>
             {modelsLoading ? (
               <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
@@ -266,28 +640,15 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
                       </p>
                     ) : (
                       filteredModels.map((m) => (
-                        <button
+                        <ModelRow
                           key={m.id}
-                          onClick={() => handleModelChange(m.id)}
-                          className={cn(
-                            "w-full text-left px-3 py-2 rounded text-sm transition-colors",
-                            model === m.id
-                              ? "bg-primary/10 text-primary font-medium"
-                              : "hover:bg-accent"
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate">{m.name}</span>
-                            <span className="text-micro text-muted-foreground shrink-0 tabular-nums">
-                              {m.context_length >= 1000
-                                ? `${(m.context_length / 1000).toFixed(0)}k`
-                                : m.context_length}
-                            </span>
-                          </div>
-                          <p className="text-caption text-muted-foreground/60 mt-0.5 truncate">
-                            {m.id}
-                          </p>
-                        </button>
+                          model={m}
+                          isSelected={model === m.id}
+                          onSelect={() => handleModelChange(m.id)}
+                          apiKey={key}
+                          perfCache={perfCache}
+                          enqueuePerfFetch={enqueuePerfFetch}
+                        />
                       ))
                     )}
                   </div>
@@ -344,6 +705,39 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
               </p>
             )}
           </div>
+
+          {(onOpenExport != null || onOpenSubjects != null) && (
+            <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+              <label className="text-sm font-medium">Data</label>
+              <p className="mt-1 text-caption text-muted-foreground/70">
+                Manage your project data and custom subjects.
+              </p>
+              <div className="mt-3 flex gap-2">
+                {onOpenExport && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onOpenExport}
+                    className="gap-1.5"
+                  >
+                    <Database className="h-4 w-4" />
+                    Export
+                  </Button>
+                )}
+                {onOpenSubjects && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onOpenSubjects}
+                    className="gap-1.5"
+                  >
+                    <Palette className="h-4 w-4" />
+                    Subjects
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>

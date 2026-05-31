@@ -106,7 +106,7 @@ export function NewStudySessionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Plan Study Session</DialogTitle>
           <DialogDescription>
@@ -114,9 +114,9 @@ export function NewStudySessionDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 py-5">
-            <div className="space-y-4">
-              <div className="space-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
+            <div className="space-y-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Session Title</label>
                 <Input
                   placeholder="e.g. Review Unit 3 notes"
@@ -126,7 +126,7 @@ export function NewStudySessionDialog({
                 />
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Project</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -142,8 +142,8 @@ export function NewStudySessionDialog({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-2">
                   <label className="text-sm font-medium">Date</label>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -169,7 +169,7 @@ export function NewStudySessionDialog({
                   </Popover>
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   <label className="text-sm font-medium">Start Time</label>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
@@ -183,7 +183,7 @@ export function NewStudySessionDialog({
                 </div>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Duration (minutes)</label>
                 <Input
                   type="number"
@@ -195,7 +195,7 @@ export function NewStudySessionDialog({
                 />
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Description</label>
                 <Input
                   placeholder="Optional — what do you want to achieve?"
@@ -204,7 +204,7 @@ export function NewStudySessionDialog({
                 />
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Topics (comma-separated)</label>
                 <Input
                   placeholder="e.g. Photosynthesis, Cell Division"
@@ -214,11 +214,11 @@ export function NewStudySessionDialog({
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-2.5">
+            <div className="space-y-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Subjects</label>
-                <div className="max-h-52 overflow-auto rounded-xl border border-input bg-background/35 p-2">
-                  <div className="grid grid-cols-1 gap-1.5">
+                <div className="max-h-44 overflow-auto rounded-xl border border-input bg-background/35 p-2">
+                  <div className="grid grid-cols-1 gap-1">
                     {subjects.map((subject) => (
                       <label
                         key={subject.id}
@@ -240,13 +240,13 @@ export function NewStudySessionDialog({
                 )}
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Notes</label>
                 <textarea
                   placeholder="Key concepts, resources, or reminders..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={8}
+                  rows={5}
                   className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
                 />
               </div>

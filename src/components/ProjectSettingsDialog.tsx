@@ -130,7 +130,7 @@ export function ProjectSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Project Settings</DialogTitle>
           <DialogDescription>
@@ -138,25 +138,27 @@ export function ProjectSettingsDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-5 py-5">
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Name</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Name</label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <Input
+                  placeholder="Brief description of the project"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Description</label>
-              <Input
-                placeholder="Brief description of the project"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Subject</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -179,7 +181,7 @@ export function ProjectSettingsDialog({
                   ))}
                 </select>
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Unit</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -193,64 +195,66 @@ export function ProjectSettingsDialog({
                 </select>
               </div>
             </div>
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Deadline Type</label>
-              <div className="flex gap-1.5">
-                {DEADLINE_TYPES.map((type) => (
-                  <button
-                    key={type.value}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Deadline Type</label>
+                <div className="grid grid-cols-2 gap-1">
+                  {DEADLINE_TYPES.map((type) => (
+                    <button
+                      key={type.value}
+                      type="button"
+                      onClick={() => setDeadlineType(deadlineType === type.value ? "" : type.value)}
+                      className={cn(
+                        "py-1.5 rounded-md text-xs font-medium transition-colors",
+                        deadlineType === type.value
+                          ? "bg-accent ring-2 ring-ring"
+                          : "bg-muted hover:bg-muted/80"
+                      )}
+                    >
+                      {type.icon} {type.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Deadline Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !deadline && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {deadline ? format(deadline, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={deadline}
+                      onSelect={setDeadline}
+                      autoFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {deadline && (
+                  <Button
                     type="button"
-                    onClick={() => setDeadlineType(deadlineType === type.value ? "" : type.value)}
-                    className={cn(
-                      "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-                      deadlineType === type.value
-                        ? "bg-accent ring-2 ring-ring"
-                        : "bg-muted hover:bg-muted/80"
-                    )}
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-auto px-2 py-1 text-xs text-muted-foreground"
+                    onClick={() => setDeadline(undefined)}
                   >
-                    {type.icon} {type.label}
-                  </button>
-                ))}
+                    Clear deadline
+                  </Button>
+                )}
               </div>
             </div>
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Deadline Date</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !deadline && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {deadline ? format(deadline, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={deadline}
-                    onSelect={setDeadline}
-                    autoFocus
-                  />
-                </PopoverContent>
-              </Popover>
-              {deadline && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-1 h-auto px-2 py-1 text-xs text-muted-foreground"
-                  onClick={() => setDeadline(undefined)}
-                >
-                  Clear deadline
-                </Button>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">GAT Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -286,7 +290,7 @@ export function ProjectSettingsDialog({
                   </Button>
                 )}
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Exam Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -323,7 +327,7 @@ export function ProjectSettingsDialog({
                 )}
               </div>
             </div>
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Icon</label>
               <div className="flex flex-wrap gap-1">
                 {EMOJIS.map((e) => (
@@ -340,17 +344,17 @@ export function ProjectSettingsDialog({
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setIsFavorite(!isFavorite)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm border transition-colors ${
                   isFavorite
                     ? "bg-yellow-50 border-yellow-300 text-yellow-700 dark:bg-yellow-950/20 dark:border-yellow-700 dark:text-yellow-400"
                     : "border-border text-muted-foreground hover:bg-accent/50"
                 }`}
               >
-                <Star className={cn("h-4 w-4", isFavorite && "fill-yellow-400")} />
+                <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-yellow-400")} />
                 Favorite
               </button>
               <button
@@ -359,25 +363,25 @@ export function ProjectSettingsDialog({
                   setIsFinished(!isFinished)
                   if (!isFinished) setIsArchived(false)
                 }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm border transition-colors ${
                   isFinished
                     ? "bg-green-50 border-green-300 text-green-700 dark:bg-green-950/20 dark:border-green-700 dark:text-green-400"
                     : "border-border text-muted-foreground hover:bg-accent/50"
                 }`}
               >
-                <CheckCircle2 className={cn("h-4 w-4", isFinished && "text-green-500")} />
+                <CheckCircle2 className={cn("h-3.5 w-3.5", isFinished && "text-green-500")} />
                 Finished
               </button>
               <button
                 type="button"
                 onClick={() => setIsArchived(!isArchived)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm border transition-colors ${
                   isArchived
                     ? "bg-muted border-muted-foreground/30 text-muted-foreground"
                     : "border-border text-muted-foreground hover:bg-accent/50"
                 }`}
               >
-                <Archive className="h-4 w-4" />
+                <Archive className="h-3.5 w-3.5" />
                 Archived
               </button>
             </div>
