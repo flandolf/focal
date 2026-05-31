@@ -129,7 +129,7 @@ export function StudyTimer() {
           <ChevronDown className="h-3 w-3" />
         </button>
         <div className="flex items-center gap-2">
-          <span className={cn("text-micro font-medium", modeColor)}>
+          <span className={cn("text-xs font-medium", modeColor)}>
             {modeLabel} · Cycle {cycles + 1}
           </span>
           <button

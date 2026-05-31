@@ -1,13 +1,16 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { Toaster, toast } from "sonner"
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Search, Settings } from "lucide-react"
 import { Sidebar } from "@/components/Sidebar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
 import { NewProjectDialog } from "@/components/NewProjectDialog"
 import { NewStudySessionDialog } from "@/components/NewStudySessionDialog"
 import { EditStudySessionDialog } from "@/components/EditStudySessionDialog"
+import { NewEventDialog } from "@/components/NewEventDialog"
+import { EditEventDialog } from "@/components/EditEventDialog"
 import { ProjectSettingsDialog } from "@/components/ProjectSettingsDialog"
 import { GlobalSearch } from "@/components/GlobalSearch"
 import { DataExport } from "@/components/DataExport"
@@ -15,21 +18,26 @@ import { CustomSubjects } from "@/components/CustomSubjects"
 import { SettingsView } from "@/components/SettingsView"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
+import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useTheme } from "@/lib/themes"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, EventType, StudySession, Subject } from "@/lib/types"
 
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
   const { sessions, addSession, updateSession, deleteSession } = useStudySessions()
+  const { events, addEvent, updateEvent, deleteEvent } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
   const [editSessionDialogOpen, setEditSessionDialogOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<StudySession | null>(null)
+  const [eventDialogOpen, setEventDialogOpen] = useState(false)
+  const [editEventDialogOpen, setEditEventDialogOpen] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [searchOpen, setSearchOpen] = useState(false)
@@ -77,7 +85,7 @@ function App() {
   }, [projects])
 
   // Check for deadline notifications on app load and when projects change
-  useDeadlineNotifications(projects)
+  useDeadlineNotifications(projects, events)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -169,7 +177,8 @@ function App() {
   }
 
   const handleCreateStudySession = async (data: {
-    projectId: string
+    projectId?: string
+    subjectIds: string[]
     title: string
     startTime: string
     endTime: string
@@ -180,6 +189,7 @@ function App() {
     try {
       await addSession(
         data.projectId,
+        data.subjectIds,
         data.title,
         data.startTime,
         data.endTime,
@@ -196,6 +206,8 @@ function App() {
 
   const handleEditStudySession = async (data: {
     id: string
+    projectId?: string
+    subjectIds: string[]
     title: string
     startTime: string
     endTime: string
@@ -205,6 +217,8 @@ function App() {
   }) => {
     try {
       await updateSession(data.id, {
+        projectId: data.projectId,
+        subjectIds: data.subjectIds,
         title: data.title,
         startTime: data.startTime,
         endTime: data.endTime,
@@ -231,6 +245,66 @@ function App() {
       setSelectedSession(null)
     } catch (e) {
       toast.error(`Failed to delete study session: ${String(e)}`)
+    }
+  }
+
+  const handleCreateEvent = async (data: {
+    title: string
+    description?: string
+    startTime: string
+    endTime?: string
+    eventType: EventType
+    subjectId?: string
+    location?: string
+  }) => {
+    try {
+      await addEvent(data)
+      toast.success(`Event "${data.title}" added`)
+      setEventDialogOpen(false)
+    } catch (e) {
+      toast.error(`Failed to add event: ${String(e)}`)
+    }
+  }
+
+  const handleEditEvent = async (data: {
+    id: string
+    title: string
+    description?: string
+    startTime: string
+    endTime?: string
+    eventType: EventType
+    subjectId?: string
+    location?: string
+  }) => {
+    try {
+      await updateEvent(data.id, {
+        title: data.title,
+        description: data.description,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        eventType: data.eventType,
+        subjectId: data.subjectId,
+        location: data.location,
+      })
+      toast.success("Event updated")
+      setEditEventDialogOpen(false)
+      setSelectedEvent(null)
+    } catch (e) {
+      toast.error(`Failed to update event: ${String(e)}`)
+    }
+  }
+
+  const handleDeleteEvent = async (id: string) => {
+    const event = events.find((item) => item.id === id)
+    if (!event) return
+    if (!window.confirm(`Delete "${event.title}"? This action cannot be undone.`)) return
+    try {
+      await deleteEvent(id)
+      toast.success("Event deleted")
+      setEditEventDialogOpen(false)
+      setSelectedEvent(null)
+    } catch (e) {
+      toast.error(`Failed to delete event: ${String(e)}`)
     }
   }
 
@@ -281,12 +355,46 @@ function App() {
     setEditSessionDialogOpen(true)
   }
 
+  const handleSelectEvent = (event: CalendarEvent) => {
+    setSelectedEvent(event)
+    setEditEventDialogOpen(true)
+  }
+
+  const handleTitlebarDrag = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.detail > 1) return
+    void getCurrentWindow().startDragging().catch(() => undefined)
+  }
+
   return (
     <TooltipProvider>
-      <div className="focal-shell relative h-screen overflow-hidden p-3 text-foreground">
+      <div className="focal-shell relative h-screen overflow-hidden px-2 pb-2 pt-(--app-titlebar-inset) text-foreground min-[1200px]:px-3 min-[1200px]:pb-3">
+        <div
+          data-tauri-drag-region
+          onMouseDown={handleTitlebarDrag}
+          className="app-titlebar-drag-region absolute inset-x-0 top-0 z-20"
+        />
+        <div className="app-titlebar-actions absolute left-(--app-titlebar-actions-left) top-(--app-titlebar-control-top) z-30 flex h-(--app-titlebar-control-size) items-center gap-1.5">
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex h-6 w-6 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/55 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            aria-label="Search"
+          >
+            <Search className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setSettingsView(true)}
+            className="flex h-6 w-6 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/55 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            aria-label="Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
-        <div className="pointer-events-none absolute inset-x-8 top-3 h-px bg-foreground/10" />
-        <div className="relative z-10 grid h-full grid-cols-[21rem_minmax(0,1fr)] gap-3">
+        <div className="pointer-events-none absolute inset-x-8 top-(--app-titlebar-inset) h-px bg-foreground/10" />
+        <div
+          className="relative z-10 grid h-full gap-2 min-[1200px]:gap-3"
+          style={{ gridTemplateColumns: "clamp(13rem, 28vw, 21rem) minmax(0, 1fr)" }}
+        >
           <div className="min-h-0">
             <Sidebar
               projects={projects}
@@ -300,13 +408,11 @@ function App() {
               onToggleArchive={handleToggleArchive}
               onToggleFinished={handleToggleFinished}
               fileCounts={fileCounts}
-              onOpenSettings={() => setSettingsView(true)}
-              onOpenSearch={() => setSearchOpen(true)}
               onOpenExport={() => setExportOpen(true)}
               onOpenSubjects={() => setSubjectsOpen(true)}
             />
           </div>
-          <main className="glass-panel min-w-0 overflow-hidden rounded-[1.35rem]">
+          <main className="glass-panel min-w-0 overflow-hidden rounded-2xl min-[1200px]:rounded-[1.35rem]">
             {settingsView ? (
               <SettingsView
                 onBack={() => setSettingsView(false)}
@@ -319,9 +425,12 @@ function App() {
               <HomeView
                 projects={projects}
                 sessions={sessions}
+                events={events}
                 onSelectProject={handleSelectProject}
                 onSelectSession={handleSelectSession}
+                onSelectEvent={handleSelectEvent}
                 onNewSession={() => setSessionDialogOpen(true)}
+                onNewEvent={() => setEventDialogOpen(true)}
                 onNewProject={() => setDialogOpen(true)}
               />
             ) : selectedProject ? (
@@ -360,15 +469,31 @@ function App() {
           open={sessionDialogOpen}
           onOpenChange={setSessionDialogOpen}
           projects={projects}
+          customSubjects={customSubjects}
           onSubmit={handleCreateStudySession}
         />
         <EditStudySessionDialog
           open={editSessionDialogOpen}
           onOpenChange={setEditSessionDialogOpen}
           projects={projects}
+          customSubjects={customSubjects}
           session={selectedSession}
           onSubmit={handleEditStudySession}
           onDelete={handleDeleteStudySession}
+        />
+        <NewEventDialog
+          open={eventDialogOpen}
+          onOpenChange={setEventDialogOpen}
+          customSubjects={customSubjects}
+          onSubmit={handleCreateEvent}
+        />
+        <EditEventDialog
+          open={editEventDialogOpen}
+          onOpenChange={setEditEventDialogOpen}
+          event={selectedEvent}
+          customSubjects={customSubjects}
+          onSubmit={handleEditEvent}
+          onDelete={handleDeleteEvent}
         />
         {selectedProject && (
           <ProjectSettingsDialog
@@ -382,14 +507,17 @@ function App() {
         <GlobalSearch
           projects={projects}
           sessions={sessions}
+          events={events}
           onSelectProject={handleSelectProject}
           onSelectSession={handleSelectSession}
+          onSelectEvent={handleSelectEvent}
           open={searchOpen}
           onOpenChange={setSearchOpen}
         />
         <DataExport
           projects={projects}
           sessions={sessions}
+          events={events}
           open={exportOpen}
           onOpenChange={setExportOpen}
         />

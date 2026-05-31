@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { FileRow } from "@/components/FileRow"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
 import { useProjectFiles } from "@/hooks/useProjectFiles"
-import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo } from "@/lib/utils"
+import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
 import type { Project, FileInfo, StudySession } from "@/lib/types"
 import type { UnlistenFn } from "@tauri-apps/api/event"
@@ -207,16 +207,16 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         </div>
       )}
 
-      <div className="border-b border-border/70 px-8 pb-5 pt-7">
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-background/45 text-xl leading-none shadow-sm">
+      <div className="border-b border-border/70 px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex min-w-0 items-center gap-2.5 min-[1200px]:gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background/45 text-lg leading-none shadow-sm min-[1200px]:h-11 min-[1200px]:w-11 min-[1200px]:rounded-2xl min-[1200px]:text-xl">
                 {project.icon ?? "📄"}
               </span>
               <div className="min-w-0">
-                <h2 className="font-heading text-2xl font-semibold tracking-[-0.035em]">{project.name}</h2>
-                <p className="text-caption text-muted-foreground font-mono">
+                <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
+                <p className="truncate text-caption text-muted-foreground font-mono">
                   ~/Documents/Projects/{project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}
                 </p>
               </div>
@@ -262,7 +262,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={onOpenSettings}>
@@ -292,7 +292,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={handleOpenFolder} className="h-8 gap-1.5 rounded-xl bg-background/45">
                   <FolderUp className="h-4 w-4" />
-                  <span>Open Folder</span>
+                  <span className="max-[950px]:hidden">Open Folder</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Open in Finder</TooltipContent>
@@ -304,7 +304,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           </div>
         </div>
 
-        <div className="mt-5 flex items-center gap-2">
+        <div className="mt-5 flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-0.5 rounded-2xl border border-border/70 bg-background/35 p-1">
             <button
               onClick={() => setViewMode("files")}
@@ -336,7 +336,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           </div>
 
           {viewMode === "files" && (
-            <div className="flex min-w-0 items-center gap-1 overflow-x-auto rounded-2xl bg-background/20 p-1">
+            <div className="flex min-w-0 max-w-full flex-1 items-center gap-1 overflow-x-auto rounded-2xl bg-background/20 p-1">
               <button
                 onClick={() => setSelectedSubfolder(null)}
                 className={cn(
@@ -367,7 +367,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             </div>
           )}
 
-          <div className="flex-1" />
+          <div className="min-w-4 flex-1" />
           {viewMode === "sessions" && onNewSession && (
             <Button size="sm" onClick={onNewSession} className="h-7 gap-1.5 rounded-xl text-xs">
               <Plus className="h-3.5 w-3.5" />
@@ -377,8 +377,8 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         </div>
 
         {viewMode === "files" && files.length > 0 && (
-          <div className="mt-3 flex items-center gap-2">
-            <div className="flex-1 relative max-w-xs">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-48 flex-1 max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
               <Input
                 placeholder="Search files..."
@@ -397,7 +397,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                 <X className="h-3.5 w-3.5" />
               </Button>
             )}
-            <div className="w-px h-4 bg-border mx-1" />
+            <div className="mx-1 h-4 w-px bg-border" />
             {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
               <button
                 key={tag}
@@ -432,6 +432,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         {viewMode === "sessions" ? (
           <SessionsView
             sessions={sessions}
+            project={project}
             projectName={project.name}
             onSelectSession={onSelectSession}
             onNewSession={onNewSession}
@@ -441,7 +442,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
           </div>
         ) : files.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+          <div className="flex flex-1 flex-col items-center justify-center px-5 text-center min-[1200px]:px-8">
             <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-background/35">
               <FolderOpen className="h-6 w-6 text-muted-foreground/40" />
             </div>
@@ -457,16 +458,17 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         ) : (
           <>
             {/* Column headers */}
-            <div className="flex items-center gap-3 border-b border-border/70 bg-background/18 px-8 py-2 text-caption font-medium uppercase tracking-wider text-muted-foreground/60">
-              <span className="w-4 shrink-0" />
-              <span className="flex-1">Name</span>
-              <span className="w-20 text-right">Size</span>
-              <span className="w-16 text-right">Type</span>
+            <div className="grid grid-cols-[1rem_2rem_minmax(0,1fr)_5rem] items-center gap-3 border-b border-border/70 bg-background/18 px-5 py-2 text-caption font-medium uppercase tracking-wider text-muted-foreground/60 min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem] min-[1200px]:px-8">
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+              <span>Name</span>
+              <span className="text-right">Size</span>
+              <span className="hidden text-right min-[1000px]:block">Type</span>
             </div>
 
             {/* Selection bar */}
             {selectedFiles.size > 0 && (
-              <div className="flex items-center gap-3 border-b border-border/70 bg-accent/20 px-8 py-2.5">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-accent/20 px-5 py-2.5 min-[1200px]:gap-3 min-[1200px]:px-8">
                 <span className="text-xs font-medium">{selectedFiles.size} selected</span>
                 <Button variant="ghost" size="sm" onClick={handleSelectAll} className="h-7 px-2 text-xs">
                   Select All
@@ -487,7 +489,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               </div>
             )}
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="min-h-0 flex-1">
               <div className="divide-y divide-border/70">
                 {filteredFiles.map((file) => (
                   <FileRow
@@ -517,18 +519,20 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
 
 function SessionsView({
   sessions,
+  project,
   projectName,
   onSelectSession,
   onNewSession,
 }: {
   sessions: StudySession[]
+  project: Project
   projectName: string
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
 }) {
   if (sessions.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-5 min-[1200px]:px-8">
         <div className="mb-5 w-12 h-12 rounded-xl bg-muted/40 flex items-center justify-center">
           <Clock className="h-6 w-6 text-muted-foreground/40" />
         </div>
@@ -552,13 +556,14 @@ function SessionsView({
 
   return (
     <ScrollArea className="flex-1">
-      <div className="px-8 py-4 space-y-2">
+      <div className="space-y-2 px-5 py-4 min-[1200px]:px-8">
         {sorted.map((session) => {
           const start = parseISO(session.startTime)
           const end = parseISO(session.endTime)
           const durationMs = end.getTime() - start.getTime()
           const hours = Math.floor(durationMs / (1000 * 60 * 60))
           const minutes = Math.round((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+          const sessionSubjects = getSessionSubjectIds(session, project)
 
           return (
             <button
@@ -571,6 +576,25 @@ function SessionsView({
                   <p className="text-sm font-medium truncate">{session.title}</p>
                   {session.description && (
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">{session.description}</p>
+                  )}
+                  {sessionSubjects.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {sessionSubjects.map((subjectId) => {
+                        const subject = getSubjectById(subjectId)
+                        return (
+                          <span
+                            key={subjectId}
+                            className="text-micro px-1.5 py-0.5 rounded font-medium"
+                            style={subject ? {
+                              backgroundColor: subject.color + "14",
+                              color: subject.color,
+                            } : undefined}
+                          >
+                            {subject?.shortCode ?? subjectId}
+                          </span>
+                        )
+                      })}
+                    </div>
                   )}
                   <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">

@@ -1,5 +1,7 @@
 export type DeadlineType = "sac" | "exam" | "assignment" | "gat";
 
+export type EventType = DeadlineType | "event";
+
 export type FileTag = "sac" | "notes" | "past-paper" | "exam" | "resource" | "other";
 
 export type Unit = "1" | "2" | "3" | "4";
@@ -8,7 +10,8 @@ export type StudySessionStatus = "planned" | "in-progress" | "completed";
 
 export interface StudySession {
   id: string;
-  projectId: string;
+  projectId?: string;
+  subjectIds: string[];
   title: string;
   description?: string;
   startTime: string; // ISO date
@@ -16,6 +19,18 @@ export interface StudySession {
   status: StudySessionStatus;
   topics?: string[]; // Topics covered in the session
   notes?: string;
+  created_at: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  startTime: string; // ISO date
+  endTime?: string; // ISO date
+  eventType: EventType;
+  subjectId?: string;
+  location?: string;
   created_at: string;
 }
 
@@ -97,5 +112,3 @@ export interface SearchResult {
   file: FileInfo;
   projectFolder: string;
 }
-
-

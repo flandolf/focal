@@ -4,55 +4,9 @@ import type { FileInfo } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
+import { FileTypeIcon } from "@/components/FileTypeIcon"
 
 import { Pencil, X, Check } from "lucide-react"
-const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  jpg: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  jpeg: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  png: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  gif: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  svg: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  webp: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  ico: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  bmp: { label: "img", color: "text-blue-600 dark:text-blue-400" },
-  pdf: { label: "doc", color: "text-amber-600 dark:text-amber-400" },
-  doc: { label: "doc", color: "text-amber-600 dark:text-amber-400" },
-  docx: { label: "doc", color: "text-amber-600 dark:text-amber-400" },
-  pptx: { label: "ppt", color: "text-red-600 dark:text-red-400" },
-  txt: { label: "doc", color: "text-amber-600 dark:text-amber-400" },
-  md: { label: "doc", color: "text-amber-600 dark:text-amber-400" },
-  rtf: { label: "doc", color: "text-amber-600 dark:text-amber-400" },
-  js: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  ts: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  jsx: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  tsx: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  py: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  rs: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  go: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  java: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  css: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  html: { label: "cd", color: "text-emerald-600 dark:text-emerald-400" },
-  zip: { label: "arc", color: "text-orange-600 dark:text-orange-400" },
-  tar: { label: "arc", color: "text-orange-600 dark:text-orange-400" },
-  gz: { label: "arc", color: "text-orange-600 dark:text-orange-400" },
-  rar: { label: "arc", color: "text-orange-600 dark:text-orange-400" },
-  "7z": { label: "arc", color: "text-orange-600 dark:text-orange-400" },
-  mp4: { label: "vid", color: "text-violet-600 dark:text-violet-400" },
-  avi: { label: "vid", color: "text-violet-600 dark:text-violet-400" },
-  mov: { label: "vid", color: "text-violet-600 dark:text-violet-400" },
-  mkv: { label: "vid", color: "text-violet-600 dark:text-violet-400" },
-  webm: { label: "vid", color: "text-violet-600 dark:text-violet-400" },
-  mp3: { label: "aud", color: "text-pink-600 dark:text-pink-400" },
-  wav: { label: "aud", color: "text-pink-600 dark:text-pink-400" },
-  flac: { label: "aud", color: "text-pink-600 dark:text-pink-400" },
-  aac: { label: "aud", color: "text-pink-600 dark:text-pink-400" },
-  ogg: { label: "aud", color: "text-pink-600 dark:text-pink-400" },
-}
-
-function getFileTypeLabel(extension: string): { label: string; color: string } {
-  const ext = extension.toLowerCase()
-  return TYPE_LABELS[ext] || { label: "fl", color: "text-muted-foreground" }
-}
 
 interface FileRowProps {
   file: FileInfo
@@ -63,7 +17,6 @@ interface FileRowProps {
 }
 
 export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectionChange }: FileRowProps) {
-  const { label, color } = getFileTypeLabel(file.extension)
   // Support both new tags array and legacy tag field
   const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
   const TAG_COLORS: Record<string, string> = {
@@ -107,7 +60,7 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
   return (
     <div
       className={cn(
-        "flex items-center gap-3 px-8 py-3 hover:bg-accent/30 transition-colors group cursor-default",
+        "group grid min-h-16 grid-cols-[1rem_2rem_minmax(0,1fr)_5rem] items-center gap-3 px-5 py-2.5 transition-colors hover:bg-accent/30 cursor-default min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem] min-[1200px]:px-8",
         isSelected && "bg-accent/50"
       )}
       onMouseDown={handleOpenClick}
@@ -118,9 +71,7 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
         onClick={(e: { stopPropagation: () => void }) => e.stopPropagation()}
         className="w-4 h-4 shrink-0"
       />
-      <span className={`text-caption font-semibold tracking-wide w-4 text-center leading-none shrink-0 ${color}`}>
-        {label}
-      </span>
+      <FileTypeIcon extension={file.extension} />
       <div className="flex-1 min-w-0">
         {isRenaming ? (
           <div className="flex items-center gap-1">
@@ -139,13 +90,15 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
             />
             <button
               onClick={(e) => { e.stopPropagation(); confirmRename() }}
-              className="shrink-0 p-0.5 rounded hover:bg-accent text-emerald-600 dark:text-emerald-400"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-emerald-600 transition-colors hover:bg-accent dark:text-emerald-400"
+              aria-label="Confirm rename"
             >
               <Check className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); cancelRename() }}
-              className="shrink-0 p-0.5 rounded hover:bg-accent text-muted-foreground"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Cancel rename"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -156,7 +109,8 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
             {onRename && (
               <button
                 onClick={(e) => { e.stopPropagation(); startRename() }}
-                className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity"
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                aria-label={`Rename ${file.name}`}
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
@@ -185,7 +139,7 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
       <span className="text-caption text-muted-foreground/70 font-mono tabular-nums w-20 text-right">
         {formatFileSize(file.size)}
       </span>
-      <span className="text-caption text-muted-foreground/50 font-mono uppercase w-12 text-right tabular-nums">
+      <span className="hidden text-caption text-muted-foreground/55 font-mono uppercase text-right tabular-nums min-[1000px]:block">
         .{file.extension || "?"}
       </span>
     </div>

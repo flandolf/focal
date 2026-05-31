@@ -123,7 +123,7 @@ export function SettingsView({ onBack, theme, dark, onSetTheme, onToggleDark }: 
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div>
-          <h1 className="font-heading text-lg font-semibold tracking-tight">Settings</h1>
+          <h1 className="font-heading text-lg font-semibold">Settings</h1>
           <p className="text-caption text-muted-foreground">Local preferences and AI renaming.</p>
         </div>
       </div>
