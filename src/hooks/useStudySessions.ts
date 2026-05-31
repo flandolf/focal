@@ -7,7 +7,8 @@ function normaliseSession(raw: unknown): StudySession {
   const obj = raw as Record<string, unknown>
   return {
     id: typeof obj.id === "string" ? obj.id : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-    projectId: typeof obj.projectId === "string" ? obj.projectId : "",
+    projectId: typeof obj.projectId === "string" && obj.projectId.length > 0 ? obj.projectId : undefined,
+    subjectIds: Array.isArray(obj.subjectIds) ? obj.subjectIds.filter((id): id is string => typeof id === "string") : [],
     title: typeof obj.title === "string" ? obj.title : "Study Session",
     description: typeof obj.description === "string" ? obj.description : undefined,
     startTime: typeof obj.startTime === "string" ? obj.startTime : new Date().toISOString(),
@@ -66,7 +67,8 @@ export function useStudySessions() {
   }, [])
 
   const addSession = useCallback(async (
-    projectId: string,
+    projectId: string | undefined,
+    subjectIds: string[],
     title: string,
     startTime: string,
     endTime: string,
@@ -77,6 +79,7 @@ export function useStudySessions() {
     const session: StudySession = {
       id: generateId(),
       projectId,
+      subjectIds,
       title,
       description,
       startTime,
@@ -93,7 +96,7 @@ export function useStudySessions() {
 
   const updateSession = useCallback(async (
     id: string,
-    updates: Partial<Omit<StudySession, "id" | "projectId" | "created_at">>
+    updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => {
     const updated = sessions.map((s) =>
       s.id === id ? { ...s, ...updates } : s

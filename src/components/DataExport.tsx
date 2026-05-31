@@ -11,18 +11,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import type { Project, StudySession } from "@/lib/types"
+import type { CalendarEvent, Project, StudySession } from "@/lib/types"
 
 interface DataExportProps {
   projects: Project[]
   sessions: StudySession[]
+  events: CalendarEvent[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 type ExportFormat = "json" | "csv"
 
-export function DataExport({ projects, sessions, open, onOpenChange }: DataExportProps) {
+export function DataExport({ projects, sessions, events, open, onOpenChange }: DataExportProps) {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState(false)
@@ -36,6 +37,7 @@ export function DataExport({ projects, sessions, open, onOpenChange }: DataExpor
         version: "0.1.0",
         projects,
         sessions,
+        events,
       }
 
       const content =
@@ -101,6 +103,10 @@ export function DataExport({ projects, sessions, open, onOpenChange }: DataExpor
           await writeTextFile(`${baseDir}sessions.json`, JSON.stringify(data.sessions, null, 2))
         }
 
+        if (data.events && Array.isArray(data.events)) {
+          await writeTextFile(`${baseDir}events.json`, JSON.stringify(data.events, null, 2))
+        }
+
         setDone(true)
         setTimeout(() => {
           setDone(false)
@@ -122,7 +128,7 @@ export function DataExport({ projects, sessions, open, onOpenChange }: DataExpor
         <DialogHeader>
           <DialogTitle>Export & Backup</DialogTitle>
           <DialogDescription>
-            Export all your projects and sessions.
+            Export all your projects, sessions, and events.
           </DialogDescription>
         </DialogHeader>
 
@@ -150,7 +156,7 @@ export function DataExport({ projects, sessions, open, onOpenChange }: DataExpor
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-center">
+          <div className="grid grid-cols-3 gap-3 text-center">
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-lg font-semibold">{projects.length}</p>
               <p className="text-xs text-muted-foreground">Projects</p>
@@ -158,6 +164,10 @@ export function DataExport({ projects, sessions, open, onOpenChange }: DataExpor
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-lg font-semibold">{sessions.length}</p>
               <p className="text-xs text-muted-foreground">Sessions</p>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-lg font-semibold">{events.length}</p>
+              <p className="text-xs text-muted-foreground">Events</p>
             </div>
           </div>
 
@@ -194,6 +204,7 @@ export function DataExport({ projects, sessions, open, onOpenChange }: DataExpor
 function toCsv(data: {
   projects: Project[]
   sessions: StudySession[]
+  events: CalendarEvent[]
 }): string {
   const sections: string[] = []
 
@@ -220,13 +231,14 @@ function toCsv(data: {
   sections.push("")
   sections.push("# Sessions")
   sections.push(
-    "id,projectId,title,startTime,endTime,status,topics,notes,created_at"
+    "id,projectId,subjectIds,title,startTime,endTime,status,topics,notes,created_at"
   )
   for (const s of data.sessions) {
     sections.push(
       [
         csvEscape(s.id),
-        csvEscape(s.projectId),
+        csvEscape(s.projectId ?? ""),
+        csvEscape(s.subjectIds.join("; ")),
         csvEscape(s.title),
         csvEscape(s.startTime),
         csvEscape(s.endTime),
@@ -234,6 +246,27 @@ function toCsv(data: {
         csvEscape(s.topics?.join("; ") ?? ""),
         csvEscape(s.notes ?? ""),
         csvEscape(s.created_at),
+      ].join(",")
+    )
+  }
+
+  sections.push("")
+  sections.push("# Events")
+  sections.push(
+    "id,title,description,startTime,endTime,eventType,subject,location,created_at"
+  )
+  for (const event of data.events) {
+    sections.push(
+      [
+        csvEscape(event.id),
+        csvEscape(event.title),
+        csvEscape(event.description ?? ""),
+        csvEscape(event.startTime),
+        csvEscape(event.endTime ?? ""),
+        csvEscape(event.eventType),
+        csvEscape(event.subjectId ?? ""),
+        csvEscape(event.location ?? ""),
+        csvEscape(event.created_at),
       ].join(",")
     )
   }

@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Project, DeadlineType, Subject } from "@/lib/types"
+import type { Project, DeadlineType, EventType, StudySession, Subject } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
 export function cn(...inputs: ClassValue[]) {
@@ -40,6 +40,18 @@ export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label:
     default:
       return { icon: "📌", label: "Deadline", color: "#6B7280" }
   }
+}
+
+export function getEventTypeInfo(type?: EventType): { icon: string; label: string; color: string } {
+  if (type === "event") {
+    return { icon: "📍", label: "Event", color: "#0D9488" }
+  }
+  return getDeadlineTypeInfo(type)
+}
+
+export function getSessionSubjectIds(session: StudySession, project?: Project): string[] {
+  if (session.subjectIds.length > 0) return session.subjectIds
+  return project?.subjectId ? [project.subjectId] : []
 }
 
 export function formatDeadline(dateString: string): string {

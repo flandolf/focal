@@ -1,12 +1,85 @@
 import { useState } from "react"
-import { Plus, Trash2, Home, Star, Archive, CheckCircle2, Search, Database, Palette, Settings } from "lucide-react"
+import {
+  Archive,
+  Atom,
+  BookOpen,
+  Brain,
+  BriefcaseBusiness,
+  CalendarDays,
+  Calculator,
+  ChartNoAxesColumn,
+  CheckCircle2,
+  ClipboardList,
+  Database,
+  Dna,
+  FlaskConical,
+  Folder,
+  Home,
+  Landmark,
+  Languages,
+  Library,
+  Map,
+  MapPin,
+  MoreHorizontal,
+  NotebookPen,
+  Palette,
+  Plus,
+  Star,
+  Target,
+  Trash2,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StudyTimer } from "@/components/StudyTimer"
 import { cn, formatDeadline, isOverdue, sortProjectsByDeadline, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
-import type { Project } from "@/lib/types"
+import type { DeadlineType, Project } from "@/lib/types"
 
 type FilterMode = "active" | "favorites" | "archived" | "finished"
+
+const SUBJECT_ICONS: Record<string, LucideIcon> = {
+  eng: BookOpen,
+  "eng-lang": Languages,
+  lit: Library,
+  mm: Calculator,
+  sm: Calculator,
+  fm: ChartNoAxesColumn,
+  chem: FlaskConical,
+  phys: Atom,
+  bio: Dna,
+  psych: Brain,
+  hist: Landmark,
+  geo: Map,
+  econ: TrendingUp,
+  bm: BriefcaseBusiness,
+}
+
+const DEADLINE_ICONS: Record<DeadlineType | "default", LucideIcon> = {
+  gat: Target,
+  sac: NotebookPen,
+  exam: CalendarDays,
+  assignment: ClipboardList,
+  default: MapPin,
+}
+
+function getSidebarProjectIcon(project: Project): LucideIcon {
+  if (project.subjectId && SUBJECT_ICONS[project.subjectId]) {
+    return SUBJECT_ICONS[project.subjectId]
+  }
+  return Folder
+}
+
+function getSidebarDeadlineIcon(type?: DeadlineType): LucideIcon {
+  return type ? DEADLINE_ICONS[type] : DEADLINE_ICONS.default
+}
 
 interface SidebarProps {
   projects: Project[]
@@ -20,8 +93,6 @@ interface SidebarProps {
   onToggleArchive?: (id: string) => void
   onToggleFinished?: (id: string) => void
   fileCounts: Record<string, number>
-  onOpenSettings?: () => void
-  onOpenSearch?: () => void
   onOpenExport?: () => void
   onOpenSubjects?: () => void
 }
@@ -38,8 +109,6 @@ export function Sidebar({
   onToggleArchive,
   onToggleFinished,
   fileCounts,
-  onOpenSettings,
-  onOpenSearch,
   onOpenExport,
   onOpenSubjects,
 }: SidebarProps) {
@@ -59,38 +128,16 @@ export function Sidebar({
   const activeCount = sorted.filter((p) => !p.isArchived && !p.isFinished).length
 
   return (
-    <div className="glass-sidebar flex h-full flex-col overflow-hidden rounded-[1.35rem] text-sidebar-foreground">
-      <div className="px-4 pb-4 pt-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 select-none">
-            <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-sidebar-border bg-background/55 text-sm shadow-sm backdrop-blur">
+    <div className="glass-sidebar flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground min-[1200px]:rounded-[1.35rem]">
+      <div className="px-3 pb-3 pt-3 min-[1200px]:px-4 min-[1200px]:pb-4 min-[1200px]:pt-4">
+        <div className="flex items-center gap-3 select-none">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-sidebar-border bg-background/55 text-sm shadow-sm backdrop-blur min-[1200px]:h-9 min-[1200px]:w-9 min-[1200px]:rounded-2xl">
               F
             </span>
             <div className="min-w-0">
-              <h1 className="font-heading text-base font-semibold tracking-tight">Focal</h1>
-              <p className="text-caption text-muted-foreground">Study workspace</p>
+              <h1 className="font-heading text-base font-semibold">Focal</h1>
+              <p className="text-caption text-muted-foreground max-[900px]:hidden">Study workspace</p>
             </div>
-          </div>
-          <div className="flex items-center gap-0.5">
-            {onOpenSearch && (
-              <button
-                onClick={onOpenSearch}
-                className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-                aria-label="Search"
-              >
-                <Search className="h-4 w-4" />
-              </button>
-            )}
-            {onOpenSettings && (
-              <button
-                onClick={onOpenSettings}
-                className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-                aria-label="Settings"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
-            )}
-          </div>
         </div>
 
         <Button onClick={onNewProject} className="mt-4 h-9 w-full gap-1.5 rounded-2xl" size="sm">
@@ -99,7 +146,7 @@ export function Sidebar({
         </Button>
       </div>
 
-      <div className="space-y-3 px-3">
+      <div className="space-y-2 px-2.5 min-[1200px]:space-y-3 min-[1200px]:px-3">
         <button
           onClick={onSelectHome}
           className={cn(
@@ -116,7 +163,7 @@ export function Sidebar({
           </span>
         </button>
 
-        <div className="grid grid-cols-2 gap-1 rounded-2xl border border-sidebar-border bg-background/30 p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-xl border border-sidebar-border bg-background/30 p-1 min-[1200px]:rounded-2xl">
           <button
             onClick={() => setFilterMode("active")}
             className={cn(
@@ -176,144 +223,152 @@ export function Sidebar({
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="px-2 pb-2 pt-4">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="px-1.5 pb-2 pt-3 min-[1200px]:px-2 min-[1200px]:pt-4">
           {filtered.length > 0 ? (
             <div className="flex flex-col gap-1">
-              {filtered.map((project) => (
-                <div
-                  key={project.id}
-                  className={cn(
-                    "group relative flex cursor-pointer items-start gap-2.5 rounded-2xl px-3 py-2.5 transition-colors",
-                    selectedId === project.id
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
-                    project.isArchived && "opacity-60",
-                    project.isFinished && "opacity-70"
-                  )}
-                  onClick={() => onSelect(project.id)}
-                >
-                  <span className="text-sm leading-none shrink-0 mt-0.5 select-none">
-                    {project.icon ?? "📄"}
-                  </span>
-                  <div className="flex-1 min-w-0 pr-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium truncate">{project.name}</p>
-                      {project.isFinished && (
-                        <span className="text-micro px-1.5 py-0.5 rounded font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-950/40 shrink-0">
-                          Finished
-                        </span>
-                      )}
-                      {fileCounts[project.id] > 0 && (
-                        <span className="text-caption text-muted-foreground tabular-nums shrink-0">
-                          {fileCounts[project.id]}
-                        </span>
-                      )}
-                    </div>
-                    {((project.subjectId != null) || (project.deadline != null && !project.isFinished)) && (
-                      <div className="flex items-center gap-1 mt-1 flex-wrap">
-                        {project.subjectId && (
-                          <span
-                            className="text-micro px-1.5 py-0.5 rounded-md font-medium select-none"
-                            style={{
-                              backgroundColor: getSubjectById(project.subjectId)?.color + "20",
-                              color: getSubjectById(project.subjectId)?.color
-                            }}
-                          >
-                            {getSubjectById(project.subjectId)?.shortCode}
+              {filtered.map((project) => {
+                const ProjectIcon = getSidebarProjectIcon(project)
+                const subject = getSubjectById(project.subjectId)
+                const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
+                const DeadlineIcon = getSidebarDeadlineIcon(project.deadlineType)
+
+                return (
+                  <div
+                    key={project.id}
+                    className={cn(
+                      "group relative flex cursor-pointer items-start gap-2 rounded-xl px-2.5 py-2.5 pr-9 transition-colors min-[1200px]:gap-2.5 min-[1200px]:rounded-2xl min-[1200px]:px-3 min-[1200px]:pr-24",
+                      selectedId === project.id
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                      project.isArchived && "opacity-60",
+                      project.isFinished && "opacity-70"
+                    )}
+                    onClick={() => onSelect(project.id)}
+                  >
+                    <span
+                      className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs min-[1200px]:size-7 min-[1200px]:rounded-xl"
+                      style={subject ? {
+                        backgroundColor: subject.color + "14",
+                        color: subject.color,
+                      } : undefined}
+                    >
+                      <ProjectIcon className="size-3.5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium truncate">{project.name}</p>
+                        {project.isFinished && (
+                          <span className="hidden text-micro px-1.5 py-0.5 rounded font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-950/40 shrink-0 min-[1050px]:inline-flex">
+                            Finished
                           </span>
                         )}
-                        {project.deadline && !project.isFinished && (
-                          <>
-                            <span
-                              className="text-micro px-1.5 py-0.5 rounded-md flex items-center gap-0.5 select-none"
-                              style={{
-                                backgroundColor: getDeadlineTypeInfo(project.deadlineType).color + "20",
-                                color: getDeadlineTypeInfo(project.deadlineType).color
-                              }}
-                            >
-                              {getDeadlineTypeInfo(project.deadlineType).icon}
-                              {getDeadlineTypeInfo(project.deadlineType).label}
-                            </span>
-                            <span className={cn(
-                              "text-micro px-1.5 py-0.5 rounded-md font-medium select-none",
-                              isOverdue(project.deadline)
-                                ? "bg-destructive/15 text-destructive"
-                                : "bg-muted text-muted-foreground"
-                            )}>
-                              {formatDeadline(project.deadline)}
-                            </span>
-                          </>
+                        {fileCounts[project.id] > 0 && (
+                          <span className="text-caption text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden">
+                            {fileCounts[project.id]}
+                          </span>
                         )}
                       </div>
-                    )}
+                      {((project.subjectId != null) || (project.deadline != null && !project.isFinished)) && (
+                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                          {subject && (
+                            <span
+                              className="text-micro px-1.5 py-0.5 rounded-md font-medium select-none"
+                              style={{
+                                backgroundColor: subject.color + "20",
+                                color: subject.color
+                              }}
+                            >
+                              {subject.shortCode}
+                            </span>
+                          )}
+                          {project.deadline && !project.isFinished && (
+                            <>
+                              <span
+                              className="text-micro px-1.5 py-0.5 rounded-md flex items-center gap-0.5 select-none max-[900px]:hidden"
+                                style={{
+                                  backgroundColor: deadlineInfo.color + "20",
+                                  color: deadlineInfo.color
+                                }}
+                              >
+                                <DeadlineIcon className="size-2.5" aria-hidden="true" />
+                                {deadlineInfo.label}
+                              </span>
+                              <span className={cn(
+                                "text-micro px-1.5 py-0.5 rounded-md font-medium select-none",
+                                isOverdue(project.deadline)
+                                  ? "bg-destructive/15 text-destructive"
+                                  : "bg-muted text-muted-foreground"
+                              )}>
+                                {formatDeadline(project.deadline)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 shrink-0">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            aria-label={`Project actions for ${project.name}`}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          {onToggleFinished && (
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.stopPropagation()
+                                onToggleFinished(project.id)
+                              }}
+                            >
+                              <CheckCircle2 className={cn(project.isFinished && "text-green-500")} />
+                              {project.isFinished ? "Mark active" : "Mark complete"}
+                            </DropdownMenuItem>
+                          )}
+                          {onToggleFavorite && (
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.stopPropagation()
+                                onToggleFavorite(project.id)
+                              }}
+                            >
+                              <Star className={cn(project.isFavorite && "fill-yellow-400 text-yellow-400")} />
+                              {project.isFavorite ? "Unstar" : "Star"}
+                            </DropdownMenuItem>
+                          )}
+                          {onToggleArchive && (
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.stopPropagation()
+                                onToggleArchive(project.id)
+                              }}
+                            >
+                              <Archive />
+                              {project.isArchived ? "Restore" : "Archive"}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={(event) => {
+                              event.stopPropagation()
+                              onDelete(project.id)
+                            }}
+                          >
+                            <Trash2 />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 shrink-0">
-                    {onToggleFinished && (
-                      <button
-                        aria-label={project.isFinished ? "Mark as active" : "Mark as complete"}
-                        className={cn(
-                          "h-6 w-6 flex items-center justify-center rounded transition-opacity hover:bg-sidebar-accent/50",
-                          project.isFinished
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onToggleFinished(project.id)
-                        }}
-                      >
-                        <CheckCircle2 className={cn(
-                          "h-3.5 w-3.5",
-                          project.isFinished ? "text-green-500" : "text-muted-foreground"
-                        )} />
-                      </button>
-                    )}
-                    {onToggleArchive && !project.isArchived && (
-                      <button
-                        aria-label={`Archive ${project.name}`}
-                        className="h-6 w-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-sidebar-accent/50"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onToggleArchive(project.id)
-                        }}
-                      >
-                        <Archive className="h-3.5 w-3.5 text-muted-foreground" />
-                      </button>
-                    )}
-                    <button
-                      aria-label={`Delete ${project.name}`}
-                      className="h-6 w-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-sidebar-accent/50"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete(project.id)
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive transition-colors" />
-                    </button>
-                    {onToggleFavorite && (
-                      <button
-                        aria-label={project.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                        className={cn(
-                          "h-6 w-6 flex items-center justify-center rounded transition-opacity hover:bg-sidebar-accent/50",
-                          project.isFavorite
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onToggleFavorite(project.id)
-                        }}
-                      >
-                        <Star className={cn(
-                          "h-3.5 w-3.5",
-                          project.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
-                        )} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-12 px-4 leading-relaxed">

@@ -10,6 +10,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { FileTypeIcon } from "@/components/FileTypeIcon"
 import type { FileInfo } from "@/lib/types"
 import { getApiKey, getModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent } from "@/lib/settings"
 interface RenameEntry {
@@ -383,6 +384,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                             !isChanged ? "opacity-40" : ""
                           }`}
                         >
+                          <FileTypeIcon extension={entry.file.extension} className="size-7 rounded-md" iconClassName="size-3.5" />
                           <button
                             onClick={() => isChanged && toggleApproved(i)}
                             disabled={!isChanged}
