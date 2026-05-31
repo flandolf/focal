@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
-import { CalendarIcon, Star, Archive } from "lucide-react"
+import { CalendarIcon, Star, Archive, CheckCircle2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,7 @@ interface ProjectSettingsDialogProps {
     examDate?: string
     isFavorite?: boolean
     isArchived?: boolean
+    isFinished?: boolean
   }) => void
   customSubjects?: Subject[]
 }
@@ -81,6 +82,7 @@ export function ProjectSettingsDialog({
   const [deadlineType, setDeadlineType] = useState<DeadlineType | "">(project.deadlineType ?? "")
   const [isFavorite, setIsFavorite] = useState(project.isFavorite ?? false)
   const [isArchived, setIsArchived] = useState(project.isArchived ?? false)
+  const [isFinished, setIsFinished] = useState(project.isFinished ?? false)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -103,6 +105,7 @@ export function ProjectSettingsDialog({
     setDeadlineType(project.deadlineType ?? "")
     setIsFavorite(project.isFavorite ?? false)
     setIsArchived(project.isArchived ?? false)
+    setIsFinished(project.isFinished ?? false)
   }, [project])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -120,6 +123,7 @@ export function ProjectSettingsDialog({
       examDate: examDate ? String(format(examDate, "yyyy-MM-dd")) : undefined,
       isFavorite,
       isArchived,
+      isFinished,
     })
     onOpenChange(false)
   }
@@ -348,6 +352,21 @@ export function ProjectSettingsDialog({
               >
                 <Star className={cn("h-4 w-4", isFavorite && "fill-yellow-400")} />
                 Favorite
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFinished(!isFinished)
+                  if (!isFinished) setIsArchived(false)
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors ${
+                  isFinished
+                    ? "bg-green-50 border-green-300 text-green-700 dark:bg-green-950/20 dark:border-green-700 dark:text-green-400"
+                    : "border-border text-muted-foreground hover:bg-accent/50"
+                }`}
+              >
+                <CheckCircle2 className={cn("h-4 w-4", isFinished && "text-green-500")} />
+                Finished
               </button>
               <button
                 type="button"

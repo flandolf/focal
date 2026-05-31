@@ -304,7 +304,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
             <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
               <div className="min-w-0">
                 <p className="text-xs font-medium">Use file content context</p>
-                <p className="text-[11px] text-muted-foreground/70">
+                <p className="text-caption text-muted-foreground/70">
                   Reads a short text preview to suggest more accurate names.
                 </p>
               </div>
@@ -399,7 +399,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                             )}
                           </button>
                           <div className="flex-1 min-w-0 space-y-0.5">
-                            <p className="text-[11px] text-muted-foreground/50 truncate line-through">
+                            <p className="text-caption text-muted-foreground/50 truncate line-through">
                               {entry.file.name}
                             </p>
                             <p className="text-sm font-medium truncate">

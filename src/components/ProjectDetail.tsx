@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Clock, Calendar } from "lucide-react"
+import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Clock, Calendar, CheckCircle2 } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
@@ -24,11 +24,12 @@ interface ProjectDetailProps {
   sessions: StudySession[]
   onFilesChanged: () => void
   onOpenSettings: () => void
+  onToggleFinished?: (id: string) => void
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
 }
 
-export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onSelectSession, onNewSession }: ProjectDetailProps) {
+export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession }: ProjectDetailProps) {
   const { files, loading, loadFiles, addFiles, renameFile, deleteFiles } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null)
@@ -194,9 +195,9 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="relative flex h-full flex-col">
       {isDragging && (
-        <div className="absolute inset-0 z-modal-backdrop flex items-center justify-center bg-background/80 backdrop-blur-[1px] m-4 rounded-xl pointer-events-none">
+        <div className="absolute inset-4 z-modal-backdrop flex items-center justify-center rounded-[1.25rem] border border-primary/20 bg-background/80 backdrop-blur-md pointer-events-none">
           <div className="flex flex-col items-center gap-3">
             <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
               <Plus className="h-7 w-7 text-primary/60" />
@@ -206,26 +207,38 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         </div>
       )}
 
-      {/* Header */}
-      <div className="px-8 pt-7 pb-5 border-b">
+      <div className="border-b border-border/70 px-8 pb-5 pt-7">
         <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-3">
             <div className="flex items-center gap-3">
-              <span className="text-2xl leading-none">{project.icon ?? "📄"}</span>
-              <h2 className="text-xl font-semibold tracking-tight">{project.name}</h2>
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-background/45 text-xl leading-none shadow-sm">
+                {project.icon ?? "📄"}
+              </span>
+              <div className="min-w-0">
+                <h2 className="font-heading text-2xl font-semibold tracking-[-0.035em]">{project.name}</h2>
+                <p className="text-caption text-muted-foreground font-mono">
+                  ~/Documents/Projects/{project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}
+                </p>
+              </div>
+              {project.isFinished && (
+                <span className="flex items-center gap-1 rounded-lg bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950/40 dark:text-green-400">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Finished
+                </span>
+              )}
               {project.unit && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">
+                <span className="rounded-lg bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                   Unit {project.unit}
                 </span>
               )}
             </div>
             {project.description && (
-              <p className="text-sm text-muted-foreground mt-1.5 max-w-lg leading-relaxed">{project.description}</p>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{project.description}</p>
             )}
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               {subject && (
                 <span
-                  className="text-xs px-2 py-0.5 rounded-md font-medium flex items-center gap-1.5"
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium"
                   style={{
                     backgroundColor: subject.color + "14",
                     color: subject.color
@@ -247,46 +260,58 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                   {deadlineInfo.icon} {formatDeadline(project.deadline)}
                 </Badge>
               )}
-              <p className="text-[11px] text-muted-foreground/50 font-mono tracking-tight truncate">
-                ~/Documents/Projects/<wbr />
-                {project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}/
-              </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onOpenSettings}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={onOpenSettings}>
                   <Settings className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Settings</TooltipContent>
             </Tooltip>
+            {onToggleFinished && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-xl"
+                    onClick={() => onToggleFinished(project.id)}
+                  >
+                    <CheckCircle2 className={cn("h-4 w-4", project.isFinished && "text-green-500")} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {project.isFinished ? "Mark as active" : "Mark as complete"}
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={handleOpenFolder} className="gap-1.5 h-8">
+                <Button variant="outline" size="sm" onClick={handleOpenFolder} className="h-8 gap-1.5 rounded-xl bg-background/45">
                   <FolderUp className="h-4 w-4" />
                   <span>Open Folder</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Open in Finder</TooltipContent>
             </Tooltip>
-            <Button size="sm" onClick={handleAddFiles} className="gap-1.5 h-8">
+            <Button size="sm" onClick={handleAddFiles} className="h-8 gap-1.5 rounded-xl">
               <Plus className="h-4 w-4" />
               <span>Add Files</span>
             </Button>
           </div>
         </div>
 
-        {/* Consolidated toolbar: tabs + subfolder nav + session action */}
-        <div className="flex items-center gap-2 mt-4">
-          <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+        <div className="mt-5 flex items-center gap-2">
+          <div className="flex items-center gap-0.5 rounded-2xl border border-border/70 bg-background/35 p-1">
             <button
               onClick={() => setViewMode("files")}
               className={cn(
-                "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
                 viewMode === "files"
-                  ? "bg-background text-foreground font-medium shadow-sm"
+                  ? "bg-background/80 text-foreground font-medium shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -296,26 +321,26 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             <button
               onClick={() => setViewMode("sessions")}
               className={cn(
-                "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
                 viewMode === "sessions"
-                  ? "bg-background text-foreground font-medium shadow-sm"
+                  ? "bg-background/80 text-foreground font-medium shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
               <Clock className="h-3.5 w-3.5" />
               Sessions
               {sessions.length > 0 && (
-                <span className="tabular-nums text-[10px]">{sessions.length}</span>
+                <span className="tabular-nums text-micro">{sessions.length}</span>
               )}
             </button>
           </div>
 
           {viewMode === "files" && (
-            <div className="flex items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto rounded-2xl bg-background/20 p-1">
               <button
                 onClick={() => setSelectedSubfolder(null)}
                 className={cn(
-                  "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                  "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
                   selectedSubfolder === null
                     ? "bg-accent text-accent-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
@@ -329,7 +354,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                   key={folder}
                   onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
                   className={cn(
-                    "px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5 transition-colors",
+                    "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs transition-colors",
                     selectedSubfolder === folder
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
@@ -344,23 +369,22 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
 
           <div className="flex-1" />
           {viewMode === "sessions" && onNewSession && (
-            <Button size="sm" onClick={onNewSession} className="gap-1.5 h-7 text-xs">
+            <Button size="sm" onClick={onNewSession} className="h-7 gap-1.5 rounded-xl text-xs">
               <Plus className="h-3.5 w-3.5" />
               New Session
             </Button>
           )}
         </div>
 
-        {/* Search + filter tags — single row, only for files */}
         {viewMode === "files" && files.length > 0 && (
-          <div className="flex items-center gap-2 mt-3">
+          <div className="mt-3 flex items-center gap-2">
             <div className="flex-1 relative max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
               <Input
                 placeholder="Search files..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 text-xs"
+                className="h-8 rounded-xl bg-background/45 pl-8 text-xs"
               />
             </div>
             {searchQuery && (
@@ -383,7 +407,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     : [...selectedTags, tag]
                 )}
                 className={cn(
-                  "px-2 py-0.5 text-[11px] rounded transition-colors",
+                  "px-2 py-0.5 text-caption rounded transition-colors",
                   selectedTags.includes(tag)
                     ? "bg-primary text-primary-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -395,7 +419,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             {selectedTags.length > 0 && (
               <button
                 onClick={() => setSelectedTags([])}
-                className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5"
+                className="text-caption text-muted-foreground hover:text-foreground px-1.5 py-0.5"
               >
                 Clear
               </button>
@@ -404,7 +428,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         )}
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col">
         {viewMode === "sessions" ? (
           <SessionsView
             sessions={sessions}
@@ -413,12 +437,12 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             onNewSession={onNewSession}
           />
         ) : loading ? (
-          <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
           </div>
         ) : files.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-            <div className="mb-5 w-12 h-12 rounded-xl bg-muted/40 flex items-center justify-center">
+          <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-background/35">
               <FolderOpen className="h-6 w-6 text-muted-foreground/40" />
             </div>
             <p className="text-sm font-medium text-foreground mb-1">No files yet</p>
@@ -433,7 +457,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         ) : (
           <>
             {/* Column headers */}
-            <div className="flex items-center gap-3 px-8 py-2 text-[11px] text-muted-foreground/60 font-medium uppercase tracking-wider border-b">
+            <div className="flex items-center gap-3 border-b border-border/70 bg-background/18 px-8 py-2 text-caption font-medium uppercase tracking-wider text-muted-foreground/60">
               <span className="w-4 shrink-0" />
               <span className="flex-1">Name</span>
               <span className="w-20 text-right">Size</span>
@@ -442,7 +466,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
 
             {/* Selection bar */}
             {selectedFiles.size > 0 && (
-              <div className="flex items-center gap-3 px-8 py-2.5 bg-accent/20 border-b">
+              <div className="flex items-center gap-3 border-b border-border/70 bg-accent/20 px-8 py-2.5">
                 <span className="text-xs font-medium">{selectedFiles.size} selected</span>
                 <Button variant="ghost" size="sm" onClick={handleSelectAll} className="h-7 px-2 text-xs">
                   Select All
@@ -464,7 +488,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             )}
 
             <ScrollArea className="flex-1">
-              <div className="divide-y">
+              <div className="divide-y divide-border/70">
                 {filteredFiles.map((file) => (
                   <FileRow
                     key={file.path}
@@ -566,7 +590,7 @@ function SessionsView({
                       {session.topics.map((topic, i) => (
                         <span
                           key={i}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                          className="text-micro px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
                         >
                           {topic}
                         </span>
@@ -598,7 +622,7 @@ function StatusBadge({ status }: { status: StudySession["status"] }) {
     completed: "Completed",
   }
   return (
-    <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", config[status])}>
+    <span className={cn("text-micro px-1.5 py-0.5 rounded font-medium", config[status])}>
       {labels[status]}
     </span>
   )

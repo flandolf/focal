@@ -176,7 +176,7 @@ export function GlobalSearch({
             <div className="py-2">
               {results.projects.length > 0 && (
                 <div>
-                  <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-4 py-1.5 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
                     Projects
                   </div>
                   {results.projects.map((project, idx) => {
@@ -196,7 +196,7 @@ export function GlobalSearch({
                           <p className="text-sm font-medium truncate">{project.name}</p>
                           {subject && (
                             <span
-                              className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                              className="text-micro px-1.5 py-0.5 rounded font-medium"
                               style={{ backgroundColor: subject.color + "20", color: subject.color }}
                             >
                               {subject.shortCode}
@@ -212,7 +212,7 @@ export function GlobalSearch({
 
               {results.sessions.length > 0 && (
                 <div>
-                  <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-4 py-1.5 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
                     Study Sessions
                   </div>
                   {results.sessions.map((session, idx) => {
@@ -243,7 +243,7 @@ export function GlobalSearch({
 
               {results.files.length > 0 && (
                 <div>
-                  <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-4 py-1.5 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
                     Files
                   </div>
                   {results.files.map((result, idx) => {
@@ -287,7 +287,7 @@ export function GlobalSearch({
           <div className="py-12 text-center text-sm text-muted-foreground">Searching...</div>
         )}
 
-        <div className="flex items-center justify-between px-4 py-2.5 border-t text-[10px] text-muted-foreground">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t text-micro text-muted-foreground">
           <div className="flex items-center gap-3">
             <span>
               <kbd className="px-1.5 py-0.5 rounded bg-muted font-mono">⌘K</kbd> toggle

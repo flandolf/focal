@@ -27,7 +27,8 @@ export function HomeView({
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
-  const projectsWithDeadlines = projects.filter((p) => p.deadline)
+  const activeProjects = projects.filter((p) => !p.isFinished)
+  const projectsWithDeadlines = activeProjects.filter((p) => p.deadline)
   const overdueProjects = projectsWithDeadlines.filter((p) => p.deadline && isOverdue(p.deadline))
   const upcomingProjects = projectsWithDeadlines.filter((p) => p.deadline && !isOverdue(p.deadline))
 
@@ -101,12 +102,11 @@ export function HomeView({
 
   return (
     <div className="h-full overflow-auto">
-      <div className="px-8 pt-8 pb-10">
-        {/* Header — compact, actions inline */}
-        <div className="flex items-start justify-between gap-6 mb-10">
-          <div className="space-y-1 min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-sm text-muted-foreground">
+      <div className="px-8 pb-10 pt-7">
+        <div className="mb-8 flex items-start justify-between gap-6">
+            <div>
+              <h1 className="font-heading text-3xl font-semibold tracking-[-0.035em]">Today</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
               {overdueProjects.length > 0 ? (
                 <span className="text-destructive font-medium">
                   {overdueProjects.length} overdue{overdueProjects.length > 0 ? "" : ""}
@@ -118,14 +118,17 @@ export function HomeView({
               {dueThisWeek.length > 0 && (
                 <span>{dueThisWeek.length} due this week</span>
               )}
-            </p>
-          </div>
+              {overdueProjects.length === 0 && dueThisWeek.length === 0 && (
+                <span>No urgent deadlines. Keep the workspace tidy.</span>
+              )}
+              </p>
+            </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button variant="outline" size="sm" onClick={onNewProject} className="gap-1.5 h-8">
+            <Button variant="outline" size="sm" onClick={onNewProject} className="h-8 gap-1.5 rounded-xl bg-background/45">
               <Plus className="h-3.5 w-3.5" />
               Project
             </Button>
-            <Button size="sm" onClick={onNewSession} className="gap-1.5 h-8">
+            <Button size="sm" onClick={onNewSession} className="h-8 gap-1.5 rounded-xl">
               <Calendar className="h-3.5 w-3.5" />
               Plan Session
             </Button>
@@ -134,7 +137,7 @@ export function HomeView({
 
         {/* Overdue banner — not a card, a compact callout */}
         {overdueProjects.length > 0 && (
-          <div className="mb-8 px-4 py-3 rounded-lg bg-destructive/5 border border-destructive/10">
+          <div className="mb-6 rounded-2xl border border-destructive/15 bg-destructive/8 px-4 py-3">
             <div className="flex items-center gap-2 mb-2">
               <AlertCircle className="h-3.5 w-3.5 text-destructive/70" />
               <span className="text-xs font-semibold text-destructive/80">
@@ -156,14 +159,16 @@ export function HomeView({
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-8">
-          {/* Calendar — dominant, takes 2/3 */}
-          <Card className="col-span-2 p-6">
-            <div className="space-y-6">
+        <div className="grid grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)] gap-6">
+          <Card className="rounded-[1.25rem] border border-border/70 bg-background/48 p-6 shadow-sm backdrop-blur">
+            <div className="space-y-5">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Assessment Calendar</h2>
+                <div>
+                  <h2 className="font-heading text-lg font-semibold tracking-tight">Assessment Calendar</h2>
+                  <p className="text-caption text-muted-foreground">Deadlines and planned sessions share the same grid.</p>
+                </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={handlePrevMonth} className="h-8 w-8 p-0">
+                  <Button variant="ghost" size="sm" onClick={handlePrevMonth} className="h-8 w-8 rounded-xl p-0">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <Button
@@ -171,20 +176,20 @@ export function HomeView({
                     size="sm"
                     onClick={handleToday}
                     className={cn(
-                      "h-8 px-3 text-xs",
+                      "h-8 rounded-xl px-3 text-xs",
                       isSameMonth(currentMonth, new Date()) && "bg-accent text-accent-foreground"
                     )}
                   >
                     Today
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={handleNextMonth} className="h-8 w-8 p-0">
+                  <Button variant="ghost" size="sm" onClick={handleNextMonth} className="h-8 w-8 rounded-xl p-0">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <h3 className="font-medium text-sm">{format(currentMonth, "MMMM yyyy")}</h3>
+                <h3 className="font-medium text-sm text-foreground/90">{format(currentMonth, "MMMM yyyy")}</h3>
 
                 <div className="grid grid-cols-7 gap-1">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
@@ -207,8 +212,8 @@ export function HomeView({
                         key={dateKey}
                         onClick={() => setSelectedDate(selectedDate === dateKey ? null : dateKey)}
                         className={cn(
-                          "h-12 rounded-lg border p-1 relative transition-colors",
-                          selectedDate === dateKey ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border hover:border-muted-foreground/30 hover:bg-accent/30",
+                          "relative h-14 rounded-xl border p-1.5 transition-colors",
+                          selectedDate === dateKey ? "border-primary bg-primary/8 ring-1 ring-primary/30" : "border-border/65 bg-background/28 hover:border-muted-foreground/30 hover:bg-accent/30",
                           isTodayDate && selectedDate !== dateKey && "border-primary bg-primary/5",
                           !isCurrentMonth && "opacity-40"
                         )}
@@ -234,7 +239,7 @@ export function HomeView({
                             />
                           ))}
                           {(dayDeadlines.length > 2 || daySessions.length > 2) && (
-                            <div className="text-[9px] leading-tight">
+                            <div className="text-micro leading-tight">
                               +{Math.max(0, dayDeadlines.length - 2) + Math.max(0, daySessions.length - 2)}
                             </div>
                           )}
@@ -249,7 +254,7 @@ export function HomeView({
                   const daySessions = sessionsByDate[selectedDate] || []
                   if (dayDeadlines.length === 0 && daySessions.length === 0) return null
                   return (
-                    <div className="pt-4 border-t">
+                    <div className="border-t border-border/70 pt-4">
                       <div className="flex items-center justify-between mb-3">
                         <p className="text-sm font-semibold">
                           {format(parseISO(selectedDate), "EEEE, MMMM d")}
@@ -265,18 +270,18 @@ export function HomeView({
                             <button
                               key={p.id}
                               onClick={() => onSelectProject(p.id)}
-                              className="w-full text-left p-2 rounded border border-border hover:border-primary/50 hover:bg-accent/30 transition-colors"
+                              className="w-full rounded-xl border border-border/70 bg-background/30 p-2 text-left transition-colors hover:border-primary/50 hover:bg-accent/30"
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                   <p className="text-xs font-medium truncate">{p.icon} {p.name}</p>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  <p className="text-micro text-muted-foreground mt-0.5">
                                     {formatDeadline(p.deadline!)}
                                   </p>
                                 </div>
                                 {subject && (
                                   <div
-                                    className="text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap font-medium flex-shrink-0"
+                                    className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium flex-shrink-0"
                                     style={{
                                       backgroundColor: subject.color + "18",
                                       color: subject.color,
@@ -295,11 +300,11 @@ export function HomeView({
                             <button
                               key={s.id}
                               onClick={() => onSelectSession(s)}
-                              className="w-full text-left p-2 rounded border border-blue-200/40 bg-blue-50/20 dark:border-blue-900/40 dark:bg-blue-950/20 hover:border-blue-400/60 transition-colors"
+                              className="w-full rounded-xl border border-blue-200/40 bg-blue-50/20 p-2 text-left transition-colors hover:border-blue-400/60 dark:border-blue-900/40 dark:bg-blue-950/20"
                             >
                               <p className="text-xs font-medium">{s.title}</p>
-                              {project && <p className="text-[10px] text-muted-foreground mt-0.5">{project.name}</p>}
-                              <p className="text-[10px] text-muted-foreground mt-1">
+                              {project && <p className="text-micro text-muted-foreground mt-0.5">{project.name}</p>}
+                              <p className="text-micro text-muted-foreground mt-1">
                                 {format(parseISO(s.startTime), "h:mm a")}
                               </p>
                             </button>
@@ -313,12 +318,10 @@ export function HomeView({
             </div>
           </Card>
 
-          {/* Sidebar — de-carded, rhythmic spacing */}
-          <div>
-            {/* Due This Week */}
+          <div className="space-y-6">
             {dueThisWeek.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-sm font-semibold mb-3">Due This Week</h3>
+              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-4 shadow-sm backdrop-blur">
+                <h3 className="mb-3 font-heading text-sm font-semibold">Due This Week</h3>
                 <div className="space-y-1">
                   {dueThisWeek.map((p) => {
                     const subject = getSubjectById(p.subjectId)
@@ -326,18 +329,18 @@ export function HomeView({
                       <button
                         key={p.id}
                         onClick={() => onSelectProject(p.id)}
-                        className="w-full text-left px-3 py-2 rounded-md hover:bg-accent/40 transition-colors group"
+                        className="group w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="text-xs font-medium truncate">{p.name}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                            <p className="text-micro text-muted-foreground mt-0.5">
                               {formatDeadline(p.deadline!)}
                             </p>
                           </div>
                           {subject && (
                             <div
-                              className="text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap font-medium flex-shrink-0"
+                              className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium flex-shrink-0"
                               style={{
                                 backgroundColor: subject.color + "14",
                                 color: subject.color,
@@ -354,10 +357,9 @@ export function HomeView({
               </div>
             )}
 
-            {/* Study Sessions — upcoming */}
             {upcomingSessions.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-4 shadow-sm backdrop-blur">
+                <h3 className="mb-3 flex items-center gap-2 font-heading text-sm font-semibold">
                   <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                   Upcoming Sessions
                 </h3>
@@ -368,13 +370,13 @@ export function HomeView({
                       <button
                         key={session.id}
                         onClick={() => onSelectSession(session)}
-                        className="w-full text-left px-3 py-2 rounded-md hover:bg-accent/40 transition-colors"
+                        className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40"
                       >
                         <p className="text-xs font-medium truncate">{session.title}</p>
                         {project && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{project.name}</p>
+                          <p className="text-micro text-muted-foreground mt-0.5">{project.name}</p>
                         )}
-                        <p className="text-[10px] text-muted-foreground mt-1">
+                        <p className="text-micro text-muted-foreground mt-1">
                           {format(parseISO(session.startTime), "MMM d, h:mm a")}
                         </p>
                       </button>
@@ -384,20 +386,20 @@ export function HomeView({
               </div>
             )}
 
-            {/* Empty state when nothing is due */}
             {dueThisWeek.length === 0 && upcomingSessions.length === 0 && overdueProjects.length === 0 && (
-              <p className="text-xs text-muted-foreground/60 leading-relaxed py-4">
-                No deadlines or sessions this week. Add a project to get started.
-              </p>
+              <div className="rounded-[1.25rem] border border-dashed border-border bg-background/30 p-4">
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  No deadlines or sessions this week. Add a project to get started.
+                </p>
+              </div>
             )}
 
-            {/* Divider before summary */}
-            <div className="border-t pt-6 mt-4">
-              <h3 className="text-sm font-semibold mb-4">Summary</h3>
+            <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-4 shadow-sm backdrop-blur">
+              <h3 className="mb-4 font-heading text-sm font-semibold">Summary</h3>
               <div className="space-y-3 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Projects</span>
-                  <span className="font-medium tabular-nums">{projects.length}</span>
+                  <span className="text-muted-foreground">Active projects</span>
+                  <span className="font-medium tabular-nums">{activeProjects.length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">With deadlines</span>
@@ -426,7 +428,7 @@ export function HomeView({
                       return (
                         <div key={subjectId} className="flex items-center justify-between">
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                            className="text-micro px-1.5 py-0.5 rounded font-medium"
                             style={{
                               backgroundColor: subject?.color + "14",
                               color: subject?.color,

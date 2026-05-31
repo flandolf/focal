@@ -23,6 +23,7 @@ function normaliseProject(raw: unknown): Project {
     examDate: typeof obj.examDate === "string" ? obj.examDate : undefined,
     isFavorite: typeof obj.isFavorite === "boolean" ? obj.isFavorite : false,
     isArchived: typeof obj.isArchived === "boolean" ? obj.isArchived : false,
+    isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
   }
 }
 

@@ -73,7 +73,7 @@ export function CustomSubjects({
 
         <ScrollArea className="max-h-[60vh] pr-4">
           <div className="space-y-1 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-2">
+            <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-2">
               Built-in VCE Subjects
             </div>
             {VCE_SUBJECTS.map((subject) => (
@@ -97,7 +97,7 @@ export function CustomSubjects({
 
             {customSubjects.length > 0 && (
               <>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1 mt-4 mb-2">
+                <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mt-4 mb-2">
                   Custom Subjects
                 </div>
                 {customSubjects.map((subject) => (

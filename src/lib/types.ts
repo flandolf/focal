@@ -78,6 +78,7 @@ export interface Project {
   examDate?: string;
   isFavorite?: boolean;
   isArchived?: boolean;
+  isFinished?: boolean;
 }
 
 export interface FileInfo {

@@ -361,6 +361,52 @@ pub fn search_files_all_projects(query: String) -> Result<Vec<SearchResult>, Str
     Ok(results)
 }
 
+#[tauri::command]
+pub fn import_folder_to_project(source_path: String) -> Result<String, String> {
+    let src = PathBuf::from(&source_path);
+    if !src.exists() {
+        return Err(format!("Source folder not found: {}", source_path));
+    }
+    if !src.is_dir() {
+        return Err(format!("Source path is not a directory: {}", source_path));
+    }
+
+    let folder_name = src.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or("Could not determine folder name")?;
+
+    let projects_dir = get_documents_dir()?;
+    let mut dest = projects_dir.join(&folder_name);
+
+    if dest.exists() {
+        let mut counter = 1;
+        while dest.exists() {
+            dest = projects_dir.join(format!("{} ({})", folder_name, counter));
+            counter += 1;
+        }
+    }
+
+    copy_dir_recursive(&src, &dest)
+        .map_err(|e| format!("Failed to copy folder: {}", e))?;
+
+    Ok(dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+fn copy_dir_recursive(src: &PathBuf, dest: &PathBuf) -> Result<(), std::io::Error> {
+    std::fs::create_dir_all(dest)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if path.is_dir() {
+            copy_dir_recursive(&path, &dest_path)?;
+        } else {
+            std::fs::copy(&path, &dest_path)?;
+        }
+    }
+    Ok(())
+}
+
 fn read_project_files_recursive(dir: &PathBuf, query: &str, project_prefix: &str) -> Result<Vec<SearchResult>, String> {
     let mut results = Vec::new();
 
