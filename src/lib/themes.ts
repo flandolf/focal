@@ -1,37 +1,64 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 
 export type ThemeId = "focal" | "codex" | "claude"
+export type ThemeMode = "light" | "dark" | "system"
 
 export interface ThemeDef {
   id: ThemeId
   name: string
-  label: string
-  dark: boolean
 }
 
 export const THEMES: ThemeDef[] = [
-  { id: "focal", name: "Focal Light", label: "Light", dark: false },
-  { id: "focal", name: "Focal Dark", label: "Dark", dark: true },
-  { id: "codex", name: "Codex Light", label: "Light", dark: false },
-  { id: "codex", name: "Codex Dark", label: "Dark", dark: true },
-  { id: "claude", name: "Claude Light", label: "Light", dark: false },
-  { id: "claude", name: "Claude Dark", label: "Dark", dark: true },
+  { id: "focal", name: "Focal" },
+  { id: "codex", name: "Codex" },
+  { id: "claude", name: "Claude" },
 ]
 
-export interface ThemeSelection {
+interface ThemeSelection {
   theme: ThemeId
-  dark: boolean
+  mode: ThemeMode
 }
 
 const STORAGE_KEY = "focal-theme"
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isThemeId(value: unknown): value is ThemeId {
+  return typeof value === "string" && THEMES.some((theme) => theme.id === value)
+}
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === "light" || value === "dark" || value === "system"
+}
+
+function getSystemDark(): boolean {
+  if (typeof window === "undefined") return false
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+}
+
+function resolveDark(mode: ThemeMode): boolean {
+  if (mode === "system") return getSystemDark()
+  return mode === "dark"
+}
+
 function getInitialTheme(): ThemeSelection {
-  if (typeof window === "undefined") return { theme: "focal", dark: false }
+  if (typeof window === "undefined") return { theme: "focal", mode: "system" }
   const stored = localStorage.getItem(STORAGE_KEY)
   if (stored) {
     try {
-      const parsed = JSON.parse(stored) as ThemeSelection
-      if (THEMES.some((t) => t.id === parsed.theme)) return parsed
+      const parsed = JSON.parse(stored) as unknown
+      if (typeof parsed === "object" && parsed !== null) {
+        // Migrate old format: { theme, dark: boolean }
+        if (isRecord(parsed) && typeof parsed.dark === "boolean" && isThemeId(parsed.theme)) {
+          return { theme: parsed.theme, mode: parsed.dark ? "dark" : "light" }
+        }
+        // New format: { theme, mode }
+        if (isRecord(parsed) && isThemeId(parsed.theme) && isThemeMode(parsed.mode)) {
+          return { theme: parsed.theme, mode: parsed.mode }
+        }
+      }
     } catch {
       // fall through
     }
@@ -39,42 +66,50 @@ function getInitialTheme(): ThemeSelection {
   // Migrate from old focal-dark key
   const oldDark = localStorage.getItem("focal-dark")
   if (oldDark !== null) {
-    return { theme: "focal", dark: oldDark === "true" }
+    return { theme: "focal", mode: oldDark === "true" ? "dark" : "light" }
   }
-  return {
-    theme: "focal",
-    dark: window.matchMedia("(prefers-color-scheme: dark)").matches,
-  }
+  return { theme: "focal", mode: "system" }
 }
 
 export function useTheme() {
   const [selection, setSelection] = useState<ThemeSelection>(getInitialTheme)
+  const resolvedDark = resolveDark(selection.mode)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(selection))
     const root = document.documentElement
-    // Remove all theme classes
     root.classList.remove("focal", "codex", "claude")
-    // Add the current theme class (if not focal, which is the default)
     if (selection.theme !== "focal") {
       root.classList.add(selection.theme)
     }
-    // Toggle dark mode
-    root.classList.toggle("dark", selection.dark)
-  }, [selection])
+    root.classList.toggle("dark", resolvedDark)
+  }, [selection, resolvedDark])
 
-  const setTheme = (theme: ThemeId) => {
+  // Listen for OS theme changes when mode is "system"
+  useEffect(() => {
+    if (selection.mode !== "system") return
+    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+    const handler = () => {
+      const root = document.documentElement
+      root.classList.toggle("dark", mq.matches)
+    }
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [selection.mode])
+
+  const setTheme = useCallback((theme: ThemeId) => {
     setSelection((prev) => ({ ...prev, theme }))
-  }
+  }, [])
 
-  const toggleDark = () => {
-    setSelection((prev) => ({ ...prev, dark: !prev.dark }))
-  }
+  const setMode = useCallback((mode: ThemeMode) => {
+    setSelection((prev) => ({ ...prev, mode }))
+  }, [])
 
   return {
     theme: selection.theme,
-    dark: selection.dark,
+    mode: selection.mode,
+    resolvedDark,
     setTheme,
-    toggleDark,
+    setMode,
   }
 }

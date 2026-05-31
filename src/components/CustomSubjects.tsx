@@ -72,8 +72,8 @@ export function CustomSubjects({
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh] pr-4">
-          <div className="space-y-1 py-2">
-            <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-2">
+          <div className="space-y-0.5 py-1.5">
+            <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-1.5">
               Built-in VCE Subjects
             </div>
             {VCE_SUBJECTS.map((subject) => (
@@ -94,10 +94,9 @@ export function CustomSubjects({
                 </span>
               </div>
             ))}
-
             {customSubjects.length > 0 && (
               <>
-                <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mt-4 mb-2">
+                <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mt-3 mb-1.5">
                   Custom Subjects
                 </div>
                 {customSubjects.map((subject) => (
@@ -130,8 +129,8 @@ export function CustomSubjects({
         </ScrollArea>
 
         {showForm ? (
-          <div className="space-y-3 pt-3 border-t">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2.5 pt-2.5 border-t">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="text-xs font-medium mb-1 block">Name</label>
                 <Input
@@ -203,7 +202,7 @@ export function CustomSubjects({
             onClick={() => setShowForm(true)}
             variant="outline"
             size="sm"
-            className="w-full gap-1.5 mt-3"
+            className="w-full gap-1.5 mt-2"
           >
             <Plus className="h-3.5 w-3.5" />
             Add Custom Subject

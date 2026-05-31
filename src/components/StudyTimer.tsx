@@ -50,7 +50,12 @@ const initialState: TimerState = {
   cycles: 0,
 }
 
-export function StudyTimer() {
+interface StudyTimerProps {
+  isCollapsed?: boolean
+  onExpand?: () => void
+}
+
+export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
   const [expanded, setExpanded] = useState(true)
   const [state, dispatch] = useReducer(timerReducer, initialState)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -97,6 +102,23 @@ export function StudyTimer() {
   const modeLabel = mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
   const modeColor = mode === "work" ? "text-primary" : "text-emerald-500"
 
+  if (isCollapsed) {
+    return (
+      <div className="flex justify-center py-2">
+        <button
+          onClick={onExpand}
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-sidebar-accent/60",
+            running ? modeColor : "text-muted-foreground hover:text-foreground"
+          )}
+          title={running ? `${timeDisplay} - ${modeLabel}` : "Pomodoro"}
+        >
+          <Timer className="h-4 w-4" />
+        </button>
+      </div>
+    )
+  }
+
   if (!expanded) {
     return (
       <div className="border-t border-sidebar-border/70 px-3 py-2">
@@ -122,24 +144,22 @@ export function StudyTimer() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => setExpanded(false)}
-          className="flex items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="flex items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground shrink-0"
         >
           <Timer className="h-3.5 w-3.5" />
           Pomodoro
           <ChevronDown className="h-3 w-3" />
         </button>
-        <div className="flex items-center gap-2">
-          <span className={cn("text-xs font-medium", modeColor)}>
-            {modeLabel} · Cycle {cycles + 1}
-          </span>
-          <button
-            onClick={handleReset}
-            className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
-            aria-label="Reset timer"
-          >
-            <RotateCcw className="h-3 w-3" />
-          </button>
-        </div>
+        <button
+          onClick={handleReset}
+          className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
+          aria-label="Reset timer"
+        >
+          <RotateCcw className="h-3 w-3" />
+        </button>
+      </div>
+      <div className={cn("text-xs font-medium", modeColor)}>
+        {modeLabel} · Cycle {cycles + 1}
       </div>
 
       <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-3">

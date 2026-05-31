@@ -145,49 +145,8 @@ export function EditStudySessionDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-5 py-5">
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Project</label>
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={projectId}
-                onChange={(e) => handleProjectChange(e.target.value)}
-              >
-                <option value="">No project</option>
-                {projects.filter((p) => !p.isArchived).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.icon} {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Subjects</label>
-              <div className="max-h-40 overflow-auto rounded-xl border border-input bg-background/35 p-2">
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                  {subjects.map((subject) => (
-                    <label
-                      key={subject.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-accent/45"
-                    >
-                      <Checkbox
-                        checked={subjectIds.includes(subject.id)}
-                        onCheckedChange={() => toggleSubject(subject.id)}
-                      />
-                      <span className="min-w-0 truncate">
-                        {subject.icon} {subject.name}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {subjectIds.length === 0 && (
-                <p className="text-xs text-muted-foreground">Choose at least one subject.</p>
-              )}
-            </div>
-
-            <div className="space-y-2.5">
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Session Title</label>
               <Input
                 placeholder="e.g. Review Unit 3 notes"
@@ -197,17 +156,34 @@ export function EditStudySessionDialog({
               />
             </div>
 
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Description</label>
-              <Input
-                placeholder="Optional — what did you achieve?"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Project</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={projectId}
+                  onChange={(e) => handleProjectChange(e.target.value)}
+                >
+                  <option value="">No project</option>
+                  {projects.filter((p) => !p.isArchived).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.icon} {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <Input
+                  placeholder="Optional — what did you achieve?"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -232,8 +208,7 @@ export function EditStudySessionDialog({
                   </PopoverContent>
                 </Popover>
               </div>
-
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Start Time</label>
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
@@ -247,34 +222,60 @@ export function EditStudySessionDialog({
               </div>
             </div>
 
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Duration (minutes)</label>
-              <Input
-                type="number"
-                min="15"
-                step="15"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                placeholder="60"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Duration (minutes)</label>
+                <Input
+                  type="number"
+                  min="15"
+                  step="15"
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  placeholder="60"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Topics (comma-separated)</label>
+                <Input
+                  placeholder="e.g. Photosynthesis, Cell Division"
+                  value={topicsInput}
+                  onChange={(e) => setTopicsInput(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2.5">
-              <label className="text-sm font-medium">Topics (comma-separated)</label>
-              <Input
-                placeholder="e.g. Photosynthesis, Cell Division"
-                value={topicsInput}
-                onChange={(e) => setTopicsInput(e.target.value)}
-              />
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Subjects</label>
+              <div className="max-h-36 overflow-auto rounded-xl border border-input bg-background/35 p-2">
+                <div className="grid grid-cols-2 gap-1">
+                  {subjects.map((subject) => (
+                    <label
+                      key={subject.id}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-accent/45"
+                    >
+                      <Checkbox
+                        checked={subjectIds.includes(subject.id)}
+                        onCheckedChange={() => toggleSubject(subject.id)}
+                      />
+                      <span className="min-w-0 truncate">
+                        {subject.icon} {subject.name}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {subjectIds.length === 0 && (
+                <p className="text-xs text-muted-foreground">Choose at least one subject.</p>
+              )}
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Notes</label>
               <textarea
                 placeholder="Key concepts, resources, or reminders..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                rows={3}
+                rows={2}
                 className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
               />
             </div>

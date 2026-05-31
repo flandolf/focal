@@ -273,6 +273,29 @@ pub fn rename_file(file_path: String, new_name: String) -> Result<String, String
 }
 
 #[tauri::command]
+pub fn move_file_to_folder(file_path: String, dest_folder: String) -> Result<String, String> {
+    let src = PathBuf::from(&file_path);
+    if !src.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+    if !src.is_file() {
+        return Err("Cannot move: path is not a file".to_string());
+    }
+    let dest_dir = PathBuf::from(&dest_folder);
+    if !dest_dir.exists() {
+        return Err(format!("Destination folder not found: {}", dest_folder));
+    }
+    let file_name = src.file_name().ok_or("Failed to resolve file name")?;
+    let dest = dest_dir.join(file_name);
+    if dest.exists() {
+        return Err(format!("A file with the same name already exists in the destination"));
+    }
+    std::fs::rename(&src, &dest)
+        .map_err(|e| format!("Failed to move file: {}", e))?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn get_file_content_previews(
     file_paths: Vec<String>,
     max_chars_per_file: Option<usize>,

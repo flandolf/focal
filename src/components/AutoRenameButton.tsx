@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { Wand2, Loader2, X, Check } from "lucide-react"
+import { Wand2, Loader2, X, Check, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -8,15 +8,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileTypeIcon } from "@/components/FileTypeIcon"
 import type { FileInfo } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { getApiKey, getModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent } from "@/lib/settings"
 interface RenameEntry {
   file: FileInfo
   newName: string
   approved: boolean
+  error?: string
 }
 
 interface AutoRenameButtonProps {
@@ -209,10 +212,10 @@ Rules:
     renamed: mapping.get(original) ?? original,
   }))
 }
-
 export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [entries, setEntries] = useState<RenameEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [useFileContent, setUseFileContent] = useState(() => getAutoRenameUseFileContent())
@@ -250,7 +253,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
 
   const toggleApproved = useCallback((index: number) => {
     setEntries((prev) =>
-      prev.map((e, i) => (i === index ? { ...e, approved: !e.approved } : e)),
+      prev.map((e, i) => (i === index ? { ...e, approved: !e.approved, error: undefined } : e)),
     )
   }, [])
 
@@ -259,8 +262,31 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
       .filter((e) => e.approved && e.newName !== e.file.name)
       .map((e) => ({ filePath: e.file.path, newName: e.newName }))
     if (toApply.length === 0) return
-    await onApplyRenames(toApply)
-    setOpen(false)
+
+    setApplying(true)
+    setError(null)
+    const failedPaths = new Set<string>()
+
+    try {
+      await onApplyRenames(toApply)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setApplying(false)
+      return
+    }
+
+    setEntries((prev) =>
+      prev.map((e) => {
+        if (!e.approved || e.newName === e.file.name) return e
+        return { ...e, error: failedPaths.has(e.file.path) ? "Rename failed" : undefined }
+      })
+    )
+
+    const anyFailed = failedPaths.size > 0
+    setApplying(false)
+    if (!anyFailed) {
+      setOpen(false)
+    }
   }, [entries, onApplyRenames])
 
   const changedCount = entries.filter((e) => e.newName !== e.file.name).length
@@ -280,7 +306,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Auto Rename Files</DialogTitle>
             <DialogDescription>
@@ -297,7 +323,8 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
             )}
 
             {error && (
-              <p className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2">
+              <p className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2 flex items-center gap-2">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 {error}
               </p>
             )}
@@ -321,38 +348,34 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
               />
             </div>
 
-            <Button
-              onClick={handleGenerate}
-              disabled={loading || apiKeyMissing}
-              className="gap-1.5"
-              size="sm"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Wand2 className="h-4 w-4" />
-              )}
-              {loading ? "Generating..." : "Generate Renames"}
-            </Button>
-
-            {entries.length > 0 && (
-              <>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleGenerate}
+                disabled={loading || apiKeyMissing}
+                className="gap-1.5"
+                size="sm"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
+                {loading ? "Generating..." : "Generate Renames"}
+              </Button>
+              {entries.length > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground">
                     {changedCount} change{changedCount !== 1 ? "s" : ""} suggested
-                    {approvedCount !== changedCount
-                      ? ` · ${approvedCount} approved`
-                      : ""}
+                    {approvedCount !== changedCount ? ` · ${approvedCount} approved` : ""}
                   </span>
+                  <div className="flex-1" />
                   {changedCount > 0 && (
                     <div className="flex gap-2">
                       <button
                         onClick={() =>
-                          setEntries((prev) =>
-                            prev.map((e) => ({ ...e, approved: true })),
-                          )
+                          setEntries((prev) => prev.map((e) => ({ ...e, approved: true, error: undefined })))
                         }
-                        className="hover:text-foreground"
+                        className="text-xs text-muted-foreground hover:text-foreground"
                       >
                         Approve all
                       </button>
@@ -362,87 +385,104 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                             prev.map((e) => ({
                               ...e,
                               approved: e.newName === e.file.name,
+                              error: undefined,
                             })),
                           )
                         }
-                        className="hover:text-foreground"
+                        className="text-xs text-muted-foreground hover:text-foreground"
                       >
                         Reject all
                       </button>
                     </div>
                   )}
-                </div>
+                </>
+              )}
+            </div>
 
-                <ScrollArea className="flex-1 border rounded-lg">
-                  <div className="divide-y">
-                    {entries.map((entry, i) => {
-                      const isChanged = entry.newName !== entry.file.name
-                      return (
-                        <div
-                          key={entry.file.path}
-                          className={`flex items-center gap-3 px-3 py-2.5 text-sm ${
-                            !isChanged ? "opacity-40" : ""
-                          }`}
+            {entries.length > 0 && (
+              <ScrollArea className="flex-1 border rounded-lg">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-border/30">
+                  {entries.map((entry, i) => {
+                    const isChanged = entry.newName !== entry.file.name
+                    return (
+                      <div
+                        key={entry.file.path}
+                        className={cn(
+                          "flex items-center gap-2.5 bg-background px-3 py-2",
+                          !isChanged && "opacity-40"
+                        )}
+                      >
+                        <FileTypeIcon extension={entry.file.extension} className="size-7 rounded-md shrink-0" iconClassName="size-3.5" />
+                        <button
+                          onClick={() => isChanged && toggleApproved(i)}
+                          disabled={!isChanged}
+                          className={cn(
+                            "shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+                            !isChanged
+                              ? "border-muted-foreground/20 cursor-default"
+                              : entry.approved
+                                ? "bg-emerald-500 border-emerald-500 text-white"
+                                : "border-muted-foreground/30 hover:border-muted-foreground"
+                          )}
                         >
-                          <FileTypeIcon extension={entry.file.extension} className="size-7 rounded-md" iconClassName="size-3.5" />
-                          <button
-                            onClick={() => isChanged && toggleApproved(i)}
-                            disabled={!isChanged}
-                            className={`shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              !isChanged
-                                ? "border-muted-foreground/20 cursor-default"
-                                : entry.approved
-                                  ? "bg-emerald-500 border-emerald-500 text-white"
-                                  : "border-muted-foreground/30 hover:border-muted-foreground"
-                            }`}
-                          >
-                            {entry.approved && isChanged && (
-                              <Check className="h-3 w-3" />
-                            )}
-                          </button>
-                          <div className="flex-1 min-w-0 space-y-0.5">
-                            <p className="text-caption text-muted-foreground/50 truncate line-through">
-                              {entry.file.name}
-                            </p>
-                            <p className="text-sm font-medium truncate">
-                              {entry.newName}
-                            </p>
-                          </div>
-                          {isChanged && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setEntries((prev) =>
-                                  prev.map((e, idx) =>
-                                    idx === i
-                                      ? { ...e, newName: e.file.name, approved: false }
-                                      : e,
-                                  ),
-                                )
-                              }}
-                              className="shrink-0 p-0.5 rounded hover:bg-accent text-muted-foreground"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
+                          {entry.approved && isChanged && <Check className="h-2.5 w-2.5" />}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-caption text-muted-foreground/50 truncate line-through leading-tight">
+                            {entry.file.name}
+                          </p>
+                          <p className="text-xs font-medium truncate leading-tight">
+                            {entry.newName}
+                          </p>
+                          {entry.error && (
+                            <p className="text-micro text-destructive mt-0.5">{entry.error}</p>
                           )}
                         </div>
-                      )
-                    })}
-                  </div>
-                </ScrollArea>
-
-                <Button
-                  onClick={handleApply}
-                  disabled={approvedCount === 0}
-                  className="gap-1.5"
-                  size="sm"
-                >
-                  <Check className="h-4 w-4" />
-                  Apply {approvedCount} Rename{approvedCount !== 1 ? "s" : ""}
-                </Button>
-              </>
+                        {isChanged && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEntries((prev) =>
+                                prev.map((e, idx) =>
+                                  idx === i
+                                    ? { ...e, newName: e.file.name, approved: false, error: undefined }
+                                    : e,
+                                ),
+                              )
+                            }}
+                            className="shrink-0 p-0.5 rounded hover:bg-accent text-muted-foreground"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </ScrollArea>
             )}
           </div>
+
+          {entries.length > 0 && (
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleApply}
+                disabled={approvedCount === 0 || applying}
+                className="gap-1.5"
+                size="sm"
+              >
+                {applying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                {applying ? "Applying..." : `Apply ${approvedCount} Rename${approvedCount !== 1 ? "s" : ""}`}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </>
