@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Focal",
-        "width": 1100,
-        "height": 700,
+        "width": 1280,
+        "height": 800,
         "minWidth": 800,
         "minHeight": 500
       }

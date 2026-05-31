@@ -12,29 +12,14 @@ import { ProjectSettingsDialog } from "@/components/ProjectSettingsDialog"
 import { GlobalSearch } from "@/components/GlobalSearch"
 import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
-import { SettingsDialog } from "@/components/SettingsDialog"
+import { SettingsView } from "@/components/SettingsView"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
+import { useTheme } from "@/lib/themes"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { StudySession, Subject } from "@/lib/types"
-
-function useDarkMode() {
-  const [dark, setDark] = useState(() => {
-    if (typeof window === "undefined") return false
-    const stored = localStorage.getItem("focal-dark")
-    if (stored !== null) return stored === "true"
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-  })
-
-  useEffect(() => {
-    localStorage.setItem("focal-dark", String(dark))
-    document.documentElement.classList.toggle("dark", dark)
-  }, [dark])
-
-  return { dark, toggle: () => setDark((d) => !d) }
-}
 
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
@@ -50,14 +35,14 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [subjectsOpen, setSubjectsOpen] = useState(false)
-  const [appSettingsOpen, setAppSettingsOpen] = useState(false)
+  const [settingsView, setSettingsView] = useState(false)
   const [customSubjects, setCustomSubjects] = useState<Subject[]>(() => {
     if (typeof window === "undefined") return []
     const stored = localStorage.getItem("focal-custom-subjects")
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return stored ? JSON.parse(stored) : []
   })
-  const { dark, toggle: toggleDark } = useDarkMode()
+  const { theme, dark, setTheme, toggleDark } = useTheme()
 
   useEffect(() => {
     localStorage.setItem("focal-custom-subjects", JSON.stringify(customSubjects))
@@ -102,11 +87,13 @@ function App() {
   const handleSelectProject = (id: string) => {
     setSelectedId(id)
     setHomeSelected(false)
+    setSettingsView(false)
   }
 
   const handleSelectHome = () => {
     setSelectedId(null)
     setHomeSelected(true)
+    setSettingsView(false)
   }
 
   const handleCreateProject = async (data: {
@@ -154,6 +141,7 @@ function App() {
       examDate?: string
       isFavorite?: boolean
       isArchived?: boolean
+      isFinished?: boolean
     }
   ) => {
     try {
@@ -273,6 +261,21 @@ function App() {
     }
   }
 
+  const handleToggleFinished = async (id: string) => {
+    const project = projects.find((p) => p.id === id)
+    if (!project) return
+    try {
+      await updateProject(id, { isFinished: !project.isFinished })
+      if (!project.isFinished) {
+        toast.success(`"${project.name}" marked as complete`)
+      } else {
+        toast.success(`"${project.name}" marked as active`)
+      }
+    } catch (e) {
+      toast.error(`Failed to update project: ${String(e)}`)
+    }
+  }
+
   const handleSelectSession = (session: StudySession) => {
     setSelectedSession(session)
     setEditSessionDialogOpen(true)
@@ -280,59 +283,73 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen overflow-hidden">
-        <div className="w-96 shrink-0">
-          <Sidebar
-            projects={projects}
-            selectedId={selectedId}
-            homeSelected={homeSelected}
-            onSelect={handleSelectProject}
-            onSelectHome={handleSelectHome}
-            onDelete={handleDeleteProject}
-            onNewProject={() => setDialogOpen(true)}
-            onToggleFavorite={handleToggleFavorite}
-            onToggleArchive={handleToggleArchive}
-            fileCounts={fileCounts}
-            onOpenSettings={() => setAppSettingsOpen(true)}
-            onOpenSearch={() => setSearchOpen(true)}
-            onOpenExport={() => setExportOpen(true)}
-            onOpenSubjects={() => setSubjectsOpen(true)}
-          />
-        </div>
-        <main className="flex-1 overflow-auto">
-          {homeSelected ? (
-            <HomeView
+      <div className="focal-shell relative h-screen overflow-hidden p-3 text-foreground">
+        <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
+        <div className="pointer-events-none absolute inset-x-8 top-3 h-px bg-foreground/10" />
+        <div className="relative z-10 grid h-full grid-cols-[21rem_minmax(0,1fr)] gap-3">
+          <div className="min-h-0">
+            <Sidebar
               projects={projects}
-              sessions={sessions}
-              onSelectProject={handleSelectProject}
-              onSelectSession={handleSelectSession}
-              onNewSession={() => setSessionDialogOpen(true)}
+              selectedId={selectedId}
+              homeSelected={homeSelected}
+              onSelect={handleSelectProject}
+              onSelectHome={handleSelectHome}
+              onDelete={handleDeleteProject}
               onNewProject={() => setDialogOpen(true)}
+              onToggleFavorite={handleToggleFavorite}
+              onToggleArchive={handleToggleArchive}
+              onToggleFinished={handleToggleFinished}
+              fileCounts={fileCounts}
+              onOpenSettings={() => setSettingsView(true)}
+              onOpenSearch={() => setSearchOpen(true)}
+              onOpenExport={() => setExportOpen(true)}
+              onOpenSubjects={() => setSubjectsOpen(true)}
             />
-          ) : selectedProject ? (
-            <ProjectDetail
-              project={selectedProject}
-              sessions={sessions.filter((s) => s.projectId === selectedProject.id)}
-              onFilesChanged={refreshFileCounts}
-              onOpenSettings={() => setSettingsOpen(true)}
-              onSelectSession={handleSelectSession}
-              onNewSession={() => setSessionDialogOpen(true)}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div className="mb-6 w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center">
-                <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
+          </div>
+          <main className="glass-panel min-w-0 overflow-hidden rounded-[1.35rem]">
+            {settingsView ? (
+              <SettingsView
+                onBack={() => setSettingsView(false)}
+                theme={theme}
+                dark={dark}
+                onSetTheme={setTheme}
+                onToggleDark={toggleDark}
+              />
+            ) : homeSelected ? (
+              <HomeView
+                projects={projects}
+                sessions={sessions}
+                onSelectProject={handleSelectProject}
+                onSelectSession={handleSelectSession}
+                onNewSession={() => setSessionDialogOpen(true)}
+                onNewProject={() => setDialogOpen(true)}
+              />
+            ) : selectedProject ? (
+              <ProjectDetail
+                project={selectedProject}
+                sessions={sessions.filter((s) => s.projectId === selectedProject.id)}
+                onFilesChanged={refreshFileCounts}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onToggleFinished={handleToggleFinished}
+                onSelectSession={handleSelectSession}
+                onNewSession={() => setSessionDialogOpen(true)}
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30">
+                  <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
+                </div>
+                <p className="mb-6 max-w-56 text-sm leading-relaxed text-muted-foreground">
+                  Choose a project from the sidebar or create a new one to start organising your files.
+                </p>
+                <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
+                  <FolderOpen className="h-4 w-4" />
+                  New Project
+                </Button>
               </div>
-              <p className="text-sm text-muted-foreground mb-6 max-w-56 leading-relaxed">
-                Choose a project from the sidebar or create a new one to start organising your files.
-              </p>
-              <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
-                <FolderOpen className="h-4 w-4" />
-                New Project
-              </Button>
-            </div>
-          )}
-        </main>
+            )}
+          </main>
+        </div>
         <NewProjectDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
@@ -382,13 +399,6 @@ function App() {
           open={subjectsOpen}
           onOpenChange={setSubjectsOpen}
         />
-        <SettingsDialog
-          open={appSettingsOpen}
-          onOpenChange={setAppSettingsOpen}
-          dark={dark}
-          onToggleDark={toggleDark}
-        />
-
         <Toaster />
       </div>
     </TooltipProvider>

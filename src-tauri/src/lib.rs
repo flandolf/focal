@@ -18,6 +18,7 @@ pub fn run() {
             commands::files::delete_files,
             commands::files::rename_file,
             commands::files::get_file_content_previews,
+            commands::files::import_folder_to_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

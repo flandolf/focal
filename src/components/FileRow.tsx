@@ -118,7 +118,7 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
         onClick={(e: { stopPropagation: () => void }) => e.stopPropagation()}
         className="w-4 h-4 shrink-0"
       />
-      <span className={`text-[11px] font-semibold tracking-wide w-4 text-center leading-none shrink-0 ${color}`}>
+      <span className={`text-caption font-semibold tracking-wide w-4 text-center leading-none shrink-0 ${color}`}>
         {label}
       </span>
       <div className="flex-1 min-w-0">
@@ -164,7 +164,7 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
           </div>
         )}
         <div className="flex items-center gap-2 mt-1">
-          <p className="text-[11px] text-muted-foreground/60 leading-tight">
+          <p className="text-caption text-muted-foreground/60 leading-tight">
             {formatDate(file.modified)}
           </p>
           {fileTags.length > 0 && (
@@ -173,7 +173,7 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
                 <Badge
                   key={tag}
                   variant="secondary"
-                  className={cn("text-[10px] px-1.5 py-0.5 font-medium", TAG_COLORS[tag] || TAG_COLORS.other)}
+                  className={cn("text-micro px-1.5 py-0.5 font-medium", TAG_COLORS[tag] || TAG_COLORS.other)}
                 >
                   {tag}
                 </Badge>
@@ -182,10 +182,10 @@ export function FileRow({ file, onOpen, onRename, isSelected = false, onSelectio
           )}
         </div>
       </div>
-      <span className="text-[11px] text-muted-foreground/70 font-mono tabular-nums w-20 text-right">
+      <span className="text-caption text-muted-foreground/70 font-mono tabular-nums w-20 text-right">
         {formatFileSize(file.size)}
       </span>
-      <span className="text-[11px] text-muted-foreground/50 font-mono uppercase w-12 text-right tabular-nums">
+      <span className="text-caption text-muted-foreground/50 font-mono uppercase w-12 text-right tabular-nums">
         .{file.extension || "?"}
       </span>
     </div>

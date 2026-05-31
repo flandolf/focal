@@ -1,12 +1,12 @@
 import { useState } from "react"
-import { Plus, Trash2, Home, Star, Archive, Search, Database, Palette, Settings } from "lucide-react"
+import { Plus, Trash2, Home, Star, Archive, CheckCircle2, Search, Database, Palette, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StudyTimer } from "@/components/StudyTimer"
 import { cn, formatDeadline, isOverdue, sortProjectsByDeadline, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
 import type { Project } from "@/lib/types"
 
-type FilterMode = "active" | "favorites" | "archived"
+type FilterMode = "active" | "favorites" | "archived" | "finished"
 
 interface SidebarProps {
   projects: Project[]
@@ -18,6 +18,7 @@ interface SidebarProps {
   onNewProject: () => void
   onToggleFavorite?: (id: string) => void
   onToggleArchive?: (id: string) => void
+  onToggleFinished?: (id: string) => void
   fileCounts: Record<string, number>
   onOpenSettings?: () => void
   onOpenSearch?: () => void
@@ -35,6 +36,7 @@ export function Sidebar({
   onNewProject,
   onToggleFavorite,
   onToggleArchive,
+  onToggleFinished,
   fileCounts,
   onOpenSettings,
   onOpenSearch,
@@ -45,73 +47,82 @@ export function Sidebar({
   const sorted = sortProjectsByDeadline(projects)
 
   const filtered = sorted.filter((p) => {
-    if (filterMode === "favorites") return p.isFavorite && !p.isArchived
+    if (filterMode === "favorites") return p.isFavorite && !p.isArchived && !p.isFinished
     if (filterMode === "archived") return p.isArchived
-    return !p.isArchived
+    if (filterMode === "finished") return p.isFinished && !p.isArchived
+    return !p.isArchived && !p.isFinished
   })
 
-  const favoriteCount = sorted.filter((p) => p.isFavorite && !p.isArchived).length
+  const favoriteCount = sorted.filter((p) => p.isFavorite && !p.isArchived && !p.isFinished).length
   const archivedCount = sorted.filter((p) => p.isArchived).length
+  const finishedCount = sorted.filter((p) => p.isFinished && !p.isArchived).length
+  const activeCount = sorted.filter((p) => !p.isArchived && !p.isFinished).length
 
   return (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      {/* Header */}
-      <div className="px-4 pt-4 pb-3 space-y-4">
+    <div className="glass-sidebar flex h-full flex-col overflow-hidden rounded-[1.35rem] text-sidebar-foreground">
+      <div className="px-4 pb-4 pt-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5 select-none">
-            <span className="text-lg leading-none">🎯</span>
-            <h1 className="font-semibold text-base tracking-tight">Focal</h1>
+          <div className="flex items-center gap-3 select-none">
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-sidebar-border bg-background/55 text-sm shadow-sm backdrop-blur">
+              F
+            </span>
+            <div className="min-w-0">
+              <h1 className="font-heading text-base font-semibold tracking-tight">Focal</h1>
+              <p className="text-caption text-muted-foreground">Study workspace</p>
+            </div>
           </div>
           <div className="flex items-center gap-0.5">
             {onOpenSearch && (
               <button
                 onClick={onOpenSearch}
-                className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
                 aria-label="Search"
               >
-                <Search className="h-3.5 w-3.5" />
+                <Search className="h-4 w-4" />
               </button>
             )}
             {onOpenSettings && (
               <button
                 onClick={onOpenSettings}
-                className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
                 aria-label="Settings"
               >
-                <Settings className="h-3.5 w-3.5" />
+                <Settings className="h-4 w-4" />
               </button>
             )}
           </div>
         </div>
 
-        <Button onClick={onNewProject} className="w-full gap-1.5 h-8" size="sm">
+        <Button onClick={onNewProject} className="mt-4 h-9 w-full gap-1.5 rounded-2xl" size="sm">
           <Plus className="h-4 w-4" />
           New Project
         </Button>
       </div>
 
-      {/* Navigation + Filters */}
-      <div className="px-3 space-y-3">
+      <div className="space-y-3 px-3">
         <button
           onClick={onSelectHome}
           className={cn(
-            "w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors text-left",
+            "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition-colors",
             homeSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
           )}
         >
           <Home className="h-4 w-4 shrink-0" />
-          Dashboard
+          <span className="font-medium">Today</span>
+          <span className="ml-auto rounded-full bg-background/55 px-2 py-0.5 text-caption text-muted-foreground">
+            {activeCount}
+          </span>
         </button>
 
-        <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-sidebar-accent/40">
+        <div className="grid grid-cols-2 gap-1 rounded-2xl border border-sidebar-border bg-background/30 p-1">
           <button
             onClick={() => setFilterMode("active")}
             className={cn(
-              "flex-1 py-1.5 text-xs rounded-sm transition-colors",
+              "rounded-xl px-2 py-1.5 text-xs transition-colors",
               filterMode === "active"
-                ? "bg-background text-foreground shadow-xs font-medium"
+                ? "bg-background/80 text-foreground shadow-xs font-medium"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -120,50 +131,65 @@ export function Sidebar({
           <button
             onClick={() => setFilterMode("favorites")}
             className={cn(
-              "flex-1 py-1.5 text-xs rounded-sm transition-colors flex items-center justify-center gap-1",
+              "flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-xs transition-colors",
               filterMode === "favorites"
-                ? "bg-background text-foreground shadow-xs font-medium"
+                ? "bg-background/80 text-foreground shadow-xs font-medium"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Star className="h-3 w-3" />
             Starred
             {favoriteCount > 0 && (
-              <span className="tabular-nums text-[11px]">{favoriteCount}</span>
+              <span className="tabular-nums text-caption">{favoriteCount}</span>
             )}
           </button>
           <button
             onClick={() => setFilterMode("archived")}
             className={cn(
-              "flex-1 py-1.5 text-xs rounded-sm transition-colors flex items-center justify-center gap-1",
+              "flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-xs transition-colors",
               filterMode === "archived"
-                ? "bg-background text-foreground shadow-xs font-medium"
+                ? "bg-background/80 text-foreground shadow-xs font-medium"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Archive className="h-3 w-3" />
             Archive
             {archivedCount > 0 && (
-              <span className="tabular-nums text-[11px]">{archivedCount}</span>
+              <span className="tabular-nums text-caption">{archivedCount}</span>
+            )}
+          </button>
+          <button
+            onClick={() => setFilterMode("finished")}
+            className={cn(
+              "flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-xs transition-colors",
+              filterMode === "finished"
+                ? "bg-background/80 text-foreground shadow-xs font-medium"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Done
+            {finishedCount > 0 && (
+              <span className="tabular-nums text-caption">{finishedCount}</span>
             )}
           </button>
         </div>
       </div>
 
-      {/* Project list */}
       <ScrollArea className="flex-1">
-        <div className="pt-2 pb-1">
+        <div className="px-2 pb-2 pt-4">
           {filtered.length > 0 ? (
-            <div className="flex flex-col gap-px">
+            <div className="flex flex-col gap-1">
               {filtered.map((project) => (
                 <div
                   key={project.id}
                   className={cn(
-                    "group relative flex items-start gap-2.5 px-3 py-2 rounded-md cursor-pointer transition-colors",
+                    "group relative flex cursor-pointer items-start gap-2.5 rounded-2xl px-3 py-2.5 transition-colors",
                     selectedId === project.id
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "hover:bg-sidebar-accent/50 text-sidebar-foreground hover:text-foreground",
-                    project.isArchived && "opacity-60"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                    project.isArchived && "opacity-60",
+                    project.isFinished && "opacity-70"
                   )}
                   onClick={() => onSelect(project.id)}
                 >
@@ -173,17 +199,22 @@ export function Sidebar({
                   <div className="flex-1 min-w-0 pr-1">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium truncate">{project.name}</p>
+                      {project.isFinished && (
+                        <span className="text-micro px-1.5 py-0.5 rounded font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-950/40 shrink-0">
+                          Finished
+                        </span>
+                      )}
                       {fileCounts[project.id] > 0 && (
-                        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                        <span className="text-caption text-muted-foreground tabular-nums shrink-0">
                           {fileCounts[project.id]}
                         </span>
                       )}
                     </div>
-                    {(project.subjectId ?? project.deadline) && (
+                    {((project.subjectId != null) || (project.deadline != null && !project.isFinished)) && (
                       <div className="flex items-center gap-1 mt-1 flex-wrap">
                         {project.subjectId && (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded font-medium select-none"
+                            className="text-micro px-1.5 py-0.5 rounded-md font-medium select-none"
                             style={{
                               backgroundColor: getSubjectById(project.subjectId)?.color + "20",
                               color: getSubjectById(project.subjectId)?.color
@@ -192,10 +223,10 @@ export function Sidebar({
                             {getSubjectById(project.subjectId)?.shortCode}
                           </span>
                         )}
-                        {project.deadline && (
+                        {project.deadline && !project.isFinished && (
                           <>
                             <span
-                              className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 select-none"
+                              className="text-micro px-1.5 py-0.5 rounded-md flex items-center gap-0.5 select-none"
                               style={{
                                 backgroundColor: getDeadlineTypeInfo(project.deadlineType).color + "20",
                                 color: getDeadlineTypeInfo(project.deadlineType).color
@@ -205,8 +236,10 @@ export function Sidebar({
                               {getDeadlineTypeInfo(project.deadlineType).label}
                             </span>
                             <span className={cn(
-                              "text-[11px] leading-tight select-none",
-                              isOverdue(project.deadline) ? "text-destructive" : "text-muted-foreground/70"
+                              "text-micro px-1.5 py-0.5 rounded-md font-medium select-none",
+                              isOverdue(project.deadline)
+                                ? "bg-destructive/15 text-destructive"
+                                : "bg-muted text-muted-foreground"
                             )}>
                               {formatDeadline(project.deadline)}
                             </span>
@@ -216,6 +249,26 @@ export function Sidebar({
                     )}
                   </div>
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 shrink-0">
+                    {onToggleFinished && (
+                      <button
+                        aria-label={project.isFinished ? "Mark as active" : "Mark as complete"}
+                        className={cn(
+                          "h-6 w-6 flex items-center justify-center rounded transition-opacity hover:bg-sidebar-accent/50",
+                          project.isFinished
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onToggleFinished(project.id)
+                        }}
+                      >
+                        <CheckCircle2 className={cn(
+                          "h-3.5 w-3.5",
+                          project.isFinished ? "text-green-500" : "text-muted-foreground"
+                        )} />
+                      </button>
+                    )}
                     {onToggleArchive && !project.isArchived && (
                       <button
                         aria-label={`Archive ${project.name}`}
@@ -268,20 +321,21 @@ export function Sidebar({
                 ? "No archived projects"
                 : filterMode === "favorites"
                   ? "No favorites yet"
-                  : "No projects yet"}
+                  : filterMode === "finished"
+                    ? "No finished projects"
+                    : "No projects yet"}
             </p>
           )}
         </div>
       </ScrollArea>
 
-      {/* Footer utilities */}
       {(onOpenExport != null || onOpenSubjects != null) && (
-        <div className="border-t border-sidebar-border px-3 pt-2.5 pb-2">
-          <div className="flex items-center gap-0.5">
+        <div className="border-t border-sidebar-border/70 px-3 pb-2 pt-2.5">
+          <div className="flex items-center gap-1 rounded-2xl bg-background/25 p-1">
             {onOpenExport && (
               <button
                 onClick={onOpenExport}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-1.5 text-caption text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground"
               >
                 <Database className="h-3.5 w-3.5" />
                 Export
@@ -290,7 +344,7 @@ export function Sidebar({
             {onOpenSubjects && (
               <button
                 onClick={onOpenSubjects}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-1.5 text-caption text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground"
               >
                 <Palette className="h-3.5 w-3.5" />
                 Subjects
@@ -300,7 +354,6 @@ export function Sidebar({
         </div>
       )}
 
-      {/* Pomodoro timer */}
       <StudyTimer />
     </div>
   )

@@ -99,17 +99,17 @@ export function StudyTimer() {
 
   if (!expanded) {
     return (
-      <div className="border-t border-sidebar-border px-3 py-2">
+      <div className="border-t border-sidebar-border/70 px-3 py-2">
         <button
           onClick={() => setExpanded(true)}
-          className="flex items-center gap-2 w-full text-xs text-muted-foreground hover:text-foreground transition-colors rounded py-0.5"
+          className="flex w-full items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <Timer className="h-3.5 w-3.5 shrink-0" />
           <span className={cn("font-mono tabular-nums", running && modeColor)}>
             {running ? timeDisplay : "Pomodoro"}
           </span>
           {running && (
-            <span className={cn("text-[10px] font-medium ml-auto", modeColor)}>{modeLabel}</span>
+            <span className={cn("text-micro font-medium ml-auto", modeColor)}>{modeLabel}</span>
           )}
           <ChevronUp className="h-3 w-3 ml-auto" />
         </button>
@@ -118,23 +118,23 @@ export function StudyTimer() {
   }
 
   return (
-    <div className="border-t border-sidebar-border px-3 py-3 space-y-3">
+    <div className="space-y-3 border-t border-sidebar-border/70 px-3 py-3">
       <div className="flex items-center justify-between">
         <button
           onClick={() => setExpanded(false)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded py-0.5"
+          className="flex items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <Timer className="h-3.5 w-3.5" />
           Pomodoro
           <ChevronDown className="h-3 w-3" />
         </button>
         <div className="flex items-center gap-2">
-          <span className={cn("text-[10px] font-medium", modeColor)}>
+          <span className={cn("text-micro font-medium", modeColor)}>
             {modeLabel} · Cycle {cycles + 1}
           </span>
           <button
             onClick={handleReset}
-            className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
             aria-label="Reset timer"
           >
             <RotateCcw className="h-3 w-3" />
@@ -142,8 +142,8 @@ export function StudyTimer() {
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-3">
-        <div className="relative w-20 h-20">
+      <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-3">
+        <div className="mx-auto relative h-20 w-20">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
             <circle
               cx="40" cy="40" r="34"
@@ -175,7 +175,7 @@ export function StudyTimer() {
           onClick={handleToggle}
           size="sm"
           variant={running ? "outline" : "default"}
-          className="w-full gap-1.5 h-7 text-xs"
+          className="mt-3 h-7 w-full gap-1.5 rounded-xl text-xs"
         >
           {running ? (
             <>
