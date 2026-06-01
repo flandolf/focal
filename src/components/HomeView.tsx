@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatDeadline, isOverdue, getSubjectById, getEventTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 import type { CalendarEvent, Project, StudySession } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -50,6 +49,14 @@ const COLOR_OPTIONS = [
 
 function getIconComponent(name: string) {
   return ICON_OPTIONS.find((o) => o.name === name)?.component ?? Link
+}
+
+function getQuickLinkDestination(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url.replace(/^https?:\/\//, "").split(/[/?#]/)[0] || url
+  }
 }
 
 interface HomeViewProps {
@@ -337,7 +344,7 @@ export function HomeView({
 
                 <div className="grid grid-cols-7 gap-0.5">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                    <div key={day} className="h-6 flex items-center justify-center text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                    <div key={day} className="h-6 flex items-center justify-center text-micro font-medium text-muted-foreground/70 uppercase tracking-wider">
                       {day}
                     </div>
                   ))}
@@ -373,7 +380,7 @@ export function HomeView({
                         )}
                       >
                         <div className={cn(
-                          "text-[11px] font-semibold leading-none",
+                          "text-micro font-semibold leading-none",
                           isTodayDate ? "text-primary" : "text-foreground/80"
                         )}>
                           {date.getDate()}
@@ -388,13 +395,13 @@ export function HomeView({
                                 className="w-1.5 h-1.5 rounded-full shrink-0"
                                 style={{ backgroundColor: item.color }}
                               />
-                              <span className="text-[10px] leading-tight truncate text-foreground/60">
+                              <span className="text-micro leading-tight truncate text-foreground/60">
                                 {item.name}
                               </span>
                             </div>
                           ))}
                           {overflow > 0 && (
-                            <div className="text-[10px] leading-tight text-muted-foreground/50 font-medium pl-2.5">
+                            <div className="text-micro leading-tight text-muted-foreground/50 font-medium pl-2.5">
                               +{overflow}
                             </div>
                           )}
@@ -624,29 +631,36 @@ export function HomeView({
                 <div className="grid grid-cols-3 gap-2">
                   {quickLinks.slice(0, 6).map((link) => {
                     const IconComp = getIconComponent(link.icon)
+                    const destination = getQuickLinkDestination(link.url)
                     return (
-                      <Tooltip key={link.id}>
-                        <TooltipTrigger asChild>
-                          <a
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onContextMenu={(e) => handleContextMenu(e, link)}
-                            className="flex flex-col items-center gap-1.5 rounded-xl border border-border/60 p-3 transition-all hover:border-border hover:shadow-sm"
-                            style={{ backgroundColor: link.color + "18" }}
-                          >
-                            <IconComp className="h-5 w-5 transition-colors" style={{ color: link.color }} />
-                            <span className="text-micro truncate w-full text-center transition-colors" style={{ color: link.color }}>
-                              {link.label}
-                            </span>
-                          </a>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="center" className="max-w-50">
-                          <p className="font-medium">{link.label}</p>
-                          <p className="text-muted-foreground text-[10px] break-all leading-relaxed">{link.url}</p>
-                          <p className="text-muted-foreground/60 text-[9px] mt-1">Right-click to edit</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <div key={link.id} className="group relative min-w-0">
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onContextMenu={(e) => handleContextMenu(e, link)}
+                          className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-border/60 p-3 text-center transition-all hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                          style={{ backgroundColor: link.color + "18" }}
+                          aria-label={`Open ${link.label}: ${destination}`}
+                        >
+                          <IconComp className="h-5 w-5 transition-colors" style={{ color: link.color }} />
+                          <span className="text-micro w-full truncate transition-colors" style={{ color: link.color }}>
+                            {link.label}
+                          </span>
+                          <span className="w-full truncate text-micro leading-none text-muted-foreground/70">
+                            {destination}
+                          </span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleEditLink(link)}
+                          onContextMenu={(e) => handleContextMenu(e, link)}
+                          className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-background/90 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border/80 backdrop-blur transition-all hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 group-hover:opacity-100"
+                          aria-label={`Edit ${link.label}`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      </div>
                     )
                   })}
                 </div>

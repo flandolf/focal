@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileTypeIcon } from "@/components/FileTypeIcon"
 import type { FileInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { getApiKey, getModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent } from "@/lib/settings"
+import { getApiKey, getModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent, getReasoningConfig } from "@/lib/settings"
 interface RenameEntry {
   file: FileInfo
   newName: string
@@ -186,6 +186,7 @@ Rules:
       },
       temperature: 0.2,
       max_tokens: 2048,
+      ...getReasoningConfig(),
     }),
   })
 

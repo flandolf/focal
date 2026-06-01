@@ -33,7 +33,7 @@ const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
   const { sessions, addSession, updateSession, deleteSession } = useStudySessions()
-  const { events, addEvent, updateEvent, deleteEvent } = useEvents()
+  const { events, addEvent, addEvents, updateEvent, deleteEvent } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -273,6 +273,16 @@ function App() {
     }
   }
 
+  const handleCreateEvents = async (items: Omit<CalendarEvent, "id" | "created_at">[]) => {
+    try {
+      await addEvents(items)
+      toast.success(`${items.length} event${items.length !== 1 ? "s" : ""} added`)
+    } catch (e) {
+      toast.error(`Failed to add events: ${String(e)}`)
+      throw e
+    }
+  }
+
   const handleEditEvent = async (data: {
     id: string
     title: string
@@ -473,6 +483,7 @@ function App() {
                     onToggleFinished={handleToggleFinished}
                     onSelectSession={handleSelectSession}
                     onNewSession={() => setSessionDialogOpen(true)}
+                    onCreateEvents={handleCreateEvents}
                   />
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center px-8 text-center">
