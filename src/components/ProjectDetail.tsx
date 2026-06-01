@@ -13,10 +13,11 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { FileRow } from "@/components/FileRow"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
+import { FileStudyPlannerButton } from "@/components/FileStudyPlannerButton"
 import { useProjectFiles, type SortKey } from "@/hooks/useProjectFiles"
 import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
-import type { Project, FileInfo, StudySession } from "@/lib/types"
+import type { CalendarEvent, Project, FileInfo, StudySession } from "@/lib/types"
 import type { UnlistenFn } from "@tauri-apps/api/event"
 import { cn } from "@/lib/utils"
 
@@ -52,9 +53,10 @@ interface ProjectDetailProps {
   onToggleFinished?: (id: string) => void
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
+  onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
 }
 
-export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession }: ProjectDetailProps) {
+export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents }: ProjectDetailProps) {
   const {
     files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
     addFileTags, removeFileTag, toggleFavorite,
@@ -401,6 +403,14 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Open in Finder</TooltipContent>
               </Tooltip>
+              {onCreateEvents && (
+                <FileStudyPlannerButton
+                  project={project}
+                  files={filteredFiles}
+                  selectedFilePaths={selectedFiles}
+                  onCreateEvents={onCreateEvents}
+                />
+              )}
               <Button size="sm" onClick={handleAddFiles} className="h-8 gap-1.5 rounded-lg">
                 <Plus className="h-4 w-4" />
                 <span>Add Files</span>

@@ -98,6 +98,32 @@ export function useEvents() {
     return event
   }, [events, saveEvents])
 
+  const addEvents = useCallback(async (items: {
+    title: string
+    description?: string
+    startTime: string
+    endTime?: string
+    eventType: EventType
+    subjectId?: string
+    location?: string
+  }[]) => {
+    const createdAt = new Date().toISOString()
+    const newEvents: CalendarEvent[] = items.map((data) => ({
+      id: generateId(),
+      title: data.title,
+      description: data.description,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      eventType: data.eventType,
+      subjectId: data.subjectId,
+      location: data.location,
+      created_at: createdAt,
+    }))
+    const updated = [...events, ...newEvents]
+    await saveEvents(updated)
+    return newEvents
+  }, [events, saveEvents])
+
   const updateEvent = useCallback(async (
     id: string,
     updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
@@ -123,6 +149,7 @@ export function useEvents() {
     loading,
     error,
     addEvent,
+    addEvents,
     updateEvent,
     deleteEvent,
     refresh: loadEvents,

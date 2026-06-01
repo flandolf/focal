@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { getApiKey, setApiKey, getModel, setModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent } from "@/lib/settings"
+import { getApiKey, setApiKey, getModel, setModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude } from "@/lib/settings"
 import type { ThemeId } from "@/lib/themes"
+import type { ReasoningEffort } from "@/lib/settings"
 
 interface OpenRouterModel {
   id: string
@@ -283,6 +284,9 @@ export function SettingsView({ onBack, theme, mode, resolvedDark: _resolvedDark,
   const [saved, setSaved] = useState(false)
   const [modelSearch, setModelSearch] = useState("")
   const [autoRenameUseFileContent, setAutoRenameUseFileContentState] = useState(() => getAutoRenameUseFileContent())
+  const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => getReasoningEffort())
+  const [reasoningMaxTokens, setReasoningMaxTokensState] = useState(() => getReasoningMaxTokens())
+  const [reasoningExclude, setReasoningExcludeState] = useState(() => getReasoningExclude())
   const didFetchRef = useRef(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ name: string; error?: string } | null>(null)
@@ -421,6 +425,21 @@ export function SettingsView({ onBack, theme, mode, resolvedDark: _resolvedDark,
   const handleAutoRenameUseFileContentChange = useCallback((value: boolean) => {
     setAutoRenameUseFileContentState(value)
     setAutoRenameUseFileContent(value)
+  }, [])
+
+  const handleReasoningEffortChange = useCallback((value: ReasoningEffort) => {
+    setReasoningEffortState(value)
+    setReasoningEffort(value)
+  }, [])
+
+  const handleReasoningMaxTokensChange = useCallback((value: number) => {
+    setReasoningMaxTokensState(value)
+    setReasoningMaxTokens(value)
+  }, [])
+
+  const handleReasoningExcludeChange = useCallback((value: boolean) => {
+    setReasoningExcludeState(value)
+    setReasoningExclude(value)
   }, [])
 
   const handleImportFolder = useCallback(async () => {
@@ -673,6 +692,64 @@ export function SettingsView({ onBack, theme, mode, resolvedDark: _resolvedDark,
                 </p>
               </div>
             </label>
+          </div>
+
+          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+            <label className="text-sm font-medium">Reasoning Tokens</label>
+            <p className="mt-1 text-caption text-muted-foreground/70">
+              Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
+            </p>
+
+            <label className="mt-3 text-caption text-muted-foreground/70 block">Effort Level</label>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
+                <button
+                  key={level}
+                  onClick={() => handleReasoningEffortChange(level)}
+                  className={cn(
+                    "rounded-lg border px-2.5 py-1 text-xs transition-colors",
+                    reasoningEffort === level
+                      ? "border-primary bg-primary/10 font-medium"
+                      : "border-border bg-background/30 hover:border-muted-foreground/30"
+                  )}
+                >
+                  {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {reasoningEffort !== "none" && (
+              <>
+                <label className="mt-3 text-caption text-muted-foreground/70 block">Max Tokens (Anthropic models)</label>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={1024}
+                    max={32000}
+                    step={1024}
+                    value={reasoningMaxTokens}
+                    onChange={(e) => handleReasoningMaxTokensChange(Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="text-xs tabular-nums text-muted-foreground w-12 text-right">{reasoningMaxTokens >= 1000 ? `${(reasoningMaxTokens / 1000).toFixed(1)}k` : reasoningMaxTokens}</span>
+                </div>
+
+                <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3">
+                  <input
+                    type="checkbox"
+                    checked={reasoningExclude}
+                    onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm">Exclude reasoning from response</p>
+                    <p className="text-caption text-muted-foreground/70 mt-0.5">
+                      Model still uses reasoning internally but won't include it in output.
+                    </p>
+                  </div>
+                </label>
+              </>
+            )}
           </div>
 
           <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
