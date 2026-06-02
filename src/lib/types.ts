@@ -8,6 +8,8 @@ export type Unit = "1" | "2" | "3" | "4";
 
 export type StudySessionStatus = "planned" | "in-progress" | "completed";
 
+export type ConfidenceScore = 1 | 2 | 3 | 4 | 5;
+
 export interface StudySession {
   id: string;
   projectId?: string;
@@ -19,6 +21,10 @@ export interface StudySession {
   status: StudySessionStatus;
   topics?: string[]; // Topics covered in the session
   notes?: string;
+  confidence?: ConfidenceScore;
+  blockers?: string;
+  nextAction?: string;
+  completedAt?: string;
   created_at: string;
 }
 
@@ -31,6 +37,8 @@ export interface CalendarEvent {
   eventType: EventType;
   subjectId?: string;
   location?: string;
+  isFinished?: boolean;
+  finishedAt?: string;
   created_at: string;
 }
 
@@ -96,6 +104,9 @@ export interface Project {
   isFinished?: boolean;
 }
 
+// UI-facing name for the legacy Project record. Persisted data remains projects.json for migration compatibility.
+export type Assessment = Project;
+
 export interface FileInfo {
   name: string;
   path: string;
@@ -111,4 +122,36 @@ export interface FileInfo {
 export interface SearchResult {
   file: FileInfo;
   projectFolder: string;
+}
+
+export type PriorityItemKind =
+  | "overdue-project"
+  | "upcoming-assessment"
+  | "planned-session"
+  | "plan-prep"
+  | "weak-topic";
+
+export type PriorityUrgency = "critical" | "high" | "medium" | "low";
+
+export interface PriorityItem {
+  id: string;
+  kind: PriorityItemKind;
+  title: string;
+  reason: string;
+  urgency: PriorityUrgency;
+  subjectIds: string[];
+  projectId?: string;
+  eventId?: string;
+  sessionId?: string;
+  action: string;
+}
+
+export interface SubjectReadiness {
+  subjectId: string;
+  assessmentPressure: PriorityUrgency;
+  studyMinutes7d: number;
+  studyMinutes14d: number;
+  weakTopics: string[];
+  nextAction: string;
+  upcomingCount: number;
 }

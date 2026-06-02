@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, parseISO } from "date-fns"
-import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, ExternalLink, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, Pencil, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, ExternalLink, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, Pencil, Trash2, Target, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { formatDeadline, isOverdue, getSubjectById, getEventTypeInfo, getSessionSubjectIds } from "@/lib/utils"
-import type { CalendarEvent, Project, StudySession } from "@/lib/types"
+import { getPriorityItems, getSubjectReadiness } from "@/lib/studyPriority"
+import type { CalendarEvent, PriorityItem, PriorityUrgency, Project, StudySession, SubjectReadiness } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface QuickLink {
@@ -15,6 +16,31 @@ interface QuickLink {
   url: string
   icon: string
   color: string
+}
+
+interface MonthBriefItem {
+  id: string
+  title: string
+  meta: string
+  date: Date
+  color: string
+  kind: "assessment" | "session" | "event"
+  projectId?: string
+  session?: StudySession
+  event?: CalendarEvent
+}
+
+interface PrepBalanceItem {
+  subjectId: string
+  shortCode: string
+  name: string
+  color: string
+  assessmentCount: number
+  plannedMinutes: number
+  nextTitle?: string
+  nextDate?: Date
+  projectId?: string
+  event?: CalendarEvent
 }
 
 const QUICK_LINKS_KEY = "focal-quick-links"
@@ -59,6 +85,32 @@ function getQuickLinkDestination(url: string) {
   }
 }
 
+function getUrgencyLabel(urgency: PriorityUrgency) {
+  switch (urgency) {
+    case "critical":
+      return "Critical"
+    case "high":
+      return "High"
+    case "medium":
+      return "Medium"
+    case "low":
+      return "Low"
+  }
+}
+
+function getUrgencyClassName(urgency: PriorityUrgency) {
+  switch (urgency) {
+    case "critical":
+      return "bg-destructive/12 text-destructive"
+    case "high":
+      return "bg-amber-500/14 text-amber-700 dark:text-amber-300"
+    case "medium":
+      return "bg-primary/12 text-primary"
+    case "low":
+      return "bg-muted text-muted-foreground"
+  }
+}
+
 interface HomeViewProps {
   projects: Project[]
   sessions: StudySession[]
@@ -69,6 +121,41 @@ interface HomeViewProps {
   onNewSession: () => void
   onNewEvent: () => void
   onNewProject: () => void
+}
+
+function ReadinessRow({ item }: { item: SubjectReadiness }) {
+  const subject = getSubjectById(item.subjectId)
+  const studied7d = Math.round(item.studyMinutes7d / 60 * 10) / 10
+  const studied14d = Math.round(item.studyMinutes14d / 60 * 10) / 10
+
+  return (
+    <div className="rounded-xl px-3 py-2 transition-colors hover:bg-accent/25">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium">
+            {subject?.shortCode ?? item.subjectId}
+            {subject?.name ? <span className="ml-1.5 text-muted-foreground">/ {subject.name}</span> : null}
+          </p>
+          <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.nextAction}</p>
+        </div>
+        <span className={cn("shrink-0 rounded px-1 py-0 text-[9px] font-medium leading-3", getUrgencyClassName(item.assessmentPressure))}>
+          {getUrgencyLabel(item.assessmentPressure)}
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[9px] leading-3 text-muted-foreground">
+        <span className="rounded bg-muted/70 px-1 py-0 tabular-nums">{studied7d}h / 7d</span>
+        <span className="rounded bg-muted/70 px-1 py-0 tabular-nums">{studied14d}h / 14d</span>
+        {item.upcomingCount > 0 && (
+          <span className="rounded bg-muted/70 px-1 py-0">{item.upcomingCount} upcoming</span>
+        )}
+        {item.weakTopics.length > 0 && (
+          <span className="min-w-0 truncate rounded bg-muted/70 px-1 py-0">
+            weak: {item.weakTopics.slice(0, 2).join(", ")}
+          </span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function HomeView({
@@ -94,6 +181,8 @@ export function HomeView({
   const [linkUrl, setLinkUrl] = useState("")
   const [linkIcon, setLinkIcon] = useState("Link")
   const [linkColor, setLinkColor] = useState("#71717a")
+  const [prioritiesOpen, setPrioritiesOpen] = useState(true)
+  const [readinessOpen, setReadinessOpen] = useState(true)
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; link: QuickLink } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -171,6 +260,8 @@ export function HomeView({
   const totalStudyHours = Math.round(totalStudyMinutes / 60 * 10) / 10
 
   const completedSessions = sessions.filter((s) => s.status === "completed").length
+  const priorityItems = useMemo(() => getPriorityItems({ projects, sessions, events }), [projects, sessions, events])
+  const subjectReadiness = useMemo(() => getSubjectReadiness({ projects, sessions, events }), [projects, sessions, events])
 
   const studyBySubject: Record<string, { minutes: number; icon: string; shortCode: string }> = {}
   sessions.forEach((s) => {
@@ -204,7 +295,7 @@ export function HomeView({
   const upcomingEvents = events
     .filter((event) => {
       const eventStart = new Date(event.startTime)
-      return eventStart >= now && eventStart <= nextWeek
+      return !event.isFinished && eventStart >= now && eventStart <= nextWeek
     })
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
 
@@ -237,9 +328,192 @@ export function HomeView({
     eventsByDate[dateKey].push(event)
   })
 
+  const monthAgendaStart = isSameMonth(currentMonth, now)
+    ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    : monthStart
+  const isMonthItemVisible = (date: Date) => date >= monthAgendaStart && date <= monthEnd
+  const monthBriefItems: MonthBriefItem[] = [
+    ...projectsWithDeadlines
+      .filter((project) => project.deadline && isMonthItemVisible(parseISO(project.deadline)))
+      .map((project) => {
+        const subject = getSubjectById(project.subjectId)
+        return {
+          id: `assessment-${project.id}`,
+          title: project.name,
+          meta: `${project.deadlineType?.toUpperCase() ?? "Assessment"} · ${formatDeadline(project.deadline!)}`,
+          date: parseISO(project.deadline!),
+          color: subject?.color ?? "var(--primary)",
+          kind: "assessment" as const,
+          projectId: project.id,
+        }
+      }),
+    ...sessions
+      .filter((session) => session.status === "planned" && isMonthItemVisible(parseISO(session.startTime)))
+      .map((session) => {
+        const project = session.projectId ? projects.find((candidate) => candidate.id === session.projectId) : undefined
+        const subjectIds = getSessionSubjectIds(session, project)
+        const subject = getSubjectById(subjectIds[0])
+        const durationMinutes = Math.max(0, Math.round((parseISO(session.endTime).getTime() - parseISO(session.startTime).getTime()) / (1000 * 60)))
+        const subjectContext = subjectIds.map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId).join(", ")
+        const sessionContext = project?.name ?? (subjectContext || "Study session")
+        return {
+          id: `session-${session.id}`,
+          title: session.title,
+          meta: `${durationMinutes} min · ${sessionContext}`,
+          date: parseISO(session.startTime),
+          color: subject?.color ?? "#3b82f6",
+          kind: "session" as const,
+          session,
+        }
+      }),
+    ...events
+      .filter((event) => !event.isFinished && isMonthItemVisible(parseISO(event.startTime)))
+      .map((event) => {
+        const subject = getSubjectById(event.subjectId)
+        const eventInfo = getEventTypeInfo(event.eventType)
+        return {
+          id: `event-${event.id}`,
+          title: event.title,
+          meta: `${eventInfo.label} · ${format(parseISO(event.startTime), "MMM d, h:mm a")}`,
+          date: parseISO(event.startTime),
+          color: subject?.color ?? eventInfo.color,
+          kind: "event" as const,
+          event,
+        }
+      }),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime())
+  const monthBriefPreview = monthBriefItems.slice(0, 4)
+  const monthStudyMinutes = sessions
+    .filter((session) => session.status === "planned" && isMonthItemVisible(parseISO(session.startTime)))
+    .reduce((total, session) => {
+      const minutes = Math.max(0, Math.round((parseISO(session.endTime).getTime() - parseISO(session.startTime).getTime()) / (1000 * 60)))
+      return total + minutes
+    }, 0)
+  const monthStudyHours = Math.round(monthStudyMinutes / 60 * 10) / 10
+  const monthBusyDays = new Set(monthBriefItems.map((item) => format(item.date, "yyyy-MM-dd"))).size
+  const monthAssessments = monthBriefItems.filter((item) => item.kind === "assessment").length
+  const prepBalanceBySubject = new Map<string, PrepBalanceItem>()
+
+  const ensurePrepBalanceItem = (subjectId: string) => {
+    const existing = prepBalanceBySubject.get(subjectId)
+    if (existing) return existing
+    const subject = getSubjectById(subjectId)
+    const nextItem: PrepBalanceItem = {
+      subjectId,
+      shortCode: subject?.shortCode ?? subjectId,
+      name: subject?.name ?? subjectId,
+      color: subject?.color ?? "var(--primary)",
+      assessmentCount: 0,
+      plannedMinutes: 0,
+    }
+    prepBalanceBySubject.set(subjectId, nextItem)
+    return nextItem
+  }
+
+  const applyNextPrepItem = (item: PrepBalanceItem, title: string, date: Date, source: { projectId?: string; event?: CalendarEvent }) => {
+    if (!item.nextDate || date < item.nextDate) {
+      item.nextTitle = title
+      item.nextDate = date
+      item.projectId = source.projectId
+      item.event = source.event
+    }
+  }
+
+  projectsWithDeadlines.forEach((project) => {
+    if (!project.deadline || !project.subjectId) return
+    const deadlineDate = parseISO(project.deadline)
+    if (!isMonthItemVisible(deadlineDate)) return
+    const item = ensurePrepBalanceItem(project.subjectId)
+    item.assessmentCount += 1
+    applyNextPrepItem(item, project.name, deadlineDate, { projectId: project.id })
+  })
+
+  events.forEach((event) => {
+    if (event.isFinished || event.eventType === "event" || !event.subjectId) return
+    const eventDate = parseISO(event.startTime)
+    if (!isMonthItemVisible(eventDate)) return
+    const item = ensurePrepBalanceItem(event.subjectId)
+    item.assessmentCount += 1
+    applyNextPrepItem(item, event.title, eventDate, { event })
+  })
+
+  sessions.forEach((session) => {
+    if (session.status !== "planned") return
+    const sessionStart = parseISO(session.startTime)
+    if (!isMonthItemVisible(sessionStart)) return
+    const project = session.projectId ? projects.find((candidate) => candidate.id === session.projectId) : undefined
+    const subjectIds = getSessionSubjectIds(session, project)
+    if (subjectIds.length === 0) return
+    const minutes = Math.max(0, Math.round((parseISO(session.endTime).getTime() - sessionStart.getTime()) / (1000 * 60)))
+    const minutesPerSubject = minutes / subjectIds.length
+    subjectIds.forEach((subjectId) => {
+      ensurePrepBalanceItem(subjectId).plannedMinutes += minutesPerSubject
+    })
+  })
+
+  const prepBalanceItems = Array.from(prepBalanceBySubject.values())
+    .filter((item) => item.assessmentCount > 0)
+    .sort((a, b) => {
+      const pressureDelta = b.assessmentCount - a.assessmentCount
+      if (pressureDelta !== 0) return pressureDelta
+      const studyDelta = a.plannedMinutes - b.plannedMinutes
+      if (studyDelta !== 0) return studyDelta
+      return a.shortCode.localeCompare(b.shortCode)
+    })
+    .slice(0, 4)
+  const prepBalanceNeedsAttention = prepBalanceItems.filter((item) => item.plannedMinutes < item.assessmentCount * 90).length
+
+  const handleMonthBriefSelect = (item: MonthBriefItem) => {
+    if (item.projectId) {
+      onSelectProject(item.projectId)
+      return
+    }
+    if (item.session) {
+      onSelectSession(item.session)
+      return
+    }
+    if (item.event) {
+      onSelectEvent(item.event)
+    }
+  }
+
+  const handlePrepBalanceSelect = (item: PrepBalanceItem) => {
+    if (item.projectId) {
+      onSelectProject(item.projectId)
+      return
+    }
+    if (item.event) {
+      onSelectEvent(item.event)
+      return
+    }
+    onNewSession()
+  }
+
   const handlePrevMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1))
   const handleNextMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1))
   const handleToday = () => setCurrentMonth(new Date())
+
+  const handlePrioritySelect = (item: PriorityItem) => {
+    if (item.sessionId) {
+      const session = sessions.find((candidate) => candidate.id === item.sessionId)
+      if (session) {
+        onSelectSession(session)
+        return
+      }
+    }
+    if (item.eventId) {
+      const event = events.find((candidate) => candidate.id === item.eventId)
+      if (event) {
+        onSelectEvent(event)
+        return
+      }
+    }
+    if (item.projectId) {
+      onSelectProject(item.projectId)
+      return
+    }
+    onNewSession()
+  }
 
   return (
     <div className="h-full overflow-auto">
@@ -273,7 +547,7 @@ export function HomeView({
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button variant="outline" size="sm" onClick={onNewProject} className="h-8 gap-1.5 rounded-xl bg-background/45">
               <Plus className="h-3.5 w-3.5" />
-              Project
+              Assessment
             </Button>
             <Button variant="outline" size="sm" onClick={onNewEvent} className="h-8 gap-1.5 rounded-xl bg-background/45">
               <CalendarPlus className="h-3.5 w-3.5" />
@@ -292,7 +566,7 @@ export function HomeView({
             <div className="flex items-center gap-2 mb-2">
               <AlertCircle className="h-3.5 w-3.5 text-destructive/70" />
               <span className="text-xs font-semibold text-destructive/80">
-                {overdueProjects.length} overdue project{overdueProjects.length > 1 ? "s" : ""}
+                {overdueProjects.length} overdue assessment{overdueProjects.length > 1 ? "s" : ""}
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -312,7 +586,7 @@ export function HomeView({
 
         <div className="grid grid-cols-1 gap-4 min-[1200px]:gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
           <Card className="rounded-2xl border border-border/70 bg-background/48 p-4 shadow-sm backdrop-blur min-[1200px]:rounded-[1.25rem] min-[1200px]:p-6">
-            <div className="space-y-4 min-[1200px]:space-y-5">
+            <div className="flex h-full flex-col gap-4 min-[1200px]:gap-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="font-heading text-lg font-semibold">Assessment Calendar</h2>
@@ -516,6 +790,11 @@ export function HomeView({
                                   >
                                     {eventInfo.label}
                                   </span>
+                                  {event.isFinished && (
+                                    <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
+                                      Done
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </button>
@@ -525,79 +804,140 @@ export function HomeView({
                     </div>
                   )
                 })()}
+
+                <div className="border-t border-border/70 pt-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-heading text-sm font-semibold">Month Brief</h3>
+                      <p className="mt-0.5 text-caption text-muted-foreground">
+                        {monthBriefItems.length > 0
+                          ? `${monthBriefItems.length} scheduled item${monthBriefItems.length === 1 ? "" : "s"} in ${format(currentMonth, "MMMM")}`
+                          : `No scheduled items left in ${format(currentMonth, "MMMM")}`}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-right">
+                      <div>
+                        <p className="text-sm font-semibold tabular-nums leading-none">{monthAssessments}</p>
+                        <p className="mt-1 text-micro text-muted-foreground">assessments</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold tabular-nums leading-none">{monthStudyHours}<span className="text-micro font-normal">h</span></p>
+                        <p className="mt-1 text-micro text-muted-foreground">planned</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold tabular-nums leading-none">{monthBusyDays}</p>
+                        <p className="mt-1 text-micro text-muted-foreground">busy days</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {monthBriefPreview.length > 0 ? (
+                    <div className="mt-3 grid gap-2 min-[1350px]:grid-cols-2">
+                      {monthBriefPreview.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleMonthBriefSelect(item)}
+                          className="flex min-w-0 items-center gap-3 rounded-xl border border-border/55 bg-background/24 px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                        >
+                          <div className="flex h-9 w-10 shrink-0 flex-col items-center justify-center rounded-lg bg-muted/55 text-center">
+                            <span className="text-[9px] font-medium uppercase leading-none text-muted-foreground">{format(item.date, "MMM")}</span>
+                            <span className="mt-0.5 text-sm font-semibold leading-none tabular-nums">{format(item.date, "d")}</span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                              <p className="truncate text-xs font-medium">{item.title}</p>
+                            </div>
+                            <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.meta}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-background/24 px-3 py-3">
+                      <p className="text-xs text-muted-foreground">Use this month to get ahead before the next assessment cluster.</p>
+                      <Button variant="outline" size="sm" onClick={onNewSession} className="h-7 rounded-xl px-2.5 text-xs">
+                        <Calendar className="mr-1.5 h-3 w-3" />
+                        Plan session
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="mt-4 border-t border-border/55 pt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-heading text-sm font-semibold">Prep Balance</h3>
+                        <p className="mt-0.5 text-caption text-muted-foreground">
+                          {prepBalanceItems.length > 0
+                            ? `${prepBalanceNeedsAttention} subject${prepBalanceNeedsAttention === 1 ? "" : "s"} need more planned time`
+                            : "No assessment pressure to balance this month"}
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={onNewSession} className="h-7 rounded-xl px-2.5 text-xs">
+                        <Calendar className="mr-1.5 h-3 w-3" />
+                        Plan
+                      </Button>
+                    </div>
+
+                    {prepBalanceItems.length > 0 ? (
+                      <div className="mt-3 grid gap-2 min-[1350px]:grid-cols-2">
+                        {prepBalanceItems.map((item) => {
+                          const targetMinutes = item.assessmentCount * 90
+                          const plannedHours = Math.round(item.plannedMinutes / 60 * 10) / 10
+                          const targetHours = Math.round(targetMinutes / 60 * 10) / 10
+                          const progress = targetMinutes > 0 ? Math.min(100, Math.round(item.plannedMinutes / targetMinutes * 100)) : 100
+                          const nextDateLabel = item.nextDate ? format(item.nextDate, "MMM d") : "No date"
+                          return (
+                            <button
+                              key={item.subjectId}
+                              type="button"
+                              onClick={() => handlePrepBalanceSelect(item)}
+                              className="min-w-0 rounded-xl border border-border/55 bg-background/24 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex min-w-0 items-center gap-1.5">
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                                    <p className="truncate text-xs font-medium">
+                                      {item.shortCode}
+                                      <span className="ml-1.5 text-muted-foreground">/ {item.name}</span>
+                                    </p>
+                                  </div>
+                                  <p className="mt-0.5 truncate text-micro text-muted-foreground">
+                                    {item.nextTitle ? `${item.nextTitle} · ${nextDateLabel}` : "Assessment prep"}
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="text-xs font-semibold tabular-nums">{plannedHours}<span className="text-micro font-normal">h</span></p>
+                                  <p className="mt-0.5 text-[9px] leading-3 text-muted-foreground">of {targetHours}h</p>
+                                </div>
+                              </div>
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted/65">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${progress}%`,
+                                    backgroundColor: item.color,
+                                  }}
+                                />
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-dashed border-border bg-background/24 px-3 py-3">
+                        <p className="text-xs text-muted-foreground">Add assessments or planned sessions to see subject prep balance here.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </Card>
 
           <div className="space-y-3 min-[1200px]:space-y-4">
-            {dueThisWeek.length > 0 && (
-              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
-                <h3 className="mb-2.5 font-heading text-sm font-semibold">Due This Week</h3>
-                <div className="space-y-1">
-                  {dueThisWeek.map((p) => {
-                    const subject = getSubjectById(p.subjectId)
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => onSelectProject(p.id)}
-                        className="group w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{p.name}</p>
-                            <p className="text-micro text-muted-foreground mt-0.5">
-                              {formatDeadline(p.deadline!)}
-                            </p>
-                          </div>
-                          {subject && (
-                            <div
-                              className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium shrink-0"
-                              style={{
-                                backgroundColor: subject.color + "14",
-                                color: subject.color,
-                              }}
-                            >
-                              {subject.shortCode}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {upcomingSessions.length > 0 && (
-              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
-                <h3 className="mb-2.5 flex items-center gap-2 font-heading text-sm font-semibold">
-                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                  Upcoming Sessions
-                </h3>
-                <div className="space-y-1">
-                  {upcomingSessions.slice(0, 5).map((session) => {
-                    const project = projects.find((p) => p.id === session.projectId)
-                    const subjects = getSessionSubjectIds(session, project)
-                      .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
-                      .join(", ")
-                    return (
-                      <button
-                        key={session.id}
-                        onClick={() => onSelectSession(session)}
-                        className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40"
-                      >
-                        <p className="text-xs font-medium truncate">{session.title}</p>
-                        <p className="text-micro text-muted-foreground mt-0.5">{project?.name ?? subjects}</p>
-                        <p className="text-micro text-muted-foreground mt-1">
-                          {format(parseISO(session.startTime), "MMM d, h:mm a")}
-                        </p>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
             <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-heading text-sm font-semibold flex items-center gap-2">
@@ -667,6 +1007,161 @@ export function HomeView({
               )}
             </div>
 
+            <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+              <button
+                type="button"
+                onClick={() => setPrioritiesOpen((current) => !current)}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
+                  <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                  Study Priorities
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] leading-3 text-muted-foreground tabular-nums">{priorityItems.length}/7</span>
+                  <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", prioritiesOpen && "rotate-90")} />
+                </div>
+              </button>
+              {prioritiesOpen && (
+                <div className="mt-2.5">
+                  {priorityItems.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No urgent study actions. Add an assessment, plan a session, or review a completed one to sharpen the queue.
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      {priorityItems.map((item) => {
+                        const subjectLabels = item.subjectIds
+                          .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
+                          .slice(0, 2)
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handlePrioritySelect(item)}
+                            className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium">{item.title}</p>
+                                <p className="mt-0.5 line-clamp-2 text-micro text-muted-foreground">{item.reason}</p>
+                              </div>
+                              <span className={cn("shrink-0 rounded px-1 py-0 text-[9px] font-medium leading-3", getUrgencyClassName(item.urgency))}>
+                                {getUrgencyLabel(item.urgency)}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 flex items-center gap-1">
+                              <span className="text-micro font-medium text-primary">{item.action}</span>
+                              {subjectLabels.map((label) => (
+                                <span key={label} className="rounded bg-muted/70 px-1 py-0 text-[9px] leading-3 text-muted-foreground">
+                                  {label}
+                                </span>
+                              ))}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+              <button
+                type="button"
+                onClick={() => setReadinessOpen((current) => !current)}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
+                  <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+                  Subject Readiness
+                </h3>
+                <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", readinessOpen && "rotate-90")} />
+              </button>
+              {readinessOpen && (
+                <div className="mt-2.5 space-y-1">
+                  {subjectReadiness.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Complete study sessions with subjects to build readiness signals.
+                    </p>
+                  ) : (
+                    subjectReadiness.map((item) => (
+                      <ReadinessRow key={item.subjectId} item={item} />
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {dueThisWeek.length > 0 && (
+              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+                <h3 className="mb-2.5 font-heading text-sm font-semibold">Due This Week</h3>
+                <div className="space-y-1">
+                  {dueThisWeek.map((p) => {
+                    const subject = getSubjectById(p.subjectId)
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => onSelectProject(p.id)}
+                        className="group w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{p.name}</p>
+                            <p className="text-micro text-muted-foreground mt-0.5">
+                              {formatDeadline(p.deadline!)}
+                            </p>
+                          </div>
+                          {subject && (
+                            <div
+                              className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium shrink-0"
+                              style={{
+                                backgroundColor: subject.color + "14",
+                                color: subject.color,
+                              }}
+                            >
+                              {subject.shortCode}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {upcomingSessions.length > 0 && (
+              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+                <h3 className="mb-2.5 flex items-center gap-2 font-heading text-sm font-semibold">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  Upcoming Sessions
+                </h3>
+                <div className="space-y-1">
+                  {upcomingSessions.slice(0, 5).map((session) => {
+                    const project = projects.find((p) => p.id === session.projectId)
+                    const subjects = getSessionSubjectIds(session, project)
+                      .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
+                      .join(", ")
+                    return (
+                      <button
+                        key={session.id}
+                        onClick={() => onSelectSession(session)}
+                        className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40"
+                      >
+                        <p className="text-xs font-medium truncate">{session.title}</p>
+                        <p className="text-micro text-muted-foreground mt-0.5">{project?.name ?? subjects}</p>
+                        <p className="text-micro text-muted-foreground mt-1">
+                          {format(parseISO(session.startTime), "MMM d, h:mm a")}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {upcomingEvents.length > 0 && (
               <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
                 <h3 className="mb-2.5 flex items-center gap-2 font-heading text-sm font-semibold">
@@ -729,7 +1224,7 @@ export function HomeView({
             {dueThisWeek.length === 0 && upcomingSessions.length === 0 && upcomingEvents.length === 0 && overdueProjects.length === 0 && (
               <div className="rounded-[1.25rem] border border-dashed border-border bg-background/30 p-3.5">
                 <p className="text-xs text-muted-foreground">
-                  Nothing due this week. Use the buttons above to add a project, event, or session.
+                  Nothing due this week. Use the buttons above to add an assessment, event, or session.
                 </p>
               </div>
             )}
@@ -739,7 +1234,7 @@ export function HomeView({
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
                   <p className="text-lg font-semibold tabular-nums leading-none">{activeProjects.length}</p>
-                  <p className="text-micro text-muted-foreground mt-1">projects</p>
+                  <p className="text-micro text-muted-foreground mt-1">assessments</p>
                 </div>
                 <div>
                   <p className="text-lg font-semibold tabular-nums leading-none">{completedSessions}</p>

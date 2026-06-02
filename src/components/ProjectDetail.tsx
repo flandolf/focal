@@ -341,8 +341,8 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                 </span>
                 <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
               </div>
-              <p className="mt-1.5 truncate text-caption text-muted-foreground font-mono">
-                ~/Documents/Projects/{project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}
+              <p className="mt-1.5 truncate text-caption text-muted-foreground">
+                Files folder / <span className="font-mono">{project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}</span>
               </p>
               {project.description && (
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{project.description}</p>
@@ -379,7 +379,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     <Settings className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">Settings</TooltipContent>
+                  <TooltipContent side="bottom">Assessment details</TooltipContent>
               </Tooltip>
               {onToggleFinished && (
                 <Tooltip>
@@ -390,7 +390,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    {project.isFinished ? "Mark as active" : "Mark as complete"}
+                    {project.isFinished ? "Mark as current" : "Mark as complete"}
                   </TooltipContent>
                 </Tooltip>
               )}

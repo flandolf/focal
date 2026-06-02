@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { format, addHours, parseISO } from "date-fns"
-import { CalendarIcon, Clock, Trash2 } from "lucide-react"
+import { CalendarIcon, CheckCircle2, Clock, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn, getSessionSubjectIds } from "@/lib/utils"
-import { VCE_SUBJECTS, type Project, type StudySession, type Subject } from "@/lib/types"
+import { VCE_SUBJECTS, type ConfidenceScore, type Project, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
 
 interface EditStudySessionDialogProps {
   open: boolean
@@ -33,6 +33,11 @@ interface EditStudySessionDialogProps {
     description?: string
     topics?: string[]
     notes?: string
+    status?: StudySessionStatus
+    confidence?: ConfidenceScore
+    blockers?: string
+    nextAction?: string
+    completedAt?: string
   }) => void
   onDelete: (id: string) => void
 }
@@ -52,6 +57,10 @@ export function EditStudySessionDialog({
   const [description, setDescription] = useState("")
   const [topicsInput, setTopicsInput] = useState("")
   const [notes, setNotes] = useState("")
+  const [status, setStatus] = useState<StudySessionStatus>("planned")
+  const [confidence, setConfidence] = useState<ConfidenceScore | undefined>(undefined)
+  const [blockers, setBlockers] = useState("")
+  const [nextAction, setNextAction] = useState("")
   const [startDate, setStartDate] = useState<Date | undefined>(new Date())
   const [startTime, setStartTime] = useState("14:00")
   const [duration, setDuration] = useState("60")
@@ -68,6 +77,11 @@ export function EditStudySessionDialog({
       setDescription(session.description ?? "")
       setTopicsInput(session.topics?.join(", ") ?? "")
       setNotes(session.notes ?? "")
+      setStatus(session.status)
+      setConfidence(session.confidence)
+      setBlockers(session.blockers ?? "")
+      setNextAction(session.nextAction ?? "")
+      setIsDeleting(false)
       
       const start = parseISO(session.startTime)
       setStartDate(start)
@@ -94,8 +108,7 @@ export function EditStudySessionDialog({
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const saveSession = (nextStatus = status) => {
     if (!session || !title || !startDate || subjectIds.length === 0) return
 
     const [hours, minutes] = startTime.split(":").map(Number)
@@ -118,9 +131,24 @@ export function EditStudySessionDialog({
       endTime: end.toISOString(),
       topics: topics.length > 0 ? topics : undefined,
       notes: notes.trim() ? notes : undefined,
+      status: nextStatus,
+      confidence,
+      blockers: blockers.trim() ? blockers : undefined,
+      nextAction: nextAction.trim() ? nextAction : undefined,
+      completedAt: nextStatus === "completed" ? (session.completedAt ?? new Date().toISOString()) : undefined,
     })
 
     onOpenChange(false)
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    saveSession()
+  }
+
+  const handleCompleteAndReview = () => {
+    setStatus("completed")
+    saveSession("completed")
   }
 
   const handleDelete = () => {
@@ -141,7 +169,7 @@ export function EditStudySessionDialog({
         <DialogHeader>
           <DialogTitle>Edit Study Session</DialogTitle>
           <DialogDescription>
-            {project && <span>Editing session in <strong>{project.name}</strong></span>}
+            {project && <span>Editing session for <strong>{project.name}</strong></span>}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -158,13 +186,13 @@ export function EditStudySessionDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Project</label>
+                <label className="text-sm font-medium">Assessment</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={projectId}
                   onChange={(e) => handleProjectChange(e.target.value)}
                 >
-                  <option value="">No project</option>
+                  <option value="">No assessment</option>
                   {projects.filter((p) => !p.isArchived).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.icon} {p.name}
@@ -235,13 +263,26 @@ export function EditStudySessionDialog({
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Topics (comma-separated)</label>
-                <Input
-                  placeholder="e.g. Photosynthesis, Cell Division"
-                  value={topicsInput}
-                  onChange={(e) => setTopicsInput(e.target.value)}
-                />
+                <label className="text-sm font-medium">Status</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as StudySessionStatus)}
+                >
+                  <option value="planned">Planned</option>
+                  <option value="in-progress">In progress</option>
+                  <option value="completed">Completed</option>
+                </select>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Topics (comma-separated)</label>
+              <Input
+                placeholder="e.g. Photosynthesis, Cell Division"
+                value={topicsInput}
+                onChange={(e) => setTopicsInput(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
@@ -279,6 +320,63 @@ export function EditStudySessionDialog({
                 className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
               />
             </div>
+
+            <div className="space-y-3 rounded-xl border border-border/70 bg-background/35 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Session Review</p>
+                  <p className="text-xs text-muted-foreground">Used by Today to spot weak areas.</p>
+                </div>
+                {status === "completed" && (
+                  <span className="rounded-md bg-emerald-500/12 px-2 py-1 text-micro font-medium text-emerald-600 dark:text-emerald-300">
+                    Complete
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Confidence</label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
+                    <button
+                      key={score}
+                      type="button"
+                      onClick={() => setConfidence(score)}
+                      className={cn(
+                        "h-8 rounded-lg border text-xs font-medium transition-colors",
+                        confidence === score
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border/70 bg-background/40 text-muted-foreground hover:text-foreground"
+                      )}
+                      aria-pressed={confidence === score}
+                    >
+                      {score}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Blockers</label>
+                  <textarea
+                    placeholder="What still feels unclear?"
+                    value={blockers}
+                    onChange={(e) => setBlockers(e.target.value)}
+                    rows={2}
+                    className="flex w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Next action</label>
+                  <textarea
+                    placeholder="e.g. redo exam Q4"
+                    value={nextAction}
+                    onChange={(e) => setNextAction(e.target.value)}
+                    rows={2}
+                    className="flex w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter className="flex justify-between">
             <Button
@@ -300,6 +398,18 @@ export function EditStudySessionDialog({
               >
                 Cancel
               </Button>
+              {status !== "completed" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCompleteAndReview}
+                  disabled={!title || subjectIds.length === 0}
+                  className="gap-1.5"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Complete & Review
+                </Button>
+              )}
               <Button type="submit" disabled={!title || subjectIds.length === 0}>
                 Save Changes
               </Button>

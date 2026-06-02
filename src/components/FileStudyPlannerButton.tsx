@@ -169,12 +169,12 @@ async function generatePlan(
       messages: [
         {
           role: "system",
-          content: `You create practical study calendar events for VCE students from a project file list.
+          content: `You create practical study calendar events for VCE students from an assessment file list.
 
 Rules:
 - Return 3 to 6 useful calendar events.
 - Schedule dates from ${today} through ${planningEnd}.
-- Use the project deadline as the latest meaningful preparation date when it exists.
+- Use the assessment date as the latest meaningful preparation date when it exists.
 - Prefer concrete titles, such as "Review Methods SAC Notes" or "Past Paper Error Log".
 - Use event_type "event" for study blocks unless the file list clearly describes a real SAC, exam, GAT, or assignment.
 - Use 24-hour start_time in HH:mm format.
@@ -183,9 +183,9 @@ Rules:
         },
         {
           role: "user",
-          content: `Project: ${project.name}
+          content: `Assessment: ${project.name}
 Subject: ${subject ? `${subject.name} (${subject.shortCode})` : "No subject"}
-Deadline: ${project.deadline ?? "No project deadline"}
+Assessment date: ${project.deadline ?? "No assessment date"}
 
 Files:
 ${fileLines.join("\n\n")}`,

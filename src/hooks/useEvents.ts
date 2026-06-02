@@ -3,6 +3,27 @@ import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 import type { CalendarEvent, EventType } from "@/lib/types"
 
+function getEventEndTime(event: Pick<CalendarEvent, "startTime" | "endTime">): number {
+  const value = event.endTime ?? event.startTime
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time
+}
+
+function eventHasPassed(event: Pick<CalendarEvent, "startTime" | "endTime">, now = Date.now()): boolean {
+  return getEventEndTime(event) < now
+}
+
+function markPastEventsFinished(events: CalendarEvent[], now = Date.now()): CalendarEvent[] {
+  let changed = false
+  const finishedAt = new Date(now).toISOString()
+  const updated = events.map((event) => {
+    if (event.isFinished || !eventHasPassed(event, now)) return event
+    changed = true
+    return { ...event, isFinished: true, finishedAt }
+  })
+  return changed ? updated : events
+}
+
 function normaliseEvent(raw: unknown): CalendarEvent {
   const obj = raw as Record<string, unknown>
   const eventType =
@@ -14,7 +35,7 @@ function normaliseEvent(raw: unknown): CalendarEvent {
       ? obj.eventType
       : "event"
 
-  return {
+  const event: CalendarEvent = {
     id: typeof obj.id === "string" ? obj.id : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
     title: typeof obj.title === "string" ? obj.title : "Untitled Event",
     description: typeof obj.description === "string" ? obj.description : undefined,
@@ -23,8 +44,11 @@ function normaliseEvent(raw: unknown): CalendarEvent {
     eventType,
     subjectId: typeof obj.subjectId === "string" ? obj.subjectId : undefined,
     location: typeof obj.location === "string" ? obj.location : undefined,
+    isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
+    finishedAt: typeof obj.finishedAt === "string" ? obj.finishedAt : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
   }
+  return event
 }
 
 function getEventsFilePath(baseDir: string) {
@@ -51,7 +75,11 @@ export function useEvents() {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const raw = JSON.parse(content)
         const normalised: CalendarEvent[] = Array.isArray(raw) ? raw.map(normaliseEvent) : []
-        setEvents(normalised)
+        const updated = markPastEventsFinished(normalised)
+        if (updated !== normalised) {
+          await writeTextFile(filePath, JSON.stringify(updated, null, 2))
+        }
+        setEvents(updated)
       }
     } catch (e) {
       const msg = `Failed to load events: ${String(e)}`
@@ -91,6 +119,8 @@ export function useEvents() {
       eventType: data.eventType,
       subjectId: data.subjectId,
       location: data.location,
+      isFinished: eventHasPassed(data),
+      finishedAt: eventHasPassed(data) ? new Date().toISOString() : undefined,
       created_at: new Date().toISOString(),
     }
     const updated = [...events, event]
@@ -117,6 +147,8 @@ export function useEvents() {
       eventType: data.eventType,
       subjectId: data.subjectId,
       location: data.location,
+      isFinished: eventHasPassed(data),
+      finishedAt: eventHasPassed(data) ? createdAt : undefined,
       created_at: createdAt,
     }))
     const updated = [...events, ...newEvents]
@@ -128,9 +160,9 @@ export function useEvents() {
     id: string,
     updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
   ) => {
-    const updated = events.map((event) =>
+    const updated = markPastEventsFinished(events.map((event) =>
       event.id === id ? { ...event, ...updates } : event
-    )
+    ))
     await saveEvents(updated)
   }, [events, saveEvents])
 
@@ -143,6 +175,22 @@ export function useEvents() {
     // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
     loadEvents()
   }, [loadEvents])
+
+  useEffect(() => {
+    const markFinished = () => {
+      setEvents((current) => {
+        const updated = markPastEventsFinished(current)
+        if (updated !== current) {
+          void saveEvents(updated)
+        }
+        return updated
+      })
+    }
+
+    markFinished()
+    const interval = window.setInterval(markFinished, 60 * 1000)
+    return () => window.clearInterval(interval)
+  }, [saveEvents])
 
   return {
     events,

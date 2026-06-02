@@ -127,13 +127,13 @@ export function NewStudySessionDialog({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Project</label>
+                <label className="text-sm font-medium">Assessment</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={projectId}
                   onChange={(e) => handleProjectChange(e.target.value)}
                 >
-                  <option value="">No project</option>
+                  <option value="">No assessment</option>
                   {projects.filter((p) => !p.isArchived).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.icon} {p.name}

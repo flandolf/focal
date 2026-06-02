@@ -246,7 +246,7 @@ export function GlobalSearch({
               setQuery(e.target.value)
               setSelectedIndex(-1)
             }}
-            placeholder="Search projects, sessions, events, files"
+            placeholder="Search assessments, sessions, events, files"
             role="combobox"
             aria-expanded={hasVisibleResults}
             aria-controls={resultListId}
@@ -273,9 +273,9 @@ export function GlobalSearch({
           <ScrollArea className="max-h-[min(60vh,28rem)]">
             <div id={resultListId} role="listbox" aria-label="Search results" className="py-2">
               {results.projects.length > 0 && (
-                <div role="group" aria-label="Projects">
+                <div role="group" aria-label="Assessments">
                   <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
-                    Projects
+                    Assessments
                   </div>
                   {results.projects.map((project, idx) => {
                     const subject = getSubjectById(project.subjectId)

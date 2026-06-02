@@ -100,9 +100,9 @@ export function NewProjectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New Project</DialogTitle>
+          <DialogTitle>New Assessment</DialogTitle>
           <DialogDescription>
-            Create a new project folder to organise your files.
+            Create a SAC, test, exam, or assessment folder to organise your files.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -111,7 +111,7 @@ export function NewProjectDialog({
               <div className="space-y-2">
                 <label className="text-sm font-medium">Name</label>
                 <Input
-                  placeholder="e.g. English Language Assignment"
+                  placeholder="e.g. Methods SAC 2"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   autoFocus
@@ -165,7 +165,7 @@ export function NewProjectDialog({
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Deadline Type</label>
+              <label className="text-sm font-medium">Assessment Type</label>
               <div className="flex gap-1.5">
                 {DEADLINE_TYPES.map((type) => (
                   <button
@@ -185,7 +185,7 @@ export function NewProjectDialog({
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Deadline Date</label>
+              <label className="text-sm font-medium">Assessment Date</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -288,7 +288,7 @@ export function NewProjectDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!name.trim()}>
-              Create
+              Create Assessment
             </Button>
           </DialogFooter>
         </form>

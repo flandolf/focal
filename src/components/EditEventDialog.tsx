@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { addMinutes, format, parseISO } from "date-fns"
-import { CalendarIcon, Clock, MapPin, Trash2 } from "lucide-react"
+import { CalendarIcon, CheckCircle2, Clock, MapPin, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,8 @@ interface EditEventDialogProps {
     eventType: EventType
     subjectId?: string
     location?: string
+    isFinished?: boolean
+    finishedAt?: string
   }) => void
   onDelete: (id: string) => void
 }
@@ -50,6 +52,7 @@ export function EditEventDialog({
   const [eventDate, setEventDate] = useState<Date | undefined>(new Date())
   const [startTime, setStartTime] = useState("09:00")
   const [duration, setDuration] = useState("120")
+  const [isFinished, setIsFinished] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const subjects = [...VCE_SUBJECTS, ...customSubjects]
@@ -66,6 +69,7 @@ export function EditEventDialog({
     setLocation(event.location ?? "")
     setEventDate(start)
     setStartTime(format(start, "HH:mm"))
+    setIsFinished(event.isFinished ?? false)
 
     if (event.endTime) {
       const durationMs = parseISO(event.endTime).getTime() - start.getTime()
@@ -98,6 +102,8 @@ export function EditEventDialog({
       eventType,
       subjectId: subjectId || undefined,
       location: location.trim() ? location.trim() : undefined,
+      isFinished,
+      finishedAt: isFinished ? (event.finishedAt ?? new Date().toISOString()) : undefined,
     })
 
     onOpenChange(false)
@@ -239,6 +245,26 @@ export function EditEventDialog({
                 </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsFinished((current) => !current)}
+              className={cn(
+                "flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
+                isFinished
+                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : "border-border/70 bg-background/35 text-muted-foreground hover:text-foreground"
+              )}
+              aria-pressed={isFinished}
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Finished</span>
+                <span className="block text-xs text-muted-foreground">
+                  Past events are marked finished automatically.
+                </span>
+              </span>
+              <CheckCircle2 className={cn("h-4 w-4 shrink-0", isFinished && "text-emerald-500")} />
+            </button>
           </div>
           <DialogFooter className="flex justify-between">
             <Button

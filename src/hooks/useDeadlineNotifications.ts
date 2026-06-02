@@ -46,7 +46,7 @@ export function useDeadlineNotifications(projects: Project[], events: CalendarEv
     })
 
     events.forEach((event) => {
-      if (notifiedEvents.has(event.id)) return
+      if (event.isFinished || notifiedEvents.has(event.id)) return
 
       const eventDate = parseISO(event.startTime)
       const hoursUntil = differenceInHours(eventDate, now)
