@@ -121,7 +121,7 @@ export function EditEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit Event</DialogTitle>
           <DialogDescription>
@@ -129,7 +129,7 @@ export function EditEventDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-4 py-4">
+          <div className="space-y-5 py-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">Title</label>
               <Input
@@ -140,7 +140,7 @@ export function EditEventDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Type</label>
                 <select
@@ -181,7 +181,7 @@ export function EditEventDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Date</label>
                 <Popover>
@@ -222,7 +222,7 @@ export function EditEventDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Duration (minutes)</label>
                 <Input
@@ -250,7 +250,7 @@ export function EditEventDialog({
               type="button"
               onClick={() => setIsFinished((current) => !current)}
               className={cn(
-                "flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
+                "flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors",
                 isFinished
                   ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                   : "border-border/70 bg-background/35 text-muted-foreground hover:text-foreground"

@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, useCallback, useReducer } from "react"
-import { Play, Pause, RotateCcw, Timer, ChevronUp, ChevronDown } from "lucide-react"
+import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from "react"
+import { Play, Pause, RotateCcw, Timer, ChevronUp, ChevronDown, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+import { VCE_SUBJECTS, type Project, type StudySession, type Subject } from "@/lib/types"
 
 const WORK_TIME = 25 * 60
 const BREAK_TIME = 5 * 60
@@ -53,12 +55,49 @@ const initialState: TimerState = {
 interface StudyTimerProps {
   isCollapsed?: boolean
   onExpand?: () => void
+  customSubjects?: Subject[]
+  selectedProject?: Project
+  onStartSession: (data: {
+    subjectIds: string[]
+    durationMinutes: number
+    projectId?: string
+  }) => Promise<StudySession>
+  onUpdateSession: (
+    id: string,
+    updates: Partial<Omit<StudySession, "id" | "created_at">>
+  ) => Promise<void>
 }
 
-export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
+export function StudyTimer({
+  isCollapsed = false,
+  onExpand,
+  customSubjects = [],
+  selectedProject,
+  onStartSession,
+  onUpdateSession,
+}: StudyTimerProps) {
   const [expanded, setExpanded] = useState(true)
   const [state, dispatch] = useReducer(timerReducer, initialState)
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(
+    () => selectedProject?.subjectId ? [selectedProject.subjectId] : []
+  )
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const activeSessionIdRef = useRef<string | null>(null)
+
+  const subjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])
+
+  useEffect(() => {
+    if (!selectedProject?.subjectId || activeSessionIdRef.current) return
+    setSelectedSubjectIds((current) => (
+      current.length > 0 || !selectedProject.subjectId ? current : [selectedProject.subjectId]
+    ))
+  }, [selectedProject?.subjectId])
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
 
   const clearTimer = useCallback(() => {
     if (intervalRef.current) {
@@ -67,9 +106,25 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
     }
   }, [])
 
+  const completeActiveSession = useCallback(async (nextEndTime = new Date()) => {
+    const sessionId = activeSessionIdRef.current
+    if (!sessionId) return
+
+    await onUpdateSession(sessionId, {
+      endTime: nextEndTime.toISOString(),
+      status: "completed",
+      completedAt: nextEndTime.toISOString(),
+    })
+    activeSessionIdRef.current = null
+    setActiveSessionId(null)
+  }, [onUpdateSession])
+
   const onTick = useCallback(() => {
+    if (state.mode === "work" && state.running && state.secondsLeft <= 1 && activeSessionIdRef.current) {
+      void completeActiveSession()
+    }
     dispatch({ type: "TICK" })
-  }, [])
+  }, [completeActiveSession, state.mode, state.running, state.secondsLeft])
 
   useEffect(() => {
     if (!state.running) {
@@ -81,9 +136,6 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
     intervalRef.current = setInterval(onTick, 1000)
     return clearTimer
   }, [state.running, onTick, clearTimer])
-
-  const handleToggle = () => dispatch({ type: "TOGGLE" })
-  const handleReset = () => dispatch({ type: "RESET" })
 
   const { running, mode, secondsLeft, cycles } = state
 
@@ -101,6 +153,83 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
 
   const modeLabel = mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
   const modeColor = mode === "work" ? "text-primary" : "text-emerald-500"
+  const activeSubjects = subjects.filter((subject) => selectedSubjectIds.includes(subject.id))
+  const activeSubjectLabel = activeSubjects.length === 0
+    ? "No subject"
+    : activeSubjects.length === 1
+      ? activeSubjects[0].shortCode
+      : `${activeSubjects.length} subjects`
+  const activeProjectId = selectedProject && selectedSubjectIds.includes(selectedProject.subjectId ?? "")
+    ? selectedProject.id
+    : undefined
+  const canStartFocus = selectedSubjectIds.length > 0 && !saving
+
+  const syncActiveSessionSubjects = useCallback(async (nextSubjectIds: string[]) => {
+    const sessionId = activeSessionIdRef.current
+    if (!sessionId) return
+    await onUpdateSession(sessionId, { subjectIds: nextSubjectIds })
+  }, [onUpdateSession])
+
+  const handleSubjectClick = (subjectId: string) => {
+    setSelectedSubjectIds((current) => {
+      const next = activeSessionIdRef.current
+        ? current.includes(subjectId) ? current : [...current, subjectId]
+        : current.includes(subjectId) ? current.filter((id) => id !== subjectId) : [...current, subjectId]
+
+      if (activeSessionIdRef.current && next !== current) {
+        void syncActiveSessionSubjects(next)
+      }
+
+      return next
+    })
+  }
+
+  const startFocusSession = async () => {
+    if (mode !== "work" || activeSessionIdRef.current || selectedSubjectIds.length === 0) return
+
+    setSaving(true)
+    try {
+      const session = await onStartSession({
+        subjectIds: selectedSubjectIds,
+        durationMinutes: Math.ceil(secondsLeft / 60),
+        projectId: activeProjectId,
+      })
+      activeSessionIdRef.current = session.id
+      setActiveSessionId(session.id)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggle = () => {
+    if (!running && mode === "work" && !activeSessionIdRef.current) {
+      if (!canStartFocus) return
+      void startFocusSession()
+        .then(() => {
+          dispatch({ type: "TOGGLE" })
+        })
+        .catch(() => undefined)
+      return
+    }
+
+    dispatch({ type: "TOGGLE" })
+  }
+
+  const handleFinish = () => {
+    if (!activeSessionIdRef.current) return
+    setSaving(true)
+    void completeActiveSession().finally(() => {
+      setSaving(false)
+      dispatch({ type: "RESET" })
+    })
+  }
+
+  const handleReset = () => {
+    if (activeSessionIdRef.current) {
+      void completeActiveSession()
+    }
+    dispatch({ type: "RESET" })
+  }
 
   if (isCollapsed) {
     return (
@@ -111,7 +240,7 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
             "flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-sidebar-accent/60",
             running ? modeColor : "text-muted-foreground hover:text-foreground"
           )}
-          title={running ? `${timeDisplay} - ${modeLabel}` : "Pomodoro"}
+          title={running ? `${timeDisplay} - ${modeLabel} - ${activeSubjectLabel}` : "Pomodoro"}
         >
           <Timer className="h-4 w-4" />
         </button>
@@ -131,7 +260,7 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
             {running ? timeDisplay : "Pomodoro"}
           </span>
           {running && (
-            <span className={cn("text-micro font-medium ml-auto", modeColor)}>{modeLabel}</span>
+            <span className={cn("text-micro font-medium ml-auto", modeColor)}>{activeSubjectLabel}</span>
           )}
           <ChevronUp className="h-3 w-3 ml-auto" />
         </button>
@@ -160,6 +289,49 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
       </div>
       <div className={cn("text-xs font-medium", modeColor)}>
         {modeLabel} · Cycle {cycles + 1}
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-micro font-semibold uppercase text-muted-foreground/70">Studying</span>
+          {activeSessionId && (
+            <span className="text-micro font-medium text-primary">Logging now</span>
+          )}
+        </div>
+        <ScrollArea className="w-full whitespace-nowrap">
+          <div className="flex w-max gap-1.5 pb-2">
+            {subjects.map((subject) => {
+              const selected = selectedSubjectIds.includes(subject.id)
+              return (
+                <button
+                  key={subject.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => handleSubjectClick(subject.id)}
+                  className={cn(
+                    "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold transition-colors",
+                    selected
+                      ? "border-transparent text-foreground shadow-xs"
+                      : "border-sidebar-border bg-background/35 text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
+                  )}
+                  style={selected ? {
+                    backgroundColor: `${subject.color}18`,
+                    borderColor: `${subject.color}40`,
+                    color: subject.color,
+                  } : undefined}
+                  title={activeSessionId && selected ? `${subject.name} is logged for this session` : subject.name}
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: subject.color }}
+                  />
+                  {subject.shortCode}
+                </button>
+              )
+            })}
+          </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
       </div>
 
       <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-3">
@@ -193,6 +365,7 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
 
         <Button
           onClick={handleToggle}
+          disabled={!canStartFocus && !running}
           size="sm"
           variant={running ? "outline" : "default"}
           className="mt-3 h-7 w-full gap-1.5 rounded-xl text-xs"
@@ -203,10 +376,22 @@ export function StudyTimer({ isCollapsed = false, onExpand }: StudyTimerProps) {
             </>
           ) : (
             <>
-              <Play className="h-3 w-3" /> {secondsLeft === totalSeconds ? "Start" : "Resume"}
+              <Play className="h-3 w-3" /> {selectedSubjectIds.length === 0 ? "Pick a subject" : secondsLeft === totalSeconds ? "Start Focus" : "Resume"}
             </>
           )}
         </Button>
+        {activeSessionId && (
+          <Button
+            onClick={handleFinish}
+            disabled={saving}
+            size="sm"
+            variant="ghost"
+            className="mt-1.5 h-7 w-full gap-1.5 rounded-xl text-xs text-muted-foreground hover:text-foreground"
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Finish & save
+          </Button>
+        )}
       </div>
     </div>
   )

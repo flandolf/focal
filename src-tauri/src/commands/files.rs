@@ -204,30 +204,14 @@ pub fn create_project_with_subfolders(project_name: String, subfolders: Vec<Stri
 }
 
 #[tauri::command]
-pub fn get_subject_folder_template(subject_id: String) -> Result<Vec<String>, String> {
-    let templates: std::collections::HashMap<&str, Vec<&str>> = [
-        ("eng", vec!["Essays", "Texts", "Writing Practice", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("eng-lang", vec!["Language Analysis", "Written & Spoken", "SACs", "Notes", "Vocabulary", "Past-Papers", "Exam-Revision"]),
-        ("lit", vec!["Primary Texts", "Critical Analysis", "Essay Plans", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("mm", vec!["Unit 1 Notes", "Unit 2 Notes", "Formulas", "Practice Problems", "SACs", "Past-Papers", "Exam-Revision"]),
-        ("sm", vec!["Unit 3 Notes", "Unit 4 Notes", "Proofs", "Challenge Problems", "SACs", "Past-Papers", "Exam-Revision"]),
-        ("fm", vec!["Statistics", "Financial Math", "Practice Sets", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("chem", vec!["Experiment Reports", "Equations", "Electron Configurations", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("phys", vec!["Experiment Reports", "Formulas", "Problem Sets", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("bio", vec!["Practicals", "Diagrams", "Key Concepts", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("psych", vec!["Research Studies", "Theories", "Case Studies", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("hist", vec!["Primary Sources", "Essay Plans", "Timelines", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("geo", vec!["Case Studies", "Fieldwork", "Maps & Diagrams", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("econ", vec!["Case Studies", "Data & Graphs", "Models", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-        ("bm", vec!["Reports", "Case Studies", "Strategies", "SACs", "Notes", "Past-Papers", "Exam-Revision"]),
-    ].iter().cloned().collect();
-
-    let default = vec!["SACs".to_string(), "Notes".to_string(), "Past-Papers".to_string(), "Exam-Revision".to_string(), "Resources".to_string()];
-
-    Ok(templates
-        .get(subject_id.as_str())
-        .map(|folders| folders.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-        .unwrap_or(default))
+pub fn get_subject_folder_template(_subject_id: String) -> Result<Vec<String>, String> {
+    Ok(vec![
+        "SACs".to_string(),
+        "Notes".to_string(),
+        "Past-Papers".to_string(),
+        "Exam-Revision".to_string(),
+        "Resources".to_string(),
+    ])
 }
 
 #[derive(Debug, Serialize, Deserialize)]

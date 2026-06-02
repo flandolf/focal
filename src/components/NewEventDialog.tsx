@@ -20,6 +20,7 @@ interface NewEventDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   customSubjects: Subject[]
+  initialDate?: Date
   onSubmit: (data: {
     title: string
     description?: string
@@ -35,6 +36,7 @@ export function NewEventDialog({
   open,
   onOpenChange,
   customSubjects,
+  initialDate,
   onSubmit,
 }: NewEventDialogProps) {
   const [title, setTitle] = useState("")
@@ -42,7 +44,7 @@ export function NewEventDialog({
   const [eventType, setEventType] = useState<EventType>("exam")
   const [subjectId, setSubjectId] = useState("")
   const [location, setLocation] = useState("")
-  const [eventDate, setEventDate] = useState<Date | undefined>(new Date())
+  const [eventDate, setEventDate] = useState<Date | undefined>(() => initialDate ? new Date(initialDate) : new Date())
   const [startTime, setStartTime] = useState("09:00")
   const [duration, setDuration] = useState("120")
 
@@ -84,7 +86,7 @@ export function NewEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Add Event</DialogTitle>
           <DialogDescription>
@@ -92,7 +94,7 @@ export function NewEventDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-4 py-4">
+          <div className="space-y-5 py-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">Title</label>
               <Input
@@ -103,7 +105,7 @@ export function NewEventDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Type</label>
                 <select
@@ -144,7 +146,7 @@ export function NewEventDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Date</label>
                 <Popover>
@@ -185,7 +187,7 @@ export function NewEventDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Duration (minutes)</label>
                 <Input

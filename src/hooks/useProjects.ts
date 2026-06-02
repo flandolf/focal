@@ -24,6 +24,7 @@ function normaliseProject(raw: unknown): Project {
     isFavorite: typeof obj.isFavorite === "boolean" ? obj.isFavorite : false,
     isArchived: typeof obj.isArchived === "boolean" ? obj.isArchived : false,
     isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
+    customSubfolders: Array.isArray(obj.customSubfolders) ? obj.customSubfolders.filter((s): s is string => typeof s === "string") : undefined,
   }
 }
 
@@ -73,13 +74,13 @@ export function useProjects() {
     setProjects(updatedProjects)
   }, [])
 
-  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, gatDate?: string, examDate?: string) => {
+  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, gatDate?: string, examDate?: string, customSubfolders?: string[]) => {
     const sanitised = sanitiseFolderName(name)
     if (!sanitised) {
       throw new Error("Project name cannot be empty after sanitisation")
     }
     
-    // Get subject-specific folders or use defaults
+    // Get default folders
     let subfolders = DEFAULT_SUBFOLDERS
     if (subjectId) {
       try {
@@ -91,6 +92,9 @@ export function useProjects() {
         console.warn("Could not get subject folder template, using defaults:", e)
       }
     }
+    
+    // Combine default folders with custom subfolders
+    const allSubfolders = customSubfolders ? [...subfolders, ...customSubfolders] : subfolders
     
     const project: Project = {
       id: generateId(),
@@ -105,11 +109,12 @@ export function useProjects() {
       deadlineType,
       gatDate,
       examDate,
+      customSubfolders,
     }
     try {
       await invoke("create_project_with_subfolders", { 
         projectName: sanitised,
-        subfolders,
+        subfolders: allSubfolders,
       })
     } catch (e) {
       console.warn("Could not create project folder on disk:", e)
@@ -134,6 +139,42 @@ export function useProjects() {
     await saveProjects(updated)
   }, [projects, saveProjects])
 
+  const addCustomSubfolder = useCallback(async (id: string, folderName: string) => {
+    const sanitised = sanitiseFolderName(folderName)
+    if (!sanitised) {
+      throw new Error("Folder name cannot be empty after sanitisation")
+    }
+    
+    const project = projects.find((p) => p.id === id)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+    
+    // Check if folder already exists in defaults or custom
+    const existingFolders = [...DEFAULT_SUBFOLDERS, ...(project.customSubfolders ?? [])]
+    if (existingFolders.includes(sanitised)) {
+      throw new Error("Folder already exists")
+    }
+    
+    // Create the folder on disk
+    try {
+      await invoke("create_project_with_subfolders", {
+        projectName: project.folder_path,
+        subfolders: [sanitised],
+      })
+    } catch (e) {
+      console.warn("Could not create folder on disk:", e)
+    }
+    
+    // Update project with new custom subfolder
+    const updated = projects.map((p) =>
+      p.id === id
+        ? { ...p, customSubfolders: [...(p.customSubfolders ?? []), sanitised] }
+        : p
+    )
+    await saveProjects(updated)
+  }, [projects, saveProjects])
+
   const getProjectById = useCallback((id: string) => {
     return projects.find((p) => p.id === id) ?? null
   }, [projects])
@@ -151,6 +192,7 @@ export function useProjects() {
     updateProject,
     deleteProject,
     getProjectById,
+    addCustomSubfolder,
     refresh: loadProjects,
   }
 }

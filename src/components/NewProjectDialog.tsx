@@ -98,7 +98,7 @@ export function NewProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>New Assessment</DialogTitle>
           <DialogDescription>
@@ -106,8 +106,8 @@ export function NewProjectDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-5 py-2">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Name</label>
                 <Input
@@ -126,7 +126,7 @@ export function NewProjectDialog({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Subject</label>
                 <select
@@ -166,14 +166,14 @@ export function NewProjectDialog({
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Assessment Type</label>
-              <div className="flex gap-1.5">
+              <div className="grid grid-cols-4 gap-2">
                 {DEADLINE_TYPES.map((type) => (
                   <button
                     key={type.value}
                     type="button"
                     onClick={() => setDeadlineType(deadlineType === type.value ? "" : type.value)}
                     className={cn(
-                      "flex-1 py-1.5 rounded-md text-sm font-medium transition-colors",
+                      "py-2 rounded-lg text-sm font-medium transition-colors",
                       deadlineType === type.value
                         ? "bg-accent ring-2 ring-ring"
                         : "bg-muted hover:bg-muted/80"
@@ -209,7 +209,7 @@ export function NewProjectDialog({
                 </PopoverContent>
               </Popover>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">GAT Date</label>
                 <Popover>
@@ -263,13 +263,13 @@ export function NewProjectDialog({
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Icon</label>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1.5">
                 {EMOJIS.map((e) => (
                   <button
                     key={e}
                     type="button"
                     onClick={() => setIcon(e)}
-                    className={`text-base w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                    className={`text-base w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
                       icon === e ? "bg-accent ring-2 ring-ring" : "hover:bg-accent/50"
                     }`}
                   >

@@ -132,7 +132,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Export & Backup</DialogTitle>
           <DialogDescription>
@@ -140,11 +140,11 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setFormat("json")}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`flex-1 px-4 py-2.5 text-sm rounded-lg border transition-colors ${
                 format === "json"
                   ? "border-primary bg-primary/5 text-primary font-medium"
                   : "border-border text-muted-foreground hover:bg-accent/50"
@@ -154,7 +154,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
             </button>
             <button
               onClick={() => setFormat("csv")}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`flex-1 px-4 py-2.5 text-sm rounded-lg border transition-colors ${
                 format === "csv"
                   ? "border-primary bg-primary/5 text-primary font-medium"
                   : "border-border text-muted-foreground hover:bg-accent/50"
@@ -165,16 +165,16 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
           </div>
 
           <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-lg font-semibold">{projects.length}</p>
+            <div className="p-4 rounded-lg bg-muted/50">
+              <p className="text-xl font-semibold">{projects.length}</p>
               <p className="text-xs text-muted-foreground">Assessments</p>
             </div>
-            <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-lg font-semibold">{sessions.length}</p>
+            <div className="p-4 rounded-lg bg-muted/50">
+              <p className="text-xl font-semibold">{sessions.length}</p>
               <p className="text-xs text-muted-foreground">Sessions</p>
             </div>
-            <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-lg font-semibold">{events.length}</p>
+            <div className="p-4 rounded-lg bg-muted/50">
+              <p className="text-xl font-semibold">{events.length}</p>
               <p className="text-xs text-muted-foreground">Events</p>
             </div>
           </div>

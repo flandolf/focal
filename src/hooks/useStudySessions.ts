@@ -83,6 +83,7 @@ export function useStudySessions() {
     description?: string,
     topics?: string[],
     notes?: string,
+    status: StudySession["status"] = "planned",
   ) => {
     const session: StudySession = {
       id: generateId(),
@@ -92,7 +93,7 @@ export function useStudySessions() {
       description,
       startTime,
       endTime,
-      status: "planned",
+      status,
       topics,
       notes,
       created_at: new Date().toISOString(),

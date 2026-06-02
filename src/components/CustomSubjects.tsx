@@ -63,7 +63,7 @@ export function CustomSubjects({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Subjects</DialogTitle>
           <DialogDescription>
@@ -79,7 +79,7 @@ export function CustomSubjects({
             {VCE_SUBJECTS.map((subject) => (
               <div
                 key={subject.id}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
               >
                 <span className="text-base">{subject.icon}</span>
                 <div className="flex-1 min-w-0">
@@ -102,7 +102,7 @@ export function CustomSubjects({
                 {customSubjects.map((subject) => (
                   <div
                     key={subject.id}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg group hover:bg-accent/50"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg group hover:bg-accent/50"
                   >
                     <span className="text-base">{subject.icon}</span>
                     <div className="flex-1 min-w-0">
@@ -129,10 +129,10 @@ export function CustomSubjects({
         </ScrollArea>
 
         {showForm ? (
-          <div className="space-y-2.5 pt-2.5 border-t">
-            <div className="grid grid-cols-2 gap-2.5">
+          <div className="space-y-3 pt-3 border-t">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium mb-1 block">Name</label>
+                <label className="text-xs font-medium mb-1.5 block">Name</label>
                 <Input
                   value={formData.name}
                   onChange={(e) =>
@@ -142,7 +142,7 @@ export function CustomSubjects({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium mb-1 block">Code</label>
+                <label className="text-xs font-medium mb-1.5 block">Code</label>
                 <Input
                   value={formData.shortCode}
                   onChange={(e) =>
@@ -154,7 +154,7 @@ export function CustomSubjects({
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium mb-1 block">Icon</label>
+              <label className="text-xs font-medium mb-1.5 block">Icon</label>
               <Input
                 value={formData.icon}
                 onChange={(e) =>
@@ -165,17 +165,17 @@ export function CustomSubjects({
               />
             </div>
             <div>
-              <label className="text-xs font-medium mb-1.5 flex items-center gap-1.5">
+              <label className="text-xs font-medium mb-2 flex items-center gap-1.5">
                 <Palette className="h-3 w-3" />
                 Color
               </label>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {PRESET_COLORS.map((c) => (
                   <button
                     key={c}
                     onClick={() => setFormData((f) => ({ ...f, color: c }))}
                     className={cn(
-                      "w-7 h-7 rounded-full border-2 transition-transform hover:scale-110",
+                      "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
                       formData.color === c && "border-foreground scale-110"
                     )}
                     style={{ backgroundColor: c }}

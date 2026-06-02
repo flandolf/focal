@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import {
   Archive,
   Atom,
+  BarChart3,
   BookOpen,
   Brain,
   BriefcaseBusiness,
@@ -43,7 +44,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StudyTimer } from "@/components/StudyTimer"
 import { cn, formatDeadline, isOverdue, sortProjectsByDeadline, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
-import type { DeadlineType, Project } from "@/lib/types"
+import type { DeadlineType, Project, StudySession, Subject } from "@/lib/types"
 
 type FilterMode = "active" | "favorites" | "archived" | "finished"
 
@@ -126,7 +127,7 @@ const SUBJECT_ICONS: Record<string, LucideIcon> = {
   lit: Library,
   mm: Calculator,
   sm: Calculator,
-  fm: ChartNoAxesColumn,
+  gm: ChartNoAxesColumn,
   chem: FlaskConical,
   phys: Atom,
   bio: Dna,
@@ -186,33 +187,50 @@ function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGr
 
 interface SidebarProps {
   projects: Project[]
+  customSubjects: Subject[]
   selectedId: string | null
   homeSelected: boolean
+  analyticsSelected: boolean
   isCollapsed: boolean
   onToggleCollapse: () => void
   onSelect: (id: string) => void
   onSelectHome: () => void
+  onSelectAnalytics: () => void
   onDelete: (id: string) => void
   onNewProject: () => void
   onToggleFavorite?: (id: string) => void
   onToggleArchive?: (id: string) => void
   onToggleFinished?: (id: string) => void
+  onStartPomodoroSession: (data: {
+    subjectIds: string[]
+    durationMinutes: number
+    projectId?: string
+  }) => Promise<StudySession>
+  onUpdatePomodoroSession: (
+    id: string,
+    updates: Partial<Omit<StudySession, "id" | "created_at">>
+  ) => Promise<void>
   fileCounts: Record<string, number>
 }
 
 export function Sidebar({
   projects,
+  customSubjects,
   selectedId,
   homeSelected,
+  analyticsSelected,
   isCollapsed,
   onToggleCollapse,
   onSelect,
   onSelectHome,
+  onSelectAnalytics,
   onDelete,
   onNewProject,
   onToggleFavorite,
   onToggleArchive,
   onToggleFinished,
+  onStartPomodoroSession,
+  onUpdatePomodoroSession,
   fileCounts,
 }: SidebarProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("active")
@@ -231,6 +249,7 @@ export function Sidebar({
   const finishedCount = sorted.filter((p) => p.isFinished && !p.isArchived).length
   const activeCount = sorted.filter((p) => !p.isArchived && !p.isFinished).length
   const subjectGroups = getAssessmentSubjectGroups(filtered)
+  const selectedProject = selectedId ? projects.find((project) => project.id === selectedId) : undefined
   const filterItems: { mode: FilterMode; label: string; icon: LucideIcon; count?: number }[] = [
     { mode: "active", label: "Current", icon: CircleDot },
     { mode: "favorites", label: "Starred", icon: Star, count: favoriteCount },
@@ -249,7 +268,7 @@ export function Sidebar({
       className="glass-sidebar flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground transition-all duration-300 ease-out min-[1200px]:rounded-[1.35rem]"
     >
       <div className={cn(
-        "pb-3 pt-3 min-[1200px]:pb-4 min-[1200px]:pt-4",
+        "pb-2 pt-2.5 min-[1200px]:pb-3 min-[1200px]:pt-3",
         isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-3 min-[1200px]:px-4"
       )}>
         <div className={cn(
@@ -290,10 +309,10 @@ export function Sidebar({
             </motion.button>
         </div>
 
-        <motion.div layout className="mt-4 flex justify-center" transition={layoutTransition}>
+        <motion.div layout className="mt-3 flex justify-center" transition={layoutTransition}>
           <Button
             onClick={onNewProject}
-            className={cn("h-9 overflow-hidden rounded-2xl", isCollapsed ? "w-9 px-0" : "w-full gap-1.5")}
+            className={cn("h-8 overflow-hidden rounded-2xl", isCollapsed ? "w-8 px-0" : "w-full gap-1")}
             size="sm"
             title={isCollapsed ? "New Assessment" : undefined}
           >
@@ -306,7 +325,7 @@ export function Sidebar({
       </div>
 
       <div className={cn(
-        "space-y-2 min-[1200px]:space-y-3",
+        "space-y-1.5 min-[1200px]:space-y-2",
         isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-2.5 min-[1200px]:px-3"
       )}>
         <motion.button
@@ -316,7 +335,7 @@ export function Sidebar({
           whileTap={tapPress}
           transition={pressTransition}
           className={cn(
-            "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition-colors",
+            "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
             homeSelected
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
@@ -335,10 +354,31 @@ export function Sidebar({
           </CollapsibleInline>
         </motion.button>
 
+        <motion.button
+          layout
+          onClick={onSelectAnalytics}
+          whileHover={hoverLift}
+          whileTap={tapPress}
+          transition={pressTransition}
+          className={cn(
+            "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            analyticsSelected
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+            isCollapsed && "justify-center px-0"
+          )}
+          title={isCollapsed ? "Analytics" : undefined}
+        >
+          <BarChart3 className="h-4 w-4 shrink-0" />
+          <CollapsibleInline show={!isCollapsed} className="font-medium" reduceMotion={reduceMotion}>
+            Analytics
+          </CollapsibleInline>
+        </motion.button>
+
         <motion.div
           layout
           className={cn(
-            "gap-1 rounded-xl border border-sidebar-border bg-background/30 p-1 min-[1200px]:rounded-2xl",
+            "gap-1 rounded-xl border border-sidebar-border bg-background/30 p-0.5 min-[1200px]:rounded-2xl",
             isCollapsed ? "flex flex-col" : "grid grid-cols-2"
           )}
           transition={layoutTransition}
@@ -352,7 +392,7 @@ export function Sidebar({
               whileTap={tapPress}
               transition={pressTransition}
               className={cn(
-                "relative flex h-8 items-center justify-center rounded-xl transition-colors",
+                "relative flex h-7 items-center justify-center rounded-xl transition-colors",
                 isCollapsed ? "px-0" : "gap-1 px-2 py-1.5 text-xs",
                 filterMode === mode
                   ? "bg-background/80 text-foreground shadow-xs font-medium"
@@ -376,11 +416,11 @@ export function Sidebar({
 
       <ScrollArea className="min-h-0 w-full max-w-full flex-1 overflow-hidden">
         <div className={cn(
-          "w-full max-w-full overflow-x-hidden pb-2 pt-3 min-[1200px]:pt-4",
+          "w-full max-w-full overflow-x-hidden pb-1.5 pt-2 min-[1200px]:pt-2.5",
           isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-1.5 min-[1200px]:px-2"
         )}>
           {subjectGroups.length > 0 ? (
-            <div className="flex w-full min-w-0 max-w-full flex-col gap-2.5">
+            <div className="flex w-full min-w-0 max-w-full flex-col gap-2">
               {!isCollapsed && (
                 <div className="px-2 text-micro font-semibold uppercase text-muted-foreground/60">
                   Subjects
@@ -389,7 +429,7 @@ export function Sidebar({
               {subjectGroups.map((group) => (
                 <div key={group.subjectId} className="min-w-0">
                   {!isCollapsed && (
-                    <div className="mb-1 flex items-center gap-1.5 px-2">
+                    <div className="mb-0.5 flex items-center gap-1.5 px-2">
                       <span
                         className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40"
                         style={group.color ? { backgroundColor: group.color } : undefined}
@@ -400,7 +440,7 @@ export function Sidebar({
                       <span className="text-micro tabular-nums text-muted-foreground/60">{group.assessments.length}</span>
                     </div>
                   )}
-                  <div className="flex w-full min-w-0 max-w-full flex-col gap-0.5">
+                    <div className="flex w-full min-w-0 max-w-full flex-col gap-0.5">
               {group.assessments.map((project) => {
                 const ProjectIcon = getSidebarProjectIcon(project)
                 const subject = getSubjectById(project.subjectId)
@@ -416,7 +456,7 @@ export function Sidebar({
                     transition={pressTransition}
                     className={cn(
                       "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
-                      isCollapsed ? "justify-center px-2 py-1.5" : "px-2 py-1.5 pr-8 min-[1200px]:rounded-xl",
+                      isCollapsed ? "justify-center px-2 py-1.25" : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
                       selectedId === project.id
                         ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
                         : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
@@ -430,7 +470,7 @@ export function Sidebar({
                       transition={layoutTransition}
                       className={cn(
                         "flex shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
-                        isCollapsed ? "size-7 rounded-xl" : "size-5"
+                        isCollapsed ? "size-6.5 rounded-xl" : "size-5"
                       )}
                       style={subject ? {
                         backgroundColor: subject.color + "14",
@@ -559,7 +599,14 @@ export function Sidebar({
         </div>
       </ScrollArea>
 
-      <StudyTimer isCollapsed={isCollapsed} onExpand={onToggleCollapse} />
+      <StudyTimer
+        isCollapsed={isCollapsed}
+        onExpand={onToggleCollapse}
+        customSubjects={customSubjects}
+        selectedProject={selectedProject}
+        onStartSession={onStartPomodoroSession}
+        onUpdateSession={onUpdatePomodoroSession}
+      />
     </motion.aside>
   )
 }

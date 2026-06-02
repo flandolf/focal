@@ -27,7 +27,7 @@ const PROJECT_ICONS: Record<string, LucideIcon> = {
   lit: Library,
   mm: Calculator,
   sm: Calculator,
-  fm: ChartNoAxesColumn,
+  gm: ChartNoAxesColumn,
   chem: FlaskConical,
   phys: Atom,
   bio: Dna,
@@ -54,9 +54,10 @@ interface ProjectDetailProps {
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
   onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
+  onAddCustomSubfolder?: (projectId: string, folderName: string) => Promise<void>
 }
 
-export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents }: ProjectDetailProps) {
+export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents, onAddCustomSubfolder }: ProjectDetailProps) {
   const {
     files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
     addFileTags, removeFileTag, toggleFavorite,
@@ -70,6 +71,11 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   const [viewMode, setViewMode] = useState<"files" | "sessions">("files")
   const [showBulkTagMenu, setShowBulkTagMenu] = useState(false)
   const [showBulkMoveMenu, setShowBulkMoveMenu] = useState(false)
+  const [newFolderName, setNewFolderName] = useState("")
+  const [isAddingFolder, setIsAddingFolder] = useState(false)
+
+  // Combine default folders with custom subfolders from the project
+  const allSubfolders = [...DEFAULT_SUBFOLDERS, ...(project.customSubfolders ?? [])]
 
   useEffect(() => {
     void loadFiles(selectedSubfolder)
@@ -134,6 +140,18 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     const count = await addFiles(selectedSubfolder)
     if (count) {
       onFilesChanged()
+    }
+  }
+
+  const handleAddCustomFolder = async () => {
+    if (!newFolderName.trim() || !onAddCustomSubfolder) return
+    
+    try {
+      await onAddCustomSubfolder(project.id, newFolderName.trim())
+      setNewFolderName("")
+      setIsAddingFolder(false)
+    } catch (e) {
+      console.error("Failed to add custom folder:", e)
     }
   }
 
@@ -465,7 +483,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                 >
                   All
                 </button>
-                {DEFAULT_SUBFOLDERS.map((folder) => (
+                {allSubfolders.map((folder) => (
                   <button
                     key={folder}
                     onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
@@ -479,6 +497,50 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     {folder}
                   </button>
                 ))}
+                {onAddCustomSubfolder && (
+                  <>
+                    {isAddingFolder ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={newFolderName}
+                          onChange={(e) => setNewFolderName(e.target.value)}
+                          placeholder="Folder name"
+                          className="h-6 w-24 text-xs"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void handleAddCustomFolder()
+                            if (e.key === "Escape") {
+                              setIsAddingFolder(false)
+                              setNewFolderName("")
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => void handleAddCustomFolder()}
+                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsAddingFolder(false)
+                            setNewFolderName("")
+                          }}
+                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setIsAddingFolder(true)}
+                        className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -672,7 +734,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-40 gap-1 p-1">
-                    {DEFAULT_SUBFOLDERS.map((folder) => (
+                    {allSubfolders.map((folder) => (
                       <button
                         key={folder}
                         onClick={() => { void handleBulkMove(folder); setShowBulkMoveMenu(false) }}
@@ -713,7 +775,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     onMoveFile={handleMoveFile}
                     isSelected={selectedFiles.has(file.path)}
                     onSelectionChange={handleFileSelectionChange}
-                    subfolders={DEFAULT_SUBFOLDERS}
+                    subfolders={allSubfolders}
                   />
                 ))}
               </div>
