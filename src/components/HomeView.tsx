@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, parseISO } from "date-fns"
-import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, ExternalLink, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, Pencil, Trash2, Target, Activity } from "lucide-react"
+import { addMinutes, format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, parseISO } from "date-fns"
+import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, ExternalLink, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, Pencil, Trash2, Target, Activity, Wand2, Loader2, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
 import { formatDeadline, isOverdue, getSubjectById, getEventTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 import { getPriorityItems, getSubjectReadiness } from "@/lib/studyPriority"
-import type { CalendarEvent, PriorityItem, PriorityUrgency, Project, StudySession, SubjectReadiness } from "@/lib/types"
+import type { CalendarEvent, EventType, PriorityItem, PriorityUrgency, Project, StudySession, Subject, SubjectReadiness } from "@/lib/types"
+import { VCE_SUBJECTS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface QuickLink {
@@ -43,7 +45,26 @@ interface PrepBalanceItem {
   event?: CalendarEvent
 }
 
+interface TextEventDraft {
+  kind: "event" | "session"
+  title: string
+  description?: string
+  date: string
+  startTime: string
+  durationMinutes: number
+  eventType: EventType
+  subjectId?: string
+  subjectIds: string[]
+  projectId?: string
+  location?: string
+  topics?: string[]
+  approved: boolean
+}
+
+type TextPlannerMode = "mixed" | "sessions"
+
 const QUICK_LINKS_KEY = "focal-quick-links"
+const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event"])
 
 const ICON_OPTIONS = [
   { name: "BookOpen", component: BookOpen },
@@ -111,6 +132,265 @@ function getUrgencyClassName(urgency: PriorityUrgency) {
   }
 }
 
+function getLocalDateValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function combineDateAndTime(dateValue: string, timeValue: string): Date | null {
+  const dateParts = dateValue.split("-").map(Number)
+  const timeParts = timeValue.split(":").map(Number)
+  if (dateParts.length !== 3 || timeParts.length < 2) return null
+
+  const [year, month, day] = dateParts
+  const [hours, minutes] = timeParts
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes)
+  ) {
+    return null
+  }
+
+  const date = new Date(year, month - 1, day, hours, minutes, 0, 0)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function getPlanningSubjects(projects: Project[]): Subject[] {
+  const subjectsById = new Map(VCE_SUBJECTS.map((subject) => [subject.id, subject]))
+  projects.forEach((project) => {
+    if (!project.subjectId || subjectsById.has(project.subjectId)) return
+    const subject = getSubjectById(project.subjectId)
+    if (subject) subjectsById.set(subject.id, subject)
+  })
+  return Array.from(subjectsById.values())
+}
+
+function parseTextEventResponse(content: string, subjectIds: string[], projectIds: string[]): TextEventDraft[] {
+  const parsed: unknown = JSON.parse(content)
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("Invalid planner response")
+  }
+
+  const items = (parsed as { events?: unknown }).events
+  if (!Array.isArray(items)) {
+    throw new Error("Planner response missing events array")
+  }
+
+  return items.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return []
+    const record = item as Record<string, unknown>
+    const title = typeof record.title === "string" ? record.title.trim() : ""
+    const date = typeof record.date === "string" ? record.date.trim() : ""
+    const startTime = typeof record.start_time === "string" ? record.start_time.trim() : ""
+    const durationMinutes = typeof record.duration_minutes === "number" ? record.duration_minutes : 60
+    const kind = record.item_type === "session" ? "session" : "event"
+    const eventType = VALID_EVENT_TYPES.has(record.event_type as EventType) ? (record.event_type as EventType) : "event"
+    const subjectId = typeof record.subject_id === "string" && subjectIds.includes(record.subject_id)
+      ? record.subject_id
+      : undefined
+    const subjectIdsForDraft = Array.isArray(record.subject_ids)
+      ? record.subject_ids.filter((id): id is string => typeof id === "string" && subjectIds.includes(id))
+      : subjectId ? [subjectId] : []
+    const projectId = typeof record.project_id === "string" && projectIds.includes(record.project_id)
+      ? record.project_id
+      : undefined
+
+    if (!title || !date || !startTime) return []
+    if (kind === "session" && subjectIdsForDraft.length === 0) return []
+
+    return [{
+      kind,
+      title,
+      description: typeof record.description === "string" && record.description.trim()
+        ? record.description.trim()
+        : undefined,
+      date,
+      startTime,
+      durationMinutes: Math.min(180, Math.max(15, Math.round(durationMinutes / 15) * 15)),
+      eventType,
+      subjectId,
+      subjectIds: subjectIdsForDraft,
+      projectId,
+      location: typeof record.location === "string" && record.location.trim()
+        ? record.location.trim()
+        : undefined,
+      topics: Array.isArray(record.topics)
+        ? record.topics.filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0).map((topic) => topic.trim())
+        : undefined,
+      approved: true,
+    }]
+  })
+}
+
+async function generateEventsFromText(
+  sourceText: string,
+  projects: Project[],
+  subjects: Subject[],
+  apiKey: string,
+  model: string,
+  mode: TextPlannerMode,
+): Promise<TextEventDraft[]> {
+  const today = getLocalDateValue(new Date())
+  const subjectIds = subjects.map((subject) => subject.id)
+  const subjectEnum = ["none", ...subjectIds]
+  const activeProjects = projects.filter((project) => !project.isFinished).slice(0, 40)
+  const projectIds = activeProjects.map((project) => project.id)
+  const projectEnum = ["none", ...projectIds]
+  const itemTypeEnum = mode === "sessions" ? ["session"] : ["event", "session"]
+  const modeRules = mode === "sessions"
+    ? `- Return only item_type "session"; do not create calendar events, reminders, deadlines, SACs, exams, assignments, or GAT items.
+- Every returned item must be a planned study session with at least one concrete subject id in subject_ids.
+- Use event_type "event" for every returned item because study sessions are not assessment events.`
+    : `- Use item_type "session" for study blocks, revision plans, homework blocks, practice tasks, or prep work.
+- Use item_type "event" for real calendar events, due dates, SACs, exams, assignments, GAT dates, meetings, or reminders.
+- Use event_type "sac", "exam", "assignment", or "gat" only for real assessment items; use "event" for reminders, study blocks, meetings, or admin tasks.`
+  const subjectLines = subjects
+    .map((subject) => `${subject.id}: ${subject.name} (${subject.shortCode})`)
+    .join("\n")
+  const assessmentLines = activeProjects
+    .map((project) => {
+      const subject = getSubjectById(project.subjectId)
+      return [
+        `id ${project.id}`,
+        project.name,
+        project.deadline ? `due ${project.deadline}` : null,
+        project.deadlineType ? `type ${project.deadlineType}` : null,
+        subject ? `subject ${subject.id}` : null,
+      ].filter(Boolean).join(" / ")
+    })
+    .join("\n")
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: `You convert pasted school notices, teacher messages, planner notes, and rough text into practical calendar events and study sessions for a VCE student.
+
+Rules:
+- Today is ${today}; use this date to resolve relative dates.
+- Return 1 to 8 useful items.
+${modeRules}
+- Use 24-hour start_time in HH:mm format.
+- Use durations from 15 to 180 minutes in 15-minute increments.
+- If the source text has no time, choose a reasonable after-school time.
+- Use subject_id "none" when the subject is unclear for an event.
+- Study sessions must include at least one concrete subject id in subject_ids.
+- Use project_id when a study session clearly supports an existing active assessment; otherwise use "none".
+- Prefer concise titles that fit in a calendar cell.`,
+        },
+        {
+          role: "user",
+          content: `Available subjects:
+${subjectLines}
+
+Existing active assessments for context:
+${assessmentLines || "None"}
+
+Text to convert:
+"""
+${sourceText}
+"""`,
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "text_calendar_events",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              events: {
+                type: "array",
+                minItems: 1,
+                maxItems: 8,
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: "string" },
+                    item_type: {
+                      type: "string",
+                      enum: itemTypeEnum,
+                    },
+                    date: { type: "string", description: "YYYY-MM-DD" },
+                    start_time: { type: "string", description: "HH:mm in 24-hour time" },
+                    duration_minutes: { type: "number" },
+                    event_type: {
+                      type: "string",
+                      enum: ["sac", "exam", "assignment", "gat", "event"],
+                    },
+                    subject_id: {
+                      type: "string",
+                      enum: subjectEnum,
+                    },
+                    subject_ids: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                        enum: subjectIds,
+                      },
+                    },
+                    project_id: {
+                      type: "string",
+                      enum: projectEnum,
+                    },
+                    location: { type: "string" },
+                    topics: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                  },
+                  required: ["title", "description", "item_type", "date", "start_time", "duration_minutes", "event_type", "subject_id", "subject_ids", "project_id", "location", "topics"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["events"],
+            additionalProperties: false,
+          },
+        },
+      },
+      provider: {
+        require_parameters: true,
+      },
+      temperature: 0.2,
+      max_tokens: 1800,
+      ...getReasoningConfig(),
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`OpenRouter API error (${response.status}): ${text}`)
+  }
+
+  const data = await response.json() as { choices?: { message?: { content?: unknown } }[] }
+  const content = data.choices?.[0]?.message?.content
+  if (typeof content !== "string") {
+    throw new Error("No structured content in OpenRouter response")
+  }
+
+  const drafts = parseTextEventResponse(content, subjectIds, projectIds)
+    .filter((draft) => mode === "mixed" || draft.kind === "session")
+  if (drafts.length === 0) {
+    throw new Error("Planner did not return usable events")
+  }
+  return drafts
+}
+
 interface HomeViewProps {
   projects: Project[]
   sessions: StudySession[]
@@ -121,6 +401,8 @@ interface HomeViewProps {
   onNewSession: () => void
   onNewEvent: () => void
   onNewProject: () => void
+  onCreateEvents: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
+  onCreateStudySessions: (sessions: Omit<StudySession, "id" | "status" | "created_at">[]) => Promise<void>
 }
 
 function ReadinessRow({ item }: { item: SubjectReadiness }) {
@@ -168,6 +450,8 @@ export function HomeView({
   onNewSession,
   onNewEvent,
   onNewProject,
+  onCreateEvents,
+  onCreateStudySessions,
 }: HomeViewProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -183,6 +467,15 @@ export function HomeView({
   const [linkColor, setLinkColor] = useState("#71717a")
   const [prioritiesOpen, setPrioritiesOpen] = useState(true)
   const [readinessOpen, setReadinessOpen] = useState(true)
+  const [textPlannerOpen, setTextPlannerOpen] = useState(false)
+  const [plannerTitle, setPlannerTitle] = useState("Text to Events")
+  const [plannerDescription, setPlannerDescription] = useState("Paste a notice, rough plan, or teacher message. Review drafts before adding them.")
+  const [plannerMode, setPlannerMode] = useState<TextPlannerMode>("mixed")
+  const [plannerText, setPlannerText] = useState("")
+  const [plannerDrafts, setPlannerDrafts] = useState<TextEventDraft[]>([])
+  const [plannerLoading, setPlannerLoading] = useState(false)
+  const [plannerApplying, setPlannerApplying] = useState(false)
+  const [plannerError, setPlannerError] = useState<string | null>(null)
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; link: QuickLink } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -262,6 +555,7 @@ export function HomeView({
   const completedSessions = sessions.filter((s) => s.status === "completed").length
   const priorityItems = useMemo(() => getPriorityItems({ projects, sessions, events }), [projects, sessions, events])
   const subjectReadiness = useMemo(() => getSubjectReadiness({ projects, sessions, events }), [projects, sessions, events])
+  const planningSubjects = useMemo(() => getPlanningSubjects(projects), [projects])
 
   const studyBySubject: Record<string, { minutes: number; icon: string; shortCode: string }> = {}
   sessions.forEach((s) => {
@@ -493,6 +787,131 @@ export function HomeView({
   const handleNextMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1))
   const handleToday = () => setCurrentMonth(new Date())
 
+  const handleOpenTextPlanner = useCallback(() => {
+    setPlannerTitle("Text to Events")
+    setPlannerDescription("Paste a notice, rough plan, or teacher message. Review drafts before adding them.")
+    setPlannerMode("mixed")
+    setPlannerDrafts([])
+    setPlannerError(null)
+    setTextPlannerOpen(true)
+  }, [])
+
+  const handleOpenPrepBalancePlanner = () => {
+    const prepLines = prepBalanceItems.map((item) => {
+      const targetMinutes = item.assessmentCount * 90
+      const remainingMinutes = Math.max(0, Math.round(targetMinutes - item.plannedMinutes))
+      const nextDate = item.nextDate ? format(item.nextDate, "yyyy-MM-dd") : "no date"
+      return [
+        `${item.shortCode} (${item.name})`,
+        `${item.assessmentCount} upcoming assessment${item.assessmentCount === 1 ? "" : "s"}`,
+        `${Math.round(item.plannedMinutes)} planned minutes`,
+        `${remainingMinutes} minutes still needed`,
+        item.nextTitle ? `next: ${item.nextTitle} on ${nextDate}` : null,
+      ].filter(Boolean).join(" / ")
+    })
+
+    setPlannerTitle("AI Study Plan")
+    setPlannerDescription("Generate study-session drafts from the current prep balance. Review drafts before adding them.")
+    setPlannerMode("sessions")
+    setPlannerText(`Create practical study sessions for these prep gaps in ${format(currentMonth, "MMMM yyyy")}:
+
+${prepLines.length > 0 ? prepLines.join("\n") : "No current prep balance items. Create general study sessions for active assessments."}
+
+Return only study sessions. Do not create normal calendar events. Prefer study blocks that reduce the largest remaining gaps first.`)
+    setPlannerDrafts([])
+    setPlannerError(null)
+    setTextPlannerOpen(true)
+  }
+
+  const handleGenerateTextEvents = useCallback(async () => {
+    const key = getApiKey()
+    if (!key) {
+      setPlannerError("OpenRouter API key not configured. Set it in Settings.")
+      return
+    }
+    if (!plannerText.trim()) {
+      setPlannerError("Paste text to convert into events.")
+      return
+    }
+
+    setPlannerLoading(true)
+    setPlannerError(null)
+    try {
+      const drafts = await generateEventsFromText(plannerText.trim(), projects, planningSubjects, key, getModel(), plannerMode)
+      setPlannerDrafts(drafts)
+    } catch (e) {
+      setPlannerError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPlannerLoading(false)
+    }
+  }, [plannerText, projects, planningSubjects, plannerMode])
+
+  const togglePlannerDraft = useCallback((index: number) => {
+    setPlannerDrafts((current) => current.map((draft, idx) => (
+      idx === index ? { ...draft, approved: !draft.approved } : draft
+    )))
+  }, [])
+
+  const handleApplyTextEvents = useCallback(async () => {
+    const approvedDrafts = plannerDrafts.filter((draft) => draft.approved)
+    if (approvedDrafts.length === 0) return
+
+    const eventItems = approvedDrafts.flatMap((draft) => {
+      if (draft.kind !== "event") return []
+      const start = combineDateAndTime(draft.date, draft.startTime)
+      if (!start) return []
+      const end = addMinutes(start, draft.durationMinutes)
+      return [{
+        title: draft.title,
+        description: draft.description,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        eventType: draft.eventType,
+        subjectId: draft.subjectId,
+        location: draft.location,
+      }]
+    })
+    const sessionItems = approvedDrafts.flatMap((draft) => {
+      if (draft.kind !== "session") return []
+      const start = combineDateAndTime(draft.date, draft.startTime)
+      if (!start) return []
+      const end = addMinutes(start, draft.durationMinutes)
+      return [{
+        projectId: draft.projectId,
+        subjectIds: draft.subjectIds,
+        title: draft.title,
+        description: draft.description,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        topics: draft.topics,
+        notes: draft.location ? `Location: ${draft.location}` : undefined,
+      }]
+    })
+
+    if (eventItems.length === 0 && sessionItems.length === 0) {
+      setPlannerError("The generated dates could not be converted into calendar items.")
+      return
+    }
+
+    setPlannerApplying(true)
+    setPlannerError(null)
+    try {
+      if (eventItems.length > 0) {
+        await onCreateEvents(eventItems)
+      }
+      if (sessionItems.length > 0) {
+        await onCreateStudySessions(sessionItems)
+      }
+      setTextPlannerOpen(false)
+      setPlannerDrafts([])
+      setPlannerText("")
+    } catch (e) {
+      setPlannerError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPlannerApplying(false)
+    }
+  }, [onCreateEvents, onCreateStudySessions, plannerDrafts])
+
   const handlePrioritySelect = (item: PriorityItem) => {
     if (item.sessionId) {
       const session = sessions.find((candidate) => candidate.id === item.sessionId)
@@ -545,6 +964,10 @@ export function HomeView({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={handleOpenTextPlanner} className="h-8 gap-1.5 rounded-xl bg-background/45">
+              <Wand2 className="h-3.5 w-3.5" />
+              Text to Events
+            </Button>
             <Button variant="outline" size="sm" onClick={onNewProject} className="h-8 gap-1.5 rounded-xl bg-background/45">
               <Plus className="h-3.5 w-3.5" />
               Assessment
@@ -874,10 +1297,16 @@ export function HomeView({
                             : "No assessment pressure to balance this month"}
                         </p>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={onNewSession} className="h-7 rounded-xl px-2.5 text-xs">
-                        <Calendar className="mr-1.5 h-3 w-3" />
-                        Plan
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button variant="ghost" size="sm" onClick={handleOpenPrepBalancePlanner} className="h-7 rounded-xl px-2.5 text-xs">
+                          <Wand2 className="mr-1.5 h-3 w-3" />
+                          AI Plan
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={onNewSession} className="h-7 rounded-xl px-2.5 text-xs">
+                          <Calendar className="mr-1.5 h-3 w-3" />
+                          Plan
+                        </Button>
+                      </div>
                     </div>
 
                     {prepBalanceItems.length > 0 ? (
@@ -1376,6 +1805,163 @@ export function HomeView({
                 </Button>
                 <Button size="sm" onClick={handleSaveLink} disabled={!linkLabel.trim() || !linkUrl.trim()}>
                   {editingLink ? "Save" : "Add"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={textPlannerOpen} onOpenChange={setTextPlannerOpen}>
+            <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>{plannerTitle}</DialogTitle>
+                <DialogDescription>
+                  {plannerDescription}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex min-h-0 flex-1 flex-col gap-4">
+                {plannerError && (
+                  <p className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    {plannerError}
+                  </p>
+                )}
+
+                {!getApiKey() && (
+                  <p className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    OpenRouter API key not configured. Go to Settings to set it up.
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="text-event-planner-input">Source text</label>
+                  <textarea
+                    id="text-event-planner-input"
+                    value={plannerText}
+                    onChange={(event) => setPlannerText(event.target.value)}
+                    placeholder="Paste dates, tasks, teacher notes, or a weekly plan..."
+                    rows={7}
+                    className="w-full resize-none rounded-xl border border-input bg-background/55 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  />
+                  <p className="text-caption text-muted-foreground">
+                    Subjects are inferred from your current subject list where possible.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={handleGenerateTextEvents}
+                    disabled={plannerLoading || !plannerText.trim() || !getApiKey()}
+                    size="sm"
+                    className="gap-1.5"
+                  >
+                    {plannerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    {plannerLoading ? "Generating..." : "Generate Drafts"}
+                  </Button>
+                  {plannerDrafts.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {plannerDrafts.filter((draft) => draft.approved).length} of {plannerDrafts.length} approved
+                    </span>
+                  )}
+                </div>
+
+                {plannerDrafts.length > 0 && (
+                  <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border/70">
+                    <div className="divide-y divide-border/60">
+                      {plannerDrafts.map((draft, index) => {
+                        const subject = getSubjectById(draft.subjectId)
+                        const sessionSubjects = draft.subjectIds.map((subjectId) => getSubjectById(subjectId)).filter((item): item is Subject => Boolean(item))
+                        const project = draft.projectId ? projects.find((item) => item.id === draft.projectId) : undefined
+                        return (
+                          <div
+                            key={`${draft.title}-${draft.date}-${draft.startTime}`}
+                            className={cn(
+                              "grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 bg-background/40 px-3 py-3",
+                              !draft.approved && "opacity-55",
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => togglePlannerDraft(index)}
+                              className={cn(
+                                "mt-0.5 flex h-4 w-4 items-center justify-center rounded border transition-colors",
+                                draft.approved
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-muted-foreground/30 hover:border-muted-foreground/60",
+                              )}
+                              aria-label={draft.approved ? "Reject event draft" : "Approve event draft"}
+                            >
+                              {draft.approved && <Check className="h-3 w-3" />}
+                            </button>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{draft.title}</p>
+                              {draft.description && (
+                                <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{draft.description}</p>
+                              )}
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="rounded-md bg-muted px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
+                                  {draft.kind === "session" ? "Study session" : "Event"}
+                                </span>
+                                {draft.kind === "event" && subject && (
+                                  <span
+                                    className="rounded-md px-1.5 py-0.5 text-micro font-medium"
+                                    style={{ backgroundColor: subject.color + "18", color: subject.color }}
+                                  >
+                                    {subject.shortCode}
+                                  </span>
+                                )}
+                                {draft.kind === "session" && sessionSubjects.slice(0, 2).map((sessionSubject) => (
+                                  <span
+                                    key={sessionSubject.id}
+                                    className="rounded-md px-1.5 py-0.5 text-micro font-medium"
+                                    style={{ backgroundColor: sessionSubject.color + "18", color: sessionSubject.color }}
+                                  >
+                                    {sessionSubject.shortCode}
+                                  </span>
+                                ))}
+                                {project && (
+                                  <span className="max-w-40 truncate rounded-md bg-muted/65 px-1.5 py-0.5 text-micro text-muted-foreground">
+                                    {project.name}
+                                  </span>
+                                )}
+                                {draft.location && (
+                                  <span className="max-w-40 truncate rounded-md bg-muted/65 px-1.5 py-0.5 text-micro text-muted-foreground">
+                                    {draft.location}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-medium tabular-nums">{draft.date}</p>
+                              <p className="mt-0.5 text-micro text-muted-foreground tabular-nums">
+                                {draft.startTime} / {draft.durationMinutes}m
+                              </p>
+                              <span className="mt-1 inline-flex rounded-md bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
+                                {draft.kind === "session" ? "session" : draft.eventType}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={() => setTextPlannerOpen(false)}>
+                  <X className="mr-1.5 h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleApplyTextEvents}
+                  disabled={plannerApplying || plannerDrafts.filter((draft) => draft.approved).length === 0}
+                  className="gap-1.5"
+                >
+                  {plannerApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
+                  {plannerApplying ? "Adding..." : `Add ${plannerDrafts.filter((draft) => draft.approved).length} Item${plannerDrafts.filter((draft) => draft.approved).length !== 1 ? "s" : ""}`}
                 </Button>
               </DialogFooter>
             </DialogContent>

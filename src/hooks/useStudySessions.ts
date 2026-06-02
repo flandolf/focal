@@ -102,6 +102,35 @@ export function useStudySessions() {
     return session
   }, [sessions, saveSessions])
 
+  const addSessions = useCallback(async (items: {
+    projectId?: string
+    subjectIds: string[]
+    title: string
+    startTime: string
+    endTime: string
+    description?: string
+    topics?: string[]
+    notes?: string
+  }[]) => {
+    const createdAt = new Date().toISOString()
+    const newSessions: StudySession[] = items.map((item) => ({
+      id: generateId(),
+      projectId: item.projectId,
+      subjectIds: item.subjectIds,
+      title: item.title,
+      description: item.description,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      status: "planned",
+      topics: item.topics,
+      notes: item.notes,
+      created_at: createdAt,
+    }))
+    const updated = [...sessions, ...newSessions]
+    await saveSessions(updated)
+    return newSessions
+  }, [sessions, saveSessions])
+
   const updateSession = useCallback(async (
     id: string,
     updates: Partial<Omit<StudySession, "id" | "created_at">>
@@ -142,6 +171,7 @@ export function useStudySessions() {
     loading,
     error,
     addSession,
+    addSessions,
     updateSession,
     deleteSession,
     getSessionsByProject,

@@ -32,7 +32,7 @@ const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
 
 function App() {
   const { projects, addProject, updateProject, deleteProject } = useProjects()
-  const { sessions, addSession, updateSession, deleteSession } = useStudySessions()
+  const { sessions, addSession, addSessions, updateSession, deleteSession } = useStudySessions()
   const { events, addEvent, addEvents, updateEvent, deleteEvent } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
@@ -208,6 +208,25 @@ function App() {
       setSessionDialogOpen(false)
     } catch (e) {
       toast.error(`Failed to create study session: ${String(e)}`)
+    }
+  }
+
+  const handleCreateStudySessions = async (items: {
+    projectId?: string
+    subjectIds: string[]
+    title: string
+    startTime: string
+    endTime: string
+    description?: string
+    topics?: string[]
+    notes?: string
+  }[]) => {
+    try {
+      await addSessions(items)
+      toast.success(`${items.length} study session${items.length !== 1 ? "s" : ""} created`)
+    } catch (e) {
+      toast.error(`Failed to create study sessions: ${String(e)}`)
+      throw e
     }
   }
 
@@ -490,6 +509,8 @@ function App() {
                     onNewSession={() => setSessionDialogOpen(true)}
                     onNewEvent={() => setEventDialogOpen(true)}
                     onNewProject={() => setDialogOpen(true)}
+                    onCreateEvents={handleCreateEvents}
+                    onCreateStudySessions={handleCreateStudySessions}
                   />
                 ) : selectedProject ? (
                   <ProjectDetail
