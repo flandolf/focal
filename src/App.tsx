@@ -24,7 +24,7 @@ import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useTheme } from "@/lib/themes"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { CalendarEvent, EventType, StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, ConfidenceScore, EventType, StudySession, StudySessionStatus, Subject } from "@/lib/types"
 
 const MOTION_EASE = [0.16, 1, 0.3, 1] as const
 const SHELL_LAYOUT_TRANSITION = { type: "spring", stiffness: 430, damping: 42, mass: 0.85 } as const
@@ -136,9 +136,9 @@ function App() {
       )
       setSelectedId(project.id)
       setHomeSelected(false)
-      toast.success(`Project "${data.name}" created`)
+      toast.success(`Assessment "${data.name}" created`)
     } catch (e) {
-      toast.error(`Failed to create project: ${String(e)}`)
+      toast.error(`Failed to create assessment: ${String(e)}`)
     }
   }
 
@@ -161,9 +161,9 @@ function App() {
   ) => {
     try {
       await updateProject(id, data)
-      toast.success(`Project updated`)
+      toast.success(`Assessment updated`)
     } catch (e) {
-      toast.error(`Failed to update project: ${String(e)}`)
+      toast.error(`Failed to update assessment: ${String(e)}`)
     }
   }
 
@@ -177,9 +177,9 @@ function App() {
         setSelectedId(null)
         setHomeSelected(true)
       }
-      toast.success(`Project "${project.name}" deleted`)
+      toast.success(`Assessment "${project.name}" deleted`)
     } catch (e) {
-      toast.error(`Failed to delete project: ${String(e)}`)
+      toast.error(`Failed to delete assessment: ${String(e)}`)
     }
   }
 
@@ -221,9 +221,14 @@ function App() {
     description?: string
     topics?: string[]
     notes?: string
+    status?: StudySessionStatus
+    confidence?: ConfidenceScore
+    blockers?: string
+    nextAction?: string
+    completedAt?: string
   }) => {
     try {
-      await updateSession(data.id, {
+      const updates: Partial<Omit<StudySession, "id" | "created_at">> = {
         projectId: data.projectId,
         subjectIds: data.subjectIds,
         title: data.title,
@@ -232,7 +237,13 @@ function App() {
         description: data.description,
         topics: data.topics,
         notes: data.notes,
-      })
+      }
+      if (data.status) updates.status = data.status
+      updates.confidence = data.confidence
+      updates.blockers = data.blockers
+      updates.nextAction = data.nextAction
+      updates.completedAt = data.completedAt
+      await updateSession(data.id, updates)
       toast.success("Study session updated")
       setEditSessionDialogOpen(false)
       setSelectedSession(null)
@@ -263,6 +274,8 @@ function App() {
     eventType: EventType
     subjectId?: string
     location?: string
+    isFinished?: boolean
+    finishedAt?: string
   }) => {
     try {
       await addEvent(data)
@@ -292,6 +305,8 @@ function App() {
     eventType: EventType
     subjectId?: string
     location?: string
+    isFinished?: boolean
+    finishedAt?: string
   }) => {
     try {
       await updateEvent(data.id, {
@@ -302,6 +317,8 @@ function App() {
         eventType: data.eventType,
         subjectId: data.subjectId,
         location: data.location,
+        isFinished: data.isFinished,
+        finishedAt: data.finishedAt,
       })
       toast.success("Event updated")
       setEditEventDialogOpen(false)
@@ -331,7 +348,7 @@ function App() {
     try {
       await updateProject(id, { isFavorite: !project.isFavorite })
     } catch (e) {
-      toast.error(`Failed to update project: ${String(e)}`)
+      toast.error(`Failed to update assessment: ${String(e)}`)
     }
   }
 
@@ -348,7 +365,7 @@ function App() {
         setHomeSelected(false)
       }
     } catch (e) {
-      toast.error(`Failed to update project: ${String(e)}`)
+      toast.error(`Failed to update assessment: ${String(e)}`)
     }
   }
 
@@ -360,10 +377,10 @@ function App() {
       if (!project.isFinished) {
         toast.success(`"${project.name}" marked as complete`)
       } else {
-        toast.success(`"${project.name}" marked as active`)
+        toast.success(`"${project.name}" marked as current`)
       }
     } catch (e) {
-      toast.error(`Failed to update project: ${String(e)}`)
+      toast.error(`Failed to update assessment: ${String(e)}`)
     }
   }
 
@@ -491,11 +508,11 @@ function App() {
                       <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
                     </div>
                     <p className="mb-6 max-w-56 text-sm leading-relaxed text-muted-foreground">
-                      Choose a project from the sidebar or create a new one to start organising your files.
+                      Choose an assessment from the sidebar or create a new one to start organising your files.
                     </p>
                     <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
                       <FolderOpen className="h-4 w-4" />
-                      New Project
+                      New Assessment
                     </Button>
                   </div>
                 )}

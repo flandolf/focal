@@ -132,9 +132,9 @@ export function ProjectSettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Project Settings</DialogTitle>
+          <DialogTitle>Assessment Details</DialogTitle>
           <DialogDescription>
-            Edit project details.
+            Edit the subject, date, files label, and status for this assessment.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -151,7 +151,7 @@ export function ProjectSettingsDialog({
               <div className="space-y-2">
                 <label className="text-sm font-medium">Description</label>
                 <Input
-                  placeholder="Brief description of the project"
+                  placeholder="Brief description of the assessment"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
@@ -197,7 +197,7 @@ export function ProjectSettingsDialog({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Deadline Type</label>
+                <label className="text-sm font-medium">Assessment Type</label>
                 <div className="grid grid-cols-2 gap-1">
                   {DEADLINE_TYPES.map((type) => (
                     <button
@@ -217,7 +217,7 @@ export function ProjectSettingsDialog({
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Deadline Date</label>
+                <label className="text-sm font-medium">Assessment Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button

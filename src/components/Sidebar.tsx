@@ -19,7 +19,7 @@ import {
   Landmark,
   Languages,
   Library,
-  Map,
+  Map as MapIcon,
   MapPin,
   MoreHorizontal,
   NotebookPen,
@@ -46,6 +46,14 @@ import { cn, formatDeadline, isOverdue, sortProjectsByDeadline, getDeadlineTypeI
 import type { DeadlineType, Project } from "@/lib/types"
 
 type FilterMode = "active" | "favorites" | "archived" | "finished"
+
+interface AssessmentSubjectGroup {
+  subjectId: string
+  label: string
+  shortCode: string
+  color?: string
+  assessments: Project[]
+}
 
 const SIDEBAR_EASE = [0.16, 1, 0.3, 1] as const
 const SIDEBAR_LAYOUT_TRANSITION = { type: "spring", stiffness: 430, damping: 42, mass: 0.85 } as const
@@ -124,7 +132,7 @@ const SUBJECT_ICONS: Record<string, LucideIcon> = {
   bio: Dna,
   psych: Brain,
   hist: Landmark,
-  geo: Map,
+  geo: MapIcon,
   econ: TrendingUp,
   bm: BriefcaseBusiness,
 }
@@ -146,6 +154,34 @@ function getSidebarProjectIcon(project: Project): LucideIcon {
 
 function getSidebarDeadlineIcon(type?: DeadlineType): LucideIcon {
   return type ? DEADLINE_ICONS[type] : DEADLINE_ICONS.default
+}
+
+function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGroup[] {
+  const groups = new Map<string, AssessmentSubjectGroup>()
+
+  assessments.forEach((assessment) => {
+    const subject = getSubjectById(assessment.subjectId)
+    const subjectId = assessment.subjectId ?? "unassigned"
+    const existing = groups.get(subjectId)
+    if (existing) {
+      existing.assessments.push(assessment)
+      return
+    }
+
+    groups.set(subjectId, {
+      subjectId,
+      label: subject?.name ?? "Unassigned",
+      shortCode: subject?.shortCode ?? "GEN",
+      color: subject?.color,
+      assessments: [assessment],
+    })
+  })
+
+  return Array.from(groups.values()).sort((a, b) => {
+    if (a.subjectId === "unassigned") return 1
+    if (b.subjectId === "unassigned") return -1
+    return a.label.localeCompare(b.label)
+  })
 }
 
 interface SidebarProps {
@@ -194,8 +230,9 @@ export function Sidebar({
   const archivedCount = sorted.filter((p) => p.isArchived).length
   const finishedCount = sorted.filter((p) => p.isFinished && !p.isArchived).length
   const activeCount = sorted.filter((p) => !p.isArchived && !p.isFinished).length
+  const subjectGroups = getAssessmentSubjectGroups(filtered)
   const filterItems: { mode: FilterMode; label: string; icon: LucideIcon; count?: number }[] = [
-    { mode: "active", label: "Active", icon: CircleDot },
+    { mode: "active", label: "Current", icon: CircleDot },
     { mode: "favorites", label: "Starred", icon: Star, count: favoriteCount },
     { mode: "archived", label: "Archive", icon: Archive, count: archivedCount },
     { mode: "finished", label: "Done", icon: CheckCircle2, count: finishedCount },
@@ -217,19 +254,40 @@ export function Sidebar({
       )}>
         <div className={cn(
           "flex items-center gap-3 select-none",
-          isCollapsed && "justify-center"
+          isCollapsed && "justify-center gap-1"
         )}>
-            <motion.span
-              layout
-              transition={layoutTransition}
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-sidebar-border bg-background/55 text-sm shadow-sm backdrop-blur min-[1200px]:h-9 min-[1200px]:w-9 min-[1200px]:rounded-2xl"
-            >
-              F
-            </motion.span>
+            {!isCollapsed && (
+              <motion.span
+                layout
+                transition={layoutTransition}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-sidebar-border bg-background/55 text-sm shadow-sm backdrop-blur min-[1200px]:h-9 min-[1200px]:w-9 min-[1200px]:rounded-2xl"
+              >
+                F
+              </motion.span>
+            )}
             <CollapsibleBlock show={!isCollapsed} reduceMotion={reduceMotion}>
               <h1 className="font-heading text-base font-semibold">Focal</h1>
               <p className="text-caption text-muted-foreground max-[900px]:hidden">Study workspace</p>
             </CollapsibleBlock>
+            <motion.button
+              layout
+              onClick={onToggleCollapse}
+              whileHover={hoverLift}
+              whileTap={tapPress}
+              transition={pressTransition}
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground",
+                !isCollapsed && "ml-auto"
+              )}
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isCollapsed ? (
+                <PanelLeftOpen className="h-3.5 w-3.5" />
+              ) : (
+                <PanelLeftClose className="h-3.5 w-3.5" />
+              )}
+            </motion.button>
         </div>
 
         <motion.div layout className="mt-4 flex justify-center" transition={layoutTransition}>
@@ -237,11 +295,11 @@ export function Sidebar({
             onClick={onNewProject}
             className={cn("h-9 overflow-hidden rounded-2xl", isCollapsed ? "w-9 px-0" : "w-full gap-1.5")}
             size="sm"
-            title={isCollapsed ? "New Project" : undefined}
+            title={isCollapsed ? "New Assessment" : undefined}
           >
             <Plus className="h-4 w-4 shrink-0" />
             <CollapsibleInline show={!isCollapsed} reduceMotion={reduceMotion}>
-              New Project
+              New Assessment
             </CollapsibleInline>
           </Button>
         </motion.div>
@@ -321,9 +379,29 @@ export function Sidebar({
           "w-full max-w-full overflow-x-hidden pb-2 pt-3 min-[1200px]:pt-4",
           isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-1.5 min-[1200px]:px-2"
         )}>
-          {filtered.length > 0 ? (
-            <div className="flex w-full min-w-0 max-w-full flex-col gap-1">
-              {filtered.map((project) => {
+          {subjectGroups.length > 0 ? (
+            <div className="flex w-full min-w-0 max-w-full flex-col gap-2.5">
+              {!isCollapsed && (
+                <div className="px-2 text-micro font-semibold uppercase text-muted-foreground/60">
+                  Subjects
+                </div>
+              )}
+              {subjectGroups.map((group) => (
+                <div key={group.subjectId} className="min-w-0">
+                  {!isCollapsed && (
+                    <div className="mb-1 flex items-center gap-1.5 px-2">
+                      <span
+                        className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40"
+                        style={group.color ? { backgroundColor: group.color } : undefined}
+                      />
+                      <p className="min-w-0 flex-1 truncate text-micro font-semibold uppercase text-muted-foreground/75">
+                        {group.label}
+                      </p>
+                      <span className="text-micro tabular-nums text-muted-foreground/60">{group.assessments.length}</span>
+                    </div>
+                  )}
+                  <div className="flex w-full min-w-0 max-w-full flex-col gap-0.5">
+              {group.assessments.map((project) => {
                 const ProjectIcon = getSidebarProjectIcon(project)
                 const subject = getSubjectById(project.subjectId)
                 const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
@@ -337,8 +415,8 @@ export function Sidebar({
                     whileTap={tapPress}
                     transition={pressTransition}
                     className={cn(
-                      "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-xl transition-colors",
-                      isCollapsed ? "justify-center px-2 py-1.5" : "items-start px-2.5 py-2.5 pr-10 min-[1200px]:gap-2.5 min-[1200px]:rounded-2xl min-[1200px]:px-3",
+                      "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
+                      isCollapsed ? "justify-center px-2 py-1.5" : "px-2 py-1.5 pr-8 min-[1200px]:rounded-xl",
                       selectedId === project.id
                         ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
                         : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
@@ -351,22 +429,22 @@ export function Sidebar({
                       layout
                       transition={layoutTransition}
                       className={cn(
-                        "flex shrink-0 items-center justify-center rounded-lg border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
-                        isCollapsed ? "size-7 rounded-xl" : "mt-0.5 size-6 min-[1200px]:size-7 min-[1200px]:rounded-xl"
+                        "flex shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
+                        isCollapsed ? "size-7 rounded-xl" : "size-5"
                       )}
                       style={subject ? {
                         backgroundColor: subject.color + "14",
                         color: subject.color,
                       } : undefined}
                     >
-                      <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3.5")} aria-hidden="true" />
+                      <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3")} aria-hidden="true" />
                     </motion.span>
                     <CollapsibleBlock show={!isCollapsed} className="flex-1" reduceMotion={reduceMotion}>
-                        <div className="flex w-full min-w-0 items-center gap-1.5">
-                          <p className="w-0 min-w-0 flex-1 truncate text-sm font-medium">{project.name}</p>
+                        <div className="flex w-full min-w-0 items-center gap-1">
+                          <p className="w-0 min-w-0 flex-1 truncate text-xs font-medium leading-4">{project.name}</p>
                           {project.isFinished && (
-                            <span className="hidden text-micro px-1.5 py-0.5 rounded font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-950/40 shrink-0 min-[1050px]:inline-flex">
-                              Finished
+                            <span className="hidden text-micro font-medium text-green-600 dark:text-green-400 shrink-0 min-[1050px]:inline-flex">
+                              Done
                             </span>
                           )}
                           {fileCounts[project.id] > 0 && (
@@ -375,25 +453,13 @@ export function Sidebar({
                             </span>
                           )}
                         </div>
-                        {((project.subjectId != null) || (project.deadline != null && !project.isFinished)) && (
-                          <div className="mt-1 flex max-w-full flex-wrap items-center gap-1 overflow-hidden">
-                            {subject && (
-                              <span
-                                className="text-micro px-1.5 py-0.5 rounded-md font-medium select-none"
-                                style={{
-                                  backgroundColor: subject.color + "20",
-                                  color: subject.color
-                                }}
-                              >
-                                {subject.shortCode}
-                              </span>
-                            )}
+                        {project.deadline && !project.isFinished && (
+                          <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
                             {project.deadline && !project.isFinished && (
                               <>
                                 <span
-                                className="text-micro px-1.5 py-0.5 rounded-md flex items-center gap-0.5 select-none max-[900px]:hidden"
+                                className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
                                   style={{
-                                    backgroundColor: deadlineInfo.color + "20",
                                     color: deadlineInfo.color
                                   }}
                                 >
@@ -401,10 +467,10 @@ export function Sidebar({
                                   {deadlineInfo.label}
                                 </span>
                                 <span className={cn(
-                                  "text-micro px-1.5 py-0.5 rounded-md font-medium select-none",
+                                  "truncate text-micro font-medium select-none",
                                   isOverdue(project.deadline)
-                                    ? "bg-destructive/15 text-destructive"
-                                    : "bg-muted text-muted-foreground"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground"
                                 )}>
                                   {formatDeadline(project.deadline)}
                                 </span>
@@ -416,7 +482,7 @@ export function Sidebar({
                     <AnimatePresence initial={false}>
                       {!isCollapsed && (
                       <motion.div
-                        className="absolute right-2 top-1/2 -translate-y-1/2 shrink-0"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0"
                         initial={{ opacity: 0, x: reduceMotion ? 0 : 4 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: reduceMotion ? 0 : 3 }}
@@ -425,11 +491,11 @@ export function Sidebar({
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
-                            aria-label={`Project actions for ${project.name}`}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
+                            aria-label={`Assessment actions for ${project.name}`}
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
                             onClick={(event) => event.stopPropagation()}
                           >
-                            <MoreHorizontal className="h-4 w-4" />
+                            <MoreHorizontal className="h-3.5 w-3.5" />
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-44">
@@ -441,7 +507,7 @@ export function Sidebar({
                               }}
                             >
                               <CheckCircle2 className={cn(project.isFinished && "text-green-500")} />
-                              {project.isFinished ? "Mark active" : "Mark complete"}
+                              {project.isFinished ? "Mark current" : "Mark complete"}
                             </DropdownMenuItem>
                           )}
                           {onToggleFavorite && (
@@ -485,51 +551,13 @@ export function Sidebar({
                   </motion.div>
                 )
               })}
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : (
-            <p className={cn(
-              "text-sm text-muted-foreground text-center leading-relaxed",
-              isCollapsed ? "py-4 px-2" : "py-12 px-4"
-            )}>
-              {isCollapsed ? (
-                <span className="text-micro">No projects</span>
-              ) : filterMode === "archived"
-                ? "No archived projects"
-                : filterMode === "favorites"
-                  ? "No favorites yet"
-                  : filterMode === "finished"
-                    ? "No finished projects"
-                    : "No projects yet"}
-            </p>
-          )}
+          ) : null}
         </div>
       </ScrollArea>
-
-      <div className={cn(
-        "border-t border-sidebar-border/70",
-        isCollapsed ? "px-2 py-2" : "px-3 py-2"
-      )}>
-        <motion.button
-          layout
-          onClick={onToggleCollapse}
-          whileHover={hoverLift}
-          whileTap={tapPress}
-          transition={pressTransition}
-          className={cn(
-            "flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground w-full"
-          )}
-          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {isCollapsed ? (
-            <PanelLeftOpen className="h-3.5 w-3.5" />
-          ) : (
-            <>
-              <PanelLeftClose className="h-3.5 w-3.5" />
-              Collapse
-            </>
-          )}
-        </motion.button>
-      </div>
 
       <StudyTimer isCollapsed={isCollapsed} onExpand={onToggleCollapse} />
     </motion.aside>

@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from "react"
 import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
-import type { StudySession } from "@/lib/types"
+import type { ConfidenceScore, StudySession } from "@/lib/types"
+
+function isConfidenceScore(value: unknown): value is ConfidenceScore {
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
+}
 
 function normaliseSession(raw: unknown): StudySession {
   const obj = raw as Record<string, unknown>
@@ -16,6 +20,10 @@ function normaliseSession(raw: unknown): StudySession {
     status: (obj.status === "planned" || obj.status === "in-progress" || obj.status === "completed") ? obj.status : "planned",
     topics: Array.isArray(obj.topics) ? obj.topics : undefined,
     notes: typeof obj.notes === "string" ? obj.notes : undefined,
+    confidence: isConfidenceScore(obj.confidence) ? obj.confidence : undefined,
+    blockers: typeof obj.blockers === "string" ? obj.blockers : undefined,
+    nextAction: typeof obj.nextAction === "string" ? obj.nextAction : undefined,
+    completedAt: typeof obj.completedAt === "string" ? obj.completedAt : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
   }
 }

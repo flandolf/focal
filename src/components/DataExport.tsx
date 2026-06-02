@@ -35,6 +35,8 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
       const data = {
         exportedAt: new Date().toISOString(),
         version: "0.1.0",
+        storageModel: "projects-as-assessments",
+        assessments: projects,
         projects,
         sessions,
         events,
@@ -68,7 +70,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
   }
 
   const handleImport = () => {
-    if (!window.confirm("Import will overwrite all existing projects and sessions. Continue?")) return
+    if (!window.confirm("Import will overwrite all existing assessments and sessions. Continue?")) return
     const input = document.createElement("input")
     input.type = "file"
     input.accept = ".json"
@@ -82,10 +84,16 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
         const data: Record<string, unknown> = JSON.parse(text)
         const baseDir = await appDataDir()
 
-        // Restore projects
-        if (data.projects && Array.isArray(data.projects)) {
-          await writeTextFile(`${baseDir}projects.json`, JSON.stringify(data.projects, null, 2))
-          for (const project of data.projects as { folder_path: string }[]) {
+        const importedAssessments = Array.isArray(data.assessments)
+          ? data.assessments
+          : Array.isArray(data.projects)
+            ? data.projects
+            : []
+
+        // Assessments are stored in the legacy projects.json file for migration compatibility.
+        if (importedAssessments.length > 0) {
+          await writeTextFile(`${baseDir}projects.json`, JSON.stringify(importedAssessments, null, 2))
+          for (const project of importedAssessments as { folder_path: string }[]) {
             if (!project.folder_path) continue
             try {
               await invoke("create_project_with_subfolders", {
@@ -128,7 +136,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
         <DialogHeader>
           <DialogTitle>Export & Backup</DialogTitle>
           <DialogDescription>
-            Export all your projects, sessions, and events.
+            Export all your assessments, sessions, and events.
           </DialogDescription>
         </DialogHeader>
 
@@ -159,7 +167,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-lg font-semibold">{projects.length}</p>
-              <p className="text-xs text-muted-foreground">Projects</p>
+              <p className="text-xs text-muted-foreground">Assessments</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-lg font-semibold">{sessions.length}</p>
@@ -208,7 +216,7 @@ function toCsv(data: {
 }): string {
   const sections: string[] = []
 
-  sections.push("# Projects")
+  sections.push("# Assessments")
   sections.push(
     "id,name,description,subject,unit,deadline,deadlineType,folder_path,created_at"
   )
@@ -231,7 +239,7 @@ function toCsv(data: {
   sections.push("")
   sections.push("# Sessions")
   sections.push(
-    "id,projectId,subjectIds,title,startTime,endTime,status,topics,notes,created_at"
+    "id,projectId,subjectIds,title,startTime,endTime,status,topics,notes,confidence,blockers,nextAction,completedAt,created_at"
   )
   for (const s of data.sessions) {
     sections.push(
@@ -245,6 +253,10 @@ function toCsv(data: {
         csvEscape(s.status),
         csvEscape(s.topics?.join("; ") ?? ""),
         csvEscape(s.notes ?? ""),
+        csvEscape(s.confidence ? String(s.confidence) : ""),
+        csvEscape(s.blockers ?? ""),
+        csvEscape(s.nextAction ?? ""),
+        csvEscape(s.completedAt ?? ""),
         csvEscape(s.created_at),
       ].join(",")
     )
@@ -253,7 +265,7 @@ function toCsv(data: {
   sections.push("")
   sections.push("# Events")
   sections.push(
-    "id,title,description,startTime,endTime,eventType,subject,location,created_at"
+    "id,title,description,startTime,endTime,eventType,subject,location,isFinished,finishedAt,created_at"
   )
   for (const event of data.events) {
     sections.push(
@@ -266,6 +278,8 @@ function toCsv(data: {
         csvEscape(event.eventType),
         csvEscape(event.subjectId ?? ""),
         csvEscape(event.location ?? ""),
+        csvEscape(event.isFinished ? "true" : "false"),
+        csvEscape(event.finishedAt ?? ""),
         csvEscape(event.created_at),
       ].join(",")
     )

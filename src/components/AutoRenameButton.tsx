@@ -311,7 +311,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
           <DialogHeader>
             <DialogTitle>Auto Rename Files</DialogTitle>
             <DialogDescription>
-              Use AI to clean up and standardize file names across your project.
+              Use AI to clean up and standardize file names for this assessment.
             </DialogDescription>
           </DialogHeader>
 
