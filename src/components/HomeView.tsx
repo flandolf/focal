@@ -65,6 +65,7 @@ type TextPlannerMode = "mixed" | "sessions"
 
 const QUICK_LINKS_KEY = "focal-quick-links"
 const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event"])
+const PREP_COMPLETED_CREDIT_WINDOW_DAYS = 7
 
 const ICON_OPTIONS = [
   { name: "BookOpen", component: BookOpen },
@@ -398,8 +399,8 @@ interface HomeViewProps {
   onSelectProject: (projectId: string) => void
   onSelectSession: (session: StudySession) => void
   onSelectEvent: (event: CalendarEvent) => void
-  onNewSession: () => void
-  onNewEvent: () => void
+  onNewSession: (initialDate?: Date) => void
+  onNewEvent: (initialDate?: Date) => void
   onNewProject: () => void
   onCreateEvents: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
   onCreateStudySessions: (sessions: Omit<StudySession, "id" | "status" | "created_at">[]) => Promise<void>
@@ -475,6 +476,8 @@ export function HomeView({
   const [plannerDrafts, setPlannerDrafts] = useState<TextEventDraft[]>([])
   const [plannerLoading, setPlannerLoading] = useState(false)
   const [plannerApplying, setPlannerApplying] = useState(false)
+
+  const selectedCalendarDate = selectedDate ? parseISO(selectedDate) : undefined
   const [plannerError, setPlannerError] = useState<string | null>(null)
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; link: QuickLink } | null>(null)
@@ -483,7 +486,7 @@ export function HomeView({
   const handleContextMenu = useCallback((e: React.MouseEvent, link: QuickLink) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY, link })
-  }, [])
+  }, [setContextMenu])
 
   useEffect(() => {
     if (!contextMenu) return
@@ -713,6 +716,22 @@ export function HomeView({
     }
   }
 
+  const hasVisibleAssessmentDueWithinPrepWindow = (subjectId: string, sessionStart: Date) => {
+    const windowEnd = new Date(sessionStart.getTime() + PREP_COMPLETED_CREDIT_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+    const projectMatch = projectsWithDeadlines.some((project) => {
+      if (!project.deadline || project.subjectId !== subjectId) return false
+      const dueDate = parseISO(project.deadline)
+      return isMonthItemVisible(dueDate) && dueDate >= sessionStart && dueDate <= windowEnd
+    })
+    if (projectMatch) return true
+
+    return events.some((event) => {
+      if (event.isFinished || event.eventType === "event" || event.subjectId !== subjectId) return false
+      const dueDate = parseISO(event.startTime)
+      return isMonthItemVisible(dueDate) && dueDate >= sessionStart && dueDate <= windowEnd
+    })
+  }
+
   projectsWithDeadlines.forEach((project) => {
     if (!project.deadline || !project.subjectId) return
     const deadlineDate = parseISO(project.deadline)
@@ -732,15 +751,19 @@ export function HomeView({
   })
 
   sessions.forEach((session) => {
-    if (session.status !== "planned") return
+    if (session.status !== "planned" && session.status !== "completed") return
     const sessionStart = parseISO(session.startTime)
-    if (!isMonthItemVisible(sessionStart)) return
     const project = session.projectId ? projects.find((candidate) => candidate.id === session.projectId) : undefined
     const subjectIds = getSessionSubjectIds(session, project)
     if (subjectIds.length === 0) return
+    const creditedSubjectIds = session.status === "planned"
+      ? subjectIds
+      : subjectIds.filter((subjectId) => hasVisibleAssessmentDueWithinPrepWindow(subjectId, sessionStart))
+    if (session.status === "planned" && !isMonthItemVisible(sessionStart)) return
+    if (creditedSubjectIds.length === 0) return
     const minutes = Math.max(0, Math.round((parseISO(session.endTime).getTime() - sessionStart.getTime()) / (1000 * 60)))
     const minutesPerSubject = minutes / subjectIds.length
-    subjectIds.forEach((subjectId) => {
+    creditedSubjectIds.forEach((subjectId) => {
       ensurePrepBalanceItem(subjectId).plannedMinutes += minutesPerSubject
     })
   })
@@ -780,7 +803,7 @@ export function HomeView({
       onSelectEvent(item.event)
       return
     }
-    onNewSession()
+    onNewSession(selectedCalendarDate)
   }
 
   const handlePrevMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1))
@@ -931,7 +954,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
       onSelectProject(item.projectId)
       return
     }
-    onNewSession()
+    onNewSession(selectedCalendarDate)
   }
 
   return (
@@ -972,11 +995,11 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
               <Plus className="h-3.5 w-3.5" />
               Assessment
             </Button>
-            <Button variant="outline" size="sm" onClick={onNewEvent} className="h-8 gap-1.5 rounded-xl bg-background/45">
+            <Button variant="outline" size="sm" onClick={() => onNewEvent(selectedCalendarDate)} className="h-8 gap-1.5 rounded-xl bg-background/45">
               <CalendarPlus className="h-3.5 w-3.5" />
               Event
             </Button>
-            <Button size="sm" onClick={onNewSession} className="h-8 gap-1.5 rounded-xl">
+            <Button size="sm" onClick={() => onNewSession(selectedCalendarDate)} className="h-8 gap-1.5 rounded-xl">
               <Calendar className="h-3.5 w-3.5" />
               Plan Session
             </Button>
@@ -1280,7 +1303,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                   ) : (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-background/24 px-3 py-3">
                       <p className="text-xs text-muted-foreground">Use this month to get ahead before the next assessment cluster.</p>
-                      <Button variant="outline" size="sm" onClick={onNewSession} className="h-7 rounded-xl px-2.5 text-xs">
+                      <Button variant="outline" size="sm" onClick={() => onNewSession(selectedCalendarDate)} className="h-7 rounded-xl px-2.5 text-xs">
                         <Calendar className="mr-1.5 h-3 w-3" />
                         Plan session
                       </Button>
@@ -1302,7 +1325,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                           <Wand2 className="mr-1.5 h-3 w-3" />
                           AI Plan
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={onNewSession} className="h-7 rounded-xl px-2.5 text-xs">
+                        <Button variant="ghost" size="sm" onClick={() => onNewSession(selectedCalendarDate)} className="h-7 rounded-xl px-2.5 text-xs">
                           <Calendar className="mr-1.5 h-3 w-3" />
                           Plan
                         </Button>
@@ -1734,14 +1757,14 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
           )}
 
           <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>{editingLink ? "Edit Link" : "Add Quick Link"}</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 py-2">
+              <div className="space-y-5 py-2">
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Icon</label>
-                  <div className="grid grid-cols-6 gap-1.5">
+                  <div className="grid grid-cols-6 gap-2">
                     {ICON_OPTIONS.map((opt) => {
                       const IconComp = opt.component
                       return (
@@ -1750,7 +1773,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                           type="button"
                           onClick={() => setLinkIcon(opt.name)}
                           className={cn(
-                            "flex h-9 w-full items-center justify-center rounded-lg border transition-colors",
+                            "flex h-10 w-full items-center justify-center rounded-lg border transition-colors",
                             linkIcon === opt.name
                               ? "border-primary bg-primary/10 text-primary"
                               : "border-border/60 bg-background/40 text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground"
@@ -1764,14 +1787,14 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Color</label>
-                  <div className="flex gap-1.5 flex-wrap">
+                  <div className="flex gap-2 flex-wrap">
                     {COLOR_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
                         onClick={() => setLinkColor(opt.value)}
                         className={cn(
-                          "h-7 w-7 rounded-full border-2 transition-all",
+                          "h-8 w-8 rounded-full border-2 transition-all",
                           linkColor === opt.value ? "border-foreground scale-110" : "border-transparent hover:scale-105"
                         )}
                         style={{ backgroundColor: opt.value }}
@@ -1811,7 +1834,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
           </Dialog>
 
           <Dialog open={textPlannerOpen} onOpenChange={setTextPlannerOpen}>
-            <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
+            <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-4xl">
               <DialogHeader>
                 <DialogTitle>{plannerTitle}</DialogTitle>
                 <DialogDescription>

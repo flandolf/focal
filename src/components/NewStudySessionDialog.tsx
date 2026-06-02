@@ -17,11 +17,14 @@ import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { VCE_SUBJECTS, type Project, type Subject } from "@/lib/types"
 
+const DURATION_OPTIONS = ["30", "45", "60", "90"]
+
 interface NewStudySessionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projects: Project[]
   customSubjects: Subject[]
+  initialDate?: Date
   onSubmit: (data: {
     projectId?: string
     subjectIds: string[]
@@ -39,6 +42,7 @@ export function NewStudySessionDialog({
   onOpenChange,
   projects,
   customSubjects,
+  initialDate,
   onSubmit,
 }: NewStudySessionDialogProps) {
   const [projectId, setProjectId] = useState<string>("")
@@ -47,10 +51,16 @@ export function NewStudySessionDialog({
   const [description, setDescription] = useState("")
   const [topicsInput, setTopicsInput] = useState("")
   const [notes, setNotes] = useState("")
-  const [startDate, setStartDate] = useState<Date | undefined>(new Date())
+  const [startDate, setStartDate] = useState<Date | undefined>(() => initialDate ? new Date(initialDate) : new Date())
   const [startTime, setStartTime] = useState("14:00")
   const [duration, setDuration] = useState("60")
   const subjects = [...VCE_SUBJECTS, ...customSubjects]
+  const selectedSubjects = subjects.filter((subject) => subjectIds.includes(subject.id))
+  const durationMinutes = Number.parseInt(duration, 10)
+  const canSubmit = title.trim().length > 0
+    && subjectIds.length > 0
+    && Number.isFinite(durationMinutes)
+    && durationMinutes > 0
 
   const toggleSubject = (id: string) => {
     setSubjectIds((current) =>
@@ -68,12 +78,13 @@ export function NewStudySessionDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title || !startDate || subjectIds.length === 0) return
+    const durationMinutes = Number.parseInt(duration, 10)
+    if (!title.trim() || !startDate || subjectIds.length === 0 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) return
 
     const [hours, minutes] = startTime.split(":").map(Number)
     const start = new Date(startDate)
     start.setHours(hours, minutes, 0, 0)
-    const end = addHours(start, parseInt(duration) / 60)
+    const end = addHours(start, durationMinutes / 60)
 
     const topics = topicsInput
       .split(",")
@@ -83,7 +94,7 @@ export function NewStudySessionDialog({
     onSubmit({
       projectId: projectId || undefined,
       subjectIds,
-      title,
+      title: title.trim(),
       description: description.trim() ? description : undefined,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
@@ -106,16 +117,21 @@ export function NewStudySessionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="h-[100dvh] max-h-none w-screen max-w-none overflow-hidden rounded-none px-8 pb-6 pt-14 sm:max-w-none min-[1200px]:px-10 [display:flex] flex-col">
+        <DialogHeader className="shrink-0 pr-16">
           <DialogTitle>Plan Study Session</DialogTitle>
           <DialogDescription>
             Create a study session to track your revision and learning progress.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
-            <div className="space-y-3">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto pb-6">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(22rem,1fr)_minmax(20rem,0.9fr)]">
+            <section className="space-y-4 rounded-xl border border-border/70 bg-background/35 p-4">
+              <div>
+                <h3 className="text-sm font-semibold">Session Details</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Name the block and connect it to an assessment if useful.</p>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Session Title</label>
                 <Input
@@ -142,7 +158,31 @@ export function NewStudySessionDialog({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <Input
+                  placeholder="Optional — what do you want to achieve?"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Topics</label>
+                <Input
+                  placeholder="e.g. Photosynthesis, Cell Division"
+                  value={topicsInput}
+                  onChange={(e) => setTopicsInput(e.target.value)}
+                />
+              </div>
+            </section>
+
+            <section className="space-y-4 rounded-xl border border-border/70 bg-background/35 p-4">
+              <div>
+                <h3 className="text-sm font-semibold">Timing & Notes</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Set the calendar block, duration, and session reminders.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Date</label>
                   <Popover>
@@ -181,48 +221,89 @@ export function NewStudySessionDialog({
                     />
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Duration (minutes)</label>
+                  <Input
+                    type="number"
+                    min="15"
+                    step="15"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    placeholder="60"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {DURATION_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setDuration(option)}
+                        className={cn(
+                          "rounded-md border px-2 py-1 text-micro font-medium transition-colors",
+                          duration === option
+                            ? "border-primary/30 bg-primary/10 text-primary"
+                            : "border-border/70 text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {option}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Duration (minutes)</label>
-                <Input
-                  type="number"
-                  min="15"
-                  step="15"
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  placeholder="60"
+                <label className="text-sm font-medium">Notes</label>
+                <textarea
+                  placeholder="Key concepts, resources, or reminders..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={10}
+                  className="flex min-h-40 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
                 />
               </div>
+            </section>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
-                <Input
-                  placeholder="Optional — what do you want to achieve?"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
+            <section className="space-y-3 rounded-xl border border-border/70 bg-background/35 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <label className="text-sm font-medium">Subjects</label>
+                  <p className="text-xs text-muted-foreground">Required for analytics and readiness.</p>
+                </div>
+                {subjectIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSubjectIds([])}
+                    className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-
+              {selectedSubjects.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedSubjects.map((subject) => (
+                    <span
+                      key={subject.id}
+                      className="rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+                    >
+                      {subject.icon} {subject.shortCode}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Topics (comma-separated)</label>
-                <Input
-                  placeholder="e.g. Photosynthesis, Cell Division"
-                  value={topicsInput}
-                  onChange={(e) => setTopicsInput(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Subjects</label>
-                <div className="max-h-44 overflow-auto rounded-xl border border-input bg-background/35 p-2">
-                  <div className="grid grid-cols-1 gap-1">
+                <div className="max-h-[calc(100dvh-18rem)] overflow-auto rounded-xl border border-input bg-background/55 p-2">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                     {subjects.map((subject) => (
                       <label
                         key={subject.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-accent/45"
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors",
+                          subjectIds.includes(subject.id)
+                            ? "border-primary/25 bg-primary/10 text-foreground"
+                            : "border-transparent hover:bg-accent/45"
+                        )}
                       >
                         <Checkbox
                           checked={subjectIds.includes(subject.id)}
@@ -236,23 +317,13 @@ export function NewStudySessionDialog({
                   </div>
                 </div>
                 {subjectIds.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Choose at least one subject.</p>
+                  <p className="text-xs text-destructive">Choose at least one subject.</p>
                 )}
               </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notes</label>
-                <textarea
-                  placeholder="Key concepts, resources, or reminders..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={5}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
-                />
-              </div>
-            </div>
+            </section>
           </div>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="-mx-8 shrink-0 items-center px-8 min-[1200px]:-mx-10 min-[1200px]:px-10">
             <Button
               type="button"
               variant="outline"
@@ -260,7 +331,7 @@ export function NewStudySessionDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={!title || subjectIds.length === 0}>
+            <Button type="submit" disabled={!canSubmit}>
               Create Session
             </Button>
           </DialogFooter>

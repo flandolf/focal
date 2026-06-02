@@ -17,11 +17,13 @@ import { GlobalSearch } from "@/components/GlobalSearch"
 import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
 import { SettingsView } from "@/components/SettingsView"
+import { AnalyticsView } from "@/components/analytics/AnalyticsView"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useTheme } from "@/lib/themes"
+import { getSubjectById } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { CalendarEvent, ConfidenceScore, EventType, StudySession, StudySessionStatus, Subject } from "@/lib/types"
@@ -31,7 +33,7 @@ const SHELL_LAYOUT_TRANSITION = { type: "spring", stiffness: 430, damping: 42, m
 const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
 
 function App() {
-  const { projects, addProject, updateProject, deleteProject } = useProjects()
+  const { projects, addProject, updateProject, deleteProject, addCustomSubfolder } = useProjects()
   const { sessions, addSession, addSessions, updateSession, deleteSession } = useStudySessions()
   const { events, addEvent, addEvents, updateEvent, deleteEvent } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -43,12 +45,15 @@ function App() {
   const [eventDialogOpen, setEventDialogOpen] = useState(false)
   const [editEventDialogOpen, setEditEventDialogOpen] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+  const [newItemInitialDate, setNewItemInitialDate] = useState<Date | undefined>(undefined)
+  const [newItemDialogKey, setNewItemDialogKey] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [searchOpen, setSearchOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [subjectsOpen, setSubjectsOpen] = useState(false)
   const [settingsView, setSettingsView] = useState(false)
+  const [analyticsView, setAnalyticsView] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const reduceMotion = useReducedMotion()
   const [customSubjects, setCustomSubjects] = useState<Subject[]>(() => {
@@ -103,12 +108,33 @@ function App() {
     setSelectedId(id)
     setHomeSelected(false)
     setSettingsView(false)
+    setAnalyticsView(false)
   }
 
   const handleSelectHome = () => {
     setSelectedId(null)
     setHomeSelected(true)
     setSettingsView(false)
+    setAnalyticsView(false)
+  }
+
+  const handleSelectAnalytics = () => {
+    setSelectedId(null)
+    setHomeSelected(false)
+    setSettingsView(false)
+    setAnalyticsView(true)
+  }
+
+  const handleOpenNewSession = (initialDate?: Date) => {
+    setNewItemInitialDate(initialDate)
+    setNewItemDialogKey((key) => key + 1)
+    setSessionDialogOpen(true)
+  }
+
+  const handleOpenNewEvent = (initialDate?: Date) => {
+    setNewItemInitialDate(initialDate)
+    setNewItemDialogKey((key) => key + 1)
+    setEventDialogOpen(true)
   }
 
   const handleCreateProject = async (data: {
@@ -226,6 +252,55 @@ function App() {
       toast.success(`${items.length} study session${items.length !== 1 ? "s" : ""} created`)
     } catch (e) {
       toast.error(`Failed to create study sessions: ${String(e)}`)
+      throw e
+    }
+  }
+
+  const getPomodoroTitle = (subjectIds: string[]) => {
+    const labels = subjectIds
+      .map((id) => getSubjectById(id)?.shortCode ?? getSubjectById(id)?.name)
+      .filter((label): label is string => Boolean(label))
+
+    if (labels.length === 0) return "Pomodoro focus"
+    if (labels.length === 1) return `${labels[0]} focus`
+    return `${labels.slice(0, 2).join(" + ")} focus`
+  }
+
+  const handleStartPomodoroSession = async (data: {
+    subjectIds: string[]
+    durationMinutes: number
+    projectId?: string
+  }) => {
+    try {
+      const start = new Date()
+      const end = new Date(start.getTime() + data.durationMinutes * 60 * 1000)
+      const session = await addSession(
+        data.projectId,
+        data.subjectIds,
+        getPomodoroTitle(data.subjectIds),
+        start.toISOString(),
+        end.toISOString(),
+        "Started from the Pomodoro timer.",
+        undefined,
+        "Focus block logged from the sidebar timer.",
+        "in-progress",
+      )
+      toast.success("Pomodoro session added to calendar")
+      return session
+    } catch (e) {
+      toast.error(`Failed to start Pomodoro session: ${String(e)}`)
+      throw e
+    }
+  }
+
+  const handleUpdatePomodoroSession = async (
+    id: string,
+    updates: Partial<Omit<StudySession, "id" | "created_at">>
+  ) => {
+    try {
+      await updateSession(id, updates)
+    } catch (e) {
+      toast.error(`Failed to update Pomodoro session: ${String(e)}`)
       throw e
     }
   }
@@ -418,7 +493,7 @@ function App() {
     void getCurrentWindow().startDragging().catch(() => undefined)
   }
 
-  const contentKey = settingsView ? "settings" : homeSelected ? "home" : selectedProject ? `project-${selectedProject.id}` : "empty"
+  const contentKey = settingsView ? "settings" : analyticsView ? "analytics" : homeSelected ? "home" : selectedProject ? `project-${selectedProject.id}` : "empty"
   const layoutTransition = reduceMotion ? { duration: 0 } : SHELL_LAYOUT_TRANSITION
   const viewTransition = reduceMotion ? { duration: 0 } : VIEW_TRANSITION
 
@@ -459,17 +534,22 @@ function App() {
           >
             <Sidebar
               projects={projects}
+              customSubjects={customSubjects}
               selectedId={selectedId}
               homeSelected={homeSelected}
+              analyticsSelected={analyticsView}
               isCollapsed={sidebarCollapsed}
               onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
               onSelect={handleSelectProject}
               onSelectHome={handleSelectHome}
+              onSelectAnalytics={handleSelectAnalytics}
               onDelete={handleDeleteProject}
               onNewProject={() => setDialogOpen(true)}
               onToggleFavorite={handleToggleFavorite}
               onToggleArchive={handleToggleArchive}
               onToggleFinished={handleToggleFinished}
+              onStartPomodoroSession={handleStartPomodoroSession}
+              onUpdatePomodoroSession={handleUpdatePomodoroSession}
               fileCounts={fileCounts}
             />
           </motion.div>
@@ -498,6 +578,12 @@ function App() {
                     onOpenExport={() => setExportOpen(true)}
                     onOpenSubjects={() => setSubjectsOpen(true)}
                   />
+                ) : analyticsView ? (
+                  <AnalyticsView
+                    sessions={sessions}
+                    projects={projects}
+                    onNewSession={handleOpenNewSession}
+                  />
                 ) : homeSelected ? (
                   <HomeView
                     projects={projects}
@@ -506,8 +592,8 @@ function App() {
                     onSelectProject={handleSelectProject}
                     onSelectSession={handleSelectSession}
                     onSelectEvent={handleSelectEvent}
-                    onNewSession={() => setSessionDialogOpen(true)}
-                    onNewEvent={() => setEventDialogOpen(true)}
+                    onNewSession={handleOpenNewSession}
+                    onNewEvent={handleOpenNewEvent}
                     onNewProject={() => setDialogOpen(true)}
                     onCreateEvents={handleCreateEvents}
                     onCreateStudySessions={handleCreateStudySessions}
@@ -520,8 +606,9 @@ function App() {
                     onOpenSettings={() => setSettingsOpen(true)}
                     onToggleFinished={handleToggleFinished}
                     onSelectSession={handleSelectSession}
-                    onNewSession={() => setSessionDialogOpen(true)}
+                    onNewSession={() => handleOpenNewSession()}
                     onCreateEvents={handleCreateEvents}
+                    onAddCustomSubfolder={addCustomSubfolder}
                   />
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center px-8 text-center">
@@ -548,10 +635,12 @@ function App() {
           customSubjects={customSubjects}
         />
         <NewStudySessionDialog
+          key={`new-session-${newItemDialogKey}`}
           open={sessionDialogOpen}
           onOpenChange={setSessionDialogOpen}
           projects={projects}
           customSubjects={customSubjects}
+          initialDate={newItemInitialDate}
           onSubmit={handleCreateStudySession}
         />
         <EditStudySessionDialog
@@ -564,9 +653,11 @@ function App() {
           onDelete={handleDeleteStudySession}
         />
         <NewEventDialog
+          key={`new-event-${newItemDialogKey}`}
           open={eventDialogOpen}
           onOpenChange={setEventDialogOpen}
           customSubjects={customSubjects}
+          initialDate={newItemInitialDate}
           onSubmit={handleCreateEvent}
         />
         <EditEventDialog
