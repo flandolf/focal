@@ -24,8 +24,9 @@ import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useTheme } from "@/lib/themes"
 import { getSubjectById } from "@/lib/utils"
+import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { Button } from "@/components/ui/button"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CalendarEvent, ConfidenceScore, EventType, StudySession, StudySessionStatus, Subject } from "@/lib/types"
 
 const MOTION_EASE = [0.16, 1, 0.3, 1] as const
@@ -253,7 +254,12 @@ function App() {
   const handleDeleteProject = async (id: string) => {
     const project = projects.find((p) => p.id === id)
     if (!project) return
-    if (!window.confirm(`Delete "${project.name}"? This will also delete all associated sessions.`)) return
+    const confirmed = await confirmDestructiveAction({
+      title: `Delete "${project.name}"?`,
+      description: "This also removes associated study sessions.",
+      actionLabel: "Delete",
+    })
+    if (!confirmed) return
     try {
       await deleteProject(id)
       if (selectedId === id) {
@@ -429,7 +435,12 @@ function App() {
   const handleDeleteStudySession = async (id: string) => {
     const session = sessions.find((s) => s.id === id)
     if (!session) return
-    if (!window.confirm(`Delete "${session.title}"? This action cannot be undone.`)) return
+    const confirmed = await confirmDestructiveAction({
+      title: `Delete "${session.title}"?`,
+      description: "This study session will be removed from your calendar.",
+      actionLabel: "Delete",
+    })
+    if (!confirmed) return
     try {
       await deleteSession(id)
       toast.success("Study session deleted")
@@ -505,7 +516,12 @@ function App() {
   const handleDeleteEvent = async (id: string) => {
     const event = events.find((item) => item.id === id)
     if (!event) return
-    if (!window.confirm(`Delete "${event.title}"? This action cannot be undone.`)) return
+    const confirmed = await confirmDestructiveAction({
+      title: `Delete "${event.title}"?`,
+      description: "This event will be removed from your calendar.",
+      actionLabel: "Delete",
+    })
+    if (!confirmed) return
     try {
       await deleteEvent(id)
       toast.success("Event deleted")
@@ -519,7 +535,12 @@ function App() {
   const handleDeleteCalendarItems = async (itemIds: { eventIds: string[]; sessionIds: string[] }) => {
     const total = itemIds.eventIds.length + itemIds.sessionIds.length
     if (total === 0) return
-    if (!window.confirm(`Delete ${total} selected calendar item${total === 1 ? "" : "s"}? This action cannot be undone.`)) return
+    const confirmed = await confirmDestructiveAction({
+      title: `Delete ${total} selected calendar item${total === 1 ? "" : "s"}?`,
+      description: "Selected events and study sessions will be removed.",
+      actionLabel: "Delete",
+    })
+    if (!confirmed) return
     try {
       await Promise.all([
         itemIds.eventIds.length > 0 ? deleteEvents(itemIds.eventIds) : Promise.resolve(),
@@ -745,20 +766,30 @@ function App() {
           className="app-titlebar-drag-region absolute inset-x-0 top-0 z-20"
         />
         <div className="app-titlebar-actions absolute left-(--app-titlebar-actions-left) top-(--app-titlebar-control-top) z-30 flex h-(--app-titlebar-control-size) items-center gap-1.5">
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="flex h-6 w-6 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/55 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-            aria-label="Search"
-          >
-            <Search className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => setSettingsView(true)}
-            className="flex h-6 w-6 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/55 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-            aria-label="Settings"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                aria-label="Search"
+              >
+                <Search className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start">Search · ⌘K</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setSettingsView(true)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                aria-label="Settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start">Settings</TooltipContent>
+          </Tooltip>
         </div>
         <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
         <div
@@ -942,7 +973,15 @@ function App() {
           open={subjectsOpen}
           onOpenChange={setSubjectsOpen}
         />
-        <Toaster closeButton />
+        <Toaster
+          className="focal-toaster"
+          closeButton
+          richColors
+          duration={3500}
+          visibleToasts={3}
+          position="bottom-right"
+          theme={resolvedDark ? "dark" : "light"}
+        />
       </div>
       </MotionConfig>
     </TooltipProvider>

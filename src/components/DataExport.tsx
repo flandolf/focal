@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { confirmDestructiveAction } from "@/lib/confirmToast"
 import type { CalendarEvent, Project, StudySession } from "@/lib/types"
 
 interface DataExportProps {
@@ -69,8 +70,13 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
     }
   }
 
-  const handleImport = () => {
-    if (!window.confirm("Import will overwrite all existing assessments and sessions. Continue?")) return
+  const handleImport = async () => {
+    const confirmed = await confirmDestructiveAction({
+      title: "Import backup?",
+      description: "This overwrites existing assessments, sessions, and events.",
+      actionLabel: "Import",
+    })
+    if (!confirmed) return
     const input = document.createElement("input")
     input.type = "file"
     input.accept = ".json"
