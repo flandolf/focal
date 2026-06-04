@@ -15,6 +15,7 @@ import { FileRow } from "@/components/FileRow"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
 import { FileStudyPlannerButton } from "@/components/FileStudyPlannerButton"
 import { useProjectFiles, type SortKey } from "@/hooks/useProjectFiles"
+import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
 import type { CalendarEvent, Project, FileInfo, StudySession } from "@/lib/types"
@@ -319,7 +320,12 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
 
   const handleDeleteSelected = async () => {
     if (selectedFiles.size === 0) return
-    if (!window.confirm(`Delete ${selectedFiles.size} file${selectedFiles.size > 1 ? "s" : ""}? This cannot be undone.`)) return
+    const confirmed = await confirmDestructiveAction({
+      title: `Delete ${selectedFiles.size} file${selectedFiles.size > 1 ? "s" : ""}?`,
+      description: "Selected files will be removed from this assessment folder.",
+      actionLabel: "Delete",
+    })
+    if (!confirmed) return
     const paths = Array.from(selectedFiles)
     try {
       await deleteFiles(paths)
