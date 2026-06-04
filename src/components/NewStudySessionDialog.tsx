@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { format, addHours } from "date-fns"
+import { addMinutes, format } from "date-fns"
 import { CalendarIcon, Clock } from "lucide-react"
 import {
   Dialog,
@@ -84,7 +84,7 @@ export function NewStudySessionDialog({
     const [hours, minutes] = startTime.split(":").map(Number)
     const start = new Date(startDate)
     start.setHours(hours, minutes, 0, 0)
-    const end = addHours(start, durationMinutes / 60)
+    const end = addMinutes(start, durationMinutes)
 
     const topics = topicsInput
       .split(",")
@@ -226,8 +226,8 @@ export function NewStudySessionDialog({
                   <label className="text-sm font-medium">Duration (minutes)</label>
                   <Input
                     type="number"
-                    min="15"
-                    step="15"
+                    min="1"
+                    step="1"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
                     placeholder="60"

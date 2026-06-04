@@ -2,13 +2,19 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "$HOME/Documents/Projects/**" }]
+      "allow": [
+        {
+          "path": "$HOME/Documents/Projects/**"
+        }
+      ]
     },
     "dialog:default",
     "shell:default",
@@ -19,11 +25,20 @@
     "fs:allow-appdata-write-recursive",
     {
       "identifier": "fs:allow-exists",
-      "allow": [{ "path": "$APPDATA/**" }]
+      "allow": [
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-mkdir",
-      "allow": [{ "path": "$APPDATA/**" }]
-    }
+      "allow": [
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
+    },
+    "notification:default"
   ]
 }

@@ -31,11 +31,68 @@ import type { CalendarEvent, ConfidenceScore, EventType, StudySession, StudySess
 const MOTION_EASE = [0.16, 1, 0.3, 1] as const
 const SHELL_LAYOUT_TRANSITION = { type: "spring", stiffness: 430, damping: 42, mass: 0.85 } as const
 const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
+const POMODORO_MERGE_WINDOW_MS = 15 * 60 * 1000
+const POMODORO_DESCRIPTION = "Started from the Pomodoro timer."
+const POMODORO_NOTES = "Focus block logged from the sidebar timer."
+
+function isPomodoroSession(session: StudySession) {
+  return session.description === POMODORO_DESCRIPTION || session.notes === POMODORO_NOTES
+}
+
+function haveSameSubjects(a: string[], b: string[]) {
+  if (a.length !== b.length) return false
+  const sortedA = [...a].sort()
+  const sortedB = [...b].sort()
+  return sortedA.every((id, index) => id === sortedB[index])
+}
+
+function getUniqueStrings(items: (string | undefined)[]) {
+  return Array.from(new Set(items.map((item) => item?.trim()).filter((item): item is string => Boolean(item))))
+}
+
+function getUniqueArrayItems(items: (string[] | undefined)[]) {
+  return Array.from(new Set(items.flatMap((item) => item ?? []).map((item) => item.trim()).filter(Boolean)))
+}
+
+function isMergeablePomodoroSession(session: StudySession, data: { projectId?: string; subjectIds: string[] }) {
+  return isPomodoroSession(session)
+    && session.projectId === data.projectId
+    && haveSameSubjects(session.subjectIds, data.subjectIds)
+}
+
+function getAdjacentPomodoroSession(
+  sessions: StudySession[],
+  data: { projectId?: string; subjectIds: string[] },
+  start: Date,
+  end: Date,
+) {
+  const startMs = start.getTime()
+  const endMs = end.getTime()
+
+  const adjacentSessions = sessions
+    .filter((session) => isMergeablePomodoroSession(session, data))
+    .map((session) => ({
+      session,
+      startMs: new Date(session.startTime).getTime(),
+      endMs: new Date(session.endTime).getTime(),
+    }))
+    .filter(({ startMs: candidateStartMs, endMs: candidateEndMs }) => (
+      Number.isFinite(candidateStartMs)
+      && Number.isFinite(candidateEndMs)
+      && (
+        Math.abs(startMs - candidateEndMs) <= POMODORO_MERGE_WINDOW_MS
+        || Math.abs(candidateStartMs - endMs) <= POMODORO_MERGE_WINDOW_MS
+      )
+    ))
+    .sort((a, b) => Math.min(Math.abs(startMs - a.endMs), Math.abs(endMs - a.startMs)) - Math.min(Math.abs(startMs - b.endMs), Math.abs(endMs - b.startMs)))
+
+  return adjacentSessions[0]?.session
+}
 
 function App() {
   const { projects, addProject, updateProject, deleteProject, addCustomSubfolder } = useProjects()
-  const { sessions, addSession, addSessions, updateSession, deleteSession } = useStudySessions()
-  const { events, addEvent, addEvents, updateEvent, deleteEvent } = useEvents()
+  const { sessions, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, updateAndDeleteSessions } = useStudySessions()
+  const { events, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, updateAndDeleteEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -96,8 +153,8 @@ function App() {
     setFileCounts(counts)
   }, [projects])
 
-  // Check for deadline notifications on app load and when projects change
-  useDeadlineNotifications(projects, events)
+  // Check for timely study notifications on app load and when planning data changes
+  useDeadlineNotifications(projects, events, sessions)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -268,21 +325,44 @@ function App() {
 
   const handleStartPomodoroSession = async (data: {
     subjectIds: string[]
-    durationMinutes: number
+    durationSeconds: number
     projectId?: string
   }) => {
     try {
       const start = new Date()
-      const end = new Date(start.getTime() + data.durationMinutes * 60 * 1000)
+      const end = new Date(start.getTime() + data.durationSeconds * 1000)
+      const adjacentSession = getAdjacentPomodoroSession(sessions, data, start, end)
+
+      if (adjacentSession) {
+        const mergedStart = new Date(Math.min(new Date(adjacentSession.startTime).getTime(), start.getTime()))
+        const mergedEnd = new Date(Math.max(new Date(adjacentSession.endTime).getTime(), end.getTime()))
+        const mergedSession: StudySession = {
+          ...adjacentSession,
+          startTime: mergedStart.toISOString(),
+          endTime: mergedEnd.toISOString(),
+          status: "in-progress",
+          completedAt: undefined,
+        }
+
+        await updateSession(adjacentSession.id, {
+          startTime: mergedSession.startTime,
+          endTime: mergedSession.endTime,
+          status: mergedSession.status,
+          completedAt: mergedSession.completedAt,
+        })
+        toast.success("Pomodoro session merged on calendar")
+        return mergedSession
+      }
+
       const session = await addSession(
         data.projectId,
         data.subjectIds,
         getPomodoroTitle(data.subjectIds),
         start.toISOString(),
         end.toISOString(),
-        "Started from the Pomodoro timer.",
+        POMODORO_DESCRIPTION,
         undefined,
-        "Focus block logged from the sidebar timer.",
+        POMODORO_NOTES,
         "in-progress",
       )
       toast.success("Pomodoro session added to calendar")
@@ -433,6 +513,164 @@ function App() {
       setSelectedEvent(null)
     } catch (e) {
       toast.error(`Failed to delete event: ${String(e)}`)
+    }
+  }
+
+  const handleDeleteCalendarItems = async (itemIds: { eventIds: string[]; sessionIds: string[] }) => {
+    const total = itemIds.eventIds.length + itemIds.sessionIds.length
+    if (total === 0) return
+    if (!window.confirm(`Delete ${total} selected calendar item${total === 1 ? "" : "s"}? This action cannot be undone.`)) return
+    try {
+      await Promise.all([
+        itemIds.eventIds.length > 0 ? deleteEvents(itemIds.eventIds) : Promise.resolve(),
+        itemIds.sessionIds.length > 0 ? deleteSessions(itemIds.sessionIds) : Promise.resolve(),
+      ])
+      toast.success(`${total} calendar item${total === 1 ? "" : "s"} deleted`)
+    } catch (e) {
+      toast.error(`Failed to delete calendar items: ${String(e)}`)
+      throw e
+    }
+  }
+
+  const handleSetCalendarItemsCompleted = async (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => {
+    const total = itemIds.eventIds.length + itemIds.sessionIds.length
+    if (total === 0) return
+    const completedAt = isCompleted ? new Date().toISOString() : undefined
+    try {
+      await Promise.all([
+        itemIds.eventIds.length > 0
+          ? updateEvents(itemIds.eventIds.map((id) => ({
+            id,
+            updates: { isFinished: isCompleted, finishedAt: completedAt },
+          })))
+          : Promise.resolve(),
+        itemIds.sessionIds.length > 0
+          ? updateSessions(itemIds.sessionIds.map((id) => ({
+            id,
+            updates: {
+              status: isCompleted ? "completed" : "planned",
+              completedAt,
+            },
+          })))
+          : Promise.resolve(),
+      ])
+      toast.success(`${total} calendar item${total === 1 ? "" : "s"} marked ${isCompleted ? "complete" : "current"}`)
+    } catch (e) {
+      toast.error(`Failed to update calendar items: ${String(e)}`)
+      throw e
+    }
+  }
+
+  const handleMergeEvents = async (ids: string[]) => {
+    const selectedEvents = ids
+      .map((id) => events.find((event) => event.id === id))
+      .filter((event): event is CalendarEvent => Boolean(event))
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+
+    if (selectedEvents.length < 2) return
+
+    const keeper = selectedEvents[0]
+    const startMs = Math.min(...selectedEvents.map((event) => new Date(event.startTime).getTime()).filter(Number.isFinite))
+    const endMs = Math.max(...selectedEvents.map((event) => new Date(event.endTime ?? event.startTime).getTime()).filter(Number.isFinite))
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      toast.error("Failed to merge events: invalid event time")
+      return
+    }
+
+    const descriptions = selectedEvents
+      .map((event) => event.description?.trim())
+      .filter((description): description is string => Boolean(description))
+    const uniqueDescriptions = Array.from(new Set(descriptions))
+    const allComplete = selectedEvents.every((event) => event.isFinished)
+    const sameSubject = selectedEvents.every((event) => event.subjectId === keeper.subjectId)
+    const sameLocation = selectedEvents.every((event) => event.location === keeper.location)
+
+    try {
+      await updateAndDeleteEvents(
+        [{
+          id: keeper.id,
+          updates: {
+            title: selectedEvents.length === 2
+              ? `${selectedEvents[0].title} / ${selectedEvents[1].title}`
+              : `${selectedEvents[0].title} + ${selectedEvents.length - 1} more`,
+            description: uniqueDescriptions.length > 0 ? uniqueDescriptions.join("\n\n") : keeper.description,
+            startTime: new Date(startMs).toISOString(),
+            endTime: new Date(endMs).toISOString(),
+            eventType: keeper.eventType,
+            subjectId: sameSubject ? keeper.subjectId : undefined,
+            location: sameLocation ? keeper.location : undefined,
+            isFinished: allComplete,
+            finishedAt: allComplete ? (keeper.finishedAt ?? new Date().toISOString()) : undefined,
+          },
+        }],
+        selectedEvents.slice(1).map((event) => event.id),
+      )
+      toast.success(`${selectedEvents.length} events merged`)
+    } catch (e) {
+      toast.error(`Failed to merge events: ${String(e)}`)
+      throw e
+    }
+  }
+
+  const handleMergeStudySessions = async (ids: string[]) => {
+    const selectedSessions = ids
+      .map((id) => sessions.find((session) => session.id === id))
+      .filter((session): session is StudySession => Boolean(session))
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+
+    if (selectedSessions.length < 2) return
+
+    const keeper = selectedSessions[0]
+    const startMs = Math.min(...selectedSessions.map((session) => new Date(session.startTime).getTime()).filter(Number.isFinite))
+    const endMs = Math.max(...selectedSessions.map((session) => new Date(session.endTime).getTime()).filter(Number.isFinite))
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      toast.error("Failed to merge study sessions: invalid session time")
+      return
+    }
+
+    const descriptions = getUniqueStrings(selectedSessions.map((session) => session.description))
+    const notes = getUniqueStrings(selectedSessions.map((session) => session.notes))
+    const blockers = getUniqueStrings(selectedSessions.map((session) => session.blockers))
+    const nextActions = getUniqueStrings(selectedSessions.map((session) => session.nextAction))
+    const topicItems = getUniqueArrayItems(selectedSessions.map((session) => session.topics))
+    const subjectIds = getUniqueArrayItems(selectedSessions.map((session) => session.subjectIds))
+    const sameProject = selectedSessions.every((session) => session.projectId === keeper.projectId)
+    const sameConfidence = selectedSessions.every((session) => session.confidence === keeper.confidence)
+    const allComplete = selectedSessions.every((session) => session.status === "completed")
+    const anyInProgress = selectedSessions.some((session) => session.status === "in-progress")
+    const completedAtValues = selectedSessions
+      .map((session) => session.completedAt)
+      .filter((completedAt): completedAt is string => Boolean(completedAt))
+      .sort()
+
+    try {
+      await updateAndDeleteSessions(
+        [{
+          id: keeper.id,
+          updates: {
+            projectId: sameProject ? keeper.projectId : undefined,
+            subjectIds,
+            title: selectedSessions.length === 2
+              ? `${selectedSessions[0].title} / ${selectedSessions[1].title}`
+              : `${selectedSessions[0].title} + ${selectedSessions.length - 1} more`,
+            description: descriptions.length > 0 ? descriptions.join("\n\n") : keeper.description,
+            startTime: new Date(startMs).toISOString(),
+            endTime: new Date(endMs).toISOString(),
+            status: allComplete ? "completed" : anyInProgress ? "in-progress" : "planned",
+            topics: topicItems.length > 0 ? topicItems : undefined,
+            notes: notes.length > 0 ? notes.join("\n\n") : keeper.notes,
+            confidence: sameConfidence ? keeper.confidence : undefined,
+            blockers: blockers.length > 0 ? blockers.join("\n\n") : keeper.blockers,
+            nextAction: nextActions.length > 0 ? nextActions.join("\n\n") : keeper.nextAction,
+            completedAt: allComplete ? (completedAtValues[0] ?? new Date().toISOString()) : undefined,
+          },
+        }],
+        selectedSessions.slice(1).map((session) => session.id),
+      )
+      toast.success(`${selectedSessions.length} study sessions merged`)
+    } catch (e) {
+      toast.error(`Failed to merge study sessions: ${String(e)}`)
+      throw e
     }
   }
 
@@ -597,6 +835,10 @@ function App() {
                     onNewProject={() => setDialogOpen(true)}
                     onCreateEvents={handleCreateEvents}
                     onCreateStudySessions={handleCreateStudySessions}
+                    onDeleteCalendarItems={handleDeleteCalendarItems}
+                    onSetCalendarItemsCompleted={handleSetCalendarItemsCompleted}
+                    onMergeEvents={handleMergeEvents}
+                    onMergeStudySessions={handleMergeStudySessions}
                   />
                 ) : selectedProject ? (
                   <ProjectDetail

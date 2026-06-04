@@ -203,7 +203,7 @@ interface SidebarProps {
   onToggleFinished?: (id: string) => void
   onStartPomodoroSession: (data: {
     subjectIds: string[]
-    durationMinutes: number
+    durationSeconds: number
     projectId?: string
   }) => Promise<StudySession>
   onUpdatePomodoroSession: (
