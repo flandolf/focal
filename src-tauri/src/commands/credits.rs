@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreditsInfo {
@@ -21,14 +21,17 @@ pub struct CreditsResponse {
 fn error_response(code: &str, message: &str) -> CreditsResponse {
     CreditsResponse {
         data: None,
-        error: Some(CreditsError { code: code.to_string(), message: message.to_string() }),
+        error: Some(CreditsError {
+            code: code.to_string(),
+            message: message.to_string(),
+        }),
     }
 }
 
 #[tauri::command]
 pub fn get_credits(api_key: String) -> CreditsResponse {
     if api_key.trim().is_empty() {
-        return error_response("VALIDATION_ERROR", "API key is required")
+        return error_response("VALIDATION_ERROR", "API key is required");
     }
 
     let client = reqwest::blocking::Client::new();
@@ -43,11 +46,17 @@ pub fn get_credits(api_key: String) -> CreditsResponse {
     };
 
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return error_response("OPENROUTER_UNAUTHORIZED", "A Management key is required to view credits")
+        return error_response(
+            "OPENROUTER_UNAUTHORIZED",
+            "A Management key is required to view credits",
+        );
     }
 
     if !resp.status().is_success() {
-        return error_response("OPENROUTER_ERROR", &format!("OpenRouter returned {}", resp.status()))
+        return error_response(
+            "OPENROUTER_ERROR",
+            &format!("OpenRouter returned {}", resp.status()),
+        );
     }
 
     let json: serde_json::Value = match resp.json() {
@@ -69,5 +78,11 @@ pub fn get_credits(api_key: String) -> CreditsResponse {
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);
 
-    CreditsResponse { data: Some(CreditsInfo { total_credits, total_usage }), error: None }
+    CreditsResponse {
+        data: Some(CreditsInfo {
+            total_credits,
+            total_usage,
+        }),
+        error: None,
+    }
 }

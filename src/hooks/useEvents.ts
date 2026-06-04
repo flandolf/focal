@@ -166,8 +166,44 @@ export function useEvents() {
     await saveEvents(updated)
   }, [events, saveEvents])
 
+  const updateEvents = useCallback(async (items: {
+    id: string
+    updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
+  }[]) => {
+    const updateMap = new Map(items.map((item) => [item.id, item.updates]))
+    const updated = markPastEventsFinished(events.map((event) => {
+      const updates = updateMap.get(event.id)
+      return updates ? { ...event, ...updates } : event
+    }))
+    await saveEvents(updated)
+  }, [events, saveEvents])
+
   const deleteEvent = useCallback(async (id: string) => {
     const updated = events.filter((event) => event.id !== id)
+    await saveEvents(updated)
+  }, [events, saveEvents])
+
+  const deleteEvents = useCallback(async (ids: string[]) => {
+    const idSet = new Set(ids)
+    const updated = events.filter((event) => !idSet.has(event.id))
+    await saveEvents(updated)
+  }, [events, saveEvents])
+
+  const updateAndDeleteEvents = useCallback(async (
+    items: {
+      id: string
+      updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
+    }[],
+    ids: string[],
+  ) => {
+    const updateMap = new Map(items.map((item) => [item.id, item.updates]))
+    const deleteSet = new Set(ids)
+    const updated = markPastEventsFinished(events
+      .filter((event) => !deleteSet.has(event.id))
+      .map((event) => {
+        const updates = updateMap.get(event.id)
+        return updates ? { ...event, ...updates } : event
+      }))
     await saveEvents(updated)
   }, [events, saveEvents])
 
@@ -199,7 +235,10 @@ export function useEvents() {
     addEvent,
     addEvents,
     updateEvent,
+    updateEvents,
     deleteEvent,
+    deleteEvents,
+    updateAndDeleteEvents,
     refresh: loadEvents,
   }
 }

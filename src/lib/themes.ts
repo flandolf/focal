@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 
-export type ThemeId = "focal" | "codex" | "claude"
+export type ThemeId = "focal" | "codex" | "claude" | "github" | "linear" | "notion"
 export type ThemeMode = "light" | "dark" | "system"
 
 export interface ThemeDef {
@@ -12,6 +12,9 @@ export const THEMES: ThemeDef[] = [
   { id: "focal", name: "Focal" },
   { id: "codex", name: "Codex" },
   { id: "claude", name: "Claude" },
+  { id: "github", name: "GitHub" },
+  { id: "linear", name: "Linear" },
+  { id: "notion", name: "Notion" },
 ]
 
 interface ThemeSelection {
@@ -78,7 +81,7 @@ export function useTheme() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(selection))
     const root = document.documentElement
-    root.classList.remove("focal", "codex", "claude")
+    root.classList.remove("focal", "codex", "claude", "github", "linear", "notion")
     if (selection.theme !== "focal") {
       root.classList.add(selection.theme)
     }

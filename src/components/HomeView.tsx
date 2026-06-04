@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { createPortal } from "react-dom"
 import { addMinutes, format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, parseISO } from "date-fns"
-import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, ExternalLink, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, Pencil, Trash2, Target, Activity, Wand2, Loader2, Check, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, ExternalLink, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, Pencil, Trash2, Target, Activity, Wand2, Loader2, Check, X, CheckCircle2, Combine } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -138,6 +139,12 @@ function getLocalDateValue(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
   return `${year}-${month}-${day}`
+}
+
+function formatTimeRange(startTime: string, endTime?: string) {
+  const startLabel = format(parseISO(startTime), "h:mm a")
+  if (!endTime) return startLabel
+  return `${startLabel} - ${format(parseISO(endTime), "h:mm a")}`
 }
 
 function combineDateAndTime(dateValue: string, timeValue: string): Date | null {
@@ -404,6 +411,10 @@ interface HomeViewProps {
   onNewProject: () => void
   onCreateEvents: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
   onCreateStudySessions: (sessions: Omit<StudySession, "id" | "status" | "created_at">[]) => Promise<void>
+  onDeleteCalendarItems: (itemIds: { eventIds: string[]; sessionIds: string[] }) => Promise<void>
+  onSetCalendarItemsCompleted: (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => Promise<void>
+  onMergeEvents: (ids: string[]) => Promise<void>
+  onMergeStudySessions: (ids: string[]) => Promise<void>
 }
 
 function ReadinessRow({ item }: { item: SubjectReadiness }) {
@@ -453,9 +464,13 @@ export function HomeView({
   onNewProject,
   onCreateEvents,
   onCreateStudySessions,
+  onDeleteCalendarItems,
+  onSetCalendarItemsCompleted,
+  onMergeEvents,
+  onMergeStudySessions,
 }: HomeViewProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(() => getLocalDateValue(new Date()))
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(() => {
     const stored = localStorage.getItem(QUICK_LINKS_KEY)
     return stored ? (JSON.parse(stored) as QuickLink[]) : []
@@ -468,6 +483,10 @@ export function HomeView({
   const [linkColor, setLinkColor] = useState("#71717a")
   const [prioritiesOpen, setPrioritiesOpen] = useState(true)
   const [readinessOpen, setReadinessOpen] = useState(true)
+  const [calendarSelectionMode, setCalendarSelectionMode] = useState(false)
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([])
+  const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([])
+  const [eventBatchSaving, setEventBatchSaving] = useState(false)
   const [textPlannerOpen, setTextPlannerOpen] = useState(false)
   const [plannerTitle, setPlannerTitle] = useState("Text to Events")
   const [plannerDescription, setPlannerDescription] = useState("Paste a notice, rough plan, or teacher message. Review drafts before adding them.")
@@ -624,6 +643,90 @@ export function HomeView({
     if (!eventsByDate[dateKey]) eventsByDate[dateKey] = []
     eventsByDate[dateKey].push(event)
   })
+  const selectedEventIdSet = useMemo(() => new Set(selectedEventIds), [selectedEventIds])
+  const selectedSessionIdSet = useMemo(() => new Set(selectedSessionIds), [selectedSessionIds])
+  const selectedDayDeadlines = selectedDate ? deadlinesByDate[selectedDate] ?? [] : []
+  const selectedDaySessions = selectedDate ? sessionsByDate[selectedDate] ?? [] : []
+  const selectedDayEvents = selectedDate ? eventsByDate[selectedDate] ?? [] : []
+  const selectedDayHasItems = selectedDayDeadlines.length > 0 || selectedDaySessions.length > 0 || selectedDayEvents.length > 0
+  const selectedBatchEvents = selectedDayEvents.filter((event) => selectedEventIdSet.has(event.id))
+  const selectedBatchSessions = selectedDaySessions.filter((session) => selectedSessionIdSet.has(session.id))
+  const selectedBatchCount = selectedBatchEvents.length + selectedBatchSessions.length
+  const canMergeSelectedEvents = selectedBatchEvents.length >= 2 && selectedBatchSessions.length === 0
+  const canMergeSelectedSessions = selectedBatchSessions.length >= 2 && selectedBatchEvents.length === 0
+  const canMergeSelectedItems = canMergeSelectedEvents || canMergeSelectedSessions
+  const allSelectedItemsComplete = selectedBatchCount > 0
+    && selectedBatchEvents.every((event) => event.isFinished)
+    && selectedBatchSessions.every((session) => session.status === "completed")
+
+  const clearEventSelection = () => {
+    setCalendarSelectionMode(false)
+    setSelectedEventIds([])
+    setSelectedSessionIds([])
+  }
+
+  const handleSelectCalendarDate = (dateKey: string) => {
+    setSelectedDate((current) => current === dateKey ? null : dateKey)
+    clearEventSelection()
+  }
+
+  const handleToggleEventSelection = (eventId: string) => {
+    setSelectedEventIds((current) => (
+      current.includes(eventId)
+        ? current.filter((id) => id !== eventId)
+        : [...current, eventId]
+    ))
+  }
+
+  const handleToggleSessionSelection = (sessionId: string) => {
+    setSelectedSessionIds((current) => (
+      current.includes(sessionId)
+        ? current.filter((id) => id !== sessionId)
+        : [...current, sessionId]
+    ))
+  }
+
+  const handleDeleteSelectedEvents = async () => {
+    if (selectedBatchCount === 0) return
+    setEventBatchSaving(true)
+    try {
+      const eventIds = selectedBatchEvents.map((event) => event.id)
+      const sessionIds = selectedBatchSessions.map((session) => session.id)
+      await onDeleteCalendarItems({ eventIds, sessionIds })
+      clearEventSelection()
+    } finally {
+      setEventBatchSaving(false)
+    }
+  }
+
+  const handleMergeSelectedEvents = async () => {
+    if (!canMergeSelectedItems) return
+    setEventBatchSaving(true)
+    try {
+      if (canMergeSelectedEvents) {
+        await onMergeEvents(selectedBatchEvents.map((event) => event.id))
+      } else if (canMergeSelectedSessions) {
+        await onMergeStudySessions(selectedBatchSessions.map((session) => session.id))
+      }
+      clearEventSelection()
+    } finally {
+      setEventBatchSaving(false)
+    }
+  }
+
+  const handleToggleSelectedEventsComplete = async () => {
+    if (selectedBatchCount === 0) return
+    setEventBatchSaving(true)
+    try {
+      const eventIds = selectedBatchEvents.map((event) => event.id)
+      const sessionIds = selectedBatchSessions.map((session) => session.id)
+      const nextComplete = !allSelectedItemsComplete
+      await onSetCalendarItemsCompleted({ eventIds, sessionIds }, nextComplete)
+      clearEventSelection()
+    } finally {
+      setEventBatchSaving(false)
+    }
+  }
 
   const monthAgendaStart = isSameMonth(currentMonth, now)
     ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -808,7 +911,11 @@ export function HomeView({
 
   const handlePrevMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1))
   const handleNextMonth = () => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1))
-  const handleToday = () => setCurrentMonth(new Date())
+  const handleToday = () => {
+    const today = new Date()
+    setCurrentMonth(today)
+    setSelectedDate(getLocalDateValue(today))
+  }
 
   const handleOpenTextPlanner = useCallback(() => {
     setPlannerTitle("Text to Events")
@@ -957,9 +1064,79 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
     onNewSession(selectedCalendarDate)
   }
 
+  const eventBatchToolbar = selectedBatchCount > 0
+    ? createPortal(
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex justify-center px-2 min-[900px]:px-4">
+        <div className="pointer-events-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-border/75 bg-popover/96 px-3 py-2 text-popover-foreground shadow-2xl shadow-black/16 backdrop-blur-xl">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
+              <Check className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold">Calendar selection</p>
+              <p className="text-micro text-muted-foreground tabular-nums">
+                {selectedBatchCount} selected from {selectedDate ? format(parseISO(selectedDate), "MMM d") : "calendar"}
+                {selectedBatchSessions.length > 0 && selectedBatchEvents.length > 0
+                  ? ` (${selectedBatchEvents.length} events, ${selectedBatchSessions.length} sessions)`
+                  : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs"
+              onClick={clearEventSelection}
+              disabled={eventBatchSaving}
+            >
+              <X className="h-3.5 w-3.5" />
+              Cancel
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs text-destructive hover:text-destructive"
+              onClick={handleDeleteSelectedEvents}
+              disabled={eventBatchSaving}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs"
+              onClick={handleMergeSelectedEvents}
+              disabled={eventBatchSaving || !canMergeSelectedItems}
+            >
+              <Combine className="h-3.5 w-3.5" />
+              Merge
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs"
+              onClick={handleToggleSelectedEventsComplete}
+              disabled={eventBatchSaving}
+            >
+              {allSelectedItemsComplete ? <X className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              {allSelectedItemsComplete ? "Reopen" : "Complete"}
+            </Button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+    : null
+
   return (
+    <>
     <div className="h-full overflow-auto">
-      <div className="px-5 pb-8 pt-5 min-[1200px]:px-8 min-[1200px]:pb-10 min-[1200px]:pt-7">
+      <div className={cn(
+        "px-5 pt-5 min-[1200px]:px-8 min-[1200px]:pt-7",
+        selectedBatchCount > 0 ? "pb-24 min-[1200px]:pb-24" : "pb-8 min-[1200px]:pb-10",
+      )}>
         <div className="mb-4 flex flex-wrap items-start justify-between gap-2 min-[1200px]:mb-8 min-[1200px]:gap-3">
           <div className="min-w-0">
             <h1 className="font-heading text-2xl font-semibold min-[1200px]:text-3xl">Today</h1>
@@ -1060,16 +1237,22 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
               </div>
 
               <div className="space-y-4">
-                <h3 className="font-medium text-sm text-foreground/90">{format(currentMonth, "MMMM yyyy")}</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-medium text-sm text-foreground/90">{format(currentMonth, "MMMM yyyy")}</h3>
+                  <div className="flex items-center gap-1.5 text-micro text-muted-foreground">
+                    <span className="rounded-md bg-muted/65 px-1.5 py-0.5 tabular-nums">{monthAssessments} assessments</span>
+                    <span className="rounded-md bg-muted/65 px-1.5 py-0.5 tabular-nums">{monthBusyDays} busy days</span>
+                  </div>
+                </div>
 
-                <div className="grid grid-cols-7 gap-0.5">
+                <div className="grid grid-cols-7 gap-1">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                     <div key={day} className="h-6 flex items-center justify-center text-micro font-medium text-muted-foreground/70 uppercase tracking-wider">
                       {day}
                     </div>
                   ))}
                   {calendarPad.map((_, i) => (
-                    <div key={`pad-${i}`} className="h-21 rounded-lg border border-transparent" />
+                    <div key={`pad-${i}`} className="h-22 rounded-xl border border-transparent" />
                   ))}
                   {daysInMonth.map((date) => {
                     const dateKey = format(date, "yyyy-MM-dd")
@@ -1089,18 +1272,19 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                     return (
                       <div
                         key={dateKey}
-                        onClick={() => setSelectedDate(selectedDate === dateKey ? null : dateKey)}
+                        onClick={() => handleSelectCalendarDate(dateKey)}
                         className={cn(
-                          "relative h-21 cursor-pointer rounded-lg border p-1 transition-colors",
+                          "relative h-22 cursor-pointer rounded-xl border p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
                           selectedDate === dateKey
-                            ? "border-primary bg-primary/8 ring-1 ring-primary/30"
-                            : "border-border/30 bg-background/10 hover:border-border hover:bg-accent/25",
+                            ? "border-primary/65 bg-primary/8 ring-1 ring-primary/25"
+                            : "border-border/35 bg-background/16 hover:border-border hover:bg-accent/24",
                           isTodayDate && selectedDate !== dateKey && "border-primary/40 bg-primary/5",
                           !isCurrentMonth && "opacity-30"
                         )}
                       >
                         <div className={cn(
-                          "text-micro font-semibold leading-none",
+                          "flex h-5 w-5 items-center justify-center rounded-md text-micro font-semibold leading-none",
+                          isTodayDate && "bg-primary/12",
                           isTodayDate ? "text-primary" : "text-foreground/80"
                         )}>
                           {date.getDate()}
@@ -1131,125 +1315,241 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                   })}
                 </div>
 
-                {selectedDate && (() => {
-                  const dayDeadlines = deadlinesByDate[selectedDate] || []
-                  const daySessions = sessionsByDate[selectedDate] || []
-                  const dayEvents = eventsByDate[selectedDate] || []
-                  if (dayDeadlines.length === 0 && daySessions.length === 0 && dayEvents.length === 0) return null
-                  return (
-                    <div className="border-t border-border/70 pt-4 data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-2">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <p className="text-sm font-semibold">
-                          {format(parseISO(selectedDate), "EEEE, MMMM d")}
-                        </p>
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSelectedDate(null)}>
-                          Close
-                        </Button>
+                {selectedDate && (
+                    <div className="rounded-2xl border border-border/70 bg-muted/18 p-3 data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-2">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold">
+                            {format(parseISO(selectedDate), "EEEE")}
+                          </p>
+                          <p className="mt-0.5 text-caption text-muted-foreground">
+                            {format(parseISO(selectedDate), "MMMM d")}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {(selectedDayEvents.length > 0 || selectedDaySessions.length > 0) && (
+                            <Button
+                              variant={calendarSelectionMode ? "secondary" : "ghost"}
+                              size="sm"
+                              className="h-7 rounded-lg px-2 text-xs"
+                              onClick={() => {
+                                if (calendarSelectionMode) {
+                                  clearEventSelection()
+                                  return
+                                }
+                                setCalendarSelectionMode(true)
+                              }}
+                            >
+                              {calendarSelectionMode ? "Cancel" : "Select"}
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 rounded-lg p-0"
+                            onClick={() => {
+                              setSelectedDate(null)
+                              clearEventSelection()
+                            }}
+                            aria-label="Close selected day"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        {dayDeadlines.map((p) => {
-                          const subject = getSubjectById(p.subjectId)
-                          return (
-                            <button
-                              key={p.id}
-                              onClick={() => onSelectProject(p.id)}
-                              className="w-full rounded-xl border border-border/70 bg-background/30 p-2 text-left transition-colors hover:border-primary/50 hover:bg-accent/30"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-xs font-medium truncate">{p.icon} {p.name}</p>
-                                  <p className="text-micro text-muted-foreground mt-0.5">
-                                    {formatDeadline(p.deadline!)}
-                                  </p>
-                                </div>
-                                {subject && (
-                                  <div
-                                    className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium shrink-0"
-                                    style={{
-                                      backgroundColor: subject.color + "18",
-                                      color: subject.color,
-                                    }}
-                                  >
-                                    {subject.shortCode}
+                      <div className="mb-3 grid grid-cols-3 gap-1.5 text-center">
+                        <div className="rounded-lg bg-background/42 px-2 py-1.5">
+                          <p className="text-xs font-semibold tabular-nums">{selectedDayDeadlines.length}</p>
+                          <p className="text-[9px] leading-3 text-muted-foreground">due</p>
+                        </div>
+                        <div className="rounded-lg bg-background/42 px-2 py-1.5">
+                          <p className="text-xs font-semibold tabular-nums">{selectedDayEvents.length}</p>
+                          <p className="text-[9px] leading-3 text-muted-foreground">events</p>
+                        </div>
+                        <div className="rounded-lg bg-background/42 px-2 py-1.5">
+                          <p className="text-xs font-semibold tabular-nums">{selectedDaySessions.length}</p>
+                          <p className="text-[9px] leading-3 text-muted-foreground">sessions</p>
+                        </div>
+                      </div>
+                      {calendarSelectionMode && (
+                        <div className="mb-2 rounded-xl border border-primary/20 bg-primary/8 px-2.5 py-2">
+                          <p className="text-micro font-medium text-primary">
+                            Pick events or sessions below. Actions appear at the bottom of the window.
+                          </p>
+                        </div>
+                      )}
+                      {selectedDayHasItems ? (
+                        <div className="space-y-2">
+                          {selectedDayDeadlines.map((p) => {
+                            const subject = getSubjectById(p.subjectId)
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => onSelectProject(p.id)}
+                                className="w-full rounded-xl border border-border/70 bg-background/30 p-2 text-left transition-colors hover:border-primary/50 hover:bg-accent/30"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-medium truncate">{p.icon} {p.name}</p>
+                                    <p className="text-micro text-muted-foreground mt-0.5">
+                                      {formatDeadline(p.deadline!)}
+                                    </p>
                                   </div>
-                                )}
-                              </div>
-                            </button>
-                          )
-                        })}
-                        {daySessions.map((s) => {
-                          const project = projects.find((p) => p.id === s.projectId)
-                          const subjects = getSessionSubjectIds(s, project)
-                            .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
-                            .join(", ")
-                          return (
-                            <button
-                              key={s.id}
-                              onClick={() => onSelectSession(s)}
-                              className="w-full rounded-xl border border-blue-200/40 bg-blue-50/20 p-2 text-left transition-colors hover:border-blue-400/60 dark:border-blue-900/40 dark:bg-blue-950/20"
-                            >
-                              <p className="text-xs font-medium">{s.title}</p>
-                              <p className="text-micro text-muted-foreground mt-0.5">
-                                {project?.name ?? subjects}
-                              </p>
-                              <p className="text-micro text-muted-foreground mt-1">
-                                {format(parseISO(s.startTime), "h:mm a")}
-                              </p>
-                            </button>
-                          )
-                        })}
-                        {dayEvents.map((event) => {
-                          const subject = getSubjectById(event.subjectId)
-                          const eventInfo = getEventTypeInfo(event.eventType)
-                          return (
-                            <button
-                              key={event.id}
-                              onClick={() => onSelectEvent(event)}
-                              className="w-full rounded-xl border border-border/70 bg-background/30 p-2 text-left transition-colors hover:border-primary/50 hover:bg-accent/30"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="truncate text-xs font-medium">{event.title}</p>
-                                  <p className="text-micro text-muted-foreground mt-0.5">
-                                    {format(parseISO(event.startTime), "h:mm a")}
-                                    {event.location ? ` · ${event.location}` : ""}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-1">
                                   {subject && (
-                                    <span
-                                      className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
+                                    <div
+                                      className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium shrink-0"
                                       style={{
                                         backgroundColor: subject.color + "18",
                                         color: subject.color,
                                       }}
                                     >
                                       {subject.shortCode}
-                                    </span>
-                                  )}
-                                  <span
-                                    className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                                    style={{
-                                      backgroundColor: eventInfo.color + "18",
-                                      color: eventInfo.color,
-                                    }}
-                                  >
-                                    {eventInfo.label}
-                                  </span>
-                                  {event.isFinished && (
-                                    <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
-                                      Done
-                                    </span>
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
+                              </button>
+                            )
+                          })}
+                          {selectedDaySessions.map((s) => {
+                            const project = projects.find((p) => p.id === s.projectId)
+                            const subjects = getSessionSubjectIds(s, project)
+                              .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
+                              .join(", ")
+                            const selected = selectedSessionIdSet.has(s.id)
+                            return (
+                              <button
+                                key={s.id}
+                                onClick={() => {
+                                  if (calendarSelectionMode) {
+                                    handleToggleSessionSelection(s.id)
+                                    return
+                                  }
+                                  onSelectSession(s)
+                                }}
+                                className={cn(
+                                  "w-full rounded-xl border p-2 text-left transition-colors",
+                                  selected
+                                    ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
+                                    : "border-blue-200/40 bg-blue-50/20 hover:border-blue-400/60 dark:border-blue-900/40 dark:bg-blue-950/20"
+                                )}
+                              >
+                                <div className="flex items-start gap-2">
+                                  {calendarSelectionMode && (
+                                    <span
+                                      className={cn(
+                                        "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                                        selected
+                                          ? "border-primary bg-primary text-primary-foreground"
+                                          : "border-border bg-background/50"
+                                      )}
+                                      aria-hidden="true"
+                                    >
+                                      {selected && <Check className="h-3 w-3" />}
+                                    </span>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <p className="min-w-0 truncate text-xs font-medium">{s.title}</p>
+                                      {s.status === "completed" && (
+                                        <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
+                                          Done
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-micro text-muted-foreground mt-0.5">
+                                      {project?.name ?? subjects}
+                                    </p>
+                                    <p className="text-micro text-muted-foreground mt-1">
+                                      {formatTimeRange(s.startTime, s.endTime)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                            )
+                          })}
+                          {selectedDayEvents.map((event) => {
+                            const subject = getSubjectById(event.subjectId)
+                            const eventInfo = getEventTypeInfo(event.eventType)
+                            const selected = selectedEventIdSet.has(event.id)
+                            return (
+                              <button
+                                key={event.id}
+                                onClick={() => {
+                                  if (calendarSelectionMode) {
+                                    handleToggleEventSelection(event.id)
+                                    return
+                                  }
+                                  onSelectEvent(event)
+                                }}
+                                className={cn(
+                                  "w-full rounded-xl border p-2 text-left transition-colors",
+                                  selected
+                                    ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
+                                    : "border-border/70 bg-background/30 hover:border-primary/50 hover:bg-accent/30"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex min-w-0 items-start gap-2">
+                                    {calendarSelectionMode && (
+                                      <span
+                                        className={cn(
+                                          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                                          selected
+                                            ? "border-primary bg-primary text-primary-foreground"
+                                            : "border-border bg-background/50"
+                                        )}
+                                        aria-hidden="true"
+                                      >
+                                        {selected && <Check className="h-3 w-3" />}
+                                      </span>
+                                    )}
+                                    <div className="min-w-0">
+                                      <p className="truncate text-xs font-medium">{event.title}</p>
+                                      <p className="text-micro text-muted-foreground mt-0.5">
+                                        {formatTimeRange(event.startTime, event.endTime)}
+                                        {event.location ? ` · ${event.location}` : ""}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    {subject && (
+                                      <span
+                                        className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
+                                        style={{
+                                          backgroundColor: subject.color + "18",
+                                          color: subject.color,
+                                        }}
+                                      >
+                                        {subject.shortCode}
+                                      </span>
+                                    )}
+                                    <span
+                                      className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
+                                      style={{
+                                        backgroundColor: eventInfo.color + "18",
+                                        color: eventInfo.color,
+                                      }}
+                                    >
+                                      {eventInfo.label}
+                                    </span>
+                                    {event.isFinished && (
+                                      <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
+                                        Done
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-border bg-background/24 px-3 py-3">
+                          <p className="text-xs text-muted-foreground">No calendar items scheduled.</p>
+                        </div>
+                      )}
                     </div>
-                  )
-                })()}
+                )}
 
                 <div className="border-t border-border/70 pt-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1992,5 +2292,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
         </div>
       </div>
     </div>
+    {eventBatchToolbar}
+    </>
   )
 }

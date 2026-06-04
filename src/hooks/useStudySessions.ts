@@ -142,8 +142,43 @@ export function useStudySessions() {
     await saveSessions(updated)
   }, [sessions, saveSessions])
 
+  const updateSessions = useCallback(async (
+    items: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]
+  ) => {
+    if (items.length === 0) return
+    const updateMap = new Map(items.map((item) => [item.id, item.updates]))
+    const updated = sessions.map((session) => {
+      const updates = updateMap.get(session.id)
+      return updates ? { ...session, ...updates } : session
+    })
+    await saveSessions(updated)
+  }, [sessions, saveSessions])
+
   const deleteSession = useCallback(async (id: string) => {
     const updated = sessions.filter((s) => s.id !== id)
+    await saveSessions(updated)
+  }, [sessions, saveSessions])
+
+  const deleteSessions = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    const updated = sessions.filter((session) => !idSet.has(session.id))
+    await saveSessions(updated)
+  }, [sessions, saveSessions])
+
+  const updateAndDeleteSessions = useCallback(async (
+    items: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[],
+    ids: string[],
+  ) => {
+    if (items.length === 0 && ids.length === 0) return
+    const updateMap = new Map(items.map((item) => [item.id, item.updates]))
+    const deleteSet = new Set(ids)
+    const updated = sessions
+      .filter((session) => !deleteSet.has(session.id))
+      .map((session) => {
+        const updates = updateMap.get(session.id)
+        return updates ? { ...session, ...updates } : session
+      })
     await saveSessions(updated)
   }, [sessions, saveSessions])
 
@@ -174,7 +209,10 @@ export function useStudySessions() {
     addSession,
     addSessions,
     updateSession,
+    updateSessions,
     deleteSession,
+    deleteSessions,
+    updateAndDeleteSessions,
     getSessionsByProject,
     getUpcomingSessions,
     refresh: loadSessions,

@@ -57,6 +57,8 @@ export const VCE_SUBJECTS: Subject[] = [
   { id: "mm", name: "Maths Methods", shortCode: "MCM", color: "#2563EB", icon: "📐" },
   { id: "sm", name: "Specialist Maths", shortCode: "SME", color: "#2563EB", icon: "🧮" },
   { id: "gm", name: "General Mathematics", shortCode: "GMM", color: "#2563EB", icon: "📊" },
+  { id: "csl", name: "Chinese Second Language", shortCode: "CSL", color: "#DC2626", icon: "🀄" },
+  { id: "pe", name: "Physical Education", shortCode: "PED", color: "#16A34A", icon: "🏃" },
   { id: "chem", name: "Chemistry", shortCode: "CHE", color: "#059669", icon: "🧪" },
   { id: "phys", name: "Physics", shortCode: "PHY", color: "#7C3AED", icon: "⚛️" },
   { id: "bio", name: "Biology", shortCode: "BIO", color: "#16A34A", icon: "🧬" },
@@ -65,8 +67,7 @@ export const VCE_SUBJECTS: Subject[] = [
   { id: "geo", name: "Geography", shortCode: "GEO", color: "#0D9488", icon: "🌍" },
   { id: "econ", name: "Economics", shortCode: "ECO", color: "#DC2626", icon: "📈" },
   { id: "bm", name: "Business Management", shortCode: "BM", color: "#4F46E5", icon: "💼" },
-  { id: "csl", name: "Chinese Second Language", shortCode: "CSL", color: "#DC2626", icon: "🀄" },
-  { id: "pe", name: "Physical Education", shortCode: "PED", color: "#16A34A", icon: "🏃" },
+
 ];
 
 export const DEFAULT_SUBFOLDERS = ["SACs", "Notes", "Past-Papers", "Exam-Revision", "Resources"];

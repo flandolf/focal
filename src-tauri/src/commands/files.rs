@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
 
 const DEFAULT_CONTENT_PREVIEW_CHARS: usize = 1200;
 const MAX_CONTENT_PREVIEW_CHARS: usize = 4000;
@@ -81,7 +81,8 @@ pub fn move_files_to_project(
     let projects_dir = get_documents_dir()?;
     let project_dir = projects_dir.join(&project_name);
 
-    std::fs::create_dir_all(&project_dir).map_err(|e| format!("Failed to create project directory: {}", e))?;
+    std::fs::create_dir_all(&project_dir)
+        .map_err(|e| format!("Failed to create project directory: {}", e))?;
 
     let mut new_paths = Vec::new();
 
@@ -99,10 +100,12 @@ pub fn move_files_to_project(
         let mut dest = project_dir.join(&filename);
 
         if dest.exists() {
-            let stem = src.file_stem()
+            let stem = src
+                .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let ext = src.extension()
+            let ext = src
+                .extension()
                 .map(|e| format!(".{}", e.to_string_lossy()))
                 .unwrap_or_default();
             let mut counter = 1;
@@ -116,7 +119,8 @@ pub fn move_files_to_project(
             Ok(_) => new_paths.push(dest.to_string_lossy().to_string()),
             Err(_) => {
                 std::fs::copy(&src, &dest).map_err(|e| format!("Failed to copy file: {}", e))?;
-                std::fs::remove_file(&src).map_err(|e| format!("Failed to remove source file: {}", e))?;
+                std::fs::remove_file(&src)
+                    .map_err(|e| format!("Failed to remove source file: {}", e))?;
                 new_paths.push(dest.to_string_lossy().to_string());
             }
         }
@@ -144,13 +148,17 @@ pub fn get_project_files(project_name: String) -> Result<Vec<FileInfo>, String> 
     dir_entries.sort_by_key(|e| e.file_name());
 
     for entry in dir_entries {
-        let metadata = entry.metadata().map_err(|e| format!("Failed to read metadata: {}", e))?;
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("Failed to read metadata: {}", e))?;
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        let extension = path.extension()
+        let extension = path
+            .extension()
             .map(|e| e.to_string_lossy().to_string())
             .unwrap_or_default();
-        let modified = metadata.modified()
+        let modified = metadata
+            .modified()
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
@@ -187,19 +195,22 @@ pub fn create_project_folder(project_name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn create_project_with_subfolders(project_name: String, subfolders: Vec<String>) -> Result<String, String> {
+pub fn create_project_with_subfolders(
+    project_name: String,
+    subfolders: Vec<String>,
+) -> Result<String, String> {
     let projects_dir = get_documents_dir()?;
     let project_dir = projects_dir.join(&project_name);
-    
+
     std::fs::create_dir_all(&project_dir)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
-    
+
     for subfolder in subfolders {
         let subfolder_path = project_dir.join(&subfolder);
         std::fs::create_dir_all(&subfolder_path)
             .map_err(|e| format!("Failed to create subfolder {}: {}", subfolder, e))?;
     }
-    
+
     Ok(project_dir.to_string_lossy().to_string())
 }
 
@@ -226,12 +237,10 @@ pub fn delete_files(file_paths: Vec<String>) -> Result<usize, String> {
     for path in &file_paths {
         let p = PathBuf::from(path);
         if p.exists() && p.is_file() {
-            std::fs::remove_file(&p)
-                .map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+            std::fs::remove_file(&p).map_err(|e| format!("Failed to delete {}: {}", path, e))?;
             deleted += 1;
         } else if p.exists() && p.is_dir() {
-            std::fs::remove_dir_all(&p)
-                .map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+            std::fs::remove_dir_all(&p).map_err(|e| format!("Failed to delete {}: {}", path, e))?;
             deleted += 1;
         }
     }
@@ -249,10 +258,12 @@ pub fn rename_file(file_path: String, new_name: String) -> Result<String, String
     let parent = src.parent().ok_or("Failed to resolve parent directory")?;
     let dest = parent.join(&new_name);
     if dest.exists() {
-        return Err(format!("A file named \"{}\" already exists in this directory", new_name));
+        return Err(format!(
+            "A file named \"{}\" already exists in this directory",
+            new_name
+        ));
     }
-    std::fs::rename(&src, &dest)
-        .map_err(|e| format!("Failed to rename file: {}", e))?;
+    std::fs::rename(&src, &dest).map_err(|e| format!("Failed to rename file: {}", e))?;
     Ok(dest.to_string_lossy().to_string())
 }
 
@@ -272,10 +283,11 @@ pub fn move_file_to_folder(file_path: String, dest_folder: String) -> Result<Str
     let file_name = src.file_name().ok_or("Failed to resolve file name")?;
     let dest = dest_dir.join(file_name);
     if dest.exists() {
-        return Err(format!("A file with the same name already exists in the destination"));
+        return Err(format!(
+            "A file with the same name already exists in the destination"
+        ));
     }
-    std::fs::rename(&src, &dest)
-        .map_err(|e| format!("Failed to move file: {}", e))?;
+    std::fs::rename(&src, &dest).map_err(|e| format!("Failed to move file: {}", e))?;
     Ok(dest.to_string_lossy().to_string())
 }
 
@@ -350,16 +362,18 @@ pub fn search_files_all_projects(query: String) -> Result<Vec<SearchResult>, Str
         .map_err(|e| format!("Failed to read projects directory: {}", e))?;
 
     for project_entry in project_dirs {
-        let project_entry = project_entry.map_err(|e| format!("Failed to read project entry: {}", e))?;
+        let project_entry =
+            project_entry.map_err(|e| format!("Failed to read project entry: {}", e))?;
         let project_path = project_entry.path();
-        
+
         if !project_path.is_dir() {
             continue;
         }
 
         let project_name = project_entry.file_name().to_string_lossy().to_string();
-        
-        if let Ok(files) = read_project_files_recursive(&project_path, &query_lower, &project_name) {
+
+        if let Ok(files) = read_project_files_recursive(&project_path, &query_lower, &project_name)
+        {
             results.extend(files);
         }
     }
@@ -378,7 +392,8 @@ pub fn import_folder_to_project(source_path: String) -> Result<String, String> {
         return Err(format!("Source path is not a directory: {}", source_path));
     }
 
-    let folder_name = src.file_name()
+    let folder_name = src
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .ok_or("Could not determine folder name")?;
 
@@ -393,10 +408,12 @@ pub fn import_folder_to_project(source_path: String) -> Result<String, String> {
         }
     }
 
-    copy_dir_recursive(&src, &dest)
-        .map_err(|e| format!("Failed to copy folder: {}", e))?;
+    copy_dir_recursive(&src, &dest).map_err(|e| format!("Failed to copy folder: {}", e))?;
 
-    Ok(dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+    Ok(dest
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default())
 }
 
 fn copy_dir_recursive(src: &PathBuf, dest: &PathBuf) -> Result<(), std::io::Error> {
@@ -414,11 +431,14 @@ fn copy_dir_recursive(src: &PathBuf, dest: &PathBuf) -> Result<(), std::io::Erro
     Ok(())
 }
 
-fn read_project_files_recursive(dir: &PathBuf, query: &str, project_prefix: &str) -> Result<Vec<SearchResult>, String> {
+fn read_project_files_recursive(
+    dir: &PathBuf,
+    query: &str,
+    project_prefix: &str,
+) -> Result<Vec<SearchResult>, String> {
     let mut results = Vec::new();
 
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
@@ -426,11 +446,15 @@ fn read_project_files_recursive(dir: &PathBuf, query: &str, project_prefix: &str
         let file_name = entry.file_name().to_string_lossy().to_string();
 
         if path.is_file() && file_name.to_lowercase().contains(query) {
-            let metadata = entry.metadata().map_err(|e| format!("Failed to read metadata: {}", e))?;
-            let extension = path.extension()
+            let metadata = entry
+                .metadata()
+                .map_err(|e| format!("Failed to read metadata: {}", e))?;
+            let extension = path
+                .extension()
                 .map(|e| e.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let modified = metadata.modified()
+            let modified = metadata
+                .modified()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs())
