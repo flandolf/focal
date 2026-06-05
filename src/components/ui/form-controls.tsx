@@ -58,6 +58,7 @@ interface DatePickerFieldProps {
   formatPattern?: string
   clearLabel?: string
   buttonClassName?: string
+  labelClassName?: string
 }
 
 function DatePickerField({
@@ -68,9 +69,10 @@ function DatePickerField({
   formatPattern = "MMM d",
   clearLabel,
   buttonClassName,
+  labelClassName,
 }: DatePickerFieldProps) {
   return (
-    <FormField label={label}>
+    <FormField label={label} labelClassName={labelClassName}>
       <Popover>
         <PopoverTrigger asChild>
           <Button
