@@ -134,7 +134,7 @@ function ChoiceGrid<T extends string>({ options, value, onChange, className }: C
           type="button"
           onClick={() => onChange(value === option.value ? "" : option.value)}
           className={cn(
-            "min-h-10 rounded-lg border px-2.5 py-2 text-sm font-medium transition-colors",
+            "min-h-10 rounded-lg border px-2.5 py-2 text-sm font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
             value === option.value
               ? "border-primary/35 bg-primary/10 text-primary"
               : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/45 hover:text-foreground"
@@ -165,7 +165,7 @@ function EmojiPicker<T extends string>({ label, options, value, onChange }: Emoj
             type="button"
             onClick={() => onChange(option)}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg border text-base transition-colors",
+              "flex h-9 w-9 items-center justify-center rounded-lg border text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
               value === option
                 ? "border-primary/35 bg-primary/10 ring-2 ring-ring/45"
                 : "border-transparent hover:bg-accent/50"
@@ -195,7 +195,7 @@ function ToggleChip({ active, onToggle, icon, children, activeClassName }: Toggl
       onClick={onToggle}
       aria-pressed={active}
       className={cn(
-        "flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
+        "flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         active
           ? activeClassName
           : "border-border text-muted-foreground hover:bg-accent/50"

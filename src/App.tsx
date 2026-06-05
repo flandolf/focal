@@ -49,6 +49,29 @@ function getStoredHiddenSubjectIds() {
   }
 }
 
+function isStoredSubject(value: unknown): value is Subject {
+  if (typeof value !== "object" || value === null) return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.id === "string" &&
+    typeof record.name === "string" &&
+    typeof record.shortCode === "string" &&
+    typeof record.color === "string" &&
+    (record.icon === undefined || typeof record.icon === "string")
+  )
+}
+
+function getStoredCustomSubjects() {
+  if (typeof window === "undefined") return []
+  try {
+    const stored = localStorage.getItem("focal-custom-subjects")
+    const parsed: unknown = stored ? JSON.parse(stored) : []
+    return Array.isArray(parsed) ? parsed.filter(isStoredSubject) : []
+  } catch {
+    return []
+  }
+}
+
 function isPomodoroSession(session: StudySession) {
   return session.description === POMODORO_DESCRIPTION || session.notes === POMODORO_NOTES
 }
@@ -126,12 +149,7 @@ function App() {
   const [analyticsView, setAnalyticsView] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const reduceMotion = useReducedMotion()
-  const [customSubjects, setCustomSubjects] = useState<Subject[]>(() => {
-    if (typeof window === "undefined") return []
-    const stored = localStorage.getItem("focal-custom-subjects")
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return stored ? JSON.parse(stored) : []
-  })
+  const [customSubjects, setCustomSubjects] = useState<Subject[]>(getStoredCustomSubjects)
   const [hiddenSubjectIds, setHiddenSubjectIds] = useState<string[]>(getStoredHiddenSubjectIds)
   const { theme, mode, resolvedDark, setTheme, setMode } = useTheme()
   const allSubjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])

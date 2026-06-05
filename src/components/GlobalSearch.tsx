@@ -274,7 +274,7 @@ export function GlobalSearch({
             <div id={resultListId} role="listbox" aria-label="Search results" className="py-2">
               {results.projects.length > 0 && (
                 <div role="group" aria-label="Assessments">
-                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase text-muted-foreground">
                     Assessments
                   </div>
                   {results.projects.map((project, idx) => {
@@ -316,7 +316,7 @@ export function GlobalSearch({
 
               {results.sessions.length > 0 && (
                 <div role="group" aria-label="Study Sessions">
-                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase text-muted-foreground">
                     Study Sessions
                   </div>
                   {results.sessions.map((session, idx) => {
@@ -354,7 +354,7 @@ export function GlobalSearch({
 
               {results.events.length > 0 && (
                 <div role="group" aria-label="Events">
-                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase text-muted-foreground">
                     Events
                   </div>
                   {results.events.map((event, idx) => {
@@ -405,7 +405,7 @@ export function GlobalSearch({
 
               {results.files.length > 0 && (
                 <div role="group" aria-label="Files">
-                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase text-muted-foreground">
                     Files
                   </div>
                   {results.files.map((result, idx) => {

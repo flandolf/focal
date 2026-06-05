@@ -126,6 +126,10 @@ const COLOR_OPTIONS = [
   { name: "Pink", value: "#ec4899" },
 ]
 
+const DEFAULT_QUICK_LINK_COLOR = "#71717a"
+const CALENDAR_FALLBACK_COLOR = "var(--muted-foreground)"
+const CALENDAR_SESSION_COLOR = "var(--primary)"
+
 function getIconComponent(name: string) {
   return ICON_OPTIONS.find((o) => o.name === name)?.component ?? Link
 }
@@ -249,7 +253,7 @@ function parseTextEventResponse(content: string, subjectIds: string[], projectId
         : undefined,
       date,
       startTime,
-      durationMinutes: Math.min(180, Math.max(15, Math.round(durationMinutes / 15) * 15)),
+      durationMinutes: Math.min(180, Math.max(15, Math.round(durationMinutes))),
       eventType,
       subjectId,
       subjectIds: subjectIdsForDraft,
@@ -321,7 +325,7 @@ Rules:
 - Return 1 to 8 useful items.
 ${modeRules}
 - Use 24-hour start_time in HH:mm format.
-- Use durations from 15 to 180 minutes in 15-minute increments.
+- Use durations from 15 to 180 minutes. Preserve exact odd durations when the source gives them.
 - If the source text has no time, choose a reasonable after-school time.
 - Use subject_id "none" when the subject is unclear for an event.
 - Study sessions must include at least one concrete subject id in subject_ids.
@@ -838,7 +842,7 @@ export function HomeView({
   const [linkLabel, setLinkLabel] = useState("")
   const [linkUrl, setLinkUrl] = useState("")
   const [linkIcon, setLinkIcon] = useState("Link")
-  const [linkColor, setLinkColor] = useState("#71717a")
+  const [linkColor, setLinkColor] = useState(DEFAULT_QUICK_LINK_COLOR)
   const [prioritiesOpen, setPrioritiesOpen] = useState(true)
   const [calendarSelectionMode, setCalendarSelectionMode] = useState(false)
   const [recentActivityOpen, setRecentActivityOpen] = useState(true)
@@ -907,7 +911,7 @@ export function HomeView({
     setLinkLabel("")
     setLinkUrl("")
     setLinkIcon("Link")
-    setLinkColor("#71717a")
+    setLinkColor(DEFAULT_QUICK_LINK_COLOR)
   }
 
   const handleDeleteLink = (id: string) => {
@@ -1184,7 +1188,7 @@ export function HomeView({
           title: session.title,
           meta: `${durationMinutes} min · ${sessionContext}`,
           date: parseISO(session.startTime),
-          color: subject?.color ?? "#3b82f6",
+          color: subject?.color ?? CALENDAR_SESSION_COLOR,
           kind: "session" as const,
           session,
         }
@@ -1782,7 +1786,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 <button
                   key={p.id}
                   onClick={() => onSelectProject(p.id)}
-                  className="text-xs px-2.5 py-1 rounded-md hover:bg-destructive/10 transition-colors text-left font-medium"
+                  className="rounded-md px-2.5 py-1 text-left text-xs font-medium transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/35"
                 >
                   {p.name}
                   <span className="text-destructive/60 ml-1.5">{formatDeadline(p.deadline!)}</span>
@@ -1832,7 +1836,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
 
                 <div className="grid grid-cols-7 gap-1">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                    <div key={day} className="h-6 flex items-center justify-center text-micro font-medium text-muted-foreground/70 uppercase tracking-wider">
+                    <div key={day} className="flex h-6 items-center justify-center text-micro font-medium uppercase text-muted-foreground/70">
                       {day}
                     </div>
                   ))}
@@ -1847,19 +1851,20 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                     const isCurrentMonth = isSameMonth(date, currentMonth)
                     const isTodayDate = isToday(date)
                     const allItems = [
-                      ...dayDeadlines.map((p) => ({ type: "deadline" as const, name: p.name, color: getSubjectById(p.subjectId)?.color ?? "#888" })),
-                      ...daySessions.map((s) => ({ type: "session" as const, name: s.title, color: "#3b82f6" })),
+                      ...dayDeadlines.map((p) => ({ type: "deadline" as const, name: p.name, color: getSubjectById(p.subjectId)?.color ?? CALENDAR_FALLBACK_COLOR })),
+                      ...daySessions.map((s) => ({ type: "session" as const, name: s.title, color: CALENDAR_SESSION_COLOR })),
                       ...dayEvents.map((e) => ({ type: "event" as const, name: e.title, color: getEventTypeInfo(e.eventType).color })),
                     ]
                     const visibleItems = allItems.slice(0, 3)
                     const overflow = allItems.length - 3
 
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={dateKey}
                         onClick={() => handleSelectCalendarDate(dateKey)}
                         className={cn(
-                          "relative h-22 cursor-pointer rounded-xl border p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+                          "relative flex h-22 w-full flex-col items-start justify-start rounded-xl border p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
                           selectedDate === dateKey
                             ? "border-primary/65 bg-primary/8 ring-1 ring-primary/25"
                             : "border-border/35 bg-background/16 hover:border-border hover:bg-accent/24",
@@ -1874,7 +1879,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                         )}>
                           {date.getDate()}
                         </div>
-                        <div className="mt-1 space-y-0.5">
+                        <div className="mt-1 w-full space-y-0.5">
                           {visibleItems.map((item, idx) => (
                             <div
                               key={`${item.type}-${idx}`}
@@ -1895,7 +1900,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                             </div>
                           )}
                         </div>
-                      </div>
+                      </button>
                     )
                   })}
                 </div>
@@ -1945,15 +1950,15 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                       <div className="mb-3 grid grid-cols-3 gap-1.5 text-center">
                         <div className="rounded-lg bg-background/42 px-2 py-1.5">
                           <p className="text-xs font-semibold tabular-nums">{selectedDayDeadlines.length}</p>
-                          <p className="text-[9px] leading-3 text-muted-foreground">due</p>
+                          <p className="text-micro leading-3 text-muted-foreground">due</p>
                         </div>
                         <div className="rounded-lg bg-background/42 px-2 py-1.5">
                           <p className="text-xs font-semibold tabular-nums">{selectedDayEvents.length}</p>
-                          <p className="text-[9px] leading-3 text-muted-foreground">events</p>
+                          <p className="text-micro leading-3 text-muted-foreground">events</p>
                         </div>
                         <div className="rounded-lg bg-background/42 px-2 py-1.5">
                           <p className="text-xs font-semibold tabular-nums">{selectedDaySessions.length}</p>
-                          <p className="text-[9px] leading-3 text-muted-foreground">sessions</p>
+                          <p className="text-micro leading-3 text-muted-foreground">sessions</p>
                         </div>
                       </div>
                       {calendarSelectionMode && (
@@ -2172,7 +2177,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                           className="flex min-w-0 items-center gap-3 rounded-xl border border-border/55 bg-background/24 px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                         >
                           <div className="flex h-9 w-10 shrink-0 flex-col items-center justify-center rounded-lg bg-muted/55 text-center">
-                            <span className="text-[9px] font-medium uppercase leading-none text-muted-foreground">{format(item.date, "MMM")}</span>
+                            <span className="text-micro font-medium uppercase leading-none text-muted-foreground">{format(item.date, "MMM")}</span>
                             <span className="mt-0.5 text-sm font-semibold leading-none tabular-nums">{format(item.date, "d")}</span>
                           </div>
                           <div className="min-w-0 flex-1">
@@ -2247,7 +2252,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                                 </div>
                                 <div className="shrink-0 text-right">
                                   <p className="text-xs font-semibold tabular-nums">{plannedHours}<span className="text-micro font-normal">h</span></p>
-                                  <p className="mt-0.5 text-[9px] leading-3 text-muted-foreground">of {targetHours}h</p>
+                                  <p className="mt-0.5 text-micro leading-3 text-muted-foreground">of {targetHours}h</p>
                                 </div>
                               </div>
                               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted/65">
@@ -2291,7 +2296,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                       setLinkLabel("")
                       setLinkUrl("")
                       setLinkIcon("Link")
-                      setLinkColor("#71717a")
+                      setLinkColor(DEFAULT_QUICK_LINK_COLOR)
                       setLinkDialogOpen(true)
                     }}
                   >
@@ -2348,14 +2353,14 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
               <button
                 type="button"
                 onClick={() => setPrioritiesOpen((current) => !current)}
-                className="flex w-full items-center justify-between gap-3 text-left"
+                className="flex w-full items-center justify-between gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
               >
                 <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
                   <Target className="h-3.5 w-3.5 text-muted-foreground" />
                   Study Priorities
                 </h3>
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] leading-3 text-muted-foreground tabular-nums">{priorityItems.length}/7</span>
+                  <span className="text-micro leading-3 text-muted-foreground tabular-nums">{priorityItems.length}/7</span>
                   <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", prioritiesOpen && "rotate-90")} />
                 </div>
               </button>
@@ -2383,14 +2388,14 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                                 <p className="truncate text-xs font-medium">{item.title}</p>
                                 <p className="mt-0.5 line-clamp-2 text-micro text-muted-foreground">{item.reason}</p>
                               </div>
-                              <span className={cn("shrink-0 rounded px-1 py-0 text-[9px] font-medium leading-3", getUrgencyClassName(item.urgency))}>
+                              <span className={cn("shrink-0 rounded px-1 py-0 text-micro font-medium leading-3", getUrgencyClassName(item.urgency))}>
                                 {getUrgencyLabel(item.urgency)}
                               </span>
                             </div>
                             <div className="mt-1.5 flex items-center gap-1">
                               <span className="text-micro font-medium text-primary">{item.action}</span>
                               {subjectLabels.map((label) => (
-                                <span key={label} className="rounded bg-muted/70 px-1 py-0 text-[9px] leading-3 text-muted-foreground">
+                                <span key={label} className="rounded bg-muted/70 px-1 py-0 text-micro leading-3 text-muted-foreground">
                                   {label}
                                 </span>
                               ))}
@@ -2408,7 +2413,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
               <button
                 type="button"
                 onClick={() => setRecentActivityOpen((current) => !current)}
-                className="flex w-full items-center justify-between gap-3 text-left"
+                className="flex w-full items-center justify-between gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
               >
                 <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
                   <Activity className="h-3.5 w-3.5 text-muted-foreground" />
@@ -2435,7 +2440,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                             <p className="truncate text-xs font-medium">{item.title}</p>
                             <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.subtitle}</p>
                           </div>
-                          <span className="shrink-0 text-[9px] leading-3 text-muted-foreground tabular-nums">
+                          <span className="shrink-0 text-micro leading-3 text-muted-foreground tabular-nums">
                             {getRelativeTime(item.timestamp)}
                           </span>
                         </div>
@@ -2456,7 +2461,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                       <button
                         key={p.id}
                         onClick={() => onSelectProject(p.id)}
-                        className="group w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40"
+                        className="group w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -2810,7 +2815,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                                     <p className="truncate text-xs font-medium">{item.title}</p>
                                     <p className="mt-1 text-micro leading-relaxed text-muted-foreground">{item.reason}</p>
                                   </div>
-                                  <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium leading-3", getUrgencyClassName(item.urgency))}>
+                                  <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-micro font-medium leading-3", getUrgencyClassName(item.urgency))}>
                                     {getUrgencyLabel(item.urgency)}
                                   </span>
                                 </div>
@@ -2827,8 +2832,8 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                                         key={subjectId}
                                         className="rounded-md px-1.5 py-0.5 text-micro font-medium"
                                         style={{
-                                          backgroundColor: (subject?.color ?? "#3b82f6") + "18",
-                                          color: subject?.color ?? "#3b82f6",
+                                          backgroundColor: subject ? `${subject.color}18` : "color-mix(in oklch, var(--primary) 12%, transparent)",
+                                          color: subject?.color ?? "var(--primary)",
                                         }}
                                       >
                                         {subject?.shortCode ?? subjectId}

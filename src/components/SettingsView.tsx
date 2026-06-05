@@ -76,6 +76,20 @@ interface SettingsViewProps {
   onOpenSubjects?: () => void
 }
 
+const SETTINGS_SECTION_CLASS = "rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur"
+const SETTINGS_OPTION_BASE_CLASS = "rounded-lg border bg-background/30 text-sm transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+const SETTINGS_SELECTED_OPTION_CLASS = "border-primary bg-primary/10 text-primary"
+const SETTINGS_CHECKBOX_CLASS = "h-4 w-4 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+const SETTINGS_LINK_CLASS = "inline-flex shrink-0 items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+
+function getSettingsOptionClassName(selected: boolean, className?: string) {
+  return cn(
+    SETTINGS_OPTION_BASE_CLASS,
+    selected ? SETTINGS_SELECTED_OPTION_CLASS : "border-border",
+    className,
+  )
+}
+
 function supportsStructuredOutput(model: OpenRouterModel): boolean {
   const params = model.supported_parameters ?? []
   return params.includes("structured_outputs")
@@ -240,10 +254,12 @@ function ModelRow({
 
   return (
     <button
+      type="button"
       ref={rowRef}
       onClick={onSelect}
+      aria-pressed={isSelected}
       className={cn(
-        "w-full text-left px-3 py-2 rounded text-sm transition-colors",
+        "w-full rounded-lg px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
         isSelected
           ? "bg-primary/10 text-primary font-medium"
           : "hover:bg-accent"
@@ -499,13 +515,16 @@ export function SettingsView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-3 border-b border-border/70 px-6 py-4">
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={onBack}
-          className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="h-8 w-8 rounded-xl"
           aria-label="Back"
         >
           <ArrowLeft className="h-4 w-4" />
-        </button>
+        </Button>
         <div>
           <h1 className="font-heading text-lg font-semibold">Settings</h1>
           <p className="text-caption text-muted-foreground">Local preferences and AI renaming.</p>
@@ -514,8 +533,8 @@ export function SettingsView({
 
       <ScrollArea className="min-h-0 flex-1 overflow-hidden">
         <div className="mx-auto max-w-2xl space-y-5 px-6 py-8">
-          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-            <label className="text-sm font-medium">Theme</label>
+          <section className={SETTINGS_SECTION_CLASS}>
+            <h2 className="text-sm font-medium">Theme</h2>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {([
                 { id: "focal" as ThemeId, name: "Focal", lightBg: "bg-slate-100", accent: "bg-blue-500" },
@@ -526,12 +545,11 @@ export function SettingsView({
                 { id: "notion" as ThemeId, name: "Notion", lightBg: "bg-stone-100", accent: "bg-stone-700" },
               ]).map((t) => (
                 <button
+                  type="button"
                   key={t.id}
                   onClick={() => setTheme(t.id)}
-                  className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-colors",
-                    theme === t.id ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
-                  )}
+                  aria-pressed={theme === t.id}
+                  className={getSettingsOptionClassName(theme === t.id, "flex flex-col items-center gap-1.5 p-3 text-foreground")}
                 >
                   <div className="flex h-8 w-full items-center justify-center gap-1 rounded-md bg-background/60">
                     <div className={cn("h-3 w-3 rounded-sm", t.lightBg)} />
@@ -544,39 +562,36 @@ export function SettingsView({
 
             <div className="mt-3 flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => setMode("light")}
-                className={cn(
-                  "flex-1 rounded-xl border px-3 py-2 text-sm",
-                  mode === "light" ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
-                )}
+                aria-pressed={mode === "light"}
+                className={getSettingsOptionClassName(mode === "light", "flex-1 px-3 py-2")}
               >
                 Light
               </button>
               <button
+                type="button"
                 onClick={() => setMode("dark")}
-                className={cn(
-                  "flex-1 rounded-xl border px-3 py-2 text-sm",
-                  mode === "dark" ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
-                )}
+                aria-pressed={mode === "dark"}
+                className={getSettingsOptionClassName(mode === "dark", "flex-1 px-3 py-2")}
               >
                 Dark
               </button>
               <button
+                type="button"
                 onClick={() => setMode("system")}
-                className={cn(
-                  "flex-1 rounded-xl border px-3 py-2 text-sm",
-                  mode === "system" ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-muted-foreground/30"
-                )}
+                aria-pressed={mode === "system"}
+                className={getSettingsOptionClassName(mode === "system", "flex-1 px-3 py-2")}
               >
                 System
               </button>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+          <section className={SETTINGS_SECTION_CLASS}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <label className="text-sm font-medium">Visible Subjects</label>
+                <h2 className="text-sm font-medium">Visible Subjects</h2>
                 <p className="mt-1 text-caption text-muted-foreground/70">
                   Hide subjects you are not taking from assessment, event, and study-session pickers.
                 </p>
@@ -599,7 +614,7 @@ export function SettingsView({
                   <label
                     key={subject.id}
                     className={cn(
-                      "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors",
+                      "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
                       hidden
                         ? "border-border/60 bg-background/20 text-muted-foreground"
                         : "border-border/70 bg-background/35 text-foreground"
@@ -609,7 +624,7 @@ export function SettingsView({
                       type="checkbox"
                       checked={!hidden}
                       onChange={() => onToggleSubjectVisibility(subject.id)}
-                      className="h-4 w-4 shrink-0"
+                      className={SETTINGS_CHECKBOX_CLASS}
                     />
                     <span
                       className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -624,11 +639,12 @@ export function SettingsView({
                 )
               })}
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-            <label className="text-sm font-medium">OpenRouter API Key</label>
+          <section className={SETTINGS_SECTION_CLASS}>
+            <label className="text-sm font-medium" htmlFor="openrouter-api-key">OpenRouter API Key</label>
             <Input
+              id="openrouter-api-key"
               type="password"
               value={key}
               onChange={(e) => handleKeyChange(e.target.value)}
@@ -646,7 +662,7 @@ export function SettingsView({
                 href="https://openrouter.ai/keys"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-caption text-muted-foreground hover:text-foreground inline-flex items-center gap-1 shrink-0"
+                className={SETTINGS_LINK_CLASS}
               >
                 Get a key
                 <ExternalLink className="h-3 w-3" />
@@ -667,7 +683,7 @@ export function SettingsView({
                         href="https://openrouter.ai/settings/keys"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-caption text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1"
+                        className={cn(SETTINGS_LINK_CLASS, "mt-1")}
                       >
                         Create a Management key
                         <ExternalLink className="h-3 w-3" />
@@ -684,10 +700,10 @@ export function SettingsView({
                 ) : null}
               </div>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-            <label className="text-sm font-medium">AI Model</label>
+          <section className={SETTINGS_SECTION_CLASS}>
+            <h2 className="text-sm font-medium">AI Model</h2>
             <p className="mt-1 text-caption text-muted-foreground/70">
               Showing only models that support structured output and file uploads. Latency and throughput shown when API key is set.
             </p>
@@ -723,13 +739,13 @@ export function SettingsView({
                     placeholder="Search models..."
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
-                    className="pl-8 h-8 text-xs"
+                    className="h-8 pl-8 text-xs"
                   />
                 </div>
-                <ScrollArea className="mt-2 h-56 rounded-md border">
+                <ScrollArea className="mt-2 h-56 rounded-lg border border-border/70">
                   <div className="p-1">
                     {filteredModels.length === 0 ? (
-                      <p className="text-xs text-muted-foreground text-center py-8">
+                      <p className="py-8 text-center text-xs text-muted-foreground">
                         No models match your search.
                       </p>
                     ) : (
@@ -749,44 +765,41 @@ export function SettingsView({
                 </ScrollArea>
               </>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-            <label className="text-sm font-medium">Auto Rename Context</label>
-            <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3">
+          <section className={SETTINGS_SECTION_CLASS}>
+            <h2 className="text-sm font-medium">Auto Rename Context</h2>
+            <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
               <input
                 type="checkbox"
                 checked={autoRenameUseFileContent}
                 onChange={(e) => handleAutoRenameUseFileContentChange(e.target.checked)}
-                className="mt-0.5"
+                className={cn(SETTINGS_CHECKBOX_CLASS, "mt-0.5")}
               />
               <div className="min-w-0">
                 <p className="text-sm">Read file content for rename suggestions</p>
-                <p className="text-caption text-muted-foreground/70 mt-0.5">
+                <p className="mt-0.5 text-caption text-muted-foreground/70">
                   Uses a short text preview to generate more accurate filenames.
                 </p>
               </div>
             </label>
-          </div>
+          </section>
 
-          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-            <label className="text-sm font-medium">Reasoning Tokens</label>
+          <section className={SETTINGS_SECTION_CLASS}>
+            <h2 className="text-sm font-medium">Reasoning Tokens</h2>
             <p className="mt-1 text-caption text-muted-foreground/70">
               Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
             </p>
 
-            <label className="mt-3 text-caption text-muted-foreground/70 block">Effort Level</label>
+            <p className="mt-3 block text-caption text-muted-foreground/70">Effort Level</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
                 <button
+                  type="button"
                   key={level}
                   onClick={() => handleReasoningEffortChange(level)}
-                  className={cn(
-                    "rounded-lg border px-2.5 py-1 text-xs transition-colors",
-                    reasoningEffort === level
-                      ? "border-primary bg-primary/10 font-medium"
-                      : "border-border bg-background/30 hover:border-muted-foreground/30"
-                  )}
+                  aria-pressed={reasoningEffort === level}
+                  className={getSettingsOptionClassName(reasoningEffort === level, "px-2.5 py-1 text-xs")}
                 >
                   {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
                 </button>
@@ -795,40 +808,41 @@ export function SettingsView({
 
             {reasoningEffort !== "none" && (
               <>
-                <label className="mt-3 text-caption text-muted-foreground/70 block">Max Tokens (Anthropic models)</label>
+                <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">Max Tokens (Anthropic models)</label>
                 <div className="mt-1.5 flex items-center gap-2">
                   <input
+                    id="reasoning-max-tokens"
                     type="range"
                     min={1024}
                     max={32000}
                     step={1024}
                     value={reasoningMaxTokens}
                     onChange={(e) => handleReasoningMaxTokensChange(Number(e.target.value))}
-                    className="flex-1"
+                    className="flex-1 accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                   />
-                  <span className="text-xs tabular-nums text-muted-foreground w-12 text-right">{reasoningMaxTokens >= 1000 ? `${(reasoningMaxTokens / 1000).toFixed(1)}k` : reasoningMaxTokens}</span>
+                  <span className="w-12 text-right text-xs tabular-nums text-muted-foreground">{reasoningMaxTokens >= 1000 ? `${(reasoningMaxTokens / 1000).toFixed(1)}k` : reasoningMaxTokens}</span>
                 </div>
 
-                <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3">
+                <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
                   <input
                     type="checkbox"
                     checked={reasoningExclude}
                     onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
-                    className="mt-0.5"
+                    className={cn(SETTINGS_CHECKBOX_CLASS, "mt-0.5")}
                   />
                   <div className="min-w-0">
                     <p className="text-sm">Exclude reasoning from response</p>
-                    <p className="text-caption text-muted-foreground/70 mt-0.5">
-                      Model still uses reasoning internally but won't include it in output.
+                    <p className="mt-0.5 text-caption text-muted-foreground/70">
+                      Model still uses reasoning internally but will not include it in output.
                     </p>
                   </div>
                 </label>
               </>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-            <label className="text-sm font-medium">Import Folder</label>
+          <section className={SETTINGS_SECTION_CLASS}>
+            <h2 className="text-sm font-medium">Import Folder</h2>
             <p className="mt-1 text-caption text-muted-foreground/70">
               Copy an existing folder from your filesystem into the projects directory.
             </p>
@@ -856,11 +870,11 @@ export function SettingsView({
                   : `Imported "${importResult.name}" successfully`}
               </p>
             )}
-          </div>
+          </section>
 
           {(onOpenExport != null || onOpenSubjects != null) && (
-            <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-              <label className="text-sm font-medium">Data</label>
+            <section className={SETTINGS_SECTION_CLASS}>
+              <h2 className="text-sm font-medium">Data</h2>
               <p className="mt-1 text-caption text-muted-foreground/70">
                 Manage your project data and custom subjects.
               </p>
@@ -888,7 +902,7 @@ export function SettingsView({
                   </Button>
                 )}
               </div>
-            </div>
+            </section>
           )}
         </div>
       </ScrollArea>
