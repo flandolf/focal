@@ -19,7 +19,6 @@ function normaliseProject(raw: unknown): Project {
     subjectId: typeof obj.subjectId === "string" ? obj.subjectId : undefined,
     unit: (obj.unit === "1" || obj.unit === "2" || obj.unit === "3" || obj.unit === "4") ? obj.unit : undefined,
     deadlineType: (obj.deadlineType === "sac" || obj.deadlineType === "exam" || obj.deadlineType === "assignment" || obj.deadlineType === "gat") ? obj.deadlineType : undefined,
-    gatDate: typeof obj.gatDate === "string" ? obj.gatDate : undefined,
     examDate: typeof obj.examDate === "string" ? obj.examDate : undefined,
     isFavorite: typeof obj.isFavorite === "boolean" ? obj.isFavorite : false,
     isArchived: typeof obj.isArchived === "boolean" ? obj.isArchived : false,
@@ -74,7 +73,7 @@ export function useProjects() {
     setProjects(updatedProjects)
   }, [])
 
-  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, gatDate?: string, examDate?: string, customSubfolders?: string[]) => {
+  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, examDate?: string, customSubfolders?: string[]) => {
     const sanitised = sanitiseFolderName(name)
     if (!sanitised) {
       throw new Error("Project name cannot be empty after sanitisation")
@@ -107,7 +106,6 @@ export function useProjects() {
       subjectId,
       unit,
       deadlineType,
-      gatDate,
       examDate,
       customSubfolders,
     }

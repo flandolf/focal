@@ -30,22 +30,21 @@ interface TimerState {
   mode: TimerMode
   secondsLeft: number
   cycles: number
-  breakStartedAt?: number
-  tickedAt?: number
-  studyOvertime?: boolean
 }
 
 type TimerAction =
-  | { type: "TICK"; settings: TimerSettings; now: number }
+  | { type: "TICK"; settings: TimerSettings }
   | { type: "TOGGLE" }
   | { type: "RESET"; settings: TimerSettings }
   | { type: "SKIP_BREAK"; settings: TimerSettings }
   | { type: "ADD_BREAK_TIME"; minutes: number }
-  | { type: "START_STUDY_OVERTIME" }
-  | { type: "START_REST"; settings: TimerSettings }
   | { type: "SYNC_SETTINGS"; settings: TimerSettings; previousSettings: TimerSettings }
 
-interface StoredTimerState extends TimerState {
+interface StoredTimerState {
+  running: boolean
+  mode: TimerMode
+  secondsLeft: number
+  cycles: number
   activeSessionId?: string | null
   updatedAt: number
 }
@@ -70,7 +69,6 @@ function formatTimer(seconds: number) {
 
 function parseSettings(value: string | null): TimerSettings {
   if (!value) return DEFAULT_SETTINGS
-
   try {
     const parsed = JSON.parse(value) as Partial<TimerSettings>
     return {
@@ -87,10 +85,14 @@ function getInitialSettings() {
   return parseSettings(localStorage.getItem(TIMER_SETTINGS_KEY))
 }
 
+function isValidMode(mode: unknown): mode is TimerMode {
+  return mode === "work" || mode === "break" || mode === "long-break"
+}
+
 function getInitialState(settings: TimerSettings): TimerState {
-  const fallback = {
+  const fallback: TimerState = {
     running: false,
-    mode: "work" as const,
+    mode: "work",
     secondsLeft: getDurationSeconds("work", settings),
     cycles: 0,
   }
@@ -100,68 +102,33 @@ function getInitialState(settings: TimerSettings): TimerState {
     if (!stored) return fallback
 
     const parsed = JSON.parse(stored) as Partial<StoredTimerState>
-    const mode = parsed.mode === "break" || parsed.mode === "long-break" || parsed.mode === "work"
-      ? parsed.mode
-      : fallback.mode
+    const mode = isValidMode(parsed.mode) ? parsed.mode : fallback.mode
     const duration = getDurationSeconds(mode, settings)
     const updatedAt = typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now()
     const elapsedSeconds = parsed.running ? Math.max(0, Math.floor((Date.now() - updatedAt) / 1000)) : 0
+    const cycles = Math.max(0, Math.round(parsed.cycles ?? 0))
 
-    if (parsed.studyOvertime && mode !== "work") {
-      return {
-        running: Boolean(parsed.running),
-        mode,
-        secondsLeft: Math.max(0, Math.round(parsed.secondsLeft ?? 0) + elapsedSeconds),
-        cycles: Math.max(0, Math.round(parsed.cycles ?? 0)),
-        breakStartedAt: undefined,
-        studyOvertime: true,
-      }
-    }
+    if (parsed.running) {
+      const rawSeconds = Math.round(parsed.secondsLeft ?? duration)
+      const secondsLeft = Math.max(1, rawSeconds - elapsedSeconds)
 
-    if (mode !== "work" && typeof parsed.breakStartedAt === "number") {
-      return {
-        running: Boolean(parsed.running),
-        mode,
-        secondsLeft: Math.min(duration, Math.max(1, Math.round(parsed.secondsLeft ?? duration))),
-        cycles: Math.max(0, Math.round(parsed.cycles ?? 0)),
-        breakStartedAt: parsed.breakStartedAt,
-        studyOvertime: false,
-      }
-    }
-
-    const secondsLeft = Math.min(duration, Math.max(1, Math.round(parsed.secondsLeft ?? duration) - elapsedSeconds))
-
-    if (parsed.running && elapsedSeconds >= (parsed.secondsLeft ?? duration)) {
-      if (mode === "work") {
-        const cycles = Math.max(0, Math.round(parsed.cycles ?? 0)) + 1
-        const nextMode = cycles % 4 === 0 ? "long-break" as const : "break" as const
-        return {
-          running: true,
-          mode: nextMode,
-          secondsLeft: getDurationSeconds(nextMode, settings),
-          cycles,
-          breakStartedAt: updatedAt + Math.max(0, Math.round(parsed.secondsLeft ?? duration)) * 1000,
-          studyOvertime: false,
+      if (secondsLeft <= 0) {
+        if (mode === "work") {
+          const newCycles = cycles + 1
+          const nextMode = newCycles % 4 === 0 ? "long-break" : "break"
+          return { running: true, mode: nextMode, secondsLeft: getDurationSeconds(nextMode, settings), cycles: newCycles }
         }
+        return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", settings), cycles }
       }
 
-      return {
-        running: false,
-        mode: "work",
-        secondsLeft: getDurationSeconds("work", settings),
-        cycles: Math.max(0, Math.round(parsed.cycles ?? 0)),
-        breakStartedAt: undefined,
-        studyOvertime: false,
-      }
+      return { running: true, mode, secondsLeft, cycles }
     }
 
     return {
-      running: Boolean(parsed.running),
+      running: false,
       mode,
-      secondsLeft,
-      cycles: Math.max(0, Math.round(parsed.cycles ?? 0)),
-      breakStartedAt: typeof parsed.breakStartedAt === "number" ? parsed.breakStartedAt : undefined,
-      studyOvertime: false,
+      secondsLeft: Math.min(duration, Math.max(1, Math.round(parsed.secondsLeft ?? duration))),
+      cycles,
     }
   } catch {
     return fallback
@@ -171,50 +138,29 @@ function getInitialState(settings: TimerSettings): TimerState {
 function timerReducer(state: TimerState, action: TimerAction): TimerState {
   switch (action.type) {
     case "TICK":
-      if (state.studyOvertime) {
-        return { ...state, secondsLeft: state.secondsLeft + 1, tickedAt: action.now }
-      }
-      if (state.mode !== "work" && state.breakStartedAt) {
-        return { ...state, tickedAt: action.now }
-      }
       if (state.secondsLeft <= 1) {
         if (state.mode === "work") {
           const newCycles = state.cycles + 1
-          const nextMode = newCycles % 4 === 0 ? "long-break" as const : "break" as const
-          const nextSeconds = getDurationSeconds(nextMode, action.settings)
-          return { running: true, mode: nextMode, secondsLeft: nextSeconds, cycles: newCycles, breakStartedAt: action.now, tickedAt: action.now, studyOvertime: false }
+          const nextMode = newCycles % 4 === 0 ? "long-break" : "break"
+          return { running: true, mode: nextMode, secondsLeft: getDurationSeconds(nextMode, action.settings), cycles: newCycles }
         }
-        return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: state.cycles, breakStartedAt: undefined, studyOvertime: false }
+        return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: state.cycles }
       }
-      return { ...state, secondsLeft: state.secondsLeft - 1, tickedAt: action.now }
+      return { ...state, secondsLeft: state.secondsLeft - 1 }
     case "TOGGLE":
       return { ...state, running: !state.running }
     case "RESET":
-      return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: 0, studyOvertime: false }
+      return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: 0 }
     case "SKIP_BREAK":
-      return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: state.cycles, breakStartedAt: undefined, studyOvertime: false }
+      if (state.mode === "work") return state
+      return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: state.cycles }
     case "ADD_BREAK_TIME":
-      if (state.mode === "work" || state.studyOvertime) return state
+      if (state.mode === "work") return state
       return { ...state, secondsLeft: state.secondsLeft + action.minutes * 60 }
-    case "START_STUDY_OVERTIME":
-      if (state.mode === "work") return state
-      return { ...state, running: true, secondsLeft: 0, breakStartedAt: undefined, studyOvertime: true }
-    case "START_REST":
-      if (state.mode === "work") return state
-      return {
-        ...state,
-        running: true,
-        secondsLeft: getDurationSeconds(state.mode, action.settings),
-        breakStartedAt: undefined,
-        studyOvertime: false,
-      }
     case "SYNC_SETTINGS": {
       const oldDuration = getDurationSeconds(state.mode, action.previousSettings)
       const nextDuration = getDurationSeconds(state.mode, action.settings)
-      const secondsLeft = state.secondsLeft === oldDuration
-        ? nextDuration
-        : Math.min(state.secondsLeft, nextDuration)
-      if (state.studyOvertime) return state
+      const secondsLeft = state.secondsLeft === oldDuration ? nextDuration : Math.min(state.secondsLeft, nextDuration)
       return { ...state, secondsLeft }
     }
     default:
@@ -226,6 +172,7 @@ interface StudyTimerProps {
   isCollapsed?: boolean
   onExpand?: () => void
   customSubjects?: Subject[]
+  availableSubjects?: Subject[]
   selectedProject?: Project
   onStartSession: (data: {
     subjectIds: string[]
@@ -242,6 +189,7 @@ export function StudyTimer({
   isCollapsed = false,
   onExpand,
   customSubjects = [],
+  availableSubjects,
   selectedProject,
   onStartSession,
   onUpdateSession,
@@ -263,10 +211,28 @@ export function StudyTimer({
     }
   })
   const [saving, setSaving] = useState(false)
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSessionIdRef = useRef<string | null>(null)
+  const stateRef = useRef(state)
+  const settingsRef = useRef(settings)
+  const prevModeRef = useRef<TimerMode | null>(null)
+  const isInitialMountRef = useRef(true)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const selectedProjectSubjectId = selectedProject?.subjectId
 
-  const subjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])
+  const subjects = useMemo(() => {
+    const baseSubjects = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects]
+    if (!selectedProjectSubjectId || baseSubjects.some((subject) => subject.id === selectedProjectSubjectId)) {
+      return baseSubjects
+    }
+    const projectSubject = [...VCE_SUBJECTS, ...customSubjects].find((subject) => subject.id === selectedProjectSubjectId)
+    return projectSubject ? [projectSubject, ...baseSubjects] : baseSubjects
+  }, [availableSubjects, customSubjects, selectedProjectSubjectId])
+
+  useEffect(() => { stateRef.current = state }, [state])
+  useEffect(() => { settingsRef.current = settings }, [settings])
+  useEffect(() => { activeSessionIdRef.current = activeSessionId }, [activeSessionId])
 
   useEffect(() => {
     if (!selectedProject?.subjectId || activeSessionIdRef.current) return
@@ -275,17 +241,55 @@ export function StudyTimer({
     ))
   }, [selectedProject?.subjectId])
 
-  useEffect(() => {
-    activeSessionIdRef.current = activeSessionId
-  }, [activeSessionId])
+  const completeActiveSession = useCallback(async (nextEndTime = new Date()) => {
+    const sessionId = activeSessionIdRef.current
+    if (!sessionId) return
+
+    try {
+      await onUpdateSession(sessionId, {
+        endTime: nextEndTime.toISOString(),
+        status: "completed",
+        completedAt: nextEndTime.toISOString(),
+      })
+    } catch (e) {
+      console.error("Failed to complete session:", e)
+    } finally {
+      activeSessionIdRef.current = null
+      setActiveSessionId(null)
+    }
+  }, [onUpdateSession])
 
   useEffect(() => {
-    localStorage.setItem(TIMER_SETTINGS_KEY, JSON.stringify(settings))
-    localStorage.setItem(TIMER_STATE_KEY, JSON.stringify({
-      ...state,
-      activeSessionId,
-      updatedAt: Date.now(),
-    } satisfies StoredTimerState))
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false
+      prevModeRef.current = state.mode
+      if (state.mode !== "work" && activeSessionIdRef.current) {
+        void completeActiveSession()
+      }
+      return
+    }
+
+    const prevMode = prevModeRef.current
+    prevModeRef.current = state.mode
+
+    if (prevMode === "work" && state.mode !== "work" && activeSessionIdRef.current) {
+      void completeActiveSession()
+    }
+  }, [state.mode, completeActiveSession])
+
+  useEffect(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(() => {
+      localStorage.setItem(TIMER_SETTINGS_KEY, JSON.stringify(settings))
+      localStorage.setItem(TIMER_STATE_KEY, JSON.stringify({
+        ...state,
+        activeSessionId,
+        updatedAt: Date.now(),
+      } satisfies StoredTimerState))
+    }, 500)
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    }
   }, [activeSessionId, settings, state])
 
   const clearTimer = useCallback(() => {
@@ -295,25 +299,9 @@ export function StudyTimer({
     }
   }, [])
 
-  const completeActiveSession = useCallback(async (nextEndTime = new Date()) => {
-    const sessionId = activeSessionIdRef.current
-    if (!sessionId) return
-
-    await onUpdateSession(sessionId, {
-      endTime: nextEndTime.toISOString(),
-      status: "completed",
-      completedAt: nextEndTime.toISOString(),
-    })
-    activeSessionIdRef.current = null
-    setActiveSessionId(null)
-  }, [onUpdateSession])
-
   const onTick = useCallback(() => {
-    if (state.mode !== "work" && !state.studyOvertime && state.running && state.secondsLeft <= 1 && activeSessionIdRef.current) {
-      void completeActiveSession()
-    }
-    dispatch({ type: "TICK", settings, now: Date.now() })
-  }, [completeActiveSession, settings, state.mode, state.running, state.secondsLeft, state.studyOvertime])
+    dispatch({ type: "TICK", settings: settingsRef.current })
+  }, [])
 
   useEffect(() => {
     if (!state.running) {
@@ -327,16 +315,11 @@ export function StudyTimer({
   }, [state.running, onTick, clearTimer])
 
   const { running, mode, secondsLeft, cycles } = state
-
   const totalSeconds = getDurationSeconds(mode, settings)
-
-  const isStudyOvertime = Boolean(state.studyOvertime)
-  const progress = isStudyOvertime ? 1 : Math.min(1, Math.max(0, 1 - secondsLeft / totalSeconds))
-
-  const timeDisplay = `${isStudyOvertime ? "+" : ""}${formatTimer(secondsLeft)}`
-
-  const modeLabel = isStudyOvertime ? "Focus overtime" : mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
-  const modeColor = mode === "work" || isStudyOvertime ? "text-primary" : "text-emerald-500"
+  const progress = Math.min(1, Math.max(0, 1 - secondsLeft / totalSeconds))
+  const timeDisplay = formatTimer(secondsLeft)
+  const modeLabel = mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
+  const modeColor = mode === "work" ? "text-primary" : "text-emerald-500"
   const activeSubjects = subjects.filter((subject) => selectedSubjectIds.includes(subject.id))
   const activeSubjectLabel = activeSubjects.length === 0
     ? "No subject"
@@ -347,11 +330,6 @@ export function StudyTimer({
     ? selectedProject.id
     : undefined
   const canStartFocus = selectedSubjectIds.length > 0 && !saving
-  const awaitingRestConfirmation = mode !== "work" && Boolean(activeSessionId) && Boolean(state.breakStartedAt)
-  const overtimeSeconds = awaitingRestConfirmation
-    ? Math.max(0, Math.floor(((state.tickedAt ?? state.breakStartedAt ?? 0) - (state.breakStartedAt ?? 0)) / 1000))
-    : 0
-  const focusEndTime = state.breakStartedAt ? new Date(state.breakStartedAt) : undefined
 
   const updateDuration = (key: keyof TimerSettings, value: string) => {
     const nextValue = clampMinutes(Number(value))
@@ -365,7 +343,11 @@ export function StudyTimer({
   const syncActiveSessionSubjects = useCallback(async (nextSubjectIds: string[]) => {
     const sessionId = activeSessionIdRef.current
     if (!sessionId) return
-    await onUpdateSession(sessionId, { subjectIds: nextSubjectIds })
+    try {
+      await onUpdateSession(sessionId, { subjectIds: nextSubjectIds })
+    } catch (e) {
+      console.error("Failed to sync session subjects:", e)
+    }
   }, [onUpdateSession])
 
   const handleSubjectClick = (subjectId: string) => {
@@ -382,49 +364,55 @@ export function StudyTimer({
     })
   }
 
-  const startFocusSession = async () => {
-    if (mode !== "work" || activeSessionIdRef.current || selectedSubjectIds.length === 0) return
+  const startFocusSession = async (): Promise<boolean> => {
+    if (mode !== "work" || activeSessionIdRef.current || selectedSubjectIds.length === 0) return false
 
-    setSaving(true)
-    try {
-      const session = await onStartSession({
-        subjectIds: selectedSubjectIds,
-        durationSeconds: secondsLeft,
-        projectId: activeProjectId,
-      })
-      activeSessionIdRef.current = session.id
-      setActiveSessionId(session.id)
-    } finally {
-      setSaving(false)
-    }
+    const session = await onStartSession({
+      subjectIds: selectedSubjectIds,
+      durationSeconds: secondsLeft,
+      projectId: activeProjectId,
+    })
+    activeSessionIdRef.current = session.id
+    setActiveSessionId(session.id)
+    return true
   }
 
-  const handleToggle = () => {
+  const handleToggle = async () => {
     if (!running && mode === "work" && !activeSessionIdRef.current) {
       if (!canStartFocus) return
-      void startFocusSession()
-        .then(() => {
-          dispatch({ type: "TOGGLE" })
-        })
-        .catch(() => undefined)
+      setSaving(true)
+      try {
+        const started = await startFocusSession()
+        if (started) dispatch({ type: "TOGGLE" })
+      } catch (e) {
+        console.error("Failed to start session:", e)
+      } finally {
+        setSaving(false)
+      }
       return
     }
-
     dispatch({ type: "TOGGLE" })
   }
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     if (!activeSessionIdRef.current) return
     setSaving(true)
-    void completeActiveSession().finally(() => {
+    try {
+      await completeActiveSession()
+    } finally {
       setSaving(false)
       dispatch({ type: "RESET", settings })
-    })
+    }
   }
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (activeSessionIdRef.current) {
-      void completeActiveSession(focusEndTime)
+      setSaving(true)
+      try {
+        await completeActiveSession()
+      } finally {
+        setSaving(false)
+      }
     }
     dispatch({ type: "RESET", settings })
   }
@@ -437,39 +425,6 @@ export function StudyTimer({
   const handleMoreBreakTime = () => {
     if (mode === "work") return
     dispatch({ type: "ADD_BREAK_TIME", minutes: EXTRA_BREAK_MINUTES })
-  }
-
-  const handleStillStudying = () => {
-    const sessionId = activeSessionIdRef.current
-    if (!sessionId || mode === "work") return
-
-    const now = new Date()
-    setSaving(true)
-    void onUpdateSession(sessionId, {
-      endTime: now.toISOString(),
-      status: "in-progress",
-      completedAt: undefined,
-    })
-      .then(() => {
-        dispatch({ type: "START_STUDY_OVERTIME" })
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        setSaving(false)
-      })
-  }
-
-  const handleStartRest = () => {
-    if (mode === "work") return
-
-    setSaving(true)
-    void completeActiveSession(focusEndTime)
-      .then(() => {
-        dispatch({ type: "START_REST", settings })
-      })
-      .finally(() => {
-        setSaving(false)
-      })
   }
 
   if (isCollapsed) {
@@ -628,7 +583,7 @@ export function StudyTimer({
 
         <Button
           onClick={handleToggle}
-          disabled={awaitingRestConfirmation || (mode === "work" && !canStartFocus && !running)}
+          disabled={mode === "work" && !canStartFocus && !running}
           size="sm"
           variant={running ? "outline" : "default"}
           className="mt-3 h-7 w-full gap-1.5 rounded-xl text-xs"
@@ -643,7 +598,8 @@ export function StudyTimer({
             </>
           )}
         </Button>
-        {activeSessionId && !awaitingRestConfirmation && !isStudyOvertime && (
+
+        {activeSessionId && (
           <Button
             onClick={handleFinish}
             disabled={saving}
@@ -655,40 +611,8 @@ export function StudyTimer({
             Finish & save
           </Button>
         )}
-        {isStudyOvertime && activeSessionId ? (
-          <Button
-            onClick={handleStartRest}
-            disabled={saving}
-            size="sm"
-            variant="default"
-            className="mt-1.5 h-7 w-full gap-1.5 rounded-xl text-xs"
-          >
-            break time!
-          </Button>
-        ) : awaitingRestConfirmation ? (
-          <div className="mt-1.5 grid grid-cols-1 gap-1.5">
-            <Button
-              onClick={handleStillStudying}
-              disabled={saving}
-              size="sm"
-              variant="outline"
-              className="h-7 gap-1.5 rounded-xl text-xs"
-            >
-              Still studying
-              <span className="font-mono tabular-nums text-muted-foreground">+{formatTimer(overtimeSeconds)}</span>
-            </Button>
-            <Button
-              onClick={handleStartRest}
-              disabled={saving}
-              size="sm"
-              variant="default"
-              className="h-7 gap-1.5 rounded-xl text-xs"
-            >
-              Rest time!
-              <span className="font-mono tabular-nums opacity-80">{timeDisplay} remaining</span>
-            </Button>
-          </div>
-        ) : mode !== "work" && (
+
+        {mode !== "work" && (
           <div className="mt-1.5 grid grid-cols-2 gap-1.5">
             <Button
               onClick={handleSkipBreak}

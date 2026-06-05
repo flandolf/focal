@@ -83,7 +83,6 @@ export interface Project {
   subjectId?: string;
   unit?: Unit;
   deadlineType?: DeadlineType;
-  gatDate?: string;
   examDate?: string;
   isFavorite?: boolean;
   isArchived?: boolean;
@@ -133,12 +132,4 @@ export interface PriorityItem {
   action: string;
 }
 
-export interface SubjectReadiness {
-  subjectId: string;
-  assessmentPressure: PriorityUrgency;
-  studyMinutes7d: number;
-  studyMinutes14d: number;
-  weakTopics: string[];
-  nextAction: string;
-  upcomingCount: number;
-}
+

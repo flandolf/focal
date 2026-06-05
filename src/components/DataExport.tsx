@@ -146,40 +146,42 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="grid gap-5 py-1">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setFormat("json")}
-              className={`flex-1 px-4 py-2.5 text-sm rounded-lg border transition-colors ${
+              className={`min-h-10 flex-1 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 format === "json"
-                  ? "border-primary bg-primary/5 text-primary font-medium"
+                  ? "border-primary/35 bg-primary/10 font-medium text-primary"
                   : "border-border text-muted-foreground hover:bg-accent/50"
               }`}
+              aria-pressed={format === "json"}
             >
               JSON
             </button>
             <button
               onClick={() => setFormat("csv")}
-              className={`flex-1 px-4 py-2.5 text-sm rounded-lg border transition-colors ${
+              className={`min-h-10 flex-1 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 format === "csv"
-                  ? "border-primary bg-primary/5 text-primary font-medium"
+                  ? "border-primary/35 bg-primary/10 font-medium text-primary"
                   : "border-border text-muted-foreground hover:bg-accent/50"
               }`}
+              aria-pressed={format === "csv"}
             >
               CSV
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="p-4 rounded-lg bg-muted/50">
+          <div className="grid grid-cols-3 gap-2 text-center sm:gap-3">
+            <div className="rounded-lg border border-border/60 bg-background/45 p-3">
               <p className="text-xl font-semibold">{projects.length}</p>
               <p className="text-xs text-muted-foreground">Assessments</p>
             </div>
-            <div className="p-4 rounded-lg bg-muted/50">
+            <div className="rounded-lg border border-border/60 bg-background/45 p-3">
               <p className="text-xl font-semibold">{sessions.length}</p>
               <p className="text-xs text-muted-foreground">Sessions</p>
             </div>
-            <div className="p-4 rounded-lg bg-muted/50">
+            <div className="rounded-lg border border-border/60 bg-background/45 p-3">
               <p className="text-xl font-semibold">{events.length}</p>
               <p className="text-xs text-muted-foreground">Events</p>
             </div>

@@ -4,7 +4,6 @@ import type {
   PriorityUrgency,
   Project,
   StudySession,
-  SubjectReadiness,
 } from "@/lib/types"
 import { getSessionSubjectIds } from "@/lib/utils"
 
@@ -27,13 +26,6 @@ function getDaysUntil(value?: string, now = Date.now()): number | null {
   const time = getTime(value)
   if (time === null) return null
   return Math.ceil((time - now) / DAY_MS)
-}
-
-function getSessionMinutes(session: StudySession): number {
-  const start = getTime(session.startTime)
-  const end = getTime(session.endTime)
-  if (start === null || end === null || end <= start) return 0
-  return Math.round((end - start) / (1000 * 60))
 }
 
 function getProjectSubjectIds(project?: Project): string[] {
@@ -180,93 +172,4 @@ export function getPriorityItems({ projects, sessions, events }: PriorityInput):
   return sortPriorityItems(items).slice(0, 7)
 }
 
-export function getSubjectReadiness({ projects, sessions, events }: PriorityInput): SubjectReadiness[] {
-  const now = Date.now()
-  const sevenDaysAgo = now - 7 * DAY_MS
-  const fourteenDaysAgo = now - 14 * DAY_MS
-  const nextFortnight = now + 14 * DAY_MS
-  const activeProjectById = new Map(projects.filter((project) => !project.isArchived).map((project) => [project.id, project]))
-  const subjectMap = new Map<string, SubjectReadiness>()
 
-  function ensureSubject(subjectId: string): SubjectReadiness {
-    const existing = subjectMap.get(subjectId)
-    if (existing) return existing
-    const next: SubjectReadiness = {
-      subjectId,
-      assessmentPressure: "low",
-      studyMinutes7d: 0,
-      studyMinutes14d: 0,
-      weakTopics: [],
-      nextAction: "Keep a light review cadence",
-      upcomingCount: 0,
-    }
-    subjectMap.set(subjectId, next)
-    return next
-  }
-
-  projects.forEach((project) => {
-    if (!project.subjectId || project.isArchived || project.isFinished) return
-    const days = getDaysUntil(project.deadline, now)
-    const readiness = ensureSubject(project.subjectId)
-    if (days !== null && days >= 0 && days <= 14) {
-      readiness.upcomingCount += 1
-      const urgency = getUrgencyForDays(days)
-      if (getPressureRank(urgency) > getPressureRank(readiness.assessmentPressure)) {
-        readiness.assessmentPressure = urgency
-      }
-    }
-  })
-
-  events.forEach((event) => {
-    if (event.isFinished) return
-    if (!event.subjectId || !ASSESSMENT_TYPES.has(event.eventType)) return
-    const start = getTime(event.startTime)
-    if (start === null || start < now || start > nextFortnight) return
-    const readiness = ensureSubject(event.subjectId)
-    readiness.upcomingCount += 1
-    const urgency = getUrgencyForDays(Math.ceil((start - now) / DAY_MS))
-    if (getPressureRank(urgency) > getPressureRank(readiness.assessmentPressure)) {
-      readiness.assessmentPressure = urgency
-    }
-  })
-
-  sessions.forEach((session) => {
-    if (session.status !== "completed") return
-    const start = getTime(session.startTime)
-    if (start === null || start > now) return
-    const project = session.projectId ? activeProjectById.get(session.projectId) : undefined
-    const subjectIds = getSessionSubjectIds(session, project)
-    if (subjectIds.length === 0) return
-    const minutes = getSessionMinutes(session)
-    subjectIds.forEach((subjectId) => {
-      const readiness = ensureSubject(subjectId)
-      if (start >= fourteenDaysAgo) readiness.studyMinutes14d += minutes
-      if (start >= sevenDaysAgo) readiness.studyMinutes7d += minutes
-      if (session.confidence && session.confidence <= 2) {
-        const topics = session.topics?.filter((topic) => topic.trim().length > 0) ?? [session.title]
-        topics.slice(0, 2).forEach((topic) => {
-          if (!readiness.weakTopics.includes(topic)) readiness.weakTopics.push(topic)
-        })
-      }
-    })
-  })
-
-  return Array.from(subjectMap.values())
-    .map((readiness) => {
-      let nextAction = "Keep a light review cadence"
-      if (readiness.weakTopics.length > 0) {
-        nextAction = `Revise ${readiness.weakTopics[0]}`
-      } else if (readiness.upcomingCount > 0 && readiness.studyMinutes7d < 90) {
-        nextAction = "Schedule focused prep"
-      } else if (readiness.studyMinutes14d === 0) {
-        nextAction = "Add a short catch-up session"
-      }
-      return { ...readiness, nextAction }
-    })
-    .sort((a, b) => {
-      const pressureDelta = getPressureRank(b.assessmentPressure) - getPressureRank(a.assessmentPressure)
-      if (pressureDelta !== 0) return pressureDelta
-      return b.studyMinutes14d - a.studyMinutes14d
-    })
-    .slice(0, 6)
-}

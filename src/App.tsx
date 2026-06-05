@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type MouseEvent } from "react"
+import { useState, useCallback, useEffect, useMemo, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
@@ -8,8 +8,7 @@ import { Sidebar } from "@/components/Sidebar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
 import { NewProjectDialog } from "@/components/NewProjectDialog"
-import { NewStudySessionDialog } from "@/components/NewStudySessionDialog"
-import { EditStudySessionDialog } from "@/components/EditStudySessionDialog"
+import { StudySessionDialog } from "@/components/StudySessionDialog"
 import { NewEventDialog } from "@/components/NewEventDialog"
 import { EditEventDialog } from "@/components/EditEventDialog"
 import { ProjectSettingsDialog } from "@/components/ProjectSettingsDialog"
@@ -27,14 +26,28 @@ import { getSubjectById } from "@/lib/utils"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import type { CalendarEvent, ConfidenceScore, EventType, StudySession, StudySessionStatus, Subject } from "@/lib/types"
+import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
 
 const MOTION_EASE = [0.16, 1, 0.3, 1] as const
-const SHELL_LAYOUT_TRANSITION = { type: "spring", stiffness: 430, damping: 42, mass: 0.85 } as const
+const SHELL_LAYOUT_TRANSITION = { duration: 0.24, ease: MOTION_EASE } as const
 const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
 const POMODORO_MERGE_WINDOW_MS = 15 * 60 * 1000
 const POMODORO_DESCRIPTION = "Started from the Pomodoro timer."
 const POMODORO_NOTES = "Focus block logged from the sidebar timer."
+const HIDDEN_SUBJECTS_STORAGE_KEY = "focal-hidden-subjects"
+
+function getStoredHiddenSubjectIds() {
+  if (typeof window === "undefined") return []
+  try {
+    const stored = localStorage.getItem(HIDDEN_SUBJECTS_STORAGE_KEY)
+    const parsed: unknown = stored ? JSON.parse(stored) : []
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : []
+  } catch {
+    return []
+  }
+}
 
 function isPomodoroSession(session: StudySession) {
   return session.description === POMODORO_DESCRIPTION || session.notes === POMODORO_NOTES
@@ -98,7 +111,6 @@ function App() {
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
-  const [editSessionDialogOpen, setEditSessionDialogOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<StudySession | null>(null)
   const [eventDialogOpen, setEventDialogOpen] = useState(false)
   const [editEventDialogOpen, setEditEventDialogOpen] = useState(false)
@@ -120,11 +132,33 @@ function App() {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return stored ? JSON.parse(stored) : []
   })
+  const [hiddenSubjectIds, setHiddenSubjectIds] = useState<string[]>(getStoredHiddenSubjectIds)
   const { theme, mode, resolvedDark, setTheme, setMode } = useTheme()
+  const allSubjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])
+  const availableSubjects = useMemo(
+    () => allSubjects.filter((subject) => !hiddenSubjectIds.includes(subject.id)),
+    [allSubjects, hiddenSubjectIds],
+  )
 
   useEffect(() => {
     localStorage.setItem("focal-custom-subjects", JSON.stringify(customSubjects))
   }, [customSubjects])
+
+  useEffect(() => {
+    localStorage.setItem(HIDDEN_SUBJECTS_STORAGE_KEY, JSON.stringify(hiddenSubjectIds))
+  }, [hiddenSubjectIds])
+
+  const handleToggleSubjectVisibility = useCallback((subjectId: string) => {
+    setHiddenSubjectIds((current) => (
+      current.includes(subjectId)
+        ? current.filter((id) => id !== subjectId)
+        : [...current, subjectId]
+    ))
+  }, [])
+
+  const handleShowAllSubjects = useCallback(() => {
+    setHiddenSubjectIds([])
+  }, [])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -184,6 +218,7 @@ function App() {
   }
 
   const handleOpenNewSession = (initialDate?: Date) => {
+    setSelectedSession(null)
     setNewItemInitialDate(initialDate)
     setNewItemDialogKey((key) => key + 1)
     setSessionDialogOpen(true)
@@ -203,7 +238,6 @@ function App() {
     subjectId?: string
     unit?: "1" | "2" | "3" | "4"
     deadlineType?: "sac" | "exam" | "assignment" | "gat"
-    gatDate?: string
     examDate?: string
   }) => {
     try {
@@ -215,7 +249,6 @@ function App() {
         data.subjectId,
         data.unit,
         data.deadlineType,
-        data.gatDate,
         data.examDate,
       )
       setSelectedId(project.id)
@@ -236,7 +269,6 @@ function App() {
       subjectId?: string
       unit?: "1" | "2" | "3" | "4"
       deadlineType?: "sac" | "exam" | "assignment" | "gat"
-      gatDate?: string
       examDate?: string
       isFavorite?: boolean
       isArchived?: boolean
@@ -273,6 +305,7 @@ function App() {
   }
 
   const handleCreateStudySession = async (data: {
+    id?: string
     projectId?: string
     subjectIds: string[]
     title: string
@@ -281,6 +314,11 @@ function App() {
     description?: string
     topics?: string[]
     notes?: string
+    status?: StudySessionStatus
+    confidence?: ConfidenceScore
+    blockers?: string
+    nextAction?: string
+    completedAt?: string
   }) => {
     try {
       await addSession(
@@ -392,7 +430,7 @@ function App() {
   }
 
   const handleEditStudySession = async (data: {
-    id: string
+    id?: string
     projectId?: string
     subjectIds: string[]
     title: string
@@ -407,6 +445,7 @@ function App() {
     nextAction?: string
     completedAt?: string
   }) => {
+    if (!data.id) return
     try {
       const updates: Partial<Omit<StudySession, "id" | "created_at">> = {
         projectId: data.projectId,
@@ -425,7 +464,7 @@ function App() {
       updates.completedAt = data.completedAt
       await updateSession(data.id, updates)
       toast.success("Study session updated")
-      setEditSessionDialogOpen(false)
+      setSessionDialogOpen(false)
       setSelectedSession(null)
     } catch (e) {
       toast.error(`Failed to update study session: ${String(e)}`)
@@ -444,7 +483,7 @@ function App() {
     try {
       await deleteSession(id)
       toast.success("Study session deleted")
-      setEditSessionDialogOpen(false)
+      setSessionDialogOpen(false)
       setSelectedSession(null)
     } catch (e) {
       toast.error(`Failed to delete study session: ${String(e)}`)
@@ -739,7 +778,7 @@ function App() {
 
   const handleSelectSession = (session: StudySession) => {
     setSelectedSession(session)
-    setEditSessionDialogOpen(true)
+    setSessionDialogOpen(true)
   }
 
   const handleSelectEvent = (event: CalendarEvent) => {
@@ -804,6 +843,7 @@ function App() {
             <Sidebar
               projects={projects}
               customSubjects={customSubjects}
+              availableSubjects={availableSubjects}
               selectedId={selectedId}
               homeSelected={homeSelected}
               analyticsSelected={analyticsView}
@@ -844,6 +884,10 @@ function App() {
                     resolvedDark={resolvedDark}
                     setTheme={setTheme}
                     setMode={setMode}
+                    subjects={allSubjects}
+                    hiddenSubjectIds={hiddenSubjectIds}
+                    onToggleSubjectVisibility={handleToggleSubjectVisibility}
+                    onShowAllSubjects={handleShowAllSubjects}
                     onOpenExport={() => setExportOpen(true)}
                     onOpenSubjects={() => setSubjectsOpen(true)}
                   />
@@ -906,30 +950,26 @@ function App() {
           onOpenChange={setDialogOpen}
           onSubmit={handleCreateProject}
           customSubjects={customSubjects}
+          availableSubjects={availableSubjects}
         />
-        <NewStudySessionDialog
-          key={`new-session-${newItemDialogKey}`}
+        <StudySessionDialog
+          key={selectedSession?.id ?? `new-session-${newItemDialogKey}`}
           open={sessionDialogOpen}
           onOpenChange={setSessionDialogOpen}
           projects={projects}
           customSubjects={customSubjects}
-          initialDate={newItemInitialDate}
-          onSubmit={handleCreateStudySession}
-        />
-        <EditStudySessionDialog
-          open={editSessionDialogOpen}
-          onOpenChange={setEditSessionDialogOpen}
-          projects={projects}
-          customSubjects={customSubjects}
+          availableSubjects={availableSubjects}
           session={selectedSession}
-          onSubmit={handleEditStudySession}
-          onDelete={handleDeleteStudySession}
+          initialDate={newItemInitialDate}
+          onSubmit={selectedSession ? handleEditStudySession : handleCreateStudySession}
+          onDelete={selectedSession ? handleDeleteStudySession : undefined}
         />
         <NewEventDialog
           key={`new-event-${newItemDialogKey}`}
           open={eventDialogOpen}
           onOpenChange={setEventDialogOpen}
           customSubjects={customSubjects}
+          availableSubjects={availableSubjects}
           initialDate={newItemInitialDate}
           onSubmit={handleCreateEvent}
         />
@@ -938,6 +978,7 @@ function App() {
           onOpenChange={setEditEventDialogOpen}
           event={selectedEvent}
           customSubjects={customSubjects}
+          availableSubjects={availableSubjects}
           onSubmit={handleEditEvent}
           onDelete={handleDeleteEvent}
         />
@@ -948,6 +989,7 @@ function App() {
             onOpenChange={setSettingsOpen}
             onSubmit={handleUpdateProject}
             customSubjects={customSubjects}
+            availableSubjects={availableSubjects}
           />
         )}
         <GlobalSearch

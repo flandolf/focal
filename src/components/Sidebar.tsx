@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import {
   Archive,
   Atom,
@@ -56,38 +56,23 @@ interface AssessmentSubjectGroup {
   assessments: Project[]
 }
 
-const SIDEBAR_EASE = [0.16, 1, 0.3, 1] as const
-const SIDEBAR_LAYOUT_TRANSITION = { type: "spring", stiffness: 430, damping: 42, mass: 0.85 } as const
-const SIDEBAR_FADE_TRANSITION = { duration: 0.16, ease: SIDEBAR_EASE } as const
 const SIDEBAR_PRESS_TRANSITION = { type: "spring", stiffness: 520, damping: 34, mass: 0.65 } as const
 
 function CollapsibleInline({
   show,
   children,
   className,
-  reduceMotion,
 }: {
   show: boolean
   children: ReactNode
   className?: string
-  reduceMotion: boolean
 }) {
-  const transition = reduceMotion ? { duration: 0 } : SIDEBAR_FADE_TRANSITION
+  if (!show) return null
 
   return (
-    <AnimatePresence initial={false}>
-      {show && (
-        <motion.span
-          initial={{ opacity: 0, x: reduceMotion ? 0 : -4, width: 0 }}
-          animate={{ opacity: 1, x: 0, width: "auto" }}
-          exit={{ opacity: 0, x: reduceMotion ? 0 : -3, width: 0 }}
-          transition={transition}
-          className={cn("inline-flex min-w-0 overflow-hidden whitespace-nowrap", className)}
-        >
-          {children}
-        </motion.span>
-      )}
-    </AnimatePresence>
+    <span className={cn("inline-flex min-w-0 overflow-hidden whitespace-nowrap", className)}>
+      {children}
+    </span>
   )
 }
 
@@ -95,29 +80,17 @@ function CollapsibleBlock({
   show,
   children,
   className,
-  reduceMotion,
 }: {
   show: boolean
   children: ReactNode
   className?: string
-  reduceMotion: boolean
 }) {
-  const transition = reduceMotion ? { duration: 0 } : SIDEBAR_FADE_TRANSITION
+  if (!show) return null
 
   return (
-    <AnimatePresence initial={false}>
-      {show && (
-        <motion.div
-          initial={{ opacity: 0, x: reduceMotion ? 0 : -6, width: 0 }}
-          animate={{ opacity: 1, x: 0, width: "auto" }}
-          exit={{ opacity: 0, x: reduceMotion ? 0 : -4, width: 0 }}
-          transition={transition}
-          className={cn("min-w-0 overflow-hidden", className)}
-        >
-          {children}
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div className={cn("min-w-0 overflow-hidden", className)}>
+      {children}
+    </div>
   )
 }
 
@@ -188,6 +161,7 @@ function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGr
 interface SidebarProps {
   projects: Project[]
   customSubjects: Subject[]
+  availableSubjects?: Subject[]
   selectedId: string | null
   homeSelected: boolean
   analyticsSelected: boolean
@@ -216,6 +190,7 @@ interface SidebarProps {
 export function Sidebar({
   projects,
   customSubjects,
+  availableSubjects,
   selectedId,
   homeSelected,
   analyticsSelected,
@@ -256,15 +231,12 @@ export function Sidebar({
     { mode: "archived", label: "Archive", icon: Archive, count: archivedCount },
     { mode: "finished", label: "Done", icon: CheckCircle2, count: finishedCount },
   ]
-  const layoutTransition = reduceMotion ? { duration: 0 } : SIDEBAR_LAYOUT_TRANSITION
   const pressTransition = reduceMotion ? { duration: 0 } : SIDEBAR_PRESS_TRANSITION
   const hoverLift = reduceMotion ? undefined : { scale: 1.025 }
   const tapPress = reduceMotion ? undefined : { scale: 0.96 }
 
   return (
-    <motion.aside
-      layout
-      transition={layoutTransition}
+    <aside
       className="glass-sidebar flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground transition-all duration-300 ease-out min-[1200px]:rounded-[1.35rem]"
     >
       <div className={cn(
@@ -276,20 +248,17 @@ export function Sidebar({
           isCollapsed && "justify-center gap-1"
         )}>
             {!isCollapsed && (
-              <motion.span
-                layout
-                transition={layoutTransition}
+              <span
                 className="flex h-8 w-8 items-center justify-center rounded-xl border border-sidebar-border bg-background/55 text-sm shadow-sm backdrop-blur min-[1200px]:h-9 min-[1200px]:w-9 min-[1200px]:rounded-2xl"
               >
                 F
-              </motion.span>
+              </span>
             )}
-            <CollapsibleBlock show={!isCollapsed} reduceMotion={reduceMotion}>
+            <CollapsibleBlock show={!isCollapsed}>
               <h1 className="font-heading text-base font-semibold">Focal</h1>
               <p className="text-caption text-muted-foreground max-[900px]:hidden">Study workspace</p>
             </CollapsibleBlock>
             <motion.button
-              layout
               onClick={onToggleCollapse}
               whileHover={hoverLift}
               whileTap={tapPress}
@@ -309,7 +278,7 @@ export function Sidebar({
             </motion.button>
         </div>
 
-        <motion.div layout className="mt-3 flex justify-center" transition={layoutTransition}>
+        <div className="mt-3 flex justify-center">
           <Button
             onClick={onNewProject}
             className={cn("h-8 overflow-hidden rounded-2xl", isCollapsed ? "w-8 px-0" : "w-full gap-1")}
@@ -317,11 +286,11 @@ export function Sidebar({
             title={isCollapsed ? "New Assessment" : undefined}
           >
             <Plus className="h-4 w-4 shrink-0" />
-            <CollapsibleInline show={!isCollapsed} reduceMotion={reduceMotion}>
+            <CollapsibleInline show={!isCollapsed}>
               New Assessment
             </CollapsibleInline>
           </Button>
-        </motion.div>
+        </div>
       </div>
 
       <div className={cn(
@@ -329,7 +298,6 @@ export function Sidebar({
         isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-2.5 min-[1200px]:px-3"
       )}>
         <motion.button
-          layout
           onClick={onSelectHome}
           whileHover={hoverLift}
           whileTap={tapPress}
@@ -344,10 +312,10 @@ export function Sidebar({
           title={isCollapsed ? "Today" : undefined}
         >
           <Home className="h-4 w-4 shrink-0" />
-          <CollapsibleInline show={!isCollapsed} className="font-medium" reduceMotion={reduceMotion}>
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
             Today
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="ml-auto" reduceMotion={reduceMotion}>
+          <CollapsibleInline show={!isCollapsed} className="ml-auto">
             <span className="rounded-full bg-background/55 px-2 py-0.5 text-caption text-muted-foreground">
                 {activeCount}
             </span>
@@ -355,7 +323,6 @@ export function Sidebar({
         </motion.button>
 
         <motion.button
-          layout
           onClick={onSelectAnalytics}
           whileHover={hoverLift}
           whileTap={tapPress}
@@ -370,23 +337,20 @@ export function Sidebar({
           title={isCollapsed ? "Analytics" : undefined}
         >
           <BarChart3 className="h-4 w-4 shrink-0" />
-          <CollapsibleInline show={!isCollapsed} className="font-medium" reduceMotion={reduceMotion}>
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
             Analytics
           </CollapsibleInline>
         </motion.button>
 
-        <motion.div
-          layout
+        <div
           className={cn(
             "gap-1 rounded-xl border border-sidebar-border bg-background/30 p-0.5 min-[1200px]:rounded-2xl",
             isCollapsed ? "flex flex-col" : "grid grid-cols-2"
           )}
-          transition={layoutTransition}
         >
           {filterItems.map(({ mode, label, icon: Icon, count }) => (
             <motion.button
               key={mode}
-              layout
               onClick={() => setFilterMode(mode)}
               whileHover={hoverLift}
               whileTap={tapPress}
@@ -401,17 +365,17 @@ export function Sidebar({
               title={isCollapsed ? label : undefined}
             >
               <Icon className={cn("shrink-0", isCollapsed ? "h-4 w-4" : "h-3 w-3")} />
-              <CollapsibleInline show={!isCollapsed} reduceMotion={reduceMotion}>
+              <CollapsibleInline show={!isCollapsed}>
                 {label}
               </CollapsibleInline>
               {count != null && count > 0 && !isCollapsed && (
-                <CollapsibleInline show={!isCollapsed} className="tabular-nums text-caption" reduceMotion={reduceMotion}>
+                <CollapsibleInline show={!isCollapsed} className="tabular-nums text-caption">
                   {count}
                 </CollapsibleInline>
               )}
             </motion.button>
           ))}
-        </motion.div>
+        </div>
       </div>
 
       <ScrollArea className="min-h-0 w-full max-w-full flex-1 overflow-hidden">
@@ -450,7 +414,6 @@ export function Sidebar({
                 return (
                   <motion.div
                     key={project.id}
-                    layout
                     whileHover={reduceMotion ? undefined : { x: isCollapsed ? 0 : 2, scale: isCollapsed ? 1.04 : 1.01 }}
                     whileTap={tapPress}
                     transition={pressTransition}
@@ -465,9 +428,7 @@ export function Sidebar({
                     )}
                     onClick={() => onSelect(project.id)}
                   >
-                    <motion.span
-                      layout
-                      transition={layoutTransition}
+                    <span
                       className={cn(
                         "flex shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
                         isCollapsed ? "size-6.5 rounded-xl" : "size-5"
@@ -478,8 +439,8 @@ export function Sidebar({
                       } : undefined}
                     >
                       <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3")} aria-hidden="true" />
-                    </motion.span>
-                    <CollapsibleBlock show={!isCollapsed} className="flex-1" reduceMotion={reduceMotion}>
+                    </span>
+                    <CollapsibleBlock show={!isCollapsed} className="flex-1">
                         <div className="flex w-full min-w-0 items-center gap-1">
                           <p className="w-0 min-w-0 flex-1 truncate text-xs font-medium leading-4">{project.name}</p>
                           {project.isFinished && (
@@ -519,14 +480,9 @@ export function Sidebar({
                           </div>
                         )}
                     </CollapsibleBlock>
-                    <AnimatePresence initial={false}>
-                      {!isCollapsed && (
-                      <motion.div
+                    {!isCollapsed && (
+                      <div
                         className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0"
-                        initial={{ opacity: 0, x: reduceMotion ? 0 : 4 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: reduceMotion ? 0 : 3 }}
-                        transition={reduceMotion ? { duration: 0 } : SIDEBAR_FADE_TRANSITION}
                       >
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -585,9 +541,8 @@ export function Sidebar({
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                      </motion.div>
+                      </div>
                     )}
-                    </AnimatePresence>
                   </motion.div>
                 )
               })}
@@ -603,10 +558,11 @@ export function Sidebar({
         isCollapsed={isCollapsed}
         onExpand={onToggleCollapse}
         customSubjects={customSubjects}
+        availableSubjects={availableSubjects}
         selectedProject={selectedProject}
         onStartSession={onStartPomodoroSession}
         onUpdateSession={onUpdatePomodoroSession}
       />
-    </motion.aside>
+    </aside>
   )
 }

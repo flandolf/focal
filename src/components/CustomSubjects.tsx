@@ -71,22 +71,22 @@ export function CustomSubjects({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh] pr-4">
-          <div className="space-y-0.5 py-1.5">
-            <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-1.5">
+        <ScrollArea className="max-h-[58vh] pr-4">
+          <div className="grid gap-0.5 py-1">
+            <div className="mb-1 px-1 text-micro font-semibold uppercase tracking-normal text-muted-foreground">
               Built-in VCE Subjects
             </div>
             {VCE_SUBJECTS.map((subject) => (
               <div
                 key={subject.id}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
+                className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2"
               >
                 <span className="text-base">{subject.icon}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{subject.name}</p>
                 </div>
                 <div
-                  className="w-5 h-5 rounded-full border"
+                  className="h-5 w-5 rounded-full border"
                   style={{ backgroundColor: subject.color }}
                 />
                 <span className="text-xs font-mono text-muted-foreground">
@@ -96,28 +96,30 @@ export function CustomSubjects({
             ))}
             {customSubjects.length > 0 && (
               <>
-                <div className="text-micro font-semibold uppercase tracking-wider text-muted-foreground px-1 mt-3 mb-1.5">
+                <div className="mb-1 mt-3 px-1 text-micro font-semibold uppercase tracking-normal text-muted-foreground">
                   Custom Subjects
                 </div>
                 {customSubjects.map((subject) => (
                   <div
                     key={subject.id}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg group hover:bg-accent/50"
+                    className="group flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 hover:bg-accent/50"
                   >
                     <span className="text-base">{subject.icon}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{subject.name}</p>
                     </div>
                     <div
-                      className="w-5 h-5 rounded-full border"
+                      className="h-5 w-5 rounded-full border"
                       style={{ backgroundColor: subject.color }}
                     />
                     <span className="text-xs font-mono text-muted-foreground">
                       {subject.shortCode}
                     </span>
                     <button
+                      type="button"
                       onClick={() => handleDelete(subject.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10"
+                      className="rounded p-1 opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                      aria-label={`Delete ${subject.name}`}
                     >
                       <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                     </button>
@@ -129,8 +131,8 @@ export function CustomSubjects({
         </ScrollArea>
 
         {showForm ? (
-          <div className="space-y-3 pt-3 border-t">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 border-t pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="text-xs font-medium mb-1.5 block">Name</label>
                 <Input
@@ -172,13 +174,16 @@ export function CustomSubjects({
               <div className="flex flex-wrap gap-2">
                 {PRESET_COLORS.map((c) => (
                   <button
+                    type="button"
                     key={c}
                     onClick={() => setFormData((f) => ({ ...f, color: c }))}
                     className={cn(
-                      "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
-                      formData.color === c && "border-foreground scale-110"
+                      "h-8 w-8 rounded-full border-2 transition-transform hover:scale-105",
+                      formData.color === c && "scale-105 border-foreground"
                     )}
                     style={{ backgroundColor: c }}
+                    aria-label={`Use ${c}`}
+                    aria-pressed={formData.color === c}
                   />
                 ))}
               </div>
