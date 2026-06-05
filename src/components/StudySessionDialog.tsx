@@ -1,23 +1,45 @@
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { addMinutes, format, parseISO } from "date-fns"
-import { CalendarIcon, CheckCircle2, Clock, PlayCircle, Trash2 } from "lucide-react"
+import {
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  FileText,
+  ListChecks,
+  PlayCircle,
+  Timer,
+  Trash2,
+} from "lucide-react"
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
+import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
+import { Input } from "@/components/ui/input"
 import { cn, getSessionSubjectIds, getSubjectById } from "@/lib/utils"
-import { VCE_SUBJECTS, type ConfidenceScore, type Project, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
+import {
+  VCE_SUBJECTS,
+  type ConfidenceScore,
+  type Project,
+  type StudySession,
+  type StudySessionStatus,
+  type Subject,
+} from "@/lib/types"
 
 const DURATION_OPTIONS = ["30", "45", "60", "90"]
+const fieldLabelClass = "text-control font-medium text-muted-foreground"
+const sectionIconClass = "h-3.5 w-3.5 text-muted-foreground"
+const panelClass = "grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-4 dark:border-input/70 dark:bg-input/20"
+const inputClass = "h-10 rounded-lg bg-background/65 dark:bg-input/30"
+const inputWithIconClass = "flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background/65 px-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
+const textareaClass = "min-h-20 resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 interface StudySessionDialogProps {
   open: boolean
@@ -73,6 +95,7 @@ export function StudySessionDialog({
   const [isDeleting, setIsDeleting] = useState(false)
 
   const isEdit = Boolean(session)
+  const activeProject = projects.find((project) => project.id === projectId)
   const baseSubjects = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects]
   const hiddenSelectedSubjects = subjectIds
     .map((id) => getSubjectById(id))
@@ -85,8 +108,13 @@ export function StudySessionDialog({
   const durationMinutes = Number.parseInt(duration, 10)
   const canSave = title.trim().length > 0
     && subjectIds.length > 0
+    && Boolean(startDate)
     && Number.isFinite(durationMinutes)
     && durationMinutes > 0
+  const selectedDateLabel = startDate ? format(startDate, "EEE d MMM") : "No date"
+  const subjectSummary = selectedSubjects.length > 0
+    ? selectedSubjects.map((subject) => subject.shortCode).join(", ")
+    : "Subjects required"
 
   useEffect(() => {
     if (session) {
@@ -140,8 +168,8 @@ export function StudySessionDialog({
 
     const topics = topicsInput
       .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0)
+      .map((topic) => topic.trim())
+      .filter((topic) => topic.length > 0)
 
     return {
       id: session?.id,
@@ -161,8 +189,8 @@ export function StudySessionDialog({
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
     const data = buildSubmitData()
     if (!data) return
     onSubmit(data)
@@ -193,345 +221,346 @@ export function StudySessionDialog({
     }
   }
 
-  const project = session ? projects.find((p) => p.id === session.projectId) : undefined
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn(
-        "flex h-[min(92dvh,54rem)] w-[calc(100vw-1rem)] overflow-hidden p-0 sm:w-[calc(100vw-2rem)]",
-        isEdit ? "max-w-6xl" : "max-w-2xl"
-      )}>
-        <DialogHeader className="shrink-0 border-b px-5 pb-4 pt-5">
-          <DialogTitle>{isEdit ? "Edit Study Session" : "Plan Study Session"}</DialogTitle>
-          <DialogDescription>
-            {isEdit ? (
-              project ? (
-                <span>Editing session for <strong>{project.name}</strong></span>
-              ) : (
-                <span>Edit timing, subjects, notes, and review details for this study block.</span>
-              )
-            ) : (
-              "Create a study session to track your revision and learning progress."
+      <DialogContent className="flex h-[min(92dvh,54rem)] w-[calc(100vw-1rem)] max-w-5xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-5xl">
+        <DialogHeader className="shrink-0 border-b px-5 pb-4 pr-14 pt-5">
+          <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle>{isEdit ? "Edit Study Session" : "Plan Study Session"}</DialogTitle>
+              <DialogDescription className="mt-1">
+                {activeProject ? activeProject.name : "No assessment attached"} · {subjectSummary}
+              </DialogDescription>
+            </div>
+            {isEdit && (
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-1 text-micro font-semibold uppercase",
+                  status === "completed"
+                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                    : status === "in-progress"
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-border/70 bg-muted text-muted-foreground"
+                )}
+              >
+                {status.replace("-", " ")}
+              </span>
             )}
-          </DialogDescription>
+          </div>
+          <div className="mt-4 flex min-w-0 flex-wrap gap-1.5 text-micro text-muted-foreground">
+            <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted/65 px-2 py-1">
+              <CalendarDays className="h-3 w-3" />
+              <span className="truncate">{selectedDateLabel}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
+              <Clock className="h-3 w-3" />
+              {startTime}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
+              <Timer className="h-3 w-3" />
+              {Number.isFinite(durationMinutes) && durationMinutes > 0 ? `${durationMinutes} min` : "Duration"}
+            </span>
+          </div>
         </DialogHeader>
+
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-            <div className={cn(isEdit && "grid grid-cols-1 gap-5 lg:grid-cols-2")}>
-              <div className="space-y-4">
-                <section className="space-y-4 rounded-xl border border-border/70 bg-background/35 p-4">
-                  {isEdit && <h3 className="text-sm font-semibold">Session Details</h3>}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Session Title</label>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+              <div className="grid content-start gap-5">
+                <section className="grid gap-3">
+                  <FormField
+                    label="Session title"
+                    labelClassName={fieldLabelClass}
+                    labelAccessory={
+                      <span className="text-micro font-medium uppercase tracking-normal text-muted-foreground/70">
+                        Required
+                      </span>
+                    }
+                  >
                     <Input
                       placeholder="e.g. Review Unit 3 notes"
                       value={title}
-                      onChange={(e) => setTitle(e.target.value)}
+                      onChange={(event) => setTitle(event.target.value)}
                       required
+                      className="h-11 rounded-lg bg-background/65 text-base dark:bg-input/30"
                     />
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Assessment</label>
-                      <select
-                        className="flex h-10 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                        value={projectId}
-                        onChange={(e) => handleProjectChange(e.target.value)}
-                      >
-                        <option value="">No assessment</option>
-                        {projects.filter((p) => !p.isArchived).map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.icon} {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {isEdit && (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Status</label>
-                        <select
-                          className="flex h-10 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                          value={status}
-                          onChange={(e) => setStatus(e.target.value as StudySessionStatus)}
-                        >
-                          <option value="planned">Planned</option>
-                          <option value="in-progress">In progress</option>
-                          <option value="completed">Completed</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
+                  </FormField>
                 </section>
 
-                <section className="space-y-4 rounded-xl border border-border/70 bg-background/35 p-4">
-                  {isEdit && <h3 className="text-sm font-semibold">Timing</h3>}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Date</label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !startDate && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {startDate ? format(startDate, "MMM d") : "Pick date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={startDate}
-                            onSelect={setStartDate}
-                            autoFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Start Time</label>
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
+                <FormSection
+                  title="Schedule"
+                  icon={<CalendarDays className={sectionIconClass} />}
+                  className={panelClass}
+                >
+                  <div className="grid gap-3 sm:grid-cols-[1.2fr_0.9fr_0.9fr]">
+                    <DatePickerField
+                      label="Date"
+                      date={startDate}
+                      onDateChange={setStartDate}
+                      buttonClassName={inputClass}
+                      labelClassName={fieldLabelClass}
+                    />
+
+                    <FormField label="Start" labelClassName={fieldLabelClass}>
+                      <div className={inputWithIconClass}>
+                        <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <input
                           type="time"
                           value={startTime}
-                          onChange={(e) => setStartTime(e.target.value)}
-                          className="flex h-10 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          onChange={(event) => setStartTime(event.target.value)}
+                          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
                         />
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Duration</label>
+                    </FormField>
+
+                    <FormField label="Duration" labelClassName={fieldLabelClass}>
                       <Input
                         type="number"
                         min="1"
                         step="1"
                         value={duration}
-                        onChange={(e) => setDuration(e.target.value)}
+                        onChange={(event) => setDuration(event.target.value)}
                         placeholder="60"
+                        className={inputClass}
                       />
-                      <div className="flex flex-wrap gap-1.5">
-                        {DURATION_OPTIONS.map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            onClick={() => setDuration(option)}
-                            className={cn(
-                              "rounded-md border px-2 py-1 text-micro font-medium transition-colors",
-                              duration === option
-                                ? "border-primary/30 bg-primary/10 text-primary"
-                                : "border-border/70 text-muted-foreground hover:text-foreground"
-                            )}
-                          >
-                            {option}m
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    </FormField>
                   </div>
-                </section>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DURATION_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setDuration(option)}
+                        aria-pressed={duration === option}
+                        className={cn(
+                          "h-7 rounded-md border px-2 text-micro font-medium transition-colors",
+                          duration === option
+                            ? "border-primary/35 bg-primary/10 text-primary"
+                            : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                        )}
+                      >
+                        {option}m
+                      </button>
+                    ))}
+                  </div>
+                </FormSection>
 
-                <section className="space-y-2 rounded-xl border border-border/70 bg-background/35 p-4">
-                  {isEdit ? (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Description</label>
-                        <Input
-                          placeholder="Optional - what did you achieve?"
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Topics</label>
-                        <Input
-                          placeholder="e.g. Photosynthesis, Cell Division"
-                          value={topicsInput}
-                          onChange={(e) => setTopicsInput(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Description</label>
-                        <Input
-                          placeholder="Optional — what do you want to achieve?"
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Topics</label>
-                        <Input
-                          placeholder="e.g. Photosynthesis, Cell Division"
-                          value={topicsInput}
-                          onChange={(e) => setTopicsInput(e.target.value)}
-                        />
-                      </div>
-                    </>
-                  )}
-                </section>
+                <FormSection
+                  title="Assessment"
+                  icon={<BookOpen className={sectionIconClass} />}
+                  className={panelClass}
+                >
+                  <div className={cn("grid gap-3", isEdit && "sm:grid-cols-2")}>
+                    <SelectField
+                      label="Assessment link"
+                      labelClassName={fieldLabelClass}
+                      value={projectId}
+                      onChange={(event) => handleProjectChange(event.target.value)}
+                    >
+                      <option value="">No assessment</option>
+                      {projects.filter((project) => !project.isArchived).map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.icon} {project.name}
+                        </option>
+                      ))}
+                    </SelectField>
+                    {isEdit && (
+                      <SelectField
+                        label="Status"
+                        labelClassName={fieldLabelClass}
+                        value={status}
+                        onChange={(event) => setStatus(event.target.value as StudySessionStatus)}
+                      >
+                        <option value="planned">Planned</option>
+                        <option value="in-progress">In progress</option>
+                        <option value="completed">Completed</option>
+                      </SelectField>
+                    )}
+                  </div>
+                </FormSection>
+
+                <FormSection
+                  title="Context"
+                  icon={<FileText className={sectionIconClass} />}
+                  className={panelClass}
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <FormField label="Description" labelClassName={fieldLabelClass}>
+                      <Input
+                        placeholder={isEdit ? "What did you achieve?" : "What do you want to achieve?"}
+                        value={description}
+                        onChange={(event) => setDescription(event.target.value)}
+                        className={inputClass}
+                      />
+                    </FormField>
+                    <FormField label="Topics" labelClassName={fieldLabelClass}>
+                      <Input
+                        placeholder="Photosynthesis, exam Q4"
+                        value={topicsInput}
+                        onChange={(event) => setTopicsInput(event.target.value)}
+                        className={inputClass}
+                      />
+                    </FormField>
+                  </div>
+                  <FormField label="Notes" labelClassName={fieldLabelClass}>
+                    <textarea
+                      placeholder="Key concepts, resources, reminders, or follow-up work."
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      rows={4}
+                      className={textareaClass}
+                    />
+                  </FormField>
+                </FormSection>
               </div>
 
-              <div className="space-y-4">
-                <section className="space-y-3 rounded-xl border border-border/70 bg-background/35 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <label className="text-sm font-medium">Subjects</label>
-                    <div className="flex max-w-full flex-wrap justify-end gap-1.5">
+              <div className="grid content-start gap-5">
+                <FormSection
+                  title="Subjects"
+                  icon={<ListChecks className={sectionIconClass} />}
+                  className={panelClass}
+                >
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      {subjectIds.length > 0 ? `${subjectIds.length} selected` : "Choose at least one"}
+                    </p>
+                    {subjectIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSubjectIds([])}
+                        className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedSubjects.length > 0 && (
+                    <div className="flex max-w-full flex-wrap gap-1.5">
                       {selectedSubjects.map((subject) => (
                         <span
                           key={subject.id}
-                          className="rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border/70 bg-background/60 px-2 py-1 text-xs font-medium"
                         >
-                          {subject.icon} {subject.shortCode}
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: subject.color }}
+                          />
+                          <span className="truncate">{subject.shortCode}</span>
                         </span>
                       ))}
-                      {subjectIds.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setSubjectIds([])}
-                          className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-                        >
-                          Clear
-                        </button>
-                      )}
                     </div>
-                  </div>
-                  <div className="max-h-72 overflow-auto rounded-lg border border-input bg-background/55 p-2">
-                    <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-1.5">
-                      {subjects.map((subject) => (
-                        <label
-                          key={subject.id}
-                          className={cn(
-                            "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors",
-                            subjectIds.includes(subject.id)
-                              ? "border-primary/25 bg-primary/10 text-foreground"
-                              : "border-transparent hover:bg-accent/45"
-                          )}
-                        >
-                          <Checkbox
-                            checked={subjectIds.includes(subject.id)}
-                            onCheckedChange={() => toggleSubject(subject.id)}
-                          />
-                          <span className="min-w-0 truncate leading-none">
-                            {subject.icon} {subject.name}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  {subjectIds.length === 0 && (
-                    <p className="text-xs text-destructive">Choose at least one subject.</p>
                   )}
-                </section>
 
-                {!isEdit && (
-                  <section className="space-y-2 rounded-xl border border-border/70 bg-background/35 p-4">
-                    <label className="text-sm font-medium">Notes</label>
-                    <textarea
-                      placeholder="Key concepts, resources, or reminders..."
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      rows={6}
-                      className="flex min-h-28 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    />
-                  </section>
-                )}
+                  <div className="max-h-[18rem] overflow-y-auto rounded-lg border border-input bg-background/45 p-2 dark:bg-input/20">
+                    <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-1.5">
+                      {subjects.map((subject) => {
+                        const selected = subjectIds.includes(subject.id)
+
+                        return (
+                          <label
+                            key={subject.id}
+                            className={cn(
+                              "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors",
+                              selected
+                                ? "border-primary/35 bg-primary/10 text-foreground"
+                                : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                            )}
+                          >
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={() => toggleSubject(subject.id)}
+                            />
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: subject.color }}
+                            />
+                            <span className="min-w-0 truncate">
+                              {subject.icon} {subject.name}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {subjectIds.length === 0 && (
+                    <p className="text-xs text-destructive">Subjects are required for study sessions.</p>
+                  )}
+                </FormSection>
 
                 {isEdit && (
-                  <>
-                    <section className="space-y-2 rounded-xl border border-border/70 bg-background/35 p-4">
-                      <label className="text-sm font-medium">Notes</label>
-                      <textarea
-                        placeholder="Key concepts, resources, or reminders..."
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        rows={8}
-                        className="flex min-h-32 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      />
-                    </section>
+                  <FormSection
+                    title="Review"
+                    icon={<CheckCircle2 className={sectionIconClass} />}
+                    className={panelClass}
+                  >
+                    <FormField label="Confidence" labelClassName={fieldLabelClass}>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
+                          <button
+                            key={score}
+                            type="button"
+                            onClick={() => setConfidence(score)}
+                            aria-pressed={confidence === score}
+                            className={cn(
+                              "h-9 rounded-lg border text-xs font-medium transition-colors",
+                              confidence === score
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                            )}
+                          >
+                            {score}
+                          </button>
+                        ))}
+                      </div>
+                    </FormField>
 
-                    <section className="space-y-4 rounded-xl border border-border/70 bg-background/35 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">Session Review</p>
-                        {status === "completed" && (
-                          <span className="rounded-md bg-emerald-500/12 px-2 py-1 text-micro font-medium text-emerald-600 dark:text-emerald-300">
-                            Complete
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">Confidence</label>
-                        <div className="grid grid-cols-5 gap-2">
-                          {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
-                            <button
-                              key={score}
-                              type="button"
-                              onClick={() => setConfidence(score)}
-                              className={cn(
-                                "h-9 rounded-lg border text-xs font-medium transition-colors",
-                                confidence === score
-                                  ? "border-primary bg-primary/10 text-primary"
-                                  : "border-border/70 bg-background/40 text-muted-foreground hover:text-foreground"
-                              )}
-                              aria-pressed={confidence === score}
-                            >
-                              {score}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-muted-foreground">Blockers</label>
-                          <textarea
-                            placeholder="What still feels unclear?"
-                            value={blockers}
-                            onChange={(e) => setBlockers(e.target.value)}
-                            rows={3}
-                            className="flex w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-muted-foreground">Next action</label>
-                          <textarea
-                            placeholder="e.g. redo exam Q4"
-                            value={nextAction}
-                            onChange={(e) => setNextAction(e.target.value)}
-                            rows={3}
-                            className="flex w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          />
-                        </div>
-                      </div>
-                    </section>
-                  </>
+                    <div className="grid gap-3">
+                      <FormField label="Blockers" labelClassName={fieldLabelClass}>
+                        <textarea
+                          placeholder="What still feels unclear?"
+                          value={blockers}
+                          onChange={(event) => setBlockers(event.target.value)}
+                          rows={3}
+                          className={textareaClass}
+                        />
+                      </FormField>
+                      <FormField label="Next action" labelClassName={fieldLabelClass}>
+                        <textarea
+                          placeholder="e.g. redo exam Q4"
+                          value={nextAction}
+                          onChange={(event) => setNextAction(event.target.value)}
+                          rows={3}
+                          className={textareaClass}
+                        />
+                      </FormField>
+                    </div>
+                  </FormSection>
                 )}
               </div>
             </div>
           </div>
-          <DialogFooter className={cn(
-            "m-0 shrink-0 rounded-none px-5 py-3",
-            isEdit ? "items-center justify-between gap-3" : "items-center"
-          )}>
-            {isEdit && onDelete ? (
+
+          <DialogFooter
+            className={cn(
+              "m-0 shrink-0 rounded-none px-5 py-3",
+              isEdit && onDelete ? "gap-3 sm:justify-between" : "sm:justify-end"
+            )}
+          >
+            {isEdit && onDelete && (
               <Button
                 type="button"
                 variant="destructive"
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="gap-2"
+                className="w-full gap-1.5 sm:w-auto"
               >
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>
-            ) : (
-              <span />
             )}
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
