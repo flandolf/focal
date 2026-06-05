@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
 import { formatDeadline, isOverdue, getSubjectById, getEventTypeInfo, getSessionSubjectIds } from "@/lib/utils"
-import { getPriorityItems, getSubjectReadiness } from "@/lib/studyPriority"
-import type { CalendarEvent, EventType, PriorityItem, PriorityUrgency, Project, StudySession, Subject, SubjectReadiness } from "@/lib/types"
+import { getPriorityItems } from "@/lib/studyPriority"
+import type { CalendarEvent, EventType, PriorityItem, PriorityUrgency, Project, StudySession, Subject } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -542,12 +542,28 @@ function formatCopilotDateTime(value?: string) {
   return Number.isNaN(date.getTime()) ? value : format(date, "yyyy-MM-dd HH:mm")
 }
 
+function getRelativeTime(timestamp: string): string {
+  const now = Date.now()
+  const then = new Date(timestamp).getTime()
+  if (Number.isNaN(then)) return ""
+  const diffMs = now - then
+  if (diffMs < 0) return "just now"
+  const minutes = Math.floor(diffMs / (1000 * 60))
+  if (minutes < 1) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1) return "yesterday"
+  if (days < 7) return `${days}d ago`
+  return format(new Date(timestamp), "MMM d")
+}
+
 async function generateAssessmentCopilotPlan({
   projects,
   sessions,
   events,
   priorityItems,
-  subjectReadiness,
   prepBalanceItems,
   subjects,
   apiKey,
@@ -560,7 +576,6 @@ async function generateAssessmentCopilotPlan({
   sessions: StudySession[]
   events: CalendarEvent[]
   priorityItems: PriorityItem[]
-  subjectReadiness: SubjectReadiness[]
   prepBalanceItems: PrepBalanceItem[]
   subjects: Subject[]
   apiKey: string
@@ -595,12 +610,6 @@ async function generateAssessmentCopilotPlan({
     .join("\n")
   const priorityLines = priorityItems
     .map((item) => `${item.urgency}: ${item.title} / ${item.reason} / action ${item.action}`)
-    .join("\n")
-  const readinessLines = subjectReadiness
-    .map((item) => {
-      const subject = getSubjectById(item.subjectId)
-      return `${item.subjectId} (${subject?.shortCode ?? item.subjectId}): pressure ${item.assessmentPressure}, ${Math.round(item.studyMinutes7d)}m in 7d, ${Math.round(item.studyMinutes14d)}m in 14d, weak topics ${item.weakTopics.join(", ") || "none"}, next ${item.nextAction}`
-    })
     .join("\n")
   const prepLines = prepBalanceItems
     .map((item) => {
@@ -690,9 +699,6 @@ ${assessmentLines || "None"}
 
 Assessment priority items:
 ${priorityLines || "None"}
-
-Subject readiness:
-${readinessLines || "None"}
 
 Prep balance for ${format(currentMonth, "MMMM yyyy")}:
 ${prepLines || "None"}
@@ -804,41 +810,6 @@ interface HomeViewProps {
   onMergeStudySessions: (ids: string[]) => Promise<void>
 }
 
-function ReadinessRow({ item }: { item: SubjectReadiness }) {
-  const subject = getSubjectById(item.subjectId)
-  const studied7d = Math.round(item.studyMinutes7d / 60 * 10) / 10
-  const studied14d = Math.round(item.studyMinutes14d / 60 * 10) / 10
-
-  return (
-    <div className="rounded-xl px-3 py-2 transition-colors hover:bg-accent/25">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-xs font-medium">
-            {subject?.shortCode ?? item.subjectId}
-            {subject?.name ? <span className="ml-1.5 text-muted-foreground">/ {subject.name}</span> : null}
-          </p>
-          <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.nextAction}</p>
-        </div>
-        <span className={cn("shrink-0 rounded px-1 py-0 text-[9px] font-medium leading-3", getUrgencyClassName(item.assessmentPressure))}>
-          {getUrgencyLabel(item.assessmentPressure)}
-        </span>
-      </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[9px] leading-3 text-muted-foreground">
-        <span className="rounded bg-muted/70 px-1 py-0 tabular-nums">{studied7d}h / 7d</span>
-        <span className="rounded bg-muted/70 px-1 py-0 tabular-nums">{studied14d}h / 14d</span>
-        {item.upcomingCount > 0 && (
-          <span className="rounded bg-muted/70 px-1 py-0">{item.upcomingCount} upcoming</span>
-        )}
-        {item.weakTopics.length > 0 && (
-          <span className="min-w-0 truncate rounded bg-muted/70 px-1 py-0">
-            weak: {item.weakTopics.slice(0, 2).join(", ")}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export function HomeView({
   projects,
   sessions,
@@ -869,8 +840,8 @@ export function HomeView({
   const [linkIcon, setLinkIcon] = useState("Link")
   const [linkColor, setLinkColor] = useState("#71717a")
   const [prioritiesOpen, setPrioritiesOpen] = useState(true)
-  const [readinessOpen, setReadinessOpen] = useState(true)
   const [calendarSelectionMode, setCalendarSelectionMode] = useState(false)
+  const [recentActivityOpen, setRecentActivityOpen] = useState(true)
   const [selectedEventIds, setSelectedEventIds] = useState<string[]>([])
   const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([])
   const [eventBatchSaving, setEventBatchSaving] = useState(false)
@@ -972,7 +943,6 @@ export function HomeView({
 
   const completedSessions = sessions.filter((s) => s.status === "completed").length
   const priorityItems = useMemo(() => getPriorityItems({ projects, sessions, events }), [projects, sessions, events])
-  const subjectReadiness = useMemo(() => getSubjectReadiness({ projects, sessions, events }), [projects, sessions, events])
   const planningSubjects = useMemo(() => getPlanningSubjects(projects), [projects])
   const planningSubjectIds = useMemo(() => planningSubjects.map((subject) => subject.id), [planningSubjects])
   const activeProjectIds = useMemo(
@@ -987,6 +957,50 @@ export function HomeView({
     () => copilotDrafts.filter((draft) => draft.approved && (copilotDraftErrors.get(draft.draftId)?.length ?? 0) === 0),
     [copilotDraftErrors, copilotDrafts],
   )
+
+  const recentActivity = useMemo(() => {
+    interface ActivityItem {
+      id: string
+      title: string
+      subtitle: string
+      timestamp: string
+      kind: "session" | "event"
+      session?: StudySession
+      event?: CalendarEvent
+    }
+    const recentSessions: ActivityItem[] = sessions
+      .filter((s) => s.status === "completed" && s.completedAt)
+      .map((s) => {
+        const project = s.projectId ? projects.find((p) => p.id === s.projectId) : undefined
+        const subjectLabels = getSessionSubjectIds(s, project)
+          .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
+          .join(", ")
+        return {
+          id: s.id,
+          title: s.title,
+          subtitle: project?.name ?? (subjectLabels || "Study session"),
+          timestamp: s.completedAt!,
+          kind: "session" as const,
+          session: s,
+        }
+      })
+    const recentEvents: ActivityItem[] = events
+      .filter((e) => e.isFinished && e.finishedAt)
+      .map((e) => {
+        const subject = getSubjectById(e.subjectId)
+        return {
+          id: e.id,
+          title: e.title,
+          subtitle: subject?.shortCode ?? e.eventType,
+          timestamp: e.finishedAt!,
+          kind: "event" as const,
+          event: e,
+        }
+      })
+    return [...recentSessions, ...recentEvents]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 7)
+  }, [sessions, events, projects])
 
   const studyBySubject: Record<string, { minutes: number; icon: string; shortCode: string }> = {}
   sessions.forEach((s) => {
@@ -1471,7 +1485,6 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
         sessions,
         events,
         priorityItems,
-        subjectReadiness,
         prepBalanceItems,
         subjects: planningSubjects,
         apiKey: key,
@@ -1513,7 +1526,6 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
         sessions,
         events,
         priorityItems,
-        subjectReadiness,
         prepBalanceItems,
         subjects: planningSubjects,
         apiKey: key,
@@ -2395,24 +2407,39 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
             <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
               <button
                 type="button"
-                onClick={() => setReadinessOpen((current) => !current)}
+                onClick={() => setRecentActivityOpen((current) => !current)}
                 className="flex w-full items-center justify-between gap-3 text-left"
               >
                 <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
                   <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-                  Subject Readiness
+                  Recent Activity
                 </h3>
-                <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", readinessOpen && "rotate-90")} />
+                <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", recentActivityOpen && "rotate-90")} />
               </button>
-              {readinessOpen && (
+              {recentActivityOpen && (
                 <div className="mt-2.5 space-y-1">
-                  {subjectReadiness.length === 0 ? (
+                  {recentActivity.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Complete study sessions with subjects to build readiness signals.
+                      Completed sessions and finished events will appear here.
                     </p>
                   ) : (
-                    subjectReadiness.map((item) => (
-                      <ReadinessRow key={item.subjectId} item={item} />
+                    recentActivity.map((item) => (
+                      <button
+                        key={`${item.kind}-${item.id}`}
+                        type="button"
+                        onClick={() => item.session ? onSelectSession(item.session) : item.event ? onSelectEvent(item.event) : undefined}
+                        className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium">{item.title}</p>
+                            <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.subtitle}</p>
+                          </div>
+                          <span className="shrink-0 text-[9px] leading-3 text-muted-foreground tabular-nums">
+                            {getRelativeTime(item.timestamp)}
+                          </span>
+                        </div>
+                      </button>
                     ))
                   )}
                 </div>
@@ -2634,9 +2661,9 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
               <DialogHeader>
                 <DialogTitle>{editingLink ? "Edit Link" : "Add Quick Link"}</DialogTitle>
               </DialogHeader>
-              <div className="space-y-5 py-2">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Icon</label>
+              <div className="grid gap-4 py-1">
+                <div className="grid gap-2">
+                  <label className="text-control font-medium text-muted-foreground">Icon</label>
                   <div className="grid grid-cols-6 gap-2">
                     {ICON_OPTIONS.map((opt) => {
                       const IconComp = opt.component
@@ -2648,9 +2675,11 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                           className={cn(
                             "flex h-10 w-full items-center justify-center rounded-lg border transition-colors",
                             linkIcon === opt.name
-                              ? "border-primary bg-primary/10 text-primary"
+                              ? "border-primary/35 bg-primary/10 text-primary"
                               : "border-border/60 bg-background/40 text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground"
                           )}
+                          aria-label={opt.name}
+                          aria-pressed={linkIcon === opt.name}
                         >
                           <IconComp className="h-4 w-4" />
                         </button>
@@ -2658,26 +2687,28 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                     })}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Color</label>
-                  <div className="flex gap-2 flex-wrap">
+                <div className="grid gap-2">
+                  <label className="text-control font-medium text-muted-foreground">Color</label>
+                  <div className="flex flex-wrap gap-2">
                     {COLOR_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
                         onClick={() => setLinkColor(opt.value)}
                         className={cn(
-                          "h-8 w-8 rounded-full border-2 transition-all",
-                          linkColor === opt.value ? "border-foreground scale-110" : "border-transparent hover:scale-105"
+                          "h-8 w-8 rounded-full border-2 transition-transform",
+                          linkColor === opt.value ? "scale-105 border-foreground" : "border-transparent hover:scale-105"
                         )}
                         style={{ backgroundColor: opt.value }}
                         title={opt.name}
+                        aria-label={opt.name}
+                        aria-pressed={linkColor === opt.value}
                       />
                     ))}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Label</label>
+                <div className="grid gap-2">
+                  <label className="text-control font-medium text-muted-foreground">Label</label>
                   <Input
                     placeholder="e.g. VCAA English"
                     value={linkLabel}
@@ -2685,8 +2716,8 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                     onKeyDown={(e) => e.key === "Enter" && handleSaveLink()}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">URL</label>
+                <div className="grid gap-2">
+                  <label className="text-control font-medium text-muted-foreground">URL</label>
                   <Input
                     placeholder="https://..."
                     value={linkUrl}
@@ -2707,15 +2738,15 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
           </Dialog>
 
           <Dialog open={copilotOpen} onOpenChange={setCopilotOpen}>
-            <DialogContent className="h-[100dvh] max-h-none w-screen max-w-none overflow-hidden rounded-none px-8 pb-6 pt-14 sm:max-w-none min-[1200px]:px-10 [display:flex] flex-col">
-              <DialogHeader className="shrink-0 pr-16">
+            <DialogContent className="flex h-[min(92dvh,54rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-6xl">
+              <DialogHeader className="shrink-0 border-b px-5 pb-4 pt-5">
                 <DialogTitle>Assessment Copilot</DialogTitle>
                 <DialogDescription>
                   Generate a triage plan and editable study-session drafts. Review everything before adding sessions.
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="flex min-h-0 flex-1 flex-col gap-4">
+              <div className="flex min-h-0 flex-1 flex-col gap-4 px-5 py-5">
                 {copilotError && (
                   <p className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -3027,7 +3058,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 </div>
               </div>
 
-              <DialogFooter className="-mx-8 shrink-0 items-center justify-between gap-3 px-8 min-[1200px]:-mx-10 min-[1200px]:px-10">
+              <DialogFooter className="m-0 shrink-0 items-center justify-between gap-3 rounded-none px-5 py-3">
                 <Button variant="outline" size="sm" onClick={() => setCopilotOpen(false)}>
                   <X className="mr-1.5 h-3.5 w-3.5" />
                   Cancel
@@ -3046,15 +3077,17 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
           </Dialog>
 
           <Dialog open={textPlannerOpen} onOpenChange={setTextPlannerOpen}>
-            <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-4xl">
-              <DialogHeader>
-                <DialogTitle>{plannerTitle}</DialogTitle>
-                <DialogDescription>
-                  {plannerDescription}
-                </DialogDescription>
-              </DialogHeader>
+            <DialogContent className="flex h-[min(88dvh,48rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-4xl">
+              <div className="shrink-0 border-b px-5 pb-4 pt-5">
+                <DialogHeader>
+                  <DialogTitle>{plannerTitle}</DialogTitle>
+                  <DialogDescription>
+                    {plannerDescription}
+                  </DialogDescription>
+                </DialogHeader>
+              </div>
 
-              <div className="flex min-h-0 flex-1 flex-col gap-4">
+              <div className="flex min-h-0 flex-1 flex-col gap-4 px-5 py-5">
                 {plannerError && (
                   <p className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -3102,7 +3135,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 </div>
 
                 {plannerDrafts.length > 0 && (
-                  <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border/70">
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border/70">
                     <div className="divide-y divide-border/60">
                       {plannerDrafts.map((draft, index) => {
                         const subject = getSubjectById(draft.subjectId)
@@ -3184,7 +3217,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 )}
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="m-0 shrink-0 rounded-none px-5 py-3">
                 <Button variant="outline" size="sm" onClick={() => setTextPlannerOpen(false)}>
                   <X className="mr-1.5 h-3.5 w-3.5" />
                   Cancel

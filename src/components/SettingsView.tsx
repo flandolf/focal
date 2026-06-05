@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
-import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput, Database, Palette } from "lucide-react"
+import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput, Database, Palette, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { getApiKey, setApiKey, getModel, setModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude } from "@/lib/settings"
 import type { ThemeId } from "@/lib/themes"
 import type { ReasoningEffort } from "@/lib/settings"
+import type { Subject } from "@/lib/types"
 
 interface OpenRouterModel {
   id: string
@@ -67,6 +68,10 @@ interface SettingsViewProps {
   resolvedDark: boolean
   setTheme: (theme: ThemeId) => void
   setMode: (mode: "light" | "dark" | "system") => void
+  subjects: Subject[]
+  hiddenSubjectIds: string[]
+  onToggleSubjectVisibility: (subjectId: string) => void
+  onShowAllSubjects: () => void
   onOpenExport?: () => void
   onOpenSubjects?: () => void
 }
@@ -275,7 +280,20 @@ function ModelRow({
   )
 }
 
-export function SettingsView({ onBack, theme, mode, resolvedDark: _resolvedDark, setTheme, setMode, onOpenExport, onOpenSubjects }: SettingsViewProps) {
+export function SettingsView({
+  onBack,
+  theme,
+  mode,
+  resolvedDark: _resolvedDark,
+  setTheme,
+  setMode,
+  subjects,
+  hiddenSubjectIds,
+  onToggleSubjectVisibility,
+  onShowAllSubjects,
+  onOpenExport,
+  onOpenSubjects,
+}: SettingsViewProps) {
   const [key, setKey] = useState(() => getApiKey() ?? "")
   const [model, setModelState] = useState(() => getModel())
   const [models, setModels] = useState<OpenRouterModel[]>([])
@@ -293,6 +311,7 @@ export function SettingsView({ onBack, theme, mode, resolvedDark: _resolvedDark,
   const [credits, setCredits] = useState<OpenRouterCredits | null>(null)
   const [creditsLoading, setCreditsLoading] = useState(false)
   const [creditsError, setCreditsError] = useState<string | null>(null)
+  const hiddenSubjectCount = subjects.filter((subject) => hiddenSubjectIds.includes(subject.id)).length
   // Centralised perf cache (Map modelId -> PerfData) stored in state so updates re-render ModelRow children
   const [perfCache, setPerfCache] = useState<Map<string, PerfData>>(() => new Map())
 
@@ -551,6 +570,59 @@ export function SettingsView({ onBack, theme, mode, resolvedDark: _resolvedDark,
               >
                 System
               </button>
+            </div>
+          </div>
+
+          <div className="rounded-[1.25rem] border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <label className="text-sm font-medium">Visible Subjects</label>
+                <p className="mt-1 text-caption text-muted-foreground/70">
+                  Hide subjects you are not taking from assessment, event, and study-session pickers.
+                </p>
+              </div>
+              {hiddenSubjectCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onShowAllSubjects}
+                  className="h-7 shrink-0 px-2 text-xs"
+                >
+                  Show all
+                </Button>
+              )}
+            </div>
+            <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+              {subjects.map((subject) => {
+                const hidden = hiddenSubjectIds.includes(subject.id)
+                return (
+                  <label
+                    key={subject.id}
+                    className={cn(
+                      "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors",
+                      hidden
+                        ? "border-border/60 bg-background/20 text-muted-foreground"
+                        : "border-border/70 bg-background/35 text-foreground"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hidden}
+                      onChange={() => onToggleSubjectVisibility(subject.id)}
+                      className="h-4 w-4 shrink-0"
+                    />
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: subject.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {subject.icon} {subject.name}
+                    </span>
+                    {hidden && <EyeOff className="h-3.5 w-3.5 shrink-0" />}
+                  </label>
+                )
+              })}
             </div>
           </div>
 

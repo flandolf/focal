@@ -382,15 +382,17 @@ export function FileStudyPlannerButton({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Plan Events from Files</DialogTitle>
-            <DialogDescription>
-              Generate calendar drafts from {scopedLabel}. Review them before adding anything.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="flex h-[min(86dvh,44rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-3xl">
+          <div className="border-b px-5 pb-4 pt-5">
+            <DialogHeader>
+              <DialogTitle>Plan Events from Files</DialogTitle>
+              <DialogDescription>
+                Generate calendar drafts from {scopedLabel}. Review them before adding anything.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
             {apiKeyMissing && (
               <p className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -511,7 +513,7 @@ export function FileStudyPlannerButton({
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="m-0 shrink-0 rounded-none px-5 py-3">
             <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
               <X className="mr-1.5 h-3.5 w-3.5" />
               Cancel
