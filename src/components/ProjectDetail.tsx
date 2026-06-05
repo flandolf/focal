@@ -5,6 +5,7 @@ import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +41,30 @@ const PROJECT_ICONS: Record<string, LucideIcon> = {
 }
 
 const FILE_TABLE_GRID = "grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_2rem] min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem_2rem]"
+const SEGMENTED_BUTTON_CLASS = "rounded-md px-2.5 py-1 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+const SEGMENTED_ACTIVE_CLASS = "bg-background text-foreground font-medium shadow-sm"
+const SEGMENTED_IDLE_CLASS = "text-muted-foreground hover:bg-background/40 hover:text-foreground"
+const POPOVER_ITEM_BUTTON_CLASS = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35"
+
+function getSegmentedButtonClassName(selected: boolean, className?: string) {
+  return cn(
+    SEGMENTED_BUTTON_CLASS,
+    selected ? SEGMENTED_ACTIVE_CLASS : SEGMENTED_IDLE_CLASS,
+    className,
+  )
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function notifyProjectActionError(message: string, error: unknown) {
+  toast.error(`${message}: ${getErrorMessage(error)}`)
+}
+
+function joinHomePath(home: string, ...segments: string[]) {
+  return [home.replace(/\/+$/, ""), ...segments].join("/")
+}
 
 function getProjectIcon(subjectId?: string): LucideIcon {
   if (subjectId && PROJECT_ICONS[subjectId]) return PROJECT_ICONS[subjectId]
@@ -116,7 +141,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                     onFilesChanged()
                   })
                   .catch((e) => {
-                    console.error("Failed to move dropped files:", e)
+                    notifyProjectActionError("Could not move dropped files", e)
                   })
               }
               break
@@ -126,7 +151,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           }
         })
       } catch (e) {
-        console.error("Failed to setup drag-drop listener:", e)
+        notifyProjectActionError("Drag and drop is unavailable", e)
       }
     }
 
@@ -152,7 +177,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       setNewFolderName("")
       setIsAddingFolder(false)
     } catch (e) {
-      console.error("Failed to add custom folder:", e)
+      notifyProjectActionError("Could not add custom folder", e)
     }
   }
 
@@ -160,11 +185,11 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     try {
       const home = await homeDir()
       const folderPath = selectedSubfolder
-        ? `${home}/Documents/Projects/${project.folder_path}/${selectedSubfolder}`
-        : `${home}/Documents/Projects/${project.folder_path}`
+        ? joinHomePath(home, "Documents", "Projects", project.folder_path, selectedSubfolder)
+        : joinHomePath(home, "Documents", "Projects", project.folder_path)
       await openPath(folderPath)
     } catch (e) {
-      console.error("Failed to open folder:", e)
+      notifyProjectActionError("Could not open folder", e)
     }
   }
 
@@ -172,7 +197,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     try {
       await openPath(file.path)
     } catch (e) {
-      console.error("Failed to open file:", e)
+      notifyProjectActionError("Could not open file", e)
     }
   }
 
@@ -181,7 +206,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       await renameFile(file.path, newName)
       onFilesChanged()
     } catch (e) {
-      console.error("Failed to rename file:", e)
+      notifyProjectActionError("Could not rename file", e)
     }
   }
 
@@ -190,7 +215,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       await removeFileTag(file.path, tag)
       onFilesChanged()
     } catch (e) {
-      console.error("Failed to remove tag:", e)
+      notifyProjectActionError("Could not remove tag", e)
     }
   }
 
@@ -199,7 +224,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       await addFileTags([file.path], [tag])
       onFilesChanged()
     } catch (e) {
-      console.error("Failed to add tag:", e)
+      notifyProjectActionError("Could not add tag", e)
     }
   }
 
@@ -208,18 +233,16 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       await toggleFavorite(file.path)
       onFilesChanged()
     } catch (e) {
-      console.error("Failed to toggle favorite:", e)
+      notifyProjectActionError("Could not update favorite", e)
     }
   }
 
   const handleShowInFinder = async (file: FileInfo) => {
     try {
-      const home = await homeDir()
       const parentFolder = file.path.substring(0, file.path.lastIndexOf("/"))
-      const fullPath = `${home}Documents/Projects/${parentFolder}`
-      await openPath(fullPath)
+      await openPath(parentFolder)
     } catch (e) {
-      console.error("Failed to show in Finder:", e)
+      notifyProjectActionError("Could not show file in Finder", e)
     }
   }
 
@@ -227,18 +250,18 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     try {
       await navigator.clipboard.writeText(file.path)
     } catch (e) {
-      console.error("Failed to copy path:", e)
+      notifyProjectActionError("Could not copy path", e)
     }
   }
 
   const handleMoveFile = async (file: FileInfo, destSubfolder: string) => {
     try {
       const home = await homeDir()
-      const destFolder = `${home}Documents/Projects/${project.folder_path}/${destSubfolder}`
+      const destFolder = joinHomePath(home, "Documents", "Projects", project.folder_path, destSubfolder)
       await moveFileToFolder(file.path, destFolder)
       onFilesChanged()
     } catch (e) {
-      console.error("Failed to move file:", e)
+      notifyProjectActionError("Could not move file", e)
     }
   }
 
@@ -249,41 +272,49 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       setSelectedFiles(new Set())
       onFilesChanged()
     } catch (e) {
-      console.error("Failed to bulk tag:", e)
+      notifyProjectActionError("Could not tag selected files", e)
     }
   }
 
   const handleBulkMove = async (destSubfolder: string) => {
     if (selectedFiles.size === 0) return
     const home = await homeDir()
-    const destFolder = `${home}Documents/Projects/${project.folder_path}/${destSubfolder}`
+    const destFolder = joinHomePath(home, "Documents", "Projects", project.folder_path, destSubfolder)
     const paths = Array.from(selectedFiles)
     let moved = 0
+    let failed = 0
     for (const fp of paths) {
       try {
         await moveFileToFolder(fp, destFolder)
         moved++
-      } catch (e) {
-        console.error(`Failed to move ${fp}:`, e)
+      } catch {
+        failed++
       }
     }
     if (moved > 0) {
       setSelectedFiles(new Set())
       onFilesChanged()
     }
+    if (failed > 0) {
+      toast.error(`Could not move ${failed} file${failed === 1 ? "" : "s"}`)
+    }
   }
 
 
   const handleApplyAutoRenames = useCallback(
     async (renames: { filePath: string; newName: string }[]) => {
+      let failed = 0
       for (const { filePath, newName } of renames) {
         try {
           await renameFile(filePath, newName)
-        } catch (e) {
-          console.error(`Failed to rename ${filePath}:`, e)
+        } catch {
+          failed++
         }
       }
       onFilesChanged()
+      if (failed > 0) {
+        toast.error(`Could not rename ${failed} file${failed === 1 ? "" : "s"}`)
+      }
     },
     [renameFile, onFilesChanged],
   )
@@ -332,7 +363,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       setSelectedFiles(new Set())
       onFilesChanged()
     } catch (e) {
-      console.error("Batch delete failed:", e)
+      notifyProjectActionError("Could not delete selected files", e)
     }
   }
   const subject = getSubjectById(project.subjectId)
@@ -351,7 +382,6 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         </div>
       )}
 
-      {/* ── IDENTITY ZONE ── */}
       <div className="border-b border-border/70">
         <div className="px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -443,30 +473,23 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           </div>
         </div>
 
-        {/* ── TOOLBAR ZONE ── */}
         <div className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
               <button
+                type="button"
                 onClick={() => setViewMode("files")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-                  viewMode === "files"
-                    ? "bg-background text-foreground font-medium shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
+                aria-pressed={viewMode === "files"}
+                className={getSegmentedButtonClassName(viewMode === "files", "flex items-center gap-1.5")}
               >
                 <Folder className="h-3.5 w-3.5" />
                 Files
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode("sessions")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-                  viewMode === "sessions"
-                    ? "bg-background text-foreground font-medium shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
+                aria-pressed={viewMode === "sessions"}
+                className={getSegmentedButtonClassName(viewMode === "sessions", "flex items-center gap-1.5")}
               >
                 <Clock className="h-3.5 w-3.5" />
                 Sessions
@@ -479,26 +502,20 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             {viewMode === "files" && (
               <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
                 <button
+                  type="button"
                   onClick={() => setSelectedSubfolder(null)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs transition-colors",
-                    selectedSubfolder === null
-                      ? "bg-background text-foreground font-medium shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
+                  aria-pressed={selectedSubfolder === null}
+                  className={getSegmentedButtonClassName(selectedSubfolder === null)}
                 >
                   All
                 </button>
                 {allSubfolders.map((folder) => (
                   <button
+                    type="button"
                     key={folder}
                     onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs transition-colors",
-                      selectedSubfolder === folder
-                        ? "bg-background text-foreground font-medium shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
+                    aria-pressed={selectedSubfolder === folder}
+                    className={getSegmentedButtonClassName(selectedSubfolder === folder)}
                   >
                     {folder}
                   </button>
@@ -522,25 +539,31 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                           autoFocus
                         />
                         <button
+                          type="button"
                           onClick={() => void handleAddCustomFolder()}
-                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-background/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+                          aria-label="Add custom folder"
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => {
                             setIsAddingFolder(false)
                             setNewFolderName("")
                           }}
-                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-background/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+                          aria-label="Cancel custom folder"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => setIsAddingFolder(true)}
-                        className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        className={getSegmentedButtonClassName(false, "px-2")}
+                        aria-label="Add custom folder"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>
@@ -554,25 +577,24 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             {viewMode === "files" && files.length > 0 && (
               <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
                 <button
+                  type="button"
                   onClick={() => setSortAsc(!sortAsc)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className={getSegmentedButtonClassName(false, "flex items-center gap-1 px-2")}
                   title={`Sort ${sortAsc ? "descending" : "ascending"}`}
+                  aria-label={`Sort ${sortAsc ? "descending" : "ascending"}`}
                 >
                   {sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
                 </button>
                 {(["name", "modified", "size", "extension"] as SortKey[]).map((key) => (
                   <button
+                    type="button"
                     key={key}
                     onClick={() => {
                       if (sortKey === key) setSortAsc(!sortAsc)
                       else setSortKey(key)
                     }}
-                    className={cn(
-                      "rounded-md px-2 py-1 text-xs transition-colors",
-                      sortKey === key
-                        ? "bg-background text-foreground font-medium shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
+                    aria-pressed={sortKey === key}
+                    className={getSegmentedButtonClassName(sortKey === key, "px-2")}
                   >
                     {{ name: "Name", modified: "Date", size: "Size", extension: "Type" }[key]}
                   </button>
@@ -608,17 +630,17 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               <div className="mx-0.5 h-4 w-px bg-border/40" />
               {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
                 <button
+                  type="button"
                   key={tag}
                   onClick={() => setSelectedTags(
                     selectedTags.includes(tag)
                       ? selectedTags.filter(t => t !== tag)
                       : [...selectedTags, tag]
                   )}
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-caption transition-colors",
-                    selectedTags.includes(tag)
-                      ? "bg-primary text-primary-foreground font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  aria-pressed={selectedTags.includes(tag)}
+                  className={getSegmentedButtonClassName(
+                    selectedTags.includes(tag),
+                    "px-2 py-0.5 text-caption capitalize",
                   )}
                 >
                   {tag}
@@ -626,8 +648,9 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
               ))}
               {selectedTags.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => setSelectedTags([])}
-                  className="text-caption text-muted-foreground hover:text-foreground px-1.5 py-0.5"
+                  className="rounded-md px-1.5 py-0.5 text-caption text-muted-foreground transition-colors outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
                 >
                   Clear
                 </button>
@@ -668,7 +691,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           <>
             {/* Column headers */}
             <div className={cn(
-              "grid items-center gap-3 border-b border-border/50 bg-muted/25 px-5 py-2.5 text-xs uppercase tracking-wider text-muted-foreground/70 min-[1200px]:px-8",
+              "grid items-center gap-3 border-b border-border/50 bg-muted/25 px-5 py-2.5 text-xs uppercase text-muted-foreground/70 min-[1200px]:px-8",
               FILE_TABLE_GRID,
             )}>
               <span aria-hidden="true" />
@@ -711,9 +734,10 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                   <PopoverContent align="start" className="w-36 gap-1 p-1">
                     {(["sac", "notes", "past-paper", "exam", "resource", "other"] as FileTag[]).map((tag) => (
                       <button
+                        type="button"
                         key={tag}
                         onClick={() => { void handleBulkTag(tag); setShowBulkTagMenu(false) }}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs capitalize transition-colors hover:bg-accent"
+                        className={cn(POPOVER_ITEM_BUTTON_CLASS, "capitalize")}
                       >
                         {tag}
                       </button>
@@ -742,9 +766,10 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                   <PopoverContent align="start" className="w-40 gap-1 p-1">
                     {allSubfolders.map((folder) => (
                       <button
+                        type="button"
                         key={folder}
                         onClick={() => { void handleBulkMove(folder); setShowBulkMoveMenu(false) }}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent"
+                        className={POPOVER_ITEM_BUTTON_CLASS}
                       >
                         {folder}
                       </button>
@@ -850,9 +875,10 @@ function SessionsView({
 
           return (
             <button
+              type="button"
               key={session.id}
               onClick={() => onSelectSession?.(session)}
-              className="w-full text-left rounded-lg border border-border/60 bg-background/20 p-3 transition-colors hover:border-border hover:bg-accent/25"
+              className="w-full rounded-lg border border-border/60 bg-background/20 p-3 text-left transition-colors outline-none hover:border-border hover:bg-accent/25 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
