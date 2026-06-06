@@ -1,5 +1,5 @@
 import { appDataDir } from "@tauri-apps/api/path"
-import { readTextFile, writeTextFile, exists } from "@tauri-apps/plugin-fs"
+import { readTextFile, writeTextFile, exists, mkdir } from "@tauri-apps/plugin-fs"
 import type { FileTag } from "@/lib/types"
 
 export interface FileMeta {
@@ -12,9 +12,13 @@ type MetadataMap = Record<string, FileMeta>
 let _cache: MetadataMap | null = null
 let _cacheKey = ""
 
+function getAppDataFilePath(baseDir: string, fileName: string) {
+  return `${baseDir.replace(/\/+$/, "")}/${fileName}`
+}
+
 async function getMetadataPath(): Promise<string> {
   const base = await appDataDir()
-  return `${base}focal_file_metadata.json`
+  return getAppDataFilePath(base, "focal_file_metadata.json")
 }
 
 export async function loadFileMetadata(): Promise<MetadataMap> {
@@ -36,7 +40,11 @@ export async function loadFileMetadata(): Promise<MetadataMap> {
 }
 
 async function saveFileMetadata(meta: MetadataMap): Promise<void> {
-  const path = await getMetadataPath()
+  const base = await appDataDir()
+  if (!(await exists(base))) {
+    await mkdir(base, { recursive: true })
+  }
+  const path = getAppDataFilePath(base, "focal_file_metadata.json")
   await writeTextFile(path, JSON.stringify(meta, null, 2))
   _cache = meta
 }
