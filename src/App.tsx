@@ -860,6 +860,7 @@ function App() {
           >
             <Sidebar
               projects={projects}
+              sessions={sessions}
               customSubjects={customSubjects}
               availableSubjects={availableSubjects}
               selectedId={selectedId}

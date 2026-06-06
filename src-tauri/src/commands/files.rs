@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_CONTENT_PREVIEW_CHARS: usize = 1200;
 const MAX_CONTENT_PREVIEW_CHARS: usize = 4000;
@@ -130,15 +130,31 @@ pub fn move_files_to_project(
 }
 
 #[tauri::command]
-pub fn get_project_files(project_name: String) -> Result<Vec<FileInfo>, String> {
+pub fn get_project_files(
+    project_name: String,
+    recursive: Option<bool>,
+) -> Result<Vec<FileInfo>, String> {
     let projects_dir = get_documents_dir()?;
     let project_dir = projects_dir.join(&project_name);
 
+    get_project_files_for_path(&project_dir, recursive.unwrap_or(false))
+}
+
+fn get_project_files_for_path(
+    project_dir: &Path,
+    recursive: bool,
+) -> Result<Vec<FileInfo>, String> {
     if !project_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut files = Vec::new();
+
+    if recursive {
+        collect_project_files_recursive(project_dir, project_dir, &mut files)?;
+        return Ok(files);
+    }
+
     let mut dir_entries: Vec<_> = std::fs::read_dir(&project_dir)
         .map_err(|e| format!("Failed to read directory: {}", e))?
         .filter_map(|e| e.ok())
@@ -148,40 +164,84 @@ pub fn get_project_files(project_name: String) -> Result<Vec<FileInfo>, String> 
     dir_entries.sort_by_key(|e| e.file_name());
 
     for entry in dir_entries {
-        let metadata = entry
-            .metadata()
-            .map_err(|e| format!("Failed to read metadata: {}", e))?;
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        let extension = path
-            .extension()
-            .map(|e| e.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        files.push(FileInfo {
-            name,
-            path: path.to_string_lossy().to_string(),
-            size: metadata.len(),
-            modified,
-            extension,
-            tags: None,
-            subfolder: None,
-            is_favorite: None,
-        });
+        files.push(file_info_from_path(&path, name, None)?);
     }
 
     Ok(files)
 }
 
+fn collect_project_files_recursive(
+    dir: &Path,
+    root_dir: &Path,
+    files: &mut Vec<FileInfo>,
+) -> Result<(), String> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read directory: {}", e))?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    entries.sort_by_key(|e| e.path());
+
+    for entry in entries {
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("Failed to read file type: {}", e))?;
+        let path = entry.path();
+
+        if file_type.is_dir() {
+            collect_project_files_recursive(&path, root_dir, files)?;
+        } else if file_type.is_file() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let subfolder = path
+                .parent()
+                .and_then(|parent| parent.strip_prefix(root_dir).ok())
+                .filter(|relative| !relative.as_os_str().is_empty())
+                .map(|relative| relative.to_string_lossy().to_string());
+
+            files.push(file_info_from_path(&path, name, subfolder)?);
+        }
+    }
+
+    Ok(())
+}
+
+fn file_info_from_path(
+    path: &Path,
+    name: String,
+    subfolder: Option<String>,
+) -> Result<FileInfo, String> {
+    let metadata =
+        std::fs::metadata(path).map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let extension = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    Ok(FileInfo {
+        name,
+        path: path.to_string_lossy().to_string(),
+        size: metadata.len(),
+        modified,
+        extension,
+        tags: None,
+        subfolder,
+        is_favorite: None,
+    })
+}
+
 #[tauri::command]
 pub fn get_project_file_count(project_name: String) -> Result<usize, String> {
-    let files = get_project_files(project_name)?;
+    let projects_dir = get_documents_dir()?;
+    let project_dir = projects_dir.join(&project_name);
+    let files = get_project_files_for_path(&project_dir, true)?;
     Ok(files.len())
 }
 

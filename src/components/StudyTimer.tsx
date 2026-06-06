@@ -1,5 +1,23 @@
-import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from "react"
-import { Play, Pause, RotateCcw, Timer, ChevronUp, ChevronDown, CheckCircle2, Plus, SkipForward } from "lucide-react"
+import { useState, useEffect, useRef, useCallback, useReducer, useMemo, type ReactNode } from "react"
+import { createPortal } from "react-dom"
+import {
+  BarChart3,
+  BookOpen,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Coffee,
+  Gauge,
+  Maximize2,
+  Minimize2,
+  Pause,
+  Play,
+  Plus,
+  RotateCcw,
+  SkipForward,
+  Target,
+  Timer,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
@@ -173,6 +191,7 @@ interface StudyTimerProps {
   onExpand?: () => void
   customSubjects?: Subject[]
   availableSubjects?: Subject[]
+  sessions?: StudySession[]
   selectedProject?: Project
   onStartSession: (data: {
     subjectIds: string[]
@@ -185,16 +204,87 @@ interface StudyTimerProps {
   ) => Promise<void>
 }
 
+interface FocusStatProps {
+  label: string
+  value: string
+  icon: ReactNode
+  detail?: string
+}
+
+interface FocusMetricProps {
+  label: string
+  value: string
+  detail?: string
+}
+
+function formatMinutes(totalMinutes: number) {
+  const safeMinutes = Math.max(0, Math.round(totalMinutes))
+  const hours = Math.floor(safeMinutes / 60)
+  const minutes = safeMinutes % 60
+
+  if (hours === 0) return `${minutes}m`
+  if (minutes === 0) return `${hours}h`
+  return `${hours}h ${minutes}m`
+}
+
+function getSessionMinutes(session: StudySession, now?: Date) {
+  const startMs = new Date(session.startTime).getTime()
+  const plannedEndMs = new Date(session.endTime).getTime()
+  const endMs = session.status === "in-progress" && now
+    ? Math.min(plannedEndMs, now.getTime())
+    : plannedEndMs
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 0
+  return Math.round((endMs - startMs) / 60000)
+}
+
+function getTodayRange(now: Date) {
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 1)
+  return { startMs: start.getTime(), endMs: end.getTime() }
+}
+
+function FocusStat({ label, value, icon, detail }: FocusStatProps) {
+  return (
+    <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 px-1 py-3">
+      <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border/60 bg-muted/35 text-muted-foreground" aria-hidden="true">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</p>
+          <p className="shrink-0 text-xl font-semibold tabular-nums text-foreground">{value}</p>
+        </div>
+        {detail && <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>}
+      </div>
+    </div>
+  )
+}
+
+function FocusMetric({ label, value, detail }: FocusMetricProps) {
+  return (
+    <div className="min-w-0 rounded-md border border-border/60 bg-background/45 px-3 py-2">
+      <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-lg font-semibold tabular-nums text-foreground">{value}</p>
+      {detail && <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>}
+    </div>
+  )
+}
+
 export function StudyTimer({
   isCollapsed = false,
   onExpand,
   customSubjects = [],
   availableSubjects,
+  sessions = [],
   selectedProject,
   onStartSession,
   onUpdateSession,
 }: StudyTimerProps) {
   const [expanded, setExpanded] = useState(true)
+  const [focusViewOpen, setFocusViewOpen] = useState(false)
+  const [analyticsNow, setAnalyticsNow] = useState(() => new Date())
   const [settings, setSettings] = useState<TimerSettings>(getInitialSettings)
   const [state, dispatch] = useReducer(timerReducer, settings, getInitialState)
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(
@@ -219,7 +309,22 @@ export function StudyTimer({
   const prevModeRef = useRef<TimerMode | null>(null)
   const isInitialMountRef = useRef(true)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const focusCloseButtonRef = useRef<HTMLButtonElement | null>(null)
   const selectedProjectSubjectId = selectedProject?.subjectId
+
+  const setFocusViewWithTransition = useCallback((nextOpen: boolean) => {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+    if (document.startViewTransition && !reduceMotion) {
+      document.startViewTransition(() => setFocusViewOpen(nextOpen))
+      return
+    }
+
+    setFocusViewOpen(nextOpen)
+  }, [])
+
+  const openFocusView = useCallback(() => setFocusViewWithTransition(true), [setFocusViewWithTransition])
+  const closeFocusView = useCallback(() => setFocusViewWithTransition(false), [setFocusViewWithTransition])
 
   const subjects = useMemo(() => {
     const baseSubjects = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects]
@@ -233,6 +338,29 @@ export function StudyTimer({
   useEffect(() => { stateRef.current = state }, [state])
   useEffect(() => { settingsRef.current = settings }, [settings])
   useEffect(() => { activeSessionIdRef.current = activeSessionId }, [activeSessionId])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setAnalyticsNow(new Date()), 60000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (!focusViewOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    window.setTimeout(() => focusCloseButtonRef.current?.focus(), 0)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeFocusView()
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [closeFocusView, focusViewOpen])
 
   useEffect(() => {
     if (!selectedProject?.subjectId || activeSessionIdRef.current) return
@@ -330,6 +458,404 @@ export function StudyTimer({
     ? selectedProject.id
     : undefined
   const canStartFocus = selectedSubjectIds.length > 0 && !saving
+  const elapsedSeconds = Math.max(0, totalSeconds - secondsLeft)
+  const nextModeLabel = mode === "work"
+    ? (cycles + 1) % 4 === 0 ? "Long break next" : "Break next"
+    : "Focus next"
+  const sessionStateLabel = activeSessionId
+    ? "Calendar logging is active"
+    : mode === "work"
+      ? "Start focus to create a study session"
+      : "Rest period is not logged"
+  const todayAnalytics = useMemo(() => {
+    const { startMs, endMs } = getTodayRange(analyticsNow)
+    const todaySessions = sessions.filter((session) => {
+      const startMsValue = new Date(session.startTime).getTime()
+      return Number.isFinite(startMsValue) && startMsValue >= startMs && startMsValue < endMs
+    })
+    const totalMinutes = todaySessions.reduce((sum, session) => sum + getSessionMinutes(session, analyticsNow), 0)
+    const completedBlocks = todaySessions.filter((session) => session.status === "completed").length
+    const activeBlocks = todaySessions.filter((session) => session.status === "in-progress").length
+    const subjectMinutes = new Map<string, number>()
+
+    todaySessions.forEach((session) => {
+      const minutes = getSessionMinutes(session, analyticsNow)
+      if (session.subjectIds.length === 0) return
+      const minutesPerSubject = minutes / session.subjectIds.length
+      session.subjectIds.forEach((subjectId) => {
+        subjectMinutes.set(subjectId, (subjectMinutes.get(subjectId) ?? 0) + minutesPerSubject)
+      })
+    })
+
+    const topSubject = Array.from(subjectMinutes.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([subjectId, minutes]) => {
+        const subject = subjects.find((item) => item.id === subjectId)
+        return { subject, minutes }
+      })[0]
+
+    return {
+      totalMinutes,
+      completedBlocks,
+      activeBlocks,
+      topSubject,
+    }
+  }, [analyticsNow, sessions, subjects])
+  const projectedFocusMinutes = mode === "work"
+    ? Math.ceil(secondsLeft / 60)
+    : settings.workMinutes
+  const currentBlockDetail = mode === "work"
+    ? `${formatMinutes(projectedFocusMinutes)} focus remaining`
+    : `${formatMinutes(Math.ceil(secondsLeft / 60))} rest remaining`
+  const progressPercent = Math.round(progress * 100)
+  const timerActionLabel = selectedSubjectIds.length === 0
+    ? "Pick a subject"
+    : secondsLeft === totalSeconds ? "Start Focus" : "Resume"
+  const workbenchTitle = activeSubjects.length > 0
+    ? activeSubjects.map((subject) => subject.shortCode).join(" + ")
+    : "Focus timer"
+  const sessionScopeLabel = selectedProject
+    ? selectedProject.name
+    : activeSubjects.length > 0 ? activeSubjects.map((subject) => subject.name).join(", ") : "No subject selected"
+  const focusTicks = Array.from({ length: 24 }, (_, index) => index)
+  const renderFocusView = () => focusViewOpen ? (
+    <div
+      className="fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background text-foreground"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Full screen study timer"
+    >
+      <div className="pointer-events-none absolute inset-0 hairline-grid opacity-30" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-linear-to-b from-primary/8 to-transparent" />
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-4 pb-4 pt-[calc(var(--app-titlebar-inset)+var(--space-sm))] sm:px-6 sm:pb-6 min-[1200px]:px-8">
+        <header className="grid shrink-0 gap-4 border-b border-border/60 pb-4 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-end">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cn(
+                "inline-flex h-6 items-center rounded-md border px-2 text-micro font-semibold uppercase tracking-normal",
+                mode === "work"
+                  ? "border-primary/25 bg-primary/10 text-primary"
+                  : "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+              )}>
+                {modeLabel}
+              </span>
+              <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-background/55 px-2 text-micro font-semibold uppercase tracking-normal text-muted-foreground">
+                Cycle {cycles + 1}
+              </span>
+              <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-background/55 px-2 text-micro font-semibold uppercase tracking-normal text-muted-foreground">
+                {nextModeLabel}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate font-heading text-2xl font-semibold tracking-normal text-foreground min-[1200px]:text-3xl">
+                {workbenchTitle}
+              </h2>
+              <p className="mt-1 truncate text-sm text-muted-foreground">{sessionScopeLabel}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 min-[760px]:justify-end">
+            <Button
+              onClick={handleReset}
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 rounded-md bg-background/60"
+              aria-label="Reset timer"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button
+              ref={focusCloseButtonRef}
+              onClick={closeFocusView}
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 rounded-md bg-background/60"
+              aria-label="Close full screen timer"
+            >
+              <Minimize2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </header>
+
+        <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto py-5 min-[1080px]:grid-cols-[minmax(0,1fr)_22rem] min-[1400px]:grid-cols-[minmax(0,1fr)_24rem]">
+          <main className="relative flex min-h-[34rem] flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 shadow-xs min-[1200px]:min-h-[38rem]">
+            <div className="grid shrink-0 grid-cols-3 border-b border-border/55 bg-background/35">
+              <FocusMetric label="Elapsed" value={formatMinutes(Math.ceil(elapsedSeconds / 60))} detail={`${progressPercent}% complete`} />
+              <FocusMetric label="Remaining" value={formatMinutes(Math.ceil(secondsLeft / 60))} detail={currentBlockDetail} />
+              <FocusMetric label="Logged" value={activeSessionId ? "Active" : "Ready"} detail={activeSessionId ? "Calendar session" : "Awaiting start"} />
+            </div>
+
+            <div className="relative flex min-h-0 flex-1 flex-col px-5 py-6 sm:px-8 min-[1200px]:px-10">
+              <div className="pointer-events-none absolute inset-x-8 top-8 h-px bg-border/55" />
+              <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col items-center justify-center text-center">
+                <div
+                  className={cn(
+                    "relative aspect-square w-full max-w-[min(58vh,34rem)]",
+                    running && "motion-safe:animate-[pulse_4s_ease-in-out_infinite]"
+                  )}
+                >
+                  <svg className="h-full w-full -rotate-90 drop-shadow-sm" viewBox="0 0 260 260" aria-hidden="true">
+                    <circle
+                      cx="130"
+                      cy="130"
+                      r="112"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                      strokeDasharray="2 10"
+                      className="text-muted-foreground/18"
+                    />
+                    <circle
+                      cx="130"
+                      cy="130"
+                      r="96"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                      className="text-border/70"
+                    />
+                    <circle
+                      cx="130"
+                      cy="130"
+                      r="112"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="10"
+                      className="text-muted-foreground/10"
+                    />
+                  <circle
+                    cx="130"
+                    cy="130"
+                    r="112"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="10"
+                    strokeDasharray={`${2 * Math.PI * 112}`}
+                    strokeDashoffset={`${2 * Math.PI * 112 * (1 - progress)}`}
+                    strokeLinecap="round"
+                    className={cn(
+                      "transition-[stroke-dashoffset] duration-1000 ease-out motion-reduce:transition-none",
+                      mode === "work" ? "text-primary" : "text-emerald-500"
+                    )}
+                  />
+                </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center px-8">
+                    <span className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">
+                      {running ? "Timer running" : activeSessionId ? "Timer paused" : "Ready to start"}
+                    </span>
+                    <span className="mt-3 text-[clamp(4.75rem,11vw,9.5rem)] font-semibold leading-none tabular-nums tracking-normal text-foreground">
+                      {timeDisplay}
+                    </span>
+                    <span className={cn("mt-5 text-sm font-semibold", modeColor)}>
+                      {nextModeLabel} · {progressPercent}% complete
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-8 w-full max-w-3xl">
+                  <div className="grid grid-cols-6 gap-1" aria-hidden="true">
+                    {focusTicks.map((tick) => {
+                      const isFilled = tick / (focusTicks.length - 1) <= progress
+                      return (
+                        <span
+                          key={tick}
+                          className={cn(
+                            "h-1.5 rounded-full transition-colors duration-700 motion-reduce:transition-none",
+                            isFilled
+                              ? mode === "work" ? "bg-primary" : "bg-emerald-500"
+                              : "bg-muted"
+                          )}
+                        />
+                      )
+                    })}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-micro font-semibold uppercase tracking-normal text-muted-foreground">
+                    <span>0m</span>
+                    <span>{formatMinutes(Math.ceil(totalSeconds / 60))}</span>
+                  </div>
+                </div>
+
+                <div className="mt-7 flex w-full max-w-3xl flex-col gap-2 sm:flex-row">
+                  <Button
+                    onClick={handleToggle}
+                    disabled={mode === "work" && !canStartFocus && !running}
+                    size="lg"
+                    variant={running ? "outline" : "default"}
+                    className="h-12 flex-1 gap-2 rounded-md text-sm"
+                  >
+                    {running ? (
+                      <>
+                        <Pause className="h-4 w-4" /> Pause
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4" /> {timerActionLabel}
+                      </>
+                    )}
+                  </Button>
+                  {activeSessionId && (
+                    <Button
+                      onClick={handleFinish}
+                      disabled={saving}
+                      size="lg"
+                      variant="outline"
+                      className="h-12 flex-1 gap-2 rounded-md text-sm"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Finish & save
+                    </Button>
+                  )}
+                </div>
+
+                {mode !== "work" && (
+                  <div className="mt-3 grid w-full max-w-3xl grid-cols-2 gap-2">
+                    <Button
+                      onClick={handleSkipBreak}
+                      size="sm"
+                      variant="ghost"
+                      className="h-10 gap-2 rounded-md text-sm"
+                    >
+                      <SkipForward className="h-4 w-4" />
+                      Skip
+                    </Button>
+                    <Button
+                      onClick={handleMoreBreakTime}
+                      size="sm"
+                      variant="outline"
+                      className="h-10 gap-2 rounded-md text-sm"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {EXTRA_BREAK_MINUTES} min
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </main>
+
+          <aside className="flex min-h-0 flex-col gap-4">
+            <section className="rounded-lg border border-border/60 bg-card/45 px-4 py-2 shadow-xs">
+              <div className="flex items-center justify-between gap-3 border-b border-border/55 py-3">
+                <div>
+                  <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Focus Record</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">Today&apos;s timer context</p>
+                </div>
+                <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              </div>
+              <FocusStat
+                label="Today"
+                value={formatMinutes(todayAnalytics.totalMinutes)}
+                detail={`${todayAnalytics.completedBlocks} completed block${todayAnalytics.completedBlocks === 1 ? "" : "s"}${todayAnalytics.activeBlocks > 0 ? " · active now" : ""}`}
+                icon={<BarChart3 className="h-4 w-4" />}
+              />
+              <FocusStat
+                label="Current Block"
+                value={formatMinutes(Math.ceil(elapsedSeconds / 60))}
+                detail={currentBlockDetail}
+                icon={<Timer className="h-4 w-4" />}
+              />
+              <FocusStat
+                label="Momentum"
+                value={`${cycles}`}
+                detail={`Completed focus cycle${cycles === 1 ? "" : "s"} in this Pomodoro run`}
+                icon={<Target className="h-4 w-4" />}
+              />
+              <FocusStat
+                label="Top Subject"
+                value={todayAnalytics.topSubject?.subject?.shortCode ?? "None"}
+                detail={todayAnalytics.topSubject ? `${formatMinutes(todayAnalytics.topSubject.minutes)} logged today` : "Start a block to build today's focus record"}
+                icon={<BookOpen className="h-4 w-4" />}
+              />
+            </section>
+
+            <section className="rounded-lg border border-border/60 bg-card/45 p-4 shadow-xs">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Session</p>
+                  <p className="mt-1 truncate text-sm font-medium text-foreground">{sessionStateLabel}</p>
+                </div>
+                <Coffee className={cn("h-5 w-5 shrink-0", mode === "work" ? "text-muted-foreground" : "text-emerald-500")} />
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Subjects</p>
+                    <span className="text-micro font-medium text-muted-foreground">{activeSubjects.length} selected</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {subjects.map((subject) => {
+                      const selected = selectedSubjectIds.includes(subject.id)
+                      return (
+                        <button
+                          key={subject.id}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => handleSubjectClick(subject.id)}
+                          className={cn(
+                            "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors",
+                            selected
+                              ? "border-transparent bg-primary/10 text-primary"
+                              : "border-border/70 bg-background/40 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                          )}
+                          style={selected ? {
+                            backgroundColor: `${subject.color}18`,
+                            borderColor: `${subject.color}40`,
+                            color: subject.color,
+                          } : undefined}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: subject.color }} />
+                          {subject.shortCode}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    ["workMinutes", "Focus"],
+                    ["breakMinutes", "Break"],
+                    ["longBreakMinutes", "Long"],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="space-y-1">
+                      <span className="block text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</span>
+                      <Input
+                        type="number"
+                        min={MIN_DURATION_MINUTES}
+                        max={MAX_DURATION_MINUTES}
+                        step={1}
+                        value={settings[key]}
+                        onChange={(event) => updateDuration(key, event.target.value)}
+                        className="h-9 rounded-md px-2 text-center text-sm tabular-nums"
+                        aria-label={`${label} minutes`}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Block Signal</p>
+                  </div>
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    {activeSessionId ? "Session is writing to the calendar" : mode === "work" ? "Starting focus will create a calendar block" : "Breaks stay off the calendar"}
+                  </p>
+                </div>
+
+                {selectedProject && (
+                  <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+                    <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Assessment Link</p>
+                    <p className="mt-1 truncate text-sm font-medium text-foreground">{selectedProject.name}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+  ) : null
 
   const updateDuration = (key: keyof TimerSettings, value: string) => {
     const nextValue = clampMinutes(Number(value))
@@ -427,62 +953,81 @@ export function StudyTimer({
     dispatch({ type: "ADD_BREAK_TIME", minutes: EXTRA_BREAK_MINUTES })
   }
 
+  const focusPortal = focusViewOpen ? createPortal(renderFocusView(), document.body) : null
+
   if (isCollapsed) {
     return (
-      <div className="flex justify-center py-2">
-        <button
-          onClick={onExpand}
-          className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-sidebar-accent/60",
-            running ? modeColor : "text-muted-foreground hover:text-foreground"
-          )}
-          title={running ? `${timeDisplay} - ${modeLabel} - ${activeSubjectLabel}` : "Pomodoro"}
-        >
-          <Timer className="h-4 w-4" />
-        </button>
-      </div>
+      <>
+        {focusPortal}
+        <div className="flex justify-center py-2">
+          <button
+            onClick={onExpand}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-sidebar-accent/60",
+              running ? modeColor : "text-muted-foreground hover:text-foreground"
+            )}
+            title={running ? `${timeDisplay} - ${modeLabel} - ${activeSubjectLabel}` : "Pomodoro"}
+          >
+            <Timer className="h-4 w-4" />
+          </button>
+        </div>
+      </>
     )
   }
 
   if (!expanded) {
     return (
-      <div className="border-t border-sidebar-border/70 px-3 py-2">
-        <button
-          onClick={() => setExpanded(true)}
-          className="flex w-full items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Timer className="h-3.5 w-3.5 shrink-0" />
-          <span className={cn("font-mono tabular-nums", running && modeColor)}>
-            {running ? timeDisplay : "Pomodoro"}
-          </span>
-          {running && (
-            <span className={cn("text-micro font-medium ml-auto", modeColor)}>{activeSubjectLabel}</span>
-          )}
-          <ChevronUp className="h-3 w-3 ml-auto" />
-        </button>
-      </div>
+      <>
+        {focusPortal}
+        <div className="border-t border-sidebar-border/70 px-3 py-2">
+          <button
+            onClick={() => setExpanded(true)}
+            className="flex w-full items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Timer className="h-3.5 w-3.5 shrink-0" />
+            <span className={cn("font-mono tabular-nums", running && modeColor)}>
+              {running ? timeDisplay : "Pomodoro"}
+            </span>
+            {running && (
+              <span className={cn("text-micro font-medium ml-auto", modeColor)}>{activeSubjectLabel}</span>
+            )}
+            <ChevronUp className="h-3 w-3 ml-auto" />
+          </button>
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="space-y-3 border-t border-sidebar-border/70 px-3 py-3">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setExpanded(false)}
-          className="flex items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground shrink-0"
-        >
-          <Timer className="h-3.5 w-3.5" />
-          Pomodoro
-          <ChevronDown className="h-3 w-3" />
-        </button>
-        <button
-          onClick={handleReset}
-          className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
-          aria-label="Reset timer"
-        >
-          <RotateCcw className="h-3 w-3" />
-        </button>
-      </div>
+    <>
+      {focusPortal}
+      <div className="space-y-3 border-t border-sidebar-border/70 px-3 py-3">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setExpanded(false)}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Timer className="h-3.5 w-3.5" />
+            Pomodoro
+            <ChevronDown className="h-3 w-3" />
+          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={openFocusView}
+              className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
+              aria-label="Open full screen timer"
+            >
+              <Maximize2 className="h-3 w-3" />
+            </button>
+            <button
+              onClick={handleReset}
+              className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
+              aria-label="Reset timer"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
       <div className={cn("text-xs font-medium", modeColor)}>
         {modeLabel} · Cycle {cycles + 1}
       </div>
@@ -636,5 +1181,6 @@ export function StudyTimer({
         )}
       </div>
     </div>
+  </>
   )
 }

@@ -24,6 +24,10 @@ interface DataExportProps {
 
 type ExportFormat = "json" | "csv"
 
+function getAppDataFilePath(baseDir: string, fileName: string) {
+  return `${baseDir.replace(/\/+$/, "")}/${fileName}`
+}
+
 export function DataExport({ projects, sessions, events, open, onOpenChange }: DataExportProps) {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -98,7 +102,10 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
 
         // Assessments are stored in the legacy projects.json file for migration compatibility.
         if (importedAssessments.length > 0) {
-          await writeTextFile(`${baseDir}projects.json`, JSON.stringify(importedAssessments, null, 2))
+          await writeTextFile(
+            getAppDataFilePath(baseDir, "projects.json"),
+            JSON.stringify(importedAssessments, null, 2),
+          )
           for (const project of importedAssessments as { folder_path: string }[]) {
             if (!project.folder_path) continue
             try {
@@ -114,11 +121,17 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
 
         // Restore sessions
         if (data.sessions && Array.isArray(data.sessions)) {
-          await writeTextFile(`${baseDir}sessions.json`, JSON.stringify(data.sessions, null, 2))
+          await writeTextFile(
+            getAppDataFilePath(baseDir, "sessions.json"),
+            JSON.stringify(data.sessions, null, 2),
+          )
         }
 
         if (data.events && Array.isArray(data.events)) {
-          await writeTextFile(`${baseDir}events.json`, JSON.stringify(data.events, null, 2))
+          await writeTextFile(
+            getAppDataFilePath(baseDir, "events.json"),
+            JSON.stringify(data.events, null, 2),
+          )
         }
 
         setDone(true)

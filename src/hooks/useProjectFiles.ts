@@ -49,6 +49,7 @@ export function useProjectFiles(projectName: string | null) {
         : projectName
       const result = await invoke<FileInfo[]>("get_project_files", {
         projectName: folderPath,
+        recursive: subfolder === null,
       })
       await mergeMetadata(result)
       setFiles(result)

@@ -160,6 +160,7 @@ function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGr
 
 interface SidebarProps {
   projects: Project[]
+  sessions: StudySession[]
   customSubjects: Subject[]
   availableSubjects?: Subject[]
   selectedId: string | null
@@ -189,6 +190,7 @@ interface SidebarProps {
 
 export function Sidebar({
   projects,
+  sessions,
   customSubjects,
   availableSubjects,
   selectedId,
@@ -559,6 +561,7 @@ export function Sidebar({
         onExpand={onToggleCollapse}
         customSubjects={customSubjects}
         availableSubjects={availableSubjects}
+        sessions={sessions}
         selectedProject={selectedProject}
         onStartSession={onStartPomodoroSession}
         onUpdateSession={onUpdatePomodoroSession}
