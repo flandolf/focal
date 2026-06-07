@@ -42,7 +42,7 @@ interface FileStudyPlannerButtonProps {
 }
 
 const MAX_FILES_FOR_PLAN = 12
-const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event"])
+const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"])
 
 function getLocalDateValue(date: Date): string {
   const year = date.getFullYear()
@@ -176,7 +176,7 @@ Rules:
 - Schedule dates from ${today} through ${planningEnd}.
 - Use the assessment date as the latest meaningful preparation date when it exists.
 - Prefer concrete titles, such as "Review Methods SAC Notes" or "Past Paper Error Log".
-- Use event_type "event" for study blocks unless the file list clearly describes a real SAC, exam, GAT, or assignment.
+- Use event_type "homework" for homework tasks, "practice-sac" for practice SACs, "sac" for real SACs, "exam" for exams, and "event" for generic study blocks.
 - Use 24-hour start_time in HH:mm format.
 - Use durations from 30 to 180 minutes in 15-minute increments.
 - Only reference source_files from the provided file names.`,
@@ -213,7 +213,7 @@ ${fileLines.join("\n\n")}`,
                     duration_minutes: { type: "number" },
                     event_type: {
                       type: "string",
-                      enum: ["sac", "exam", "assignment", "gat", "event"],
+                      enum: ["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"],
                     },
                     source_files: {
                       type: "array",

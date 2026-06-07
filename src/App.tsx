@@ -24,6 +24,8 @@ import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useTheme } from "@/lib/themes"
 import { getSubjectById } from "@/lib/utils"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
+import { getNotionCalendarSettings } from "@/lib/settings"
+import { syncNotionCalendar } from "@/lib/notionSync"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
@@ -129,7 +131,7 @@ function getAdjacentPomodoroSession(
 function App() {
   const { projects, addProject, updateProject, deleteProject, addCustomSubfolder } = useProjects()
   const { sessions, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, updateAndDeleteSessions } = useStudySessions()
-  const { events, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, updateAndDeleteEvents } = useEvents()
+  const { events, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -804,6 +806,31 @@ function App() {
     setEditEventDialogOpen(true)
   }
 
+  const handleSyncNotionCalendar = async () => {
+    try {
+      const result = await syncNotionCalendar(getNotionCalendarSettings(), events, allSubjects)
+      if (result.updated.length > 0 || result.created.length > 0) {
+        await syncEvents(result.created, result.updated)
+      }
+      const pulled = result.created.length + result.updated.length
+      const pushed = result.pushedCreated + result.pushedUpdated
+      toast.success(
+        pulled > 0 || pushed > 0
+          ? `Synced Notion calendar: ${pulled} pulled, ${pushed} pushed`
+          : "Notion calendar already up to date",
+      )
+      if (result.skipped > 0) {
+        toast.info(`${result.skipped} Notion item${result.skipped === 1 ? "" : "s"} skipped without a valid date`, {
+          description: result.skippedReasons[0],
+        })
+      }
+      return result
+    } catch (e) {
+      toast.error(`Notion sync failed: ${String(e)}`)
+      throw e
+    }
+  }
+
   const handleTitlebarDrag = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0 || event.detail > 1) return
     void getCurrentWindow().startDragging().catch(() => undefined)
@@ -909,6 +936,7 @@ function App() {
                     onShowAllSubjects={handleShowAllSubjects}
                     onOpenExport={() => setExportOpen(true)}
                     onOpenSubjects={() => setSubjectsOpen(true)}
+                    onSyncNotionCalendar={handleSyncNotionCalendar}
                   />
                 ) : analyticsView ? (
                   <AnalyticsView

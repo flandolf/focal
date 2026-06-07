@@ -94,7 +94,7 @@ interface CopilotResult {
 }
 
 const QUICK_LINKS_KEY = "focal-quick-links"
-const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event"])
+const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"])
 const VALID_URGENCIES = new Set<PriorityUrgency>(["critical", "high", "medium", "low"])
 const PREP_COMPLETED_CREDIT_WINDOW_DAYS = 7
 
@@ -290,7 +290,7 @@ async function generateEventsFromText(
 - Use event_type "event" for every returned item because study sessions are not assessment events.`
     : `- Use item_type "session" for study blocks, revision plans, homework blocks, practice tasks, or prep work.
 - Use item_type "event" for real calendar events, due dates, SACs, exams, assignments, GAT dates, meetings, or reminders.
-- Use event_type "sac", "exam", "assignment", or "gat" only for real assessment items; use "event" for reminders, study blocks, meetings, or admin tasks.`
+- Use event_type "sac", "exam", "practice-sac", "homework", "other", "assignment", or "gat" only for real assessment/homework items; use "event" for reminders, meetings, or admin tasks.`
   const subjectLines = subjects
     .map((subject) => `${subject.id}: ${subject.name} (${subject.shortCode})`)
     .join("\n")
@@ -372,7 +372,7 @@ ${sourceText}
                     duration_minutes: { type: "number" },
                     event_type: {
                       type: "string",
-                      enum: ["sac", "exam", "assignment", "gat", "event"],
+                      enum: ["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"],
                     },
                     subject_id: {
                       type: "string",

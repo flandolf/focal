@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
-import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput, Database, Palette, EyeOff } from "lucide-react"
+import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput, Database, Palette, EyeOff, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { getApiKey, setApiKey, getModel, setModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude } from "@/lib/settings"
+import { getApiKey, setApiKey, getModel, setModel, getAutoRenameUseFileContent, setAutoRenameUseFileContent, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude, getNotionCalendarSettings, setNotionCalendarSettings } from "@/lib/settings"
 import type { ThemeId } from "@/lib/themes"
-import type { ReasoningEffort } from "@/lib/settings"
+import type { NotionCalendarSettings, ReasoningEffort } from "@/lib/settings"
 import type { Subject } from "@/lib/types"
 
 interface OpenRouterModel {
@@ -74,6 +74,7 @@ interface SettingsViewProps {
   onShowAllSubjects: () => void
   onOpenExport?: () => void
   onOpenSubjects?: () => void
+  onSyncNotionCalendar?: () => Promise<{ created: unknown[]; updated: unknown[]; skipped: number; skippedReasons?: string[]; pushedCreated?: number; pushedUpdated?: number }>
 }
 
 const SETTINGS_SECTION_CLASS = "rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur"
@@ -309,6 +310,7 @@ export function SettingsView({
   onShowAllSubjects,
   onOpenExport,
   onOpenSubjects,
+  onSyncNotionCalendar,
 }: SettingsViewProps) {
   const [key, setKey] = useState(() => getApiKey() ?? "")
   const [model, setModelState] = useState(() => getModel())
@@ -321,6 +323,10 @@ export function SettingsView({
   const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => getReasoningEffort())
   const [reasoningMaxTokens, setReasoningMaxTokensState] = useState(() => getReasoningMaxTokens())
   const [reasoningExclude, setReasoningExcludeState] = useState(() => getReasoningExclude())
+  const [notionSettings, setNotionSettings] = useState<NotionCalendarSettings>(() => getNotionCalendarSettings())
+  const [notionSaved, setNotionSaved] = useState(false)
+  const [notionSyncing, setNotionSyncing] = useState(false)
+  const [notionSyncResult, setNotionSyncResult] = useState<string | null>(null)
   const didFetchRef = useRef(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ name: string; error?: string } | null>(null)
@@ -476,6 +482,32 @@ export function SettingsView({
     setReasoningExcludeState(value)
     setReasoningExclude(value)
   }, [])
+
+  const handleNotionSettingChange = useCallback((field: keyof NotionCalendarSettings, value: string) => {
+    setNotionSettings((current) => {
+      const next = { ...current, [field]: value }
+      setNotionCalendarSettings(next)
+      return next
+    })
+    setNotionSaved(true)
+    setNotionSyncResult(null)
+    setTimeout(() => setNotionSaved(false), 2000)
+  }, [])
+
+  const handleSyncNotionCalendar = useCallback(() => {
+    if (!onSyncNotionCalendar) return
+    setNotionSyncing(true)
+    setNotionSyncResult(null)
+    onSyncNotionCalendar()
+      .then((result) => {
+        const pulled = result.created.length + result.updated.length
+        const pushed = (result.pushedCreated ?? 0) + (result.pushedUpdated ?? 0)
+        const reasons = result.skippedReasons?.length ? `: ${result.skippedReasons.join("; ")}` : ""
+        setNotionSyncResult(`${pulled} pulled, ${pushed} pushed${result.skipped > 0 ? `, ${result.skipped} skipped${reasons}` : ""}`)
+      })
+      .catch((e) => setNotionSyncResult(e instanceof Error ? e.message : String(e)))
+      .finally(() => setNotionSyncing(false))
+  }, [onSyncNotionCalendar])
 
   const handleImportFolder = useCallback(async () => {
     const selected = await open({
@@ -699,6 +731,88 @@ export function SettingsView({
                   </div>
                 ) : null}
               </div>
+            )}
+          </section>
+
+          <section className={SETTINGS_SECTION_CLASS}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-sm font-medium">Notion Calendar Sync</h2>
+                <p className="mt-1 text-caption text-muted-foreground/70">
+                  Pull pages from a Notion calendar data source into the Focal calendar.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSyncNotionCalendar}
+                disabled={notionSyncing || !notionSettings.token.trim() || !notionSettings.dataSourceId.trim()}
+                className="shrink-0 gap-1.5"
+              >
+                {notionSyncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Sync
+              </Button>
+            </div>
+            <div className="mt-3 grid gap-2">
+              <label className="text-caption text-muted-foreground/70" htmlFor="notion-token">Integration token</label>
+              <Input
+                id="notion-token"
+                type="password"
+                value={notionSettings.token}
+                onChange={(event) => handleNotionSettingChange("token", event.target.value)}
+                placeholder="secret_..."
+                className="font-mono text-xs"
+              />
+              <label className="text-caption text-muted-foreground/70" htmlFor="notion-data-source-id">Data source or database id</label>
+              <Input
+                id="notion-data-source-id"
+                value={notionSettings.dataSourceId}
+                onChange={(event) => handleNotionSettingChange("dataSourceId", event.target.value)}
+                placeholder="Notion calendar id"
+                className="font-mono text-xs"
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                {([
+                  ["titleProperty", "Title property"],
+                  ["dateProperty", "Date property"],
+                  ["typeProperty", "Type property"],
+                  ["subjectProperty", "Subject property"],
+                  ["locationProperty", "Location property"],
+                  ["descriptionProperty", "Description property"],
+                ] as const).map(([field, label]) => (
+                  <label key={field} className="min-w-0">
+                    <span className="text-caption text-muted-foreground/70">{label}</span>
+                    <Input
+                      value={notionSettings[field]}
+                      onChange={(event) => handleNotionSettingChange(field, event.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-caption text-muted-foreground/60">
+                Share the Notion database with your integration before syncing.
+                {notionSaved && <span className="ml-1 text-emerald-600 dark:text-emerald-400">Saved</span>}
+              </p>
+              <a
+                href="https://developers.notion.com/docs/getting-started"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={SETTINGS_LINK_CLASS}
+              >
+                Setup
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+            {notionSyncResult && (
+              <p className="mt-2 text-caption text-muted-foreground">{notionSyncResult}</p>
             )}
           </section>
 
