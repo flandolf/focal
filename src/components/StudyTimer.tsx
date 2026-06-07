@@ -48,6 +48,8 @@ interface TimerState {
   mode: TimerMode
   secondsLeft: number
   cycles: number
+  studyOvertime: boolean
+  overtimeSeconds: number
 }
 
 type TimerAction =
@@ -56,6 +58,8 @@ type TimerAction =
   | { type: "RESET"; settings: TimerSettings }
   | { type: "SKIP_BREAK"; settings: TimerSettings }
   | { type: "ADD_BREAK_TIME"; minutes: number }
+  | { type: "START_STUDY_OVERTIME" }
+  | { type: "RETURN_TO_BREAK" }
   | { type: "SYNC_SETTINGS"; settings: TimerSettings; previousSettings: TimerSettings }
 
 interface StoredTimerState {
@@ -63,6 +67,8 @@ interface StoredTimerState {
   mode: TimerMode
   secondsLeft: number
   cycles: number
+  studyOvertime?: boolean
+  overtimeSeconds?: number
   activeSessionId?: string | null
   updatedAt: number
 }
@@ -113,6 +119,8 @@ function getInitialState(settings: TimerSettings): TimerState {
     mode: "work",
     secondsLeft: getDurationSeconds("work", settings),
     cycles: 0,
+    studyOvertime: false,
+    overtimeSeconds: 0,
   }
 
   try {
@@ -125,6 +133,19 @@ function getInitialState(settings: TimerSettings): TimerState {
     const updatedAt = typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now()
     const elapsedSeconds = parsed.running ? Math.max(0, Math.floor((Date.now() - updatedAt) / 1000)) : 0
     const cycles = Math.max(0, Math.round(parsed.cycles ?? 0))
+    const studyOvertime = parsed.studyOvertime === true && mode !== "work"
+    const overtimeSeconds = Math.max(0, Math.round(parsed.overtimeSeconds ?? 0))
+
+    if (studyOvertime) {
+      return {
+        running: parsed.running === true,
+        mode,
+        secondsLeft: Math.min(duration, Math.max(1, Math.round(parsed.secondsLeft ?? duration))),
+        cycles,
+        studyOvertime: true,
+        overtimeSeconds: parsed.running ? overtimeSeconds + elapsedSeconds : overtimeSeconds,
+      }
+    }
 
     if (parsed.running) {
       const rawSeconds = Math.round(parsed.secondsLeft ?? duration)
@@ -134,12 +155,26 @@ function getInitialState(settings: TimerSettings): TimerState {
         if (mode === "work") {
           const newCycles = cycles + 1
           const nextMode = newCycles % 4 === 0 ? "long-break" : "break"
-          return { running: true, mode: nextMode, secondsLeft: getDurationSeconds(nextMode, settings), cycles: newCycles }
+          return {
+            running: true,
+            mode: nextMode,
+            secondsLeft: getDurationSeconds(nextMode, settings),
+            cycles: newCycles,
+            studyOvertime: false,
+            overtimeSeconds: 0,
+          }
         }
-        return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", settings), cycles }
+        return {
+          running: false,
+          mode: "work",
+          secondsLeft: getDurationSeconds("work", settings),
+          cycles,
+          studyOvertime: false,
+          overtimeSeconds: 0,
+        }
       }
 
-      return { running: true, mode, secondsLeft, cycles }
+      return { running: true, mode, secondsLeft, cycles, studyOvertime: false, overtimeSeconds: 0 }
     }
 
     return {
@@ -147,6 +182,8 @@ function getInitialState(settings: TimerSettings): TimerState {
       mode,
       secondsLeft: Math.min(duration, Math.max(1, Math.round(parsed.secondsLeft ?? duration))),
       cycles,
+      studyOvertime: false,
+      overtimeSeconds: 0,
     }
   } catch {
     return fallback
@@ -156,25 +193,62 @@ function getInitialState(settings: TimerSettings): TimerState {
 function timerReducer(state: TimerState, action: TimerAction): TimerState {
   switch (action.type) {
     case "TICK":
+      if (state.studyOvertime) {
+        return { ...state, overtimeSeconds: state.overtimeSeconds + 1 }
+      }
       if (state.secondsLeft <= 1) {
         if (state.mode === "work") {
           const newCycles = state.cycles + 1
           const nextMode = newCycles % 4 === 0 ? "long-break" : "break"
-          return { running: true, mode: nextMode, secondsLeft: getDurationSeconds(nextMode, action.settings), cycles: newCycles }
+          return {
+            running: true,
+            mode: nextMode,
+            secondsLeft: getDurationSeconds(nextMode, action.settings),
+            cycles: newCycles,
+            studyOvertime: false,
+            overtimeSeconds: 0,
+          }
         }
-        return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: state.cycles }
+        return {
+          running: false,
+          mode: "work",
+          secondsLeft: getDurationSeconds("work", action.settings),
+          cycles: state.cycles,
+          studyOvertime: false,
+          overtimeSeconds: 0,
+        }
       }
       return { ...state, secondsLeft: state.secondsLeft - 1 }
     case "TOGGLE":
       return { ...state, running: !state.running }
     case "RESET":
-      return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: 0 }
+      return {
+        running: false,
+        mode: "work",
+        secondsLeft: getDurationSeconds("work", action.settings),
+        cycles: 0,
+        studyOvertime: false,
+        overtimeSeconds: 0,
+      }
     case "SKIP_BREAK":
-      if (state.mode === "work") return state
-      return { running: false, mode: "work", secondsLeft: getDurationSeconds("work", action.settings), cycles: state.cycles }
+      if (state.mode === "work" || state.studyOvertime) return state
+      return {
+        running: false,
+        mode: "work",
+        secondsLeft: getDurationSeconds("work", action.settings),
+        cycles: state.cycles,
+        studyOvertime: false,
+        overtimeSeconds: 0,
+      }
     case "ADD_BREAK_TIME":
-      if (state.mode === "work") return state
+      if (state.mode === "work" || state.studyOvertime) return state
       return { ...state, secondsLeft: state.secondsLeft + action.minutes * 60 }
+    case "START_STUDY_OVERTIME":
+      if (state.mode === "work") return state
+      return { ...state, running: true, studyOvertime: true, overtimeSeconds: 0 }
+    case "RETURN_TO_BREAK":
+      if (!state.studyOvertime) return state
+      return { ...state, running: true, studyOvertime: false, overtimeSeconds: 0 }
     case "SYNC_SETTINGS": {
       const oldDuration = getDurationSeconds(state.mode, action.previousSettings)
       const nextDuration = getDurationSeconds(state.mode, action.settings)
@@ -264,10 +338,10 @@ function FocusStat({ label, value, icon, detail }: FocusStatProps) {
 
 function FocusMetric({ label, value, detail }: FocusMetricProps) {
   return (
-    <div className="min-w-0 rounded-md border border-border/60 bg-background/45 px-3 py-2">
+    <div className="min-w-0 rounded-md border border-border/60 bg-background/45 px-2.5 py-2 min-[520px]:px-3">
       <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-lg font-semibold tabular-nums text-foreground">{value}</p>
-      {detail && <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>}
+      <p className="mt-1 truncate text-base font-semibold tabular-nums text-foreground min-[520px]:text-lg">{value}</p>
+      {detail && <p className="mt-0.5 truncate text-caption text-muted-foreground">{detail}</p>}
     </div>
   )
 }
@@ -391,7 +465,7 @@ export function StudyTimer({
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false
       prevModeRef.current = state.mode
-      if (state.mode !== "work" && activeSessionIdRef.current) {
+      if (state.mode !== "work" && !state.studyOvertime && activeSessionIdRef.current) {
         void completeActiveSession()
       }
       return
@@ -400,10 +474,10 @@ export function StudyTimer({
     const prevMode = prevModeRef.current
     prevModeRef.current = state.mode
 
-    if (prevMode === "work" && state.mode !== "work" && activeSessionIdRef.current) {
+    if (prevMode === "work" && state.mode !== "work" && !state.studyOvertime && activeSessionIdRef.current) {
       void completeActiveSession()
     }
-  }, [state.mode, completeActiveSession])
+  }, [state.mode, state.studyOvertime, completeActiveSession])
 
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
@@ -442,12 +516,13 @@ export function StudyTimer({
     return clearTimer
   }, [state.running, onTick, clearTimer])
 
-  const { running, mode, secondsLeft, cycles } = state
+  const { running, mode, secondsLeft, cycles, studyOvertime, overtimeSeconds } = state
+  const isStudyOvertime = studyOvertime && mode !== "work"
   const totalSeconds = getDurationSeconds(mode, settings)
-  const progress = Math.min(1, Math.max(0, 1 - secondsLeft / totalSeconds))
-  const timeDisplay = formatTimer(secondsLeft)
-  const modeLabel = mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
-  const modeColor = mode === "work" ? "text-primary" : "text-emerald-500"
+  const progress = isStudyOvertime ? 1 : Math.min(1, Math.max(0, 1 - secondsLeft / totalSeconds))
+  const timeDisplay = isStudyOvertime ? `+${formatTimer(overtimeSeconds)}` : formatTimer(secondsLeft)
+  const modeLabel = isStudyOvertime ? "Overtime" : mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
+  const modeColor = mode === "work" || isStudyOvertime ? "text-primary" : "text-emerald-500"
   const activeSubjects = subjects.filter((subject) => selectedSubjectIds.includes(subject.id))
   const activeSubjectLabel = activeSubjects.length === 0
     ? "No subject"
@@ -458,12 +533,12 @@ export function StudyTimer({
     ? selectedProject.id
     : undefined
   const canStartFocus = selectedSubjectIds.length > 0 && !saving
-  const elapsedSeconds = Math.max(0, totalSeconds - secondsLeft)
+  const elapsedSeconds = isStudyOvertime ? overtimeSeconds : Math.max(0, totalSeconds - secondsLeft)
   const nextModeLabel = mode === "work"
     ? (cycles + 1) % 4 === 0 ? "Long break next" : "Break next"
-    : "Focus next"
+    : isStudyOvertime ? "Break held" : "Focus next"
   const sessionStateLabel = activeSessionId
-    ? "Calendar logging is active"
+    ? isStudyOvertime ? "Overtime study is logging" : "Calendar logging is active"
     : mode === "work"
       ? "Start focus to create a study session"
       : "Rest period is not logged"
@@ -504,13 +579,17 @@ export function StudyTimer({
   const projectedFocusMinutes = mode === "work"
     ? Math.ceil(secondsLeft / 60)
     : settings.workMinutes
-  const currentBlockDetail = mode === "work"
-    ? `${formatMinutes(projectedFocusMinutes)} focus remaining`
-    : `${formatMinutes(Math.ceil(secondsLeft / 60))} rest remaining`
+  const currentBlockDetail = isStudyOvertime
+    ? `${formatMinutes(Math.ceil(secondsLeft / 60))} break held`
+    : mode === "work"
+      ? `${formatMinutes(projectedFocusMinutes)} focus remaining`
+      : `${formatMinutes(Math.ceil(secondsLeft / 60))} rest remaining`
   const progressPercent = Math.round(progress * 100)
+  const progressDetail = isStudyOvertime ? "overtime" : `${progressPercent}% complete`
+  const timerStageDetail = isStudyOvertime ? "Break held · overtime" : `${nextModeLabel} · ${progressPercent}% complete`
   const timerActionLabel = selectedSubjectIds.length === 0
     ? "Pick a subject"
-    : secondsLeft === totalSeconds ? "Start Focus" : "Resume"
+    : isStudyOvertime ? "Resume overtime" : secondsLeft === totalSeconds ? "Start Focus" : "Resume"
   const workbenchTitle = activeSubjects.length > 0
     ? activeSubjects.map((subject) => subject.shortCode).join(" + ")
     : "Focus timer"
@@ -527,13 +606,13 @@ export function StudyTimer({
     >
       <div className="pointer-events-none absolute inset-0 hairline-grid opacity-30" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-linear-to-b from-primary/8 to-transparent" />
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-4 pb-4 pt-[calc(var(--app-titlebar-inset)+var(--space-sm))] sm:px-6 sm:pb-6 min-[1200px]:px-8">
-        <header className="grid shrink-0 gap-4 border-b border-border/60 pb-4 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-end">
+      <div className="relative z-10 flex h-dvh min-h-0 flex-col px-4 pb-3 pt-[calc(var(--app-titlebar-inset)+0.5rem)] sm:px-5 min-[1200px]:px-6">
+        <header className="grid shrink-0 gap-3 border-b border-border/60 pb-3 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-end">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className={cn(
                 "inline-flex h-6 items-center rounded-md border px-2 text-micro font-semibold uppercase tracking-normal",
-                mode === "work"
+                mode === "work" || isStudyOvertime
                   ? "border-primary/25 bg-primary/10 text-primary"
                   : "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
               )}>
@@ -547,7 +626,7 @@ export function StudyTimer({
               </span>
             </div>
             <div className="min-w-0">
-              <h2 className="truncate font-heading text-2xl font-semibold tracking-normal text-foreground min-[1200px]:text-3xl">
+              <h2 className="truncate font-heading text-xl font-semibold tracking-normal text-foreground min-[1200px]:text-2xl">
                 {workbenchTitle}
               </h2>
               <p className="mt-1 truncate text-sm text-muted-foreground">{sessionScopeLabel}</p>
@@ -576,20 +655,20 @@ export function StudyTimer({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto py-5 min-[1080px]:grid-cols-[minmax(0,1fr)_22rem] min-[1400px]:grid-cols-[minmax(0,1fr)_24rem]">
-          <main className="relative flex min-h-[34rem] flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 shadow-xs min-[1200px]:min-h-[38rem]">
-            <div className="grid shrink-0 grid-cols-3 border-b border-border/55 bg-background/35">
-              <FocusMetric label="Elapsed" value={formatMinutes(Math.ceil(elapsedSeconds / 60))} detail={`${progressPercent}% complete`} />
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto py-4 min-[1080px]:grid-cols-[minmax(0,1fr)_20rem] min-[1080px]:overflow-hidden min-[1400px]:grid-cols-[minmax(0,1fr)_22rem]">
+          <main className="relative flex min-h-112 flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 shadow-xs min-[1080px]:min-h-0">
+            <div className="grid shrink-0 grid-cols-1 border-b border-border/55 bg-background/35 min-[520px]:grid-cols-3">
+              <FocusMetric label="Elapsed" value={formatMinutes(Math.ceil(elapsedSeconds / 60))} detail={progressDetail} />
               <FocusMetric label="Remaining" value={formatMinutes(Math.ceil(secondsLeft / 60))} detail={currentBlockDetail} />
-              <FocusMetric label="Logged" value={activeSessionId ? "Active" : "Ready"} detail={activeSessionId ? "Calendar session" : "Awaiting start"} />
+              <FocusMetric label="Logged" value={activeSessionId ? "Active" : "Ready"} detail={activeSessionId ? isStudyOvertime ? "Overtime session" : "Calendar session" : "Awaiting start"} />
             </div>
 
-            <div className="relative flex min-h-0 flex-1 flex-col px-5 py-6 sm:px-8 min-[1200px]:px-10">
-              <div className="pointer-events-none absolute inset-x-8 top-8 h-px bg-border/55" />
-              <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col items-center justify-center text-center">
+            <div className="relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] px-4 py-4 sm:px-6 min-[1200px]:px-8">
+              <div className="pointer-events-none absolute inset-x-6 top-6 h-px bg-border/55" />
+              <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-col items-center justify-center text-center">
                 <div
                   className={cn(
-                    "relative aspect-square w-full max-w-[min(58vh,34rem)]",
+                    "relative aspect-square w-full max-w-[min(42vh,27rem)]",
                     running && "motion-safe:animate-[pulse_4s_ease-in-out_infinite]"
                   )}
                 >
@@ -622,36 +701,36 @@ export function StudyTimer({
                       strokeWidth="10"
                       className="text-muted-foreground/10"
                     />
-                  <circle
-                    cx="130"
-                    cy="130"
-                    r="112"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="10"
-                    strokeDasharray={`${2 * Math.PI * 112}`}
-                    strokeDashoffset={`${2 * Math.PI * 112 * (1 - progress)}`}
-                    strokeLinecap="round"
-                    className={cn(
-                      "transition-[stroke-dashoffset] duration-1000 ease-out motion-reduce:transition-none",
-                      mode === "work" ? "text-primary" : "text-emerald-500"
-                    )}
-                  />
-                </svg>
+                    <circle
+                      cx="130"
+                      cy="130"
+                      r="112"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="10"
+                      strokeDasharray={`${2 * Math.PI * 112}`}
+                      strokeDashoffset={`${2 * Math.PI * 112 * (1 - progress)}`}
+                      strokeLinecap="round"
+                      className={cn(
+                        "transition-[stroke-dashoffset] duration-1000 ease-out motion-reduce:transition-none",
+                        mode === "work" || isStudyOvertime ? "text-primary" : "text-emerald-500"
+                      )}
+                    />
+                  </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center px-8">
                     <span className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">
                       {running ? "Timer running" : activeSessionId ? "Timer paused" : "Ready to start"}
                     </span>
-                    <span className="mt-3 text-[clamp(4.75rem,11vw,9.5rem)] font-semibold leading-none tabular-nums tracking-normal text-foreground">
+                    <span className="mt-3 font-heading text-5xl font-semibold leading-none tabular-nums tracking-normal text-foreground min-[520px]:text-6xl min-[1200px]:text-7xl">
                       {timeDisplay}
                     </span>
                     <span className={cn("mt-5 text-sm font-semibold", modeColor)}>
-                      {nextModeLabel} · {progressPercent}% complete
+                      {timerStageDetail}
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-8 w-full max-w-3xl">
+                <div className="mt-5 w-full max-w-3xl">
                   <div className="grid grid-cols-6 gap-1" aria-hidden="true">
                     {focusTicks.map((tick) => {
                       const isFilled = tick / (focusTicks.length - 1) <= progress
@@ -661,7 +740,7 @@ export function StudyTimer({
                           className={cn(
                             "h-1.5 rounded-full transition-colors duration-700 motion-reduce:transition-none",
                             isFilled
-                              ? mode === "work" ? "bg-primary" : "bg-emerald-500"
+                              ? mode === "work" || isStudyOvertime ? "bg-primary" : "bg-emerald-500"
                               : "bg-muted"
                           )}
                         />
@@ -674,7 +753,10 @@ export function StudyTimer({
                   </div>
                 </div>
 
-                <div className="mt-7 flex w-full max-w-3xl flex-col gap-2 sm:flex-row">
+              </div>
+
+              <div className="mx-auto mt-4 w-full max-w-3xl border-t border-border/55 pt-4">
+                <div className="flex w-full flex-col gap-2 sm:flex-row">
                   <Button
                     onClick={handleToggle}
                     disabled={mode === "work" && !canStartFocus && !running}
@@ -692,7 +774,18 @@ export function StudyTimer({
                       </>
                     )}
                   </Button>
-                  {activeSessionId && (
+                  {isStudyOvertime ? (
+                    <Button
+                      onClick={handleReturnToBreak}
+                      disabled={saving}
+                      size="lg"
+                      variant="default"
+                      className="h-12 flex-1 gap-2 rounded-md text-sm"
+                    >
+                      <Coffee className="h-4 w-4" />
+                      break time!
+                    </Button>
+                  ) : activeSessionId && (
                     <Button
                       onClick={handleFinish}
                       disabled={saving}
@@ -706,22 +799,32 @@ export function StudyTimer({
                   )}
                 </div>
 
-                {mode !== "work" && (
-                  <div className="mt-3 grid w-full max-w-3xl grid-cols-2 gap-2">
+                {mode !== "work" && !isStudyOvertime && (
+                  <div className="mt-2 grid grid-cols-1 gap-2 min-[520px]:grid-cols-3">
                     <Button
                       onClick={handleSkipBreak}
                       size="sm"
                       variant="ghost"
-                      className="h-10 gap-2 rounded-md text-sm"
+                      className="h-11 gap-2 rounded-md text-sm"
                     >
                       <SkipForward className="h-4 w-4" />
                       Skip
                     </Button>
                     <Button
+                      onClick={handleStartStudyOvertime}
+                      disabled={!canStartFocus}
+                      size="sm"
+                      variant="outline"
+                      className="h-11 min-w-0 gap-2 rounded-md text-sm"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      Study overtime
+                    </Button>
+                    <Button
                       onClick={handleMoreBreakTime}
                       size="sm"
                       variant="outline"
-                      className="h-10 gap-2 rounded-md text-sm"
+                      className="h-11 gap-2 rounded-md text-sm"
                     >
                       <Plus className="h-4 w-4" />
                       {EXTRA_BREAK_MINUTES} min
@@ -732,9 +835,9 @@ export function StudyTimer({
             </div>
           </main>
 
-          <aside className="flex min-h-0 flex-col gap-4">
-            <section className="rounded-lg border border-border/60 bg-card/45 px-4 py-2 shadow-xs">
-              <div className="flex items-center justify-between gap-3 border-b border-border/55 py-3">
+          <aside className="flex min-h-0 flex-col gap-3 min-[1080px]:overflow-y-auto min-[1080px]:pr-1">
+            <section className="rounded-lg border border-border/60 bg-card/45 px-3 py-1.5 shadow-xs">
+              <div className="flex items-center justify-between gap-3 border-b border-border/55 py-2.5">
                 <div>
                   <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Focus Record</p>
                   <p className="mt-1 text-sm font-medium text-foreground">Today&apos;s timer context</p>
@@ -767,16 +870,16 @@ export function StudyTimer({
               />
             </section>
 
-            <section className="rounded-lg border border-border/60 bg-card/45 p-4 shadow-xs">
+            <section className="rounded-lg border border-border/60 bg-card/45 p-3 shadow-xs">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Session</p>
                   <p className="mt-1 truncate text-sm font-medium text-foreground">{sessionStateLabel}</p>
                 </div>
-                <Coffee className={cn("h-5 w-5 shrink-0", mode === "work" ? "text-muted-foreground" : "text-emerald-500")} />
+                <Coffee className={cn("h-5 w-5 shrink-0", mode === "work" || isStudyOvertime ? "text-muted-foreground" : "text-emerald-500")} />
               </div>
 
-              <div className="mt-5 space-y-4">
+              <div className="mt-4 space-y-3">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Subjects</p>
@@ -792,7 +895,7 @@ export function StudyTimer({
                           aria-pressed={selected}
                           onClick={() => handleSubjectClick(subject.id)}
                           className={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors",
+                            "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
                             selected
                               ? "border-transparent bg-primary/10 text-primary"
                               : "border-border/70 bg-background/40 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
@@ -839,7 +942,7 @@ export function StudyTimer({
                     <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Block Signal</p>
                   </div>
                   <p className="mt-1 text-sm font-medium text-foreground">
-                    {activeSessionId ? "Session is writing to the calendar" : mode === "work" ? "Starting focus will create a calendar block" : "Breaks stay off the calendar"}
+                    {activeSessionId ? isStudyOvertime ? "Overtime is extending calendar study" : "Session is writing to the calendar" : mode === "work" ? "Starting focus will create a calendar block" : "Breaks stay off the calendar"}
                   </p>
                 </div>
 
@@ -890,17 +993,21 @@ export function StudyTimer({
     })
   }
 
-  const startFocusSession = async (): Promise<boolean> => {
-    if (mode !== "work" || activeSessionIdRef.current || selectedSubjectIds.length === 0) return false
-
+  const startTimerSession = async (durationSeconds: number): Promise<boolean> => {
+    if (activeSessionIdRef.current || selectedSubjectIds.length === 0) return false
     const session = await onStartSession({
       subjectIds: selectedSubjectIds,
-      durationSeconds: secondsLeft,
+      durationSeconds,
       projectId: activeProjectId,
     })
     activeSessionIdRef.current = session.id
     setActiveSessionId(session.id)
     return true
+  }
+
+  const startFocusSession = async (): Promise<boolean> => {
+    if (mode !== "work") return false
+    return startTimerSession(secondsLeft)
   }
 
   const handleToggle = async () => {
@@ -943,13 +1050,41 @@ export function StudyTimer({
     dispatch({ type: "RESET", settings })
   }
 
+  const handleStartStudyOvertime = async () => {
+    if (mode === "work" || isStudyOvertime || activeSessionIdRef.current || !canStartFocus) return
+
+    dispatch({ type: "START_STUDY_OVERTIME" })
+    setSaving(true)
+    try {
+      const started = await startTimerSession(60)
+      if (!started) dispatch({ type: "RETURN_TO_BREAK" })
+    } catch (e) {
+      console.error("Failed to start overtime session:", e)
+      dispatch({ type: "RETURN_TO_BREAK" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleReturnToBreak = async () => {
+    if (!isStudyOvertime) return
+
+    setSaving(true)
+    try {
+      await completeActiveSession()
+    } finally {
+      setSaving(false)
+      dispatch({ type: "RETURN_TO_BREAK" })
+    }
+  }
+
   const handleSkipBreak = () => {
-    if (mode === "work") return
+    if (mode === "work" || isStudyOvertime) return
     dispatch({ type: "SKIP_BREAK", settings })
   }
 
   const handleMoreBreakTime = () => {
-    if (mode === "work") return
+    if (mode === "work" || isStudyOvertime) return
     dispatch({ type: "ADD_BREAK_TIME", minutes: EXTRA_BREAK_MINUTES })
   }
 
@@ -963,9 +1098,10 @@ export function StudyTimer({
           <button
             onClick={onExpand}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-sidebar-accent/60",
+              "flex h-9 w-9 items-center justify-center rounded-xl outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/35",
               running ? modeColor : "text-muted-foreground hover:text-foreground"
             )}
+            aria-label="Expand Pomodoro timer"
             title={running ? `${timeDisplay} - ${modeLabel} - ${activeSubjectLabel}` : "Pomodoro"}
           >
             <Timer className="h-4 w-4" />
@@ -982,10 +1118,11 @@ export function StudyTimer({
         <div className="border-t border-sidebar-border/70 px-3 py-2">
           <button
             onClick={() => setExpanded(true)}
-            className="flex w-full items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="flex min-h-8 w-full items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+            aria-label="Expand Pomodoro timer"
           >
             <Timer className="h-3.5 w-3.5 shrink-0" />
-            <span className={cn("font-mono tabular-nums", running && modeColor)}>
+            <span className={cn("font-heading tabular-nums", running && modeColor)}>
               {running ? timeDisplay : "Pomodoro"}
             </span>
             {running && (
@@ -1005,7 +1142,8 @@ export function StudyTimer({
         <div className="flex items-center justify-between">
           <button
             onClick={() => setExpanded(false)}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+            aria-label="Collapse Pomodoro timer"
           >
             <Timer className="h-3.5 w-3.5" />
             Pomodoro
@@ -1014,14 +1152,14 @@ export function StudyTimer({
           <div className="flex items-center gap-1">
             <button
               onClick={openFocusView}
-              className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
               aria-label="Open full screen timer"
             >
               <Maximize2 className="h-3 w-3" />
             </button>
             <button
               onClick={handleReset}
-              className="flex h-6 w-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
               aria-label="Reset timer"
             >
               <RotateCcw className="h-3 w-3" />
@@ -1047,7 +1185,7 @@ export function StudyTimer({
               step={1}
               value={settings[key]}
               onChange={(event) => updateDuration(key, event.target.value)}
-              className="h-7 rounded-lg px-2 text-center text-xs tabular-nums"
+              className="h-8 rounded-lg px-2 text-center text-control tabular-nums"
               aria-label={`${label} minutes`}
             />
           </label>
@@ -1072,7 +1210,7 @@ export function StudyTimer({
                   aria-pressed={selected}
                   onClick={() => handleSubjectClick(subject.id)}
                   className={cn(
-                    "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold transition-colors",
+                    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
                     selected
                       ? "border-transparent text-foreground shadow-xs"
                       : "border-sidebar-border bg-background/35 text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
@@ -1117,12 +1255,12 @@ export function StudyTimer({
               strokeLinecap="round"
               className={cn(
                 "transition-[stroke-dashoffset] duration-1000",
-                mode === "work" ? "text-primary" : "text-emerald-500"
+                mode === "work" || isStudyOvertime ? "text-primary" : "text-emerald-500"
               )}
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-lg font-mono tabular-nums font-semibold leading-tight">{timeDisplay}</span>
+            <span className="font-heading text-lg font-semibold leading-tight tabular-nums">{timeDisplay}</span>
           </div>
         </div>
 
@@ -1131,7 +1269,7 @@ export function StudyTimer({
           disabled={mode === "work" && !canStartFocus && !running}
           size="sm"
           variant={running ? "outline" : "default"}
-          className="mt-3 h-7 w-full gap-1.5 rounded-xl text-xs"
+          className="mt-3 h-8 w-full gap-1.5 rounded-xl text-control"
         >
           {running ? (
             <>
@@ -1139,40 +1277,61 @@ export function StudyTimer({
             </>
           ) : (
             <>
-              <Play className="h-3 w-3" /> {selectedSubjectIds.length === 0 ? "Pick a subject" : secondsLeft === totalSeconds ? "Start Focus" : "Resume"}
+              <Play className="h-3 w-3" /> {timerActionLabel}
             </>
           )}
         </Button>
 
-        {activeSessionId && (
+        {isStudyOvertime ? (
+          <Button
+            onClick={handleReturnToBreak}
+            disabled={saving}
+            size="sm"
+            variant="default"
+            className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control"
+          >
+            <Coffee className="h-3 w-3" />
+            break time!
+          </Button>
+        ) : activeSessionId && (
           <Button
             onClick={handleFinish}
             disabled={saving}
             size="sm"
             variant="ghost"
-            className="mt-1.5 h-7 w-full gap-1.5 rounded-xl text-xs text-muted-foreground hover:text-foreground"
+            className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control text-muted-foreground hover:text-foreground"
           >
             <CheckCircle2 className="h-3 w-3" />
             Finish & save
           </Button>
         )}
 
-        {mode !== "work" && (
-          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+        {mode !== "work" && !isStudyOvertime && (
+          <div className="mt-1.5 grid grid-cols-1 gap-1.5 min-[240px]:grid-cols-3">
             <Button
               onClick={handleSkipBreak}
               size="sm"
               variant="ghost"
-              className="h-7 gap-1.5 rounded-xl text-xs text-muted-foreground hover:text-foreground"
+              className="h-8 gap-1.5 rounded-xl text-control text-muted-foreground hover:text-foreground"
             >
               <SkipForward className="h-3 w-3" />
               Skip
             </Button>
             <Button
+              onClick={handleStartStudyOvertime}
+              disabled={!canStartFocus}
+              size="sm"
+              variant="outline"
+              className="h-8 min-w-0 gap-1.5 rounded-xl px-1.5 text-control"
+            >
+              <BookOpen className="h-3 w-3" />
+              Study
+            </Button>
+            <Button
               onClick={handleMoreBreakTime}
               size="sm"
               variant="outline"
-              className="h-7 gap-1.5 rounded-xl text-xs"
+              className="h-8 gap-1.5 rounded-xl text-control"
             >
               <Plus className="h-3 w-3" />
               {EXTRA_BREAK_MINUTES} min

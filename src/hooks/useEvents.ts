@@ -26,12 +26,16 @@ function markPastEventsFinished(events: CalendarEvent[], now = Date.now()): Cale
 
 function normaliseEvent(raw: unknown): CalendarEvent {
   const obj = raw as Record<string, unknown>
+  const source = obj.source as Record<string, unknown> | undefined
   const eventType =
     obj.eventType === "sac" ||
     obj.eventType === "exam" ||
     obj.eventType === "assignment" ||
     obj.eventType === "gat" ||
-    obj.eventType === "event"
+    obj.eventType === "event" ||
+    obj.eventType === "homework" ||
+    obj.eventType === "other" ||
+    obj.eventType === "practice-sac"
       ? obj.eventType
       : "event"
 
@@ -46,6 +50,14 @@ function normaliseEvent(raw: unknown): CalendarEvent {
     location: typeof obj.location === "string" ? obj.location : undefined,
     isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
     finishedAt: typeof obj.finishedAt === "string" ? obj.finishedAt : undefined,
+    source: source?.type === "notion" && typeof source.id === "string"
+      ? {
+        type: "notion",
+        id: source.id,
+        url: typeof source.url === "string" ? source.url : undefined,
+        lastEditedTime: typeof source.lastEditedTime === "string" ? source.lastEditedTime : undefined,
+      }
+      : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
   }
   return event
@@ -109,6 +121,7 @@ export function useEvents() {
     eventType: EventType
     subjectId?: string
     location?: string
+    source?: CalendarEvent["source"]
   }) => {
     const event: CalendarEvent = {
       id: generateId(),
@@ -119,6 +132,7 @@ export function useEvents() {
       eventType: data.eventType,
       subjectId: data.subjectId,
       location: data.location,
+      source: data.source,
       isFinished: eventHasPassed(data),
       finishedAt: eventHasPassed(data) ? new Date().toISOString() : undefined,
       created_at: new Date().toISOString(),
@@ -136,6 +150,7 @@ export function useEvents() {
     eventType: EventType
     subjectId?: string
     location?: string
+    source?: CalendarEvent["source"]
   }[]) => {
     const createdAt = new Date().toISOString()
     const newEvents: CalendarEvent[] = items.map((data) => ({
@@ -147,6 +162,7 @@ export function useEvents() {
       eventType: data.eventType,
       subjectId: data.subjectId,
       location: data.location,
+      source: data.source,
       isFinished: eventHasPassed(data),
       finishedAt: eventHasPassed(data) ? createdAt : undefined,
       created_at: createdAt,
@@ -207,6 +223,40 @@ export function useEvents() {
     await saveEvents(updated)
   }, [events, saveEvents])
 
+  const syncEvents = useCallback(async (
+    itemsToCreate: Omit<CalendarEvent, "id" | "created_at">[],
+    itemsToUpdate: {
+      id: string
+      updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
+    }[],
+  ) => {
+    const updateMap = new Map(itemsToUpdate.map((item) => [item.id, item.updates]))
+    const createdAt = new Date().toISOString()
+    const newEvents: CalendarEvent[] = itemsToCreate.map((data) => ({
+      id: generateId(),
+      title: data.title,
+      description: data.description,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      eventType: data.eventType,
+      subjectId: data.subjectId,
+      location: data.location,
+      source: data.source,
+      isFinished: eventHasPassed(data),
+      finishedAt: eventHasPassed(data) ? createdAt : undefined,
+      created_at: createdAt,
+    }))
+    const updated = markPastEventsFinished([
+      ...events.map((event) => {
+        const updates = updateMap.get(event.id)
+        return updates ? { ...event, ...updates } : event
+      }),
+      ...newEvents,
+    ])
+    await saveEvents(updated)
+    return newEvents
+  }, [events, saveEvents])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
     loadEvents()
@@ -239,6 +289,7 @@ export function useEvents() {
     deleteEvent,
     deleteEvents,
     updateAndDeleteEvents,
+    syncEvents,
     refresh: loadEvents,
   }
 }

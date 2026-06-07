@@ -46,6 +46,15 @@ export function getEventTypeInfo(type?: EventType): { icon: string; label: strin
   if (type === "event") {
     return { icon: "📍", label: "Event", color: "#0D9488" }
   }
+  if (type === "homework") {
+    return { icon: "📚", label: "Homework", color: "#2563EB" }
+  }
+  if (type === "practice-sac") {
+    return { icon: "🧪", label: "Practice SAC", color: "#7C3AED" }
+  }
+  if (type === "other") {
+    return { icon: "📌", label: "Other", color: "#6B7280" }
+  }
   return getDeadlineTypeInfo(type)
 }
 

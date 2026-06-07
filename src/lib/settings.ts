@@ -6,10 +6,40 @@ const KEYS = {
   reasoningEffort: "focal-reasoning-effort",
   reasoningMaxTokens: "focal-reasoning-max-tokens",
   reasoningExclude: "focal-reasoning-exclude",
+  notionToken: "focal-notion-token",
+  notionDataSourceId: "focal-notion-data-source-id",
+  notionTitleProperty: "focal-notion-title-property",
+  notionDateProperty: "focal-notion-date-property",
+  notionTypeProperty: "focal-notion-type-property",
+  notionSubjectProperty: "focal-notion-subject-property",
+  notionLocationProperty: "focal-notion-location-property",
+  notionDescriptionProperty: "focal-notion-description-property",
 } as const
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
 export type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
+
+export interface NotionCalendarSettings {
+  token: string
+  dataSourceId: string
+  titleProperty: string
+  dateProperty: string
+  typeProperty: string
+  subjectProperty: string
+  locationProperty: string
+  descriptionProperty: string
+}
+
+export const DEFAULT_NOTION_CALENDAR_SETTINGS: NotionCalendarSettings = {
+  token: "",
+  dataSourceId: "",
+  titleProperty: "Name",
+  dateProperty: "Date",
+  typeProperty: "Type",
+  subjectProperty: "Subject",
+  locationProperty: "Location",
+  descriptionProperty: "Description",
+}
 
 export function getApiKey(): string | null {
   return localStorage.getItem(KEYS.apiKey)
@@ -66,6 +96,30 @@ export function getReasoningExclude(): boolean {
 
 export function setReasoningExclude(exclude: boolean) {
   localStorage.setItem(KEYS.reasoningExclude, String(exclude))
+}
+
+export function getNotionCalendarSettings(): NotionCalendarSettings {
+  return {
+    token: localStorage.getItem(KEYS.notionToken) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.token,
+    dataSourceId: localStorage.getItem(KEYS.notionDataSourceId) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.dataSourceId,
+    titleProperty: localStorage.getItem(KEYS.notionTitleProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty,
+    dateProperty: localStorage.getItem(KEYS.notionDateProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty,
+    typeProperty: localStorage.getItem(KEYS.notionTypeProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.typeProperty,
+    subjectProperty: localStorage.getItem(KEYS.notionSubjectProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.subjectProperty,
+    locationProperty: localStorage.getItem(KEYS.notionLocationProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.locationProperty,
+    descriptionProperty: localStorage.getItem(KEYS.notionDescriptionProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.descriptionProperty,
+  }
+}
+
+export function setNotionCalendarSettings(settings: NotionCalendarSettings) {
+  localStorage.setItem(KEYS.notionToken, settings.token.trim())
+  localStorage.setItem(KEYS.notionDataSourceId, settings.dataSourceId.trim())
+  localStorage.setItem(KEYS.notionTitleProperty, settings.titleProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty)
+  localStorage.setItem(KEYS.notionDateProperty, settings.dateProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty)
+  localStorage.setItem(KEYS.notionTypeProperty, settings.typeProperty.trim())
+  localStorage.setItem(KEYS.notionSubjectProperty, settings.subjectProperty.trim())
+  localStorage.setItem(KEYS.notionLocationProperty, settings.locationProperty.trim())
+  localStorage.setItem(KEYS.notionDescriptionProperty, settings.descriptionProperty.trim())
 }
 
 export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; max_tokens?: number; exclude?: boolean } } {

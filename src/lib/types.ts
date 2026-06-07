@@ -1,6 +1,6 @@
 export type DeadlineType = "sac" | "exam" | "assignment" | "gat";
 
-export type EventType = DeadlineType | "event";
+export type EventType = DeadlineType | "event" | "homework" | "other" | "practice-sac";
 
 export type FileTag = "sac" | "notes" | "past-paper" | "exam" | "resource" | "other";
 
@@ -39,6 +39,12 @@ export interface CalendarEvent {
   location?: string;
   isFinished?: boolean;
   finishedAt?: string;
+  source?: {
+    type: "notion";
+    id: string;
+    url?: string;
+    lastEditedTime?: string;
+  };
   created_at: string;
 }
 
@@ -54,8 +60,8 @@ export const VCE_SUBJECTS: Subject[] = [
   { id: "eng", name: "English", shortCode: "ENG", color: "#E11D48", icon: "📖" },
   { id: "eng-lang", name: "English Language", shortCode: "ELG", color: "#E11D48", icon: "📖" },
   { id: "lit", name: "Literature", shortCode: "LIT", color: "#E11D48", icon: "📚" },
-  { id: "mm", name: "Maths Methods", shortCode: "MCM", color: "#2563EB", icon: "📐" },
-  { id: "sm", name: "Specialist Maths", shortCode: "SME", color: "#2563EB", icon: "🧮" },
+  { id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB", icon: "📐" },
+  { id: "sm", name: "Specialist Mathematics", shortCode: "SME", color: "#2563EB", icon: "🧮" },
   { id: "gm", name: "General Mathematics", shortCode: "GMM", color: "#2563EB", icon: "📊" },
   { id: "csl", name: "Chinese Second Language", shortCode: "CSL", color: "#DC2626", icon: "🀄" },
   { id: "pe", name: "Physical Education", shortCode: "PED", color: "#16A34A", icon: "🏃" },
@@ -131,5 +137,3 @@ export interface PriorityItem {
   sessionId?: string;
   action: string;
 }
-
-

@@ -22,6 +22,9 @@ pub fn run() {
             commands::files::move_file_to_folder,
             commands::files::import_folder_to_project,
             commands::credits::get_credits,
+            commands::notion::query_notion_calendar,
+            commands::notion::create_notion_calendar_page,
+            commands::notion::update_notion_calendar_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
