@@ -1,4 +1,4 @@
-export type DeadlineType = "sac" | "exam" | "assignment" | "gat";
+export type DeadlineType = "sac" | "exam" | "assignment";
 
 export type EventType = DeadlineType | "event" | "homework" | "other" | "practice-sac";
 
@@ -25,6 +25,14 @@ export interface StudySession {
   blockers?: string;
   nextAction?: string;
   completedAt?: string;
+  source?: {
+    type: "notion";
+    id: string;
+    url?: string;
+    lastEditedTime?: string;
+    kind?: "event" | "session";
+    bodyHash?: string;
+  };
   created_at: string;
 }
 
@@ -44,6 +52,8 @@ export interface CalendarEvent {
     id: string;
     url?: string;
     lastEditedTime?: string;
+    kind?: "event" | "session";
+    bodyHash?: string;
   };
   created_at: string;
 }

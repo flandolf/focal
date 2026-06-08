@@ -11,6 +11,8 @@ import type { ThemeId } from "@/lib/themes"
 import type { NotionCalendarSettings, ReasoningEffort } from "@/lib/settings"
 import type { Subject } from "@/lib/types"
 
+type NotionPropertyField = "titleProperty" | "dateProperty" | "typeProperty" | "completedProperty" | "subjectProperty"
+
 interface OpenRouterModel {
   id: string
   name: string
@@ -74,7 +76,8 @@ interface SettingsViewProps {
   onShowAllSubjects: () => void
   onOpenExport?: () => void
   onOpenSubjects?: () => void
-  onSyncNotionCalendar?: () => Promise<{ created: unknown[]; updated: unknown[]; skipped: number; skippedReasons?: string[]; pushedCreated?: number; pushedUpdated?: number }>
+  onSyncNotionCalendar?: (onProgress: (msg: string) => void) => Promise<{ created: unknown[]; updated: unknown[]; createdSessions?: unknown[]; updatedSessions?: unknown[]; skipped: number; skippedReasons?: string[]; pushedCreated?: number; pushedUpdated?: number; deleted?: number; pushErrors?: string[] } | null>
+  lastSyncTime?: number
 }
 
 const SETTINGS_SECTION_CLASS = "rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur"
@@ -89,6 +92,18 @@ function getSettingsOptionClassName(selected: boolean, className?: string) {
     selected ? SETTINGS_SELECTED_OPTION_CLASS : "border-border",
     className,
   )
+}
+
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 10) return "just now"
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }
 
 function supportsStructuredOutput(model: OpenRouterModel): boolean {
@@ -311,6 +326,7 @@ export function SettingsView({
   onOpenExport,
   onOpenSubjects,
   onSyncNotionCalendar,
+  lastSyncTime,
 }: SettingsViewProps) {
   const [key, setKey] = useState(() => getApiKey() ?? "")
   const [model, setModelState] = useState(() => getModel())
@@ -327,6 +343,7 @@ export function SettingsView({
   const [notionSaved, setNotionSaved] = useState(false)
   const [notionSyncing, setNotionSyncing] = useState(false)
   const [notionSyncResult, setNotionSyncResult] = useState<string | null>(null)
+  const [notionSyncPhase, setNotionSyncPhase] = useState<string | null>(null)
   const didFetchRef = useRef(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ name: string; error?: string } | null>(null)
@@ -498,15 +515,30 @@ export function SettingsView({
     if (!onSyncNotionCalendar) return
     setNotionSyncing(true)
     setNotionSyncResult(null)
-    onSyncNotionCalendar()
+    setNotionSyncPhase("Connecting to Notion...")
+    onSyncNotionCalendar((msg) => setNotionSyncPhase(msg))
       .then((result) => {
-        const pulled = result.created.length + result.updated.length
+        if (!result) {
+          setNotionSyncResult("Sync skipped")
+          return
+        }
+        const pulled = result.created.length + result.updated.length + (result.createdSessions?.length ?? 0) + (result.updatedSessions?.length ?? 0)
         const pushed = (result.pushedCreated ?? 0) + (result.pushedUpdated ?? 0)
+        const deleted = result.deleted ?? 0
         const reasons = result.skippedReasons?.length ? `: ${result.skippedReasons.join("; ")}` : ""
-        setNotionSyncResult(`${pulled} pulled, ${pushed} pushed${result.skipped > 0 ? `, ${result.skipped} skipped${reasons}` : ""}`)
+        const errors = result.pushErrors?.length ? `, ${result.pushErrors.length} push error(s)` : ""
+        const parts: string[] = []
+        if (pulled > 0) parts.push(`${pulled} pulled`)
+        if (pushed > 0) parts.push(`${pushed} pushed`)
+        if (deleted > 0) parts.push(`${deleted} deleted`)
+        const summary = parts.length > 0 ? parts.join(", ") : "up to date"
+        setNotionSyncResult(`${summary}${result.skipped > 0 ? `, ${result.skipped} skipped${reasons}` : ""}${errors}`)
       })
       .catch((e) => setNotionSyncResult(e instanceof Error ? e.message : String(e)))
-      .finally(() => setNotionSyncing(false))
+      .finally(() => {
+        setNotionSyncing(false)
+        setNotionSyncPhase(null)
+      })
   }, [onSyncNotionCalendar])
 
   const handleImportFolder = useCallback(async () => {
@@ -530,6 +562,18 @@ export function SettingsView({
       setImporting(false)
     }
   }, [])
+
+  const notionPropertyInputs: {
+    field: NotionPropertyField
+    label: string
+    value: string
+  }[] = [
+    { field: "titleProperty", label: "Title property", value: notionSettings.titleProperty },
+    { field: "dateProperty", label: "Date property", value: notionSettings.dateProperty },
+    { field: "typeProperty", label: "Type property", value: notionSettings.typeProperty },
+    { field: "completedProperty", label: "Complete property", value: String(notionSettings.completedProperty) },
+    { field: "subjectProperty", label: "Subject property", value: notionSettings.subjectProperty },
+  ]
 
   const filteredModels = (modelSearch
     ? models.filter(
@@ -739,7 +783,7 @@ export function SettingsView({
               <div className="min-w-0">
                 <h2 className="text-sm font-medium">Notion Calendar Sync</h2>
                 <p className="mt-1 text-caption text-muted-foreground/70">
-                  Pull pages from a Notion calendar data source into the Focal calendar.
+                  Pull pages from a Notion database into Focal calendar items and study sessions.
                 </p>
               </div>
               <Button
@@ -777,18 +821,11 @@ export function SettingsView({
                 className="font-mono text-xs"
               />
               <div className="grid gap-2 sm:grid-cols-2">
-                {([
-                  ["titleProperty", "Title property"],
-                  ["dateProperty", "Date property"],
-                  ["typeProperty", "Type property"],
-                  ["subjectProperty", "Subject property"],
-                  ["locationProperty", "Location property"],
-                  ["descriptionProperty", "Description property"],
-                ] as const).map(([field, label]) => (
+                {notionPropertyInputs.map(({ field, label, value }) => (
                   <label key={field} className="min-w-0">
                     <span className="text-caption text-muted-foreground/70">{label}</span>
                     <Input
-                      value={notionSettings[field]}
+                      value={value}
                       onChange={(event) => handleNotionSettingChange(field, event.target.value)}
                       className="mt-1 text-xs"
                     />
@@ -796,24 +833,43 @@ export function SettingsView({
                 ))}
               </div>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-caption text-muted-foreground/60">
-                Share the Notion database with your integration before syncing.
-                {notionSaved && <span className="ml-1 text-emerald-600 dark:text-emerald-400">Saved</span>}
-              </p>
-              <a
-                href="https://developers.notion.com/docs/getting-started"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={SETTINGS_LINK_CLASS}
-              >
-                Setup
-                <ExternalLink className="h-3 w-3" />
-              </a>
+            <div className="mt-3 flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                {notionSyncing && notionSyncPhase ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/30 px-3 py-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                    <p className="text-caption text-muted-foreground truncate">{notionSyncPhase}</p>
+                  </div>
+                ) : notionSyncResult ? (
+                  <p className={cn(
+                    "text-caption rounded-lg border px-3 py-2",
+                    notionSyncResult.includes("error") || notionSyncResult.includes("failed")
+                      ? "border-destructive/30 bg-destructive/5 text-destructive"
+                      : "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
+                  )}>
+                    {notionSyncResult}
+                  </p>
+                ) : lastSyncTime && lastSyncTime > 0 ? (
+                  <p className="text-caption text-muted-foreground/60">
+                    Last synced {formatTimeAgo(lastSyncTime)}
+                  </p>
+                ) : (
+                  <p className="text-caption text-muted-foreground/50">Never synced</p>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {notionSaved && <span className="text-caption text-emerald-600 dark:text-emerald-400">Saved</span>}
+                <a
+                  href="https://developers.notion.com/docs/getting-started"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={SETTINGS_LINK_CLASS}
+                >
+                  Setup
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
             </div>
-            {notionSyncResult && (
-              <p className="mt-2 text-caption text-muted-foreground">{notionSyncResult}</p>
-            )}
           </section>
 
           <section className={SETTINGS_SECTION_CLASS}>

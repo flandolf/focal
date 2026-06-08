@@ -24,6 +24,17 @@ function normaliseSession(raw: unknown): StudySession {
     blockers: typeof obj.blockers === "string" ? obj.blockers : undefined,
     nextAction: typeof obj.nextAction === "string" ? obj.nextAction : undefined,
     completedAt: typeof obj.completedAt === "string" ? obj.completedAt : undefined,
+    source: typeof obj.source === "object" && obj.source !== null && (obj.source as Record<string, unknown>).type === "notion" && typeof (obj.source as Record<string, unknown>).id === "string"
+      ? {
+        type: "notion",
+        id: String((obj.source as Record<string, unknown>).id),
+        url: typeof (obj.source as Record<string, unknown>).url === "string" ? String((obj.source as Record<string, unknown>).url) : undefined,
+        lastEditedTime: typeof (obj.source as Record<string, unknown>).lastEditedTime === "string" ? String((obj.source as Record<string, unknown>).lastEditedTime) : undefined,
+        kind: (obj.source as Record<string, unknown>).kind === "event" || (obj.source as Record<string, unknown>).kind === "session"
+          ? (obj.source as Record<string, unknown>).kind as "event" | "session"
+          : undefined,
+      }
+      : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
   }
 }
@@ -182,6 +193,38 @@ export function useStudySessions() {
     await saveSessions(updated)
   }, [sessions, saveSessions])
 
+  const syncSessions = useCallback(async (
+    itemsToCreate: Omit<StudySession, "id" | "created_at">[],
+    itemsToUpdate: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[],
+  ) => {
+    const updateMap = new Map(itemsToUpdate.map((item) => [item.id, item.updates]))
+    const createdAt = new Date().toISOString()
+    const newSessions: StudySession[] = itemsToCreate.map((item) => ({
+      id: generateId(),
+      projectId: item.projectId,
+      subjectIds: item.subjectIds,
+      title: item.title,
+      description: item.description,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      status: item.status,
+      topics: item.topics,
+      notes: item.notes,
+      confidence: item.confidence,
+      blockers: item.blockers,
+      nextAction: item.nextAction,
+      completedAt: item.completedAt,
+      source: item.source,
+      created_at: createdAt,
+    }))
+    const updated = sessions.map((session) => {
+      const updates = updateMap.get(session.id)
+      return updates ? { ...session, ...updates } : session
+    })
+    await saveSessions([...updated, ...newSessions])
+    return newSessions
+  }, [sessions, saveSessions])
+
   const getSessionsByProject = useCallback((projectId: string) => {
     return sessions.filter((s) => s.projectId === projectId)
   }, [sessions])
@@ -213,6 +256,7 @@ export function useStudySessions() {
     deleteSession,
     deleteSessions,
     updateAndDeleteSessions,
+    syncSessions,
     getSessionsByProject,
     getUpcomingSessions,
     refresh: loadSessions,

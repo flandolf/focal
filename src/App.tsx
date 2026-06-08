@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useMemo, type MouseEvent } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
 import { Toaster, toast } from "sonner"
-import { FolderOpen, Search, Settings } from "lucide-react"
+import { FolderOpen, Loader2, Search, Settings } from "lucide-react"
 import { Sidebar } from "@/components/Sidebar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
@@ -22,10 +22,10 @@ import { useStudySessions } from "@/hooks/useStudySessions"
 import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useTheme } from "@/lib/themes"
-import { getSubjectById } from "@/lib/utils"
+import { cn, getSubjectById } from "@/lib/utils"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { getNotionCalendarSettings } from "@/lib/settings"
-import { syncNotionCalendar } from "@/lib/notionSync"
+import { syncNotionCalendar, type NotionCalendarSyncResult, pushEventToNotion, pushSessionToNotion } from "@/lib/notionSync"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
@@ -34,8 +34,35 @@ const MOTION_EASE = [0.16, 1, 0.3, 1] as const
 const SHELL_LAYOUT_TRANSITION = { duration: 0.24, ease: MOTION_EASE } as const
 const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
 const POMODORO_MERGE_WINDOW_MS = 15 * 60 * 1000
-const POMODORO_DESCRIPTION = "Started from the Pomodoro timer."
-const POMODORO_NOTES = "Focus block logged from the sidebar timer."
+const POMODORO_DESCRIPTION_PREFIX = "Pomodoro —"
+const LEGACY_POMODORO_DESCRIPTION = "Started from the Pomodoro timer."
+const LEGACY_POMODORO_NOTES = "Focus block logged from the sidebar timer."
+
+function isPomodoroSession(session: StudySession) {
+  return (typeof session.description === "string" && (
+    session.description.startsWith(POMODORO_DESCRIPTION_PREFIX)
+    || session.description === LEGACY_POMODORO_DESCRIPTION
+  )) || session.notes === LEGACY_POMODORO_NOTES
+}
+
+function getPomodoroDescription(durationMinutes: number, cycleNumber: number) {
+  const startedAt = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  return `${POMODORO_DESCRIPTION_PREFIX} ${durationMinutes}m focus block #${cycleNumber} · started ${startedAt}`
+}
+
+function getPomodoroNotes(cycleNumber: number) {
+  const stored = typeof window !== "undefined" ? localStorage.getItem("focal-pomodoro-settings") : null
+  let work = 25, brk = 5, long = 15
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored) as Record<string, unknown>
+      if (typeof parsed.workMinutes === "number") work = parsed.workMinutes
+      if (typeof parsed.breakMinutes === "number") brk = parsed.breakMinutes
+      if (typeof parsed.longBreakMinutes === "number") long = parsed.longBreakMinutes
+    } catch { /* use defaults */ }
+  }
+  return `Timer: ${work}m work / ${brk}m break / ${long}m long break. Focus block #${cycleNumber} of current run.`
+}
 const HIDDEN_SUBJECTS_STORAGE_KEY = "focal-hidden-subjects"
 
 function getStoredHiddenSubjectIds() {
@@ -74,9 +101,6 @@ function getStoredCustomSubjects() {
   }
 }
 
-function isPomodoroSession(session: StudySession) {
-  return session.description === POMODORO_DESCRIPTION || session.notes === POMODORO_NOTES
-}
 
 function haveSameSubjects(a: string[], b: string[]) {
   if (a.length !== b.length) return false
@@ -130,8 +154,8 @@ function getAdjacentPomodoroSession(
 
 function App() {
   const { projects, addProject, updateProject, deleteProject, addCustomSubfolder } = useProjects()
-  const { sessions, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, updateAndDeleteSessions } = useStudySessions()
-  const { events, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, updateAndDeleteEvents, syncEvents } = useEvents()
+  const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
+  const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -142,6 +166,8 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [newItemInitialDate, setNewItemInitialDate] = useState<Date | undefined>(undefined)
   const [newItemDialogKey, setNewItemDialogKey] = useState(0)
+  const [lastSyncTime, setLastSyncTime] = useState(0)
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [searchOpen, setSearchOpen] = useState(false)
@@ -154,6 +180,7 @@ function App() {
   const [customSubjects, setCustomSubjects] = useState<Subject[]>(getStoredCustomSubjects)
   const [hiddenSubjectIds, setHiddenSubjectIds] = useState<string[]>(getStoredHiddenSubjectIds)
   const { theme, mode, resolvedDark, setTheme, setMode } = useTheme()
+  const syncSessions = rawSyncSessions
   const allSubjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])
   const availableSubjects = useMemo(
     () => allSubjects.filter((subject) => !hiddenSubjectIds.includes(subject.id)),
@@ -167,6 +194,172 @@ function App() {
   useEffect(() => {
     localStorage.setItem(HIDDEN_SUBJECTS_STORAGE_KEY, JSON.stringify(hiddenSubjectIds))
   }, [hiddenSubjectIds])
+
+  const notionSyncInFlightRef = useRef(false)
+  const notionSyncQueuedRef = useRef(false)
+  const notionSyncQueuedNotifyRef = useRef(false)
+  const notionSyncQueuedResolverRef = useRef<{ resolve: (value: NotionCalendarSyncResult | null) => void; reject: (reason: unknown) => void } | null>(null)
+  const notionSyncRunnerRef = useRef<((notify: boolean, onProgress?: (msg: string) => void) => Promise<NotionCalendarSyncResult | null>) | null>(null)
+  const eventsRef = useRef(events)
+  const sessionsRef = useRef(sessions)
+  const allSubjectsRef = useRef(allSubjects)
+
+  useEffect(() => {
+    eventsRef.current = events
+    sessionsRef.current = sessions
+    allSubjectsRef.current = allSubjects
+  })
+
+  const performNotionSync = useCallback(async (notify: boolean, onProgress?: (msg: string) => void) => {
+    const settings = getNotionCalendarSettings()
+    if (!settings.token.trim() || !settings.dataSourceId.trim()) return null
+    if (notionSyncInFlightRef.current) {
+      notionSyncQueuedRef.current = true
+      notionSyncQueuedNotifyRef.current = notionSyncQueuedNotifyRef.current || notify
+      // Return a promise that resolves when the queued sync finishes, so
+      // callers (SettingsView) see the actual result instead of "Sync skipped".
+      if (notify) {
+        return new Promise<NotionCalendarSyncResult | null>((resolve, reject) => {
+          notionSyncQueuedResolverRef.current = { resolve, reject }
+        })
+      }
+      return null
+    }
+
+    notionSyncInFlightRef.current = true
+    notionSyncQueuedRef.current = false
+    setSyncStatus("syncing")
+    try {
+      const result = await syncNotionCalendar(settings, eventsRef.current, sessionsRef.current, allSubjectsRef.current, onProgress)
+      if (result.created.length > 0 || result.updated.length > 0) {
+        const newEvents = await syncEvents(result.created, result.updated)
+        eventsRef.current = [...eventsRef.current, ...newEvents]
+      }
+      if (result.createdSessions.length > 0 || result.updatedSessions.length > 0) {
+        const newSessions = await syncSessions(result.createdSessions, result.updatedSessions)
+        sessionsRef.current = [...sessionsRef.current, ...newSessions]
+      }
+
+      if (notify) {
+        const pulled = result.created.length + result.updated.length + result.createdSessions.length + result.updatedSessions.length
+        const pushed = result.pushedCreated + result.pushedUpdated
+        const parts: string[] = []
+        if (pulled > 0) parts.push(`${pulled} pulled`)
+        if (pushed > 0) parts.push(`${pushed} pushed`)
+        if (result.deleted > 0) parts.push(`${result.deleted} deleted`)
+        toast.success(
+          parts.length > 0
+            ? `Synced Notion items: ${parts.join(", ")}`
+            : "Notion items already up to date",
+        )
+        if (result.skipped > 0) {
+          toast.info(`${result.skipped} Notion item${result.skipped === 1 ? "" : "s"} skipped without a valid date`, {
+            description: result.skippedReasons[0],
+          })
+        }
+        if (result.conflicts > 0) {
+          toast.warning(`${result.conflicts} item${result.conflicts === 1 ? "" : "s"} not pushed (modified in Notion)`, {
+            description: result.conflictDetails?.[0],
+          })
+        }
+        if (result.pushErrors.length > 0) {
+          toast.error(`${result.pushErrors.length} push error${result.pushErrors.length === 1 ? "" : "s"}`, {
+            description: result.pushErrors[0],
+          })
+        }
+        return result
+      }
+    } catch (e) {
+      setSyncStatus("error")
+      if (notify) {
+        toast.error(`Notion sync failed: ${String(e)}`)
+        throw e
+      }
+      console.error(`Notion sync failed: ${String(e)}`)
+      return null
+    } finally {
+      setSyncStatus("idle")
+      const now = Date.now()
+      setLastSyncTime(now)
+      notionSyncInFlightRef.current = false
+      if (notionSyncQueuedRef.current) {
+        notionSyncQueuedRef.current = false
+        const queuedNotify = notionSyncQueuedNotifyRef.current
+        notionSyncQueuedNotifyRef.current = false
+        const queuedResolver = notionSyncQueuedResolverRef.current
+        notionSyncQueuedResolverRef.current = null
+        const result = notionSyncRunnerRef.current?.(queuedNotify)
+        if (queuedResolver && result) {
+          result.then(
+            (r) => queuedResolver.resolve(r),
+            (err) => queuedResolver.reject(err),
+          )
+        }
+      }
+    }
+    return null
+  }, [syncEvents, syncSessions])
+
+  useEffect(() => {
+    notionSyncRunnerRef.current = performNotionSync
+  }, [performNotionSync])
+
+  const requestNotionSync = useCallback((notify = false) => {
+    const settings = getNotionCalendarSettings()
+    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
+    if (notionSyncInFlightRef.current) {
+      notionSyncQueuedRef.current = true
+      notionSyncQueuedNotifyRef.current = notionSyncQueuedNotifyRef.current || notify
+      return
+    }
+    void performNotionSync(notify)
+  }, [performNotionSync])
+
+  /**
+   * Push a single event to Notion immediately without a full pull.
+   * Accepts the full event object (post-mutation) to avoid stale-ref issues.
+   * Falls back to a full sync if the schema isn't cached yet.
+   */
+  const pushEventChange = useCallback(async (event: CalendarEvent) => {
+    const settings = getNotionCalendarSettings()
+    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
+    setSyncStatus("syncing")
+    try {
+      const result = await pushEventToNotion(settings, event, allSubjectsRef.current)
+      if (result) {
+        await syncEvents([], [{ id: event.id, updates: { source: result.source } }])
+      } else {
+        void requestNotionSync(false)
+      }
+    } catch {
+      setSyncStatus("error")
+    } finally {
+      setSyncStatus("idle")
+    }
+  }, [syncEvents, requestNotionSync])
+
+  /**
+   * Push a single study session to Notion immediately without a full pull.
+   * Accepts the full session object (post-mutation) to avoid stale-ref issues.
+   * Falls back to a full sync if the schema isn't cached yet.
+   */
+  const pushSessionChange = useCallback(async (session: StudySession) => {
+    const settings = getNotionCalendarSettings()
+    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
+    setSyncStatus("syncing")
+    try {
+      const result = await pushSessionToNotion(settings, session, allSubjectsRef.current)
+      if (result) {
+        await syncSessions([], [{ id: session.id, updates: { source: result.source } }])
+      } else {
+        void requestNotionSync(false)
+      }
+    } catch {
+      setSyncStatus("error")
+    } finally {
+      setSyncStatus("idle")
+    }
+  }, [syncSessions, requestNotionSync])
 
   const handleToggleSubjectVisibility = useCallback((subjectId: string) => {
     setHiddenSubjectIds((current) => (
@@ -190,6 +383,35 @@ function App() {
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
+
+  const initialAutoSyncDoneRef = useRef(false)
+  useEffect(() => {
+    if (eventsLoading || sessionsLoading) return
+    if (initialAutoSyncDoneRef.current) return
+    if (!notionSyncRunnerRef.current) return
+    initialAutoSyncDoneRef.current = true
+    void notionSyncRunnerRef.current(false)
+  }, [eventsLoading, sessionsLoading])
+
+  useEffect(() => {
+    if (eventsLoading || sessionsLoading) return
+    const syncNow = () => {
+      void requestNotionSync(false)
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncNow()
+      }
+    }
+    const interval = window.setInterval(syncNow, 60 * 1000)
+    window.addEventListener("focus", syncNow)
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener("focus", syncNow)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+    }
+  }, [eventsLoading, sessionsLoading, requestNotionSync])
 
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null
 
@@ -257,7 +479,7 @@ function App() {
     deadline?: string
     subjectId?: string
     unit?: "1" | "2" | "3" | "4"
-    deadlineType?: "sac" | "exam" | "assignment" | "gat"
+    deadlineType?: "sac" | "exam" | "assignment"
     examDate?: string
   }) => {
     try {
@@ -288,7 +510,7 @@ function App() {
       deadline?: string
       subjectId?: string
       unit?: "1" | "2" | "3" | "4"
-      deadlineType?: "sac" | "exam" | "assignment" | "gat"
+      deadlineType?: "sac" | "exam" | "assignment"
       examDate?: string
       isFavorite?: boolean
       isArchived?: boolean
@@ -319,6 +541,7 @@ function App() {
         setHomeSelected(true)
       }
       toast.success(`Assessment "${project.name}" deleted`)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to delete assessment: ${String(e)}`)
     }
@@ -341,7 +564,7 @@ function App() {
     completedAt?: string
   }) => {
     try {
-      await addSession(
+      const newSession = await addSession(
         data.projectId,
         data.subjectIds,
         data.title,
@@ -353,6 +576,7 @@ function App() {
       )
       toast.success(`Study session "${data.title}" created`)
       setSessionDialogOpen(false)
+      void pushSessionChange(newSession)
     } catch (e) {
       toast.error(`Failed to create study session: ${String(e)}`)
     }
@@ -371,26 +595,33 @@ function App() {
     try {
       await addSessions(items)
       toast.success(`${items.length} study session${items.length !== 1 ? "s" : ""} created`)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to create study sessions: ${String(e)}`)
       throw e
     }
   }
 
-  const getPomodoroTitle = (subjectIds: string[]) => {
+  const getPomodoroTitle = (subjectIds: string[], cycleNumber: number, projectName?: string) => {
     const labels = subjectIds
       .map((id) => getSubjectById(id)?.shortCode ?? getSubjectById(id)?.name)
       .filter((label): label is string => Boolean(label))
 
-    if (labels.length === 0) return "Pomodoro focus"
-    if (labels.length === 1) return `${labels[0]} focus`
-    return `${labels.slice(0, 2).join(" + ")} focus`
+    const subjectPart = labels.length === 0
+      ? "Pomodoro"
+      : labels.length === 1
+        ? labels[0]
+        : labels.slice(0, 2).join(" + ")
+
+    const prefix = projectName ? `${projectName} — ` : ""
+    return `${prefix}${subjectPart} · Focus #${cycleNumber}`
   }
 
   const handleStartPomodoroSession = async (data: {
     subjectIds: string[]
     durationSeconds: number
     projectId?: string
+    cycleNumber: number
   }) => {
     try {
       const start = new Date()
@@ -400,36 +631,36 @@ function App() {
       if (adjacentSession) {
         const mergedStart = new Date(Math.min(new Date(adjacentSession.startTime).getTime(), start.getTime()))
         const mergedEnd = new Date(Math.max(new Date(adjacentSession.endTime).getTime(), end.getTime()))
-        const mergedSession: StudySession = {
-          ...adjacentSession,
+        const mergedDurationMin = Math.round((mergedEnd.getTime() - mergedStart.getTime()) / 60000)
+
+        await updateSession(adjacentSession.id, {
           startTime: mergedStart.toISOString(),
           endTime: mergedEnd.toISOString(),
           status: "in-progress",
           completedAt: undefined,
-        }
-
-        await updateSession(adjacentSession.id, {
-          startTime: mergedSession.startTime,
-          endTime: mergedSession.endTime,
-          status: mergedSession.status,
-          completedAt: mergedSession.completedAt,
+          description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)`,
         })
         toast.success("Pomodoro session merged on calendar")
-        return mergedSession
+        const updatedSession = { ...adjacentSession, startTime: mergedStart.toISOString(), endTime: mergedEnd.toISOString(), status: "in-progress" as const, completedAt: undefined, description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)` }
+        void pushSessionChange(updatedSession)
+        return updatedSession
       }
 
+      const durationMinutes = Math.round(data.durationSeconds / 60)
+      const projectName = data.projectId ? projects.find((p) => p.id === data.projectId)?.name : undefined
       const session = await addSession(
         data.projectId,
         data.subjectIds,
-        getPomodoroTitle(data.subjectIds),
+        getPomodoroTitle(data.subjectIds, data.cycleNumber, projectName),
         start.toISOString(),
         end.toISOString(),
-        POMODORO_DESCRIPTION,
+        getPomodoroDescription(durationMinutes, data.cycleNumber),
         undefined,
-        POMODORO_NOTES,
+        getPomodoroNotes(data.cycleNumber),
         "in-progress",
       )
       toast.success("Pomodoro session added to calendar")
+      void pushSessionChange(session)
       return session
     } catch (e) {
       toast.error(`Failed to start Pomodoro session: ${String(e)}`)
@@ -442,7 +673,20 @@ function App() {
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => {
     try {
-      await updateSession(id, updates)
+      const session = sessions.find((s) => s.id === id)
+      const effectiveUpdates = { ...updates }
+
+      if (session && updates.subjectIds && isPomodoroSession(session)) {
+        const cycleMatch = /Focus #(\d+)/.exec(session.title)
+        const cycleNumber = cycleMatch ? parseInt(cycleMatch[1], 10) : 1
+        const projectName = session.projectId
+          ? projects.find((p) => p.id === session.projectId)?.name
+          : undefined
+        effectiveUpdates.title = getPomodoroTitle(updates.subjectIds, cycleNumber, projectName)
+      }
+
+      await updateSession(id, effectiveUpdates)
+      if (session) void pushSessionChange({ ...session, ...effectiveUpdates })
     } catch (e) {
       toast.error(`Failed to update Pomodoro session: ${String(e)}`)
       throw e
@@ -486,6 +730,8 @@ function App() {
       toast.success("Study session updated")
       setSessionDialogOpen(false)
       setSelectedSession(null)
+      const sessionForPush = sessions.find((s: StudySession) => s.id === data.id)
+      if (sessionForPush) void pushSessionChange({ ...sessionForPush, ...updates })
     } catch (e) {
       toast.error(`Failed to update study session: ${String(e)}`)
     }
@@ -505,6 +751,7 @@ function App() {
       toast.success("Study session deleted")
       setSessionDialogOpen(false)
       setSelectedSession(null)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to delete study session: ${String(e)}`)
     }
@@ -522,9 +769,10 @@ function App() {
     finishedAt?: string
   }) => {
     try {
-      await addEvent(data)
+      const created = await addEvent(data)
       toast.success(`Event "${data.title}" added`)
       setEventDialogOpen(false)
+      void pushEventChange(created)
     } catch (e) {
       toast.error(`Failed to add event: ${String(e)}`)
     }
@@ -534,6 +782,7 @@ function App() {
     try {
       await addEvents(items)
       toast.success(`${items.length} event${items.length !== 1 ? "s" : ""} added`)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to add events: ${String(e)}`)
       throw e
@@ -567,6 +816,8 @@ function App() {
       toast.success("Event updated")
       setEditEventDialogOpen(false)
       setSelectedEvent(null)
+      const { id, ...rest } = data
+      void pushEventChange({ ...events.find((e: CalendarEvent) => e.id === id), ...rest } as CalendarEvent)
     } catch (e) {
       toast.error(`Failed to update event: ${String(e)}`)
     }
@@ -586,6 +837,7 @@ function App() {
       toast.success("Event deleted")
       setEditEventDialogOpen(false)
       setSelectedEvent(null)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to delete event: ${String(e)}`)
     }
@@ -606,6 +858,7 @@ function App() {
         itemIds.sessionIds.length > 0 ? deleteSessions(itemIds.sessionIds) : Promise.resolve(),
       ])
       toast.success(`${total} calendar item${total === 1 ? "" : "s"} deleted`)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to delete calendar items: ${String(e)}`)
       throw e
@@ -635,6 +888,7 @@ function App() {
           : Promise.resolve(),
       ])
       toast.success(`${total} calendar item${total === 1 ? "" : "s"} marked ${isCompleted ? "complete" : "current"}`)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to update calendar items: ${String(e)}`)
       throw e
@@ -686,6 +940,7 @@ function App() {
         selectedEvents.slice(1).map((event) => event.id),
       )
       toast.success(`${selectedEvents.length} events merged`)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to merge events: ${String(e)}`)
       throw e
@@ -748,6 +1003,7 @@ function App() {
         selectedSessions.slice(1).map((session) => session.id),
       )
       toast.success(`${selectedSessions.length} study sessions merged`)
+      void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to merge study sessions: ${String(e)}`)
       throw e
@@ -806,29 +1062,8 @@ function App() {
     setEditEventDialogOpen(true)
   }
 
-  const handleSyncNotionCalendar = async () => {
-    try {
-      const result = await syncNotionCalendar(getNotionCalendarSettings(), events, allSubjects)
-      if (result.updated.length > 0 || result.created.length > 0) {
-        await syncEvents(result.created, result.updated)
-      }
-      const pulled = result.created.length + result.updated.length
-      const pushed = result.pushedCreated + result.pushedUpdated
-      toast.success(
-        pulled > 0 || pushed > 0
-          ? `Synced Notion calendar: ${pulled} pulled, ${pushed} pushed`
-          : "Notion calendar already up to date",
-      )
-      if (result.skipped > 0) {
-        toast.info(`${result.skipped} Notion item${result.skipped === 1 ? "" : "s"} skipped without a valid date`, {
-          description: result.skippedReasons[0],
-        })
-      }
-      return result
-    } catch (e) {
-      toast.error(`Notion sync failed: ${String(e)}`)
-      throw e
-    }
+  const handleSyncNotionCalendar = async (onProgress: (msg: string) => void) => {
+    return performNotionSync(true, onProgress)
   }
 
   const handleTitlebarDrag = (event: MouseEvent<HTMLDivElement>) => {
@@ -873,6 +1108,28 @@ function App() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start">Settings</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => requestNotionSync(true)}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                  syncStatus === "syncing"
+                    ? "text-accent"
+                    : syncStatus === "error"
+                      ? "text-destructive/70 hover:bg-background/65 hover:text-destructive"
+                      : "text-muted-foreground/50 hover:bg-background/65 hover:text-muted-foreground",
+                )}
+                aria-label={syncStatus === "syncing" ? "Syncing…" : syncStatus === "error" ? "Sync error — click to retry" : "Sync to Notion"}
+                disabled={syncStatus === "syncing"}
+              >
+                <Loader2 className={cn("h-3 w-3", syncStatus === "syncing" && "animate-spin")} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start">
+              {syncStatus === "syncing" ? "Syncing…" : syncStatus === "error" ? "Sync error — click to retry" : "Sync to Notion"}
+            </TooltipContent>
           </Tooltip>
         </div>
         <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
@@ -937,6 +1194,7 @@ function App() {
                     onOpenExport={() => setExportOpen(true)}
                     onOpenSubjects={() => setSubjectsOpen(true)}
                     onSyncNotionCalendar={handleSyncNotionCalendar}
+                    lastSyncTime={lastSyncTime}
                   />
                 ) : analyticsView ? (
                   <AnalyticsView

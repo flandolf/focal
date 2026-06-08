@@ -24,6 +24,7 @@ pub fn run() {
             commands::credits::get_credits,
             commands::notion::query_notion_calendar,
             commands::notion::create_notion_calendar_page,
+            commands::notion::delete_notion_page,
             commands::notion::update_notion_calendar_page,
         ])
         .run(tauri::generate_context!())
