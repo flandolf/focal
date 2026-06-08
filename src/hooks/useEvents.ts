@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 import type { CalendarEvent, EventType } from "@/lib/types"
@@ -76,6 +76,10 @@ export function useEvents() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Ref always holds the latest events so mutation callbacks never operate on stale closures.
+  const eventsRef = useRef(events)
+  useEffect(() => { eventsRef.current = events })
+
   const loadEvents = useCallback(async () => {
     try {
       setError(null)
@@ -137,10 +141,10 @@ export function useEvents() {
       finishedAt: eventHasPassed(data) ? new Date().toISOString() : undefined,
       created_at: new Date().toISOString(),
     }
-    const updated = [...events, event]
+    const updated = [...eventsRef.current, event]
     await saveEvents(updated)
     return event
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   const addEvents = useCallback(async (items: {
     title: string
@@ -167,43 +171,43 @@ export function useEvents() {
       finishedAt: eventHasPassed(data) ? createdAt : undefined,
       created_at: createdAt,
     }))
-    const updated = [...events, ...newEvents]
+    const updated = [...eventsRef.current, ...newEvents]
     await saveEvents(updated)
     return newEvents
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   const updateEvent = useCallback(async (
     id: string,
     updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
   ) => {
-    const updated = markPastEventsFinished(events.map((event) =>
+    const updated = markPastEventsFinished(eventsRef.current.map((event) =>
       event.id === id ? { ...event, ...updates } : event
     ))
     await saveEvents(updated)
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   const updateEvents = useCallback(async (items: {
     id: string
     updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
   }[]) => {
     const updateMap = new Map(items.map((item) => [item.id, item.updates]))
-    const updated = markPastEventsFinished(events.map((event) => {
+    const updated = markPastEventsFinished(eventsRef.current.map((event) => {
       const updates = updateMap.get(event.id)
       return updates ? { ...event, ...updates } : event
     }))
     await saveEvents(updated)
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   const deleteEvent = useCallback(async (id: string) => {
-    const updated = events.filter((event) => event.id !== id)
+    const updated = eventsRef.current.filter((event) => event.id !== id)
     await saveEvents(updated)
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   const deleteEvents = useCallback(async (ids: string[]) => {
     const idSet = new Set(ids)
-    const updated = events.filter((event) => !idSet.has(event.id))
+    const updated = eventsRef.current.filter((event) => !idSet.has(event.id))
     await saveEvents(updated)
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   const updateAndDeleteEvents = useCallback(async (
     items: {
@@ -214,14 +218,14 @@ export function useEvents() {
   ) => {
     const updateMap = new Map(items.map((item) => [item.id, item.updates]))
     const deleteSet = new Set(ids)
-    const updated = markPastEventsFinished(events
+    const updated = markPastEventsFinished(eventsRef.current
       .filter((event) => !deleteSet.has(event.id))
       .map((event) => {
         const updates = updateMap.get(event.id)
         return updates ? { ...event, ...updates } : event
       }))
     await saveEvents(updated)
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   const syncEvents = useCallback(async (
     itemsToCreate: Omit<CalendarEvent, "id" | "created_at">[],
@@ -247,7 +251,7 @@ export function useEvents() {
       created_at: createdAt,
     }))
     const updated = markPastEventsFinished([
-      ...events.map((event) => {
+      ...eventsRef.current.map((event) => {
         const updates = updateMap.get(event.id)
         return updates ? { ...event, ...updates } : event
       }),
@@ -255,7 +259,7 @@ export function useEvents() {
     ])
     await saveEvents(updated)
     return newEvents
-  }, [events, saveEvents])
+  }, [saveEvents])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
