@@ -140,7 +140,6 @@ function EventForm({
               <option value="practice-sac">Practice SAC</option>
               <option value="homework">Homework</option>
               <option value="assignment">Assignment</option>
-              <option value="gat">GAT</option>
               <option value="other">Other</option>
               <option value="event">Event</option>
             </SelectField>

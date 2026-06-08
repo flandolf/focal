@@ -42,7 +42,7 @@ interface FileStudyPlannerButtonProps {
 }
 
 const MAX_FILES_FOR_PLAN = 12
-const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"])
+const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"])
 
 function getLocalDateValue(date: Date): string {
   const year = date.getFullYear()
@@ -211,10 +211,10 @@ ${fileLines.join("\n\n")}`,
                     date: { type: "string", description: "YYYY-MM-DD" },
                     start_time: { type: "string", description: "HH:mm in 24-hour time" },
                     duration_minutes: { type: "number" },
-                    event_type: {
-                      type: "string",
-                      enum: ["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"],
-                    },
+                      event_type: {
+                        type: "string",
+                        enum: ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"],
+                      },
                     source_files: {
                       type: "array",
                       items: {

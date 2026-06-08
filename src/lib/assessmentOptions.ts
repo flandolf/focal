@@ -11,7 +11,6 @@ export const ASSESSMENT_TYPES: { value: DeadlineType; label: string; icon: strin
   { value: "sac", label: "SAC", icon: "📝" },
   { value: "exam", label: "Exam", icon: "📅" },
   { value: "assignment", label: "Assignment", icon: "📋" },
-  { value: "gat", label: "GAT", icon: "🎯" },
 ]
 
 export const VCE_UNITS: { value: Unit; label: string }[] = [
