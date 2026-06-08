@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 import type { ConfidenceScore, StudySession } from "@/lib/types"
@@ -51,6 +51,10 @@ export function useStudySessions() {
   const [sessions, setSessions] = useState<StudySession[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Ref always holds the latest sessions so mutation callbacks never operate on stale closures.
+  const sessionsRef = useRef(sessions)
+  useEffect(() => { sessionsRef.current = sessions })
 
   const loadSessions = useCallback(async () => {
     try {
@@ -109,10 +113,10 @@ export function useStudySessions() {
       notes,
       created_at: new Date().toISOString(),
     }
-    const updated = [...sessions, session]
+    const updated = [...sessionsRef.current, session]
     await saveSessions(updated)
     return session
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const addSessions = useCallback(async (items: {
     projectId?: string
@@ -138,44 +142,44 @@ export function useStudySessions() {
       notes: item.notes,
       created_at: createdAt,
     }))
-    const updated = [...sessions, ...newSessions]
+    const updated = [...sessionsRef.current, ...newSessions]
     await saveSessions(updated)
     return newSessions
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const updateSession = useCallback(async (
     id: string,
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => {
-    const updated = sessions.map((s) =>
+    const updated = sessionsRef.current.map((s) =>
       s.id === id ? { ...s, ...updates } : s
     )
     await saveSessions(updated)
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const updateSessions = useCallback(async (
     items: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]
   ) => {
     if (items.length === 0) return
     const updateMap = new Map(items.map((item) => [item.id, item.updates]))
-    const updated = sessions.map((session) => {
+    const updated = sessionsRef.current.map((session) => {
       const updates = updateMap.get(session.id)
       return updates ? { ...session, ...updates } : session
     })
     await saveSessions(updated)
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const deleteSession = useCallback(async (id: string) => {
-    const updated = sessions.filter((s) => s.id !== id)
+    const updated = sessionsRef.current.filter((s) => s.id !== id)
     await saveSessions(updated)
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const deleteSessions = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return
     const idSet = new Set(ids)
-    const updated = sessions.filter((session) => !idSet.has(session.id))
+    const updated = sessionsRef.current.filter((session) => !idSet.has(session.id))
     await saveSessions(updated)
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const updateAndDeleteSessions = useCallback(async (
     items: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[],
@@ -184,14 +188,14 @@ export function useStudySessions() {
     if (items.length === 0 && ids.length === 0) return
     const updateMap = new Map(items.map((item) => [item.id, item.updates]))
     const deleteSet = new Set(ids)
-    const updated = sessions
+    const updated = sessionsRef.current
       .filter((session) => !deleteSet.has(session.id))
       .map((session) => {
         const updates = updateMap.get(session.id)
         return updates ? { ...session, ...updates } : session
       })
     await saveSessions(updated)
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const syncSessions = useCallback(async (
     itemsToCreate: Omit<StudySession, "id" | "created_at">[],
@@ -217,13 +221,13 @@ export function useStudySessions() {
       source: item.source,
       created_at: createdAt,
     }))
-    const updated = sessions.map((session) => {
+    const updated = sessionsRef.current.map((session) => {
       const updates = updateMap.get(session.id)
       return updates ? { ...session, ...updates } : session
     })
     await saveSessions([...updated, ...newSessions])
     return newSessions
-  }, [sessions, saveSessions])
+  }, [saveSessions])
 
   const getSessionsByProject = useCallback((projectId: string) => {
     return sessions.filter((s) => s.projectId === projectId)

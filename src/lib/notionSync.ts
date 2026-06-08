@@ -963,10 +963,19 @@ function pullEvent(
   const existing = eventBySourceId.get(page.id)
   if (existing) {
     if (!existing.source?.lastEditedTime || existing.source.lastEditedTime !== page.last_edited_time) {
+      const fromPage = toEventFromPage(page, settings, subjects)
+      const updates: EventUpdates = {
+        title: fromPage.title,
+        startTime: fromPage.startTime,
+        eventType: fromPage.eventType,
+        isFinished: fromPage.isFinished,
+      }
+      if (fromPage.endTime !== undefined) updates.endTime = fromPage.endTime
+      if (fromPage.subjectId !== undefined) updates.subjectId = fromPage.subjectId
+      updates.source = getNotionSource(page, "event", existing.source?.bodyHash)
       ctx.updatedEvents.set(existing.id, {
         ...ctx.updatedEvents.get(existing.id),
-        ...toEventFromPage(page, settings, subjects),
-        source: getNotionSource(page, "event", existing.source?.bodyHash),
+        ...updates,
       })
     }
     return
@@ -1015,7 +1024,8 @@ function pullSession(
   subjects: Subject[],
   ctx: SyncCtx,
 ): void {
-  // Known session: update if changed remotely. Preserve existing bodyHash.
+  // Known session: update if changed remotely. Only merge Notion-tracked
+  // fields to avoid overwriting local-only data (topics, notes, confidence, etc.).
   const existing = sessionBySourceId.get(page.id)
   if (existing) {
     if (!existing.source?.lastEditedTime || existing.source.lastEditedTime !== page.last_edited_time) {
@@ -1023,7 +1033,12 @@ function pullSession(
       if (session) {
         ctx.updatedSessions.set(existing.id, {
           ...ctx.updatedSessions.get(existing.id),
-          ...session,
+          title: session.title,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          status: session.status,
+          subjectIds: session.subjectIds,
+          completedAt: session.completedAt,
           source: getNotionSource(page, "session", existing.source?.bodyHash),
         })
       }

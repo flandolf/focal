@@ -232,12 +232,10 @@ function App() {
     try {
       const result = await syncNotionCalendar(settings, eventsRef.current, sessionsRef.current, allSubjectsRef.current, onProgress)
       if (result.created.length > 0 || result.updated.length > 0) {
-        const newEvents = await syncEvents(result.created, result.updated)
-        eventsRef.current = [...eventsRef.current, ...newEvents]
+        await syncEvents(result.created, result.updated)
       }
       if (result.createdSessions.length > 0 || result.updatedSessions.length > 0) {
-        const newSessions = await syncSessions(result.createdSessions, result.updatedSessions)
-        sessionsRef.current = [...sessionsRef.current, ...newSessions]
+        await syncSessions(result.createdSessions, result.updatedSessions)
       }
 
       if (notify) {
@@ -331,7 +329,8 @@ function App() {
       } else {
         void requestNotionSync(false)
       }
-    } catch {
+    } catch (e) {
+      console.error("Failed to push event to Notion:", e)
       setSyncStatus("error")
     } finally {
       setSyncStatus("idle")
@@ -354,7 +353,8 @@ function App() {
       } else {
         void requestNotionSync(false)
       }
-    } catch {
+    } catch (e) {
+      console.error("Failed to push session to Notion:", e)
       setSyncStatus("error")
     } finally {
       setSyncStatus("idle")
