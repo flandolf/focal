@@ -58,7 +58,7 @@ type TimerAction =
   | { type: "RESET"; settings: TimerSettings }
   | { type: "SKIP_BREAK"; settings: TimerSettings }
   | { type: "ADD_BREAK_TIME"; minutes: number }
-  | { type: "START_STUDY_OVERTIME" }
+  | { type: "START_STUDY_OVERTIME"; settings: TimerSettings }
   | { type: "RETURN_TO_BREAK" }
   | { type: "SYNC_SETTINGS"; settings: TimerSettings; previousSettings: TimerSettings }
 
@@ -243,9 +243,12 @@ function timerReducer(state: TimerState, action: TimerAction): TimerState {
     case "ADD_BREAK_TIME":
       if (state.mode === "work" || state.studyOvertime) return state
       return { ...state, secondsLeft: state.secondsLeft + action.minutes * 60 }
-    case "START_STUDY_OVERTIME":
+    case "START_STUDY_OVERTIME": {
       if (state.mode === "work") return state
-      return { ...state, running: true, studyOvertime: true, overtimeSeconds: 0 }
+      const totalBreakSeconds = getDurationSeconds(state.mode, action.settings)
+      const elapsedBreakSeconds = totalBreakSeconds - state.secondsLeft
+      return { ...state, running: true, studyOvertime: true, overtimeSeconds: elapsedBreakSeconds }
+    }
     case "RETURN_TO_BREAK":
       if (!state.studyOvertime) return state
       return { ...state, running: true, studyOvertime: false, overtimeSeconds: 0 }
@@ -271,13 +274,13 @@ interface StudyTimerProps {
     subjectIds: string[]
     durationSeconds: number
     projectId?: string
+    cycleNumber: number
   }) => Promise<StudySession>
   onUpdateSession: (
     id: string,
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => Promise<void>
 }
-
 interface FocusStatProps {
   label: string
   value: string
@@ -321,16 +324,16 @@ function getTodayRange(now: Date) {
 
 function FocusStat({ label, value, icon, detail }: FocusStatProps) {
   return (
-    <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 px-1 py-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border/60 bg-muted/35 text-muted-foreground" aria-hidden="true">
+    <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2.5 px-1 py-2.5">
+      <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-muted/35 text-muted-foreground" aria-hidden="true">
         {icon}
       </div>
       <div className="min-w-0">
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</p>
-          <p className="shrink-0 text-xl font-semibold tabular-nums text-foreground">{value}</p>
+          <p className="shrink-0 text-lg font-semibold tabular-nums text-foreground">{value}</p>
         </div>
-        {detail && <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>}
+        {detail && <p className="mt-1 text-xs leading-4 text-muted-foreground">{detail}</p>}
       </div>
     </div>
   )
@@ -338,9 +341,9 @@ function FocusStat({ label, value, icon, detail }: FocusStatProps) {
 
 function FocusMetric({ label, value, detail }: FocusMetricProps) {
   return (
-    <div className="min-w-0 rounded-md border border-border/60 bg-background/45 px-2.5 py-2 min-[520px]:px-3">
+    <div className="min-w-0 rounded-md border border-border/60 bg-background/45 px-2.5 py-1.5 min-[520px]:px-3">
       <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-base font-semibold tabular-nums text-foreground min-[520px]:text-lg">{value}</p>
+      <p className="mt-1 truncate text-sm font-semibold tabular-nums text-foreground min-[520px]:text-base">{value}</p>
       {detail && <p className="mt-0.5 truncate text-caption text-muted-foreground">{detail}</p>}
     </div>
   )
@@ -606,9 +609,9 @@ export function StudyTimer({
     >
       <div className="pointer-events-none absolute inset-0 hairline-grid opacity-30" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-linear-to-b from-primary/8 to-transparent" />
-      <div className="relative z-10 flex h-dvh min-h-0 flex-col px-4 pb-3 pt-[calc(var(--app-titlebar-inset)+0.5rem)] sm:px-5 min-[1200px]:px-6">
-        <header className="grid shrink-0 gap-3 border-b border-border/60 pb-3 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-end">
-          <div className="min-w-0 space-y-2">
+      <div className="relative z-10 flex h-dvh min-h-0 flex-col px-4 pb-2 pt-[calc(var(--app-titlebar-inset)+0.25rem)] sm:px-5 min-[1200px]:px-6">
+        <header className="grid shrink-0 gap-2 border-b border-border/60 pb-2 min-[640px]:grid-cols-[minmax(0,1fr)_auto] min-[640px]:items-end">
+          <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className={cn(
                 "inline-flex h-6 items-center rounded-md border px-2 text-micro font-semibold uppercase tracking-normal",
@@ -626,18 +629,18 @@ export function StudyTimer({
               </span>
             </div>
             <div className="min-w-0">
-              <h2 className="truncate font-heading text-xl font-semibold tracking-normal text-foreground min-[1200px]:text-2xl">
+              <h2 className="truncate font-heading text-lg font-semibold tracking-normal text-foreground min-[1200px]:text-xl">
                 {workbenchTitle}
               </h2>
-              <p className="mt-1 truncate text-sm text-muted-foreground">{sessionScopeLabel}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{sessionScopeLabel}</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 min-[760px]:justify-end">
+          <div className="flex shrink-0 items-center gap-2 min-[640px]:justify-end">
             <Button
               onClick={handleReset}
               variant="outline"
               size="icon"
-              className="h-9 w-9 rounded-md bg-background/60"
+              className="h-8 w-8 rounded-md bg-background/60"
               aria-label="Reset timer"
             >
               <RotateCcw className="h-4 w-4" />
@@ -647,7 +650,7 @@ export function StudyTimer({
               onClick={closeFocusView}
               variant="outline"
               size="icon"
-              className="h-9 w-9 rounded-md bg-background/60"
+              className="h-8 w-8 rounded-md bg-background/60"
               aria-label="Close full screen timer"
             >
               <Minimize2 className="h-4 w-4" />
@@ -655,20 +658,20 @@ export function StudyTimer({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto py-4 min-[1080px]:grid-cols-[minmax(0,1fr)_20rem] min-[1080px]:overflow-hidden min-[1400px]:grid-cols-[minmax(0,1fr)_22rem]">
-          <main className="relative flex min-h-112 flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 shadow-xs min-[1080px]:min-h-0">
+        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto py-3 min-[740px]:grid-cols-[minmax(0,1fr)_15rem] min-[740px]:overflow-hidden min-[1080px]:grid-cols-[minmax(0,1fr)_20rem] min-[1400px]:grid-cols-[minmax(0,1fr)_22rem]">
+          <main className="relative flex min-h-[30rem] flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 shadow-xs min-[740px]:min-h-0">
             <div className="grid shrink-0 grid-cols-1 border-b border-border/55 bg-background/35 min-[520px]:grid-cols-3">
               <FocusMetric label="Elapsed" value={formatMinutes(Math.ceil(elapsedSeconds / 60))} detail={progressDetail} />
               <FocusMetric label="Remaining" value={formatMinutes(Math.ceil(secondsLeft / 60))} detail={currentBlockDetail} />
               <FocusMetric label="Logged" value={activeSessionId ? "Active" : "Ready"} detail={activeSessionId ? isStudyOvertime ? "Overtime session" : "Calendar session" : "Awaiting start"} />
             </div>
 
-            <div className="relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] px-4 py-4 sm:px-6 min-[1200px]:px-8">
-              <div className="pointer-events-none absolute inset-x-6 top-6 h-px bg-border/55" />
+            <div className="relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] px-3 py-3 sm:px-4 min-[1200px]:px-6">
+              <div className="pointer-events-none absolute inset-x-4 top-5 h-px bg-border/55" />
               <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-col items-center justify-center text-center">
                 <div
                   className={cn(
-                    "relative aspect-square w-full max-w-[min(42vh,27rem)]",
+                    "relative aspect-square w-full max-w-[min(34vh,21rem)] min-[900px]:max-w-[min(38vh,23rem)] min-[1200px]:max-w-[min(42vh,26rem)]",
                     running && "motion-safe:animate-[pulse_4s_ease-in-out_infinite]"
                   )}
                 >
@@ -721,16 +724,16 @@ export function StudyTimer({
                     <span className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">
                       {running ? "Timer running" : activeSessionId ? "Timer paused" : "Ready to start"}
                     </span>
-                    <span className="mt-3 font-heading text-5xl font-semibold leading-none tabular-nums tracking-normal text-foreground min-[520px]:text-6xl min-[1200px]:text-7xl">
+                    <span className="mt-2 font-heading text-4xl font-semibold leading-none tabular-nums tracking-normal text-foreground min-[520px]:text-5xl min-[1200px]:text-6xl">
                       {timeDisplay}
                     </span>
-                    <span className={cn("mt-5 text-sm font-semibold", modeColor)}>
+                    <span className={cn("mt-4 text-sm font-semibold", modeColor)}>
                       {timerStageDetail}
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-5 w-full max-w-3xl">
+                <div className="mt-4 w-full max-w-3xl">
                   <div className="grid grid-cols-6 gap-1" aria-hidden="true">
                     {focusTicks.map((tick) => {
                       const isFilled = tick / (focusTicks.length - 1) <= progress
@@ -755,14 +758,14 @@ export function StudyTimer({
 
               </div>
 
-              <div className="mx-auto mt-4 w-full max-w-3xl border-t border-border/55 pt-4">
+              <div className="mx-auto mt-3 w-full max-w-3xl border-t border-border/55 pt-3">
                 <div className="flex w-full flex-col gap-2 sm:flex-row">
                   <Button
                     onClick={handleToggle}
                     disabled={mode === "work" && !canStartFocus && !running}
                     size="lg"
                     variant={running ? "outline" : "default"}
-                    className="h-12 flex-1 gap-2 rounded-md text-sm"
+                    className="h-11 flex-1 gap-2 rounded-md text-sm"
                   >
                     {running ? (
                       <>
@@ -780,7 +783,7 @@ export function StudyTimer({
                       disabled={saving}
                       size="lg"
                       variant="default"
-                      className="h-12 flex-1 gap-2 rounded-md text-sm"
+                      className="h-11 flex-1 gap-2 rounded-md text-sm"
                     >
                       <Coffee className="h-4 w-4" />
                       break time!
@@ -791,7 +794,7 @@ export function StudyTimer({
                       disabled={saving}
                       size="lg"
                       variant="outline"
-                      className="h-12 flex-1 gap-2 rounded-md text-sm"
+                      className="h-11 flex-1 gap-2 rounded-md text-sm"
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       Finish & save
@@ -805,7 +808,7 @@ export function StudyTimer({
                       onClick={handleSkipBreak}
                       size="sm"
                       variant="ghost"
-                      className="h-11 gap-2 rounded-md text-sm"
+                      className="h-10 gap-2 rounded-md text-sm"
                     >
                       <SkipForward className="h-4 w-4" />
                       Skip
@@ -815,7 +818,7 @@ export function StudyTimer({
                       disabled={!canStartFocus}
                       size="sm"
                       variant="outline"
-                      className="h-11 min-w-0 gap-2 rounded-md text-sm"
+                      className="h-10 min-w-0 gap-2 rounded-md text-sm"
                     >
                       <BookOpen className="h-4 w-4" />
                       Study overtime
@@ -824,7 +827,7 @@ export function StudyTimer({
                       onClick={handleMoreBreakTime}
                       size="sm"
                       variant="outline"
-                      className="h-11 gap-2 rounded-md text-sm"
+                      className="h-10 gap-2 rounded-md text-sm"
                     >
                       <Plus className="h-4 w-4" />
                       {EXTRA_BREAK_MINUTES} min
@@ -835,7 +838,7 @@ export function StudyTimer({
             </div>
           </main>
 
-          <aside className="flex min-h-0 flex-col gap-3 min-[1080px]:overflow-y-auto min-[1080px]:pr-1">
+          <aside className="flex min-h-0 flex-col gap-3 min-[740px]:overflow-y-auto min-[740px]:pr-1">
             <section className="rounded-lg border border-border/60 bg-card/45 px-3 py-1.5 shadow-xs">
               <div className="flex items-center justify-between gap-3 border-b border-border/55 py-2.5">
                 <div>
@@ -879,7 +882,7 @@ export function StudyTimer({
                 <Coffee className={cn("h-5 w-5 shrink-0", mode === "work" || isStudyOvertime ? "text-muted-foreground" : "text-emerald-500")} />
               </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 space-y-3">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Subjects</p>
@@ -895,7 +898,7 @@ export function StudyTimer({
                           aria-pressed={selected}
                           onClick={() => handleSubjectClick(subject.id)}
                           className={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
+                            "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
                             selected
                               ? "border-transparent bg-primary/10 text-primary"
                               : "border-border/70 bg-background/40 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
@@ -929,7 +932,7 @@ export function StudyTimer({
                         step={1}
                         value={settings[key]}
                         onChange={(event) => updateDuration(key, event.target.value)}
-                        className="h-9 rounded-md px-2 text-center text-sm tabular-nums"
+                        className="h-8 rounded-md px-2 text-center text-sm tabular-nums"
                         aria-label={`${label} minutes`}
                       />
                     </label>
@@ -999,6 +1002,7 @@ export function StudyTimer({
       subjectIds: selectedSubjectIds,
       durationSeconds,
       projectId: activeProjectId,
+      cycleNumber: cycles + 1,
     })
     activeSessionIdRef.current = session.id
     setActiveSessionId(session.id)
@@ -1053,10 +1057,10 @@ export function StudyTimer({
   const handleStartStudyOvertime = async () => {
     if (mode === "work" || isStudyOvertime || activeSessionIdRef.current || !canStartFocus) return
 
-    dispatch({ type: "START_STUDY_OVERTIME" })
+    dispatch({ type: "START_STUDY_OVERTIME", settings: settingsRef.current })
     setSaving(true)
     try {
-      const started = await startTimerSession(60)
+      const started = await startTimerSession(settings.workMinutes * 60)
       if (!started) dispatch({ type: "RETURN_TO_BREAK" })
     } catch (e) {
       console.error("Failed to start overtime session:", e)
