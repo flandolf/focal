@@ -19,7 +19,6 @@ interface NewProjectDialogProps {
     subjectId?: string
     unit?: Unit
     deadlineType?: DeadlineType
-    gatDate?: string
     examDate?: string
   }) => void
   customSubjects?: Subject[]

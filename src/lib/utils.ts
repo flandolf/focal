@@ -29,8 +29,6 @@ export function getSubjectById(id?: string): Subject | undefined {
 
 export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label: string; color: string } {
   switch (type) {
-    case "gat":
-      return { icon: "🎯", label: "GAT", color: "#9333EA" }
     case "sac":
       return { icon: "📝", label: "SAC", color: "#EA580C" }
     case "exam":
@@ -83,7 +81,6 @@ export function isOverdue(dateString: string): boolean {
 }
 
 const DEADLINE_TYPE_PRIORITY: Record<DeadlineType, number> = {
-  gat: 0,
   sac: 1,
   exam: 2,
   assignment: 3,

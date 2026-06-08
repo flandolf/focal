@@ -8,7 +8,7 @@ import type {
 import { getSessionSubjectIds } from "@/lib/utils"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const ASSESSMENT_TYPES = new Set(["sac", "exam", "assignment", "gat"])
+const ASSESSMENT_TYPES = new Set(["sac", "exam", "assignment"])
 
 interface PriorityInput {
   projects: Project[]

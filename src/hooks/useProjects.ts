@@ -18,7 +18,7 @@ function normaliseProject(raw: unknown): Project {
     folder_path: typeof obj.folder_path === "string" ? obj.folder_path : "unknown",
     subjectId: typeof obj.subjectId === "string" ? obj.subjectId : undefined,
     unit: (obj.unit === "1" || obj.unit === "2" || obj.unit === "3" || obj.unit === "4") ? obj.unit : undefined,
-    deadlineType: (obj.deadlineType === "sac" || obj.deadlineType === "exam" || obj.deadlineType === "assignment" || obj.deadlineType === "gat") ? obj.deadlineType : undefined,
+    deadlineType: (obj.deadlineType === "sac" || obj.deadlineType === "exam" || obj.deadlineType === "assignment") ? obj.deadlineType : undefined,
     examDate: typeof obj.examDate === "string" ? obj.examDate : undefined,
     isFavorite: typeof obj.isFavorite === "boolean" ? obj.isFavorite : false,
     isArchived: typeof obj.isArchived === "boolean" ? obj.isArchived : false,
