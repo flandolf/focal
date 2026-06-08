@@ -94,7 +94,7 @@ interface CopilotResult {
 }
 
 const QUICK_LINKS_KEY = "focal-quick-links"
-const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"])
+const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"])
 const VALID_URGENCIES = new Set<PriorityUrgency>(["critical", "high", "medium", "low"])
 const PREP_COMPLETED_CREDIT_WINDOW_DAYS = 7
 
@@ -285,12 +285,12 @@ async function generateEventsFromText(
   const projectEnum = ["none", ...projectIds]
   const itemTypeEnum = mode === "sessions" ? ["session"] : ["event", "session"]
   const modeRules = mode === "sessions"
-    ? `- Return only item_type "session"; do not create calendar events, reminders, deadlines, SACs, exams, assignments, or GAT items.
+    ? `- Return only item_type "session"; do not create calendar events, reminders, deadlines, SACs, exams, or assignments.
 - Every returned item must be a planned study session with at least one concrete subject id in subject_ids.
 - Use event_type "event" for every returned item because study sessions are not assessment events.`
     : `- Use item_type "session" for study blocks, revision plans, homework blocks, practice tasks, or prep work.
-- Use item_type "event" for real calendar events, due dates, SACs, exams, assignments, GAT dates, meetings, or reminders.
-- Use event_type "sac", "exam", "practice-sac", "homework", "other", "assignment", or "gat" only for real assessment/homework items; use "event" for reminders, meetings, or admin tasks.`
+- Use item_type "event" for real calendar events, due dates, SACs, exams, assignments, meetings, or reminders.
+- Use event_type "sac", "exam", "practice-sac", "homework", "other", "assignment" only for real assessment/homework items; use "event" for reminders, meetings, or admin tasks.`
   const subjectLines = subjects
     .map((subject) => `${subject.id}: ${subject.name} (${subject.shortCode})`)
     .join("\n")
@@ -372,7 +372,7 @@ ${sourceText}
                     duration_minutes: { type: "number" },
                     event_type: {
                       type: "string",
-                      enum: ["sac", "exam", "assignment", "gat", "event", "homework", "other", "practice-sac"],
+                      enum: ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"],
                     },
                     subject_id: {
                       type: "string",
@@ -3083,7 +3083,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
 
           <Dialog open={textPlannerOpen} onOpenChange={setTextPlannerOpen}>
             <DialogContent className="flex h-[min(88dvh,48rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-4xl">
-              <div className="shrink-0 border-b px-5 pb-4 pt-5">
+              <div className="shrink-0 border-b px-6 pb-5 pt-6">
                 <DialogHeader>
                   <DialogTitle>{plannerTitle}</DialogTitle>
                   <DialogDescription>
@@ -3092,7 +3092,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 </DialogHeader>
               </div>
 
-              <div className="flex min-h-0 flex-1 flex-col gap-4 px-5 py-5">
+              <div className="flex min-h-0 flex-1 flex-col gap-6 px-6 py-6">
                 {plannerError && (
                   <p className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -3106,6 +3106,14 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                     OpenRouter API key not configured. Go to Settings to set it up.
                   </p>
                 )}
+
+                <span className="inline-flex items-center gap-1.5 self-start rounded-md bg-muted/60 px-2 py-1 text-xs font-medium text-muted-foreground">
+                  {plannerMode === "sessions" ? (
+                    <><Calendar className="h-3 w-3" /> Study sessions only</>
+                  ) : (
+                    <><CalendarPlus className="h-3 w-3" /> Events and sessions</>
+                  )}
+                </span>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium" htmlFor="text-event-planner-input">Source text</label>
@@ -3140,7 +3148,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 </div>
 
                 {plannerDrafts.length > 0 && (
-                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border/70">
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border/40">
                     <div className="divide-y divide-border/60">
                       {plannerDrafts.map((draft, index) => {
                         const subject = getSubjectById(draft.subjectId)
@@ -3150,7 +3158,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                           <div
                             key={`${draft.title}-${draft.date}-${draft.startTime}`}
                             className={cn(
-                              "grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 bg-background/40 px-3 py-3",
+                              "grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 bg-background/40 px-4 py-4",
                               !draft.approved && "opacity-55",
                             )}
                           >
@@ -3172,7 +3180,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                               {draft.description && (
                                 <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{draft.description}</p>
                               )}
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                 <span className="rounded-md bg-muted px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
                                   {draft.kind === "session" ? "Study session" : "Event"}
                                 </span>
@@ -3222,7 +3230,7 @@ Return only study sessions. Do not create normal calendar events. Prefer study b
                 )}
               </div>
 
-              <DialogFooter className="m-0 shrink-0 rounded-none px-5 py-3">
+              <DialogFooter className="m-0 shrink-0 rounded-none border-t px-6 py-3.5">
                 <Button variant="outline" size="sm" onClick={() => setTextPlannerOpen(false)}>
                   <X className="mr-1.5 h-3.5 w-3.5" />
                   Cancel

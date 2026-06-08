@@ -28,7 +28,6 @@ import {
   PanelLeftOpen,
   Plus,
   Star,
-  Target,
   Trash2,
   TrendingUp,
   type LucideIcon,
@@ -112,7 +111,6 @@ const SUBJECT_ICONS: Record<string, LucideIcon> = {
 }
 
 const DEADLINE_ICONS: Record<DeadlineType | "default", LucideIcon> = {
-  gat: Target,
   sac: NotebookPen,
   exam: CalendarDays,
   assignment: ClipboardList,
@@ -180,6 +178,7 @@ interface SidebarProps {
     subjectIds: string[]
     durationSeconds: number
     projectId?: string
+    cycleNumber: number
   }) => Promise<StudySession>
   onUpdatePomodoroSession: (
     id: string,
@@ -283,7 +282,7 @@ export function Sidebar({
         <div className="mt-3 flex justify-center">
           <Button
             onClick={onNewProject}
-            className={cn("h-8 overflow-hidden rounded-2xl", isCollapsed ? "w-8 px-0" : "w-full gap-1")}
+            className={cn("h-8 overflow-hidden rounded-2xl text-primary-foreground", isCollapsed ? "w-8 px-0" : "w-full gap-1")}
             size="sm"
             title={isCollapsed ? "New Assessment" : undefined}
           >

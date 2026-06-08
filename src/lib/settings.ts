@@ -11,9 +11,8 @@ const KEYS = {
   notionTitleProperty: "focal-notion-title-property",
   notionDateProperty: "focal-notion-date-property",
   notionTypeProperty: "focal-notion-type-property",
+  notionCompletedProperty: "focal-notion-completed-property",
   notionSubjectProperty: "focal-notion-subject-property",
-  notionLocationProperty: "focal-notion-location-property",
-  notionDescriptionProperty: "focal-notion-description-property",
 } as const
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
@@ -25,9 +24,8 @@ export interface NotionCalendarSettings {
   titleProperty: string
   dateProperty: string
   typeProperty: string
+  completedProperty: string
   subjectProperty: string
-  locationProperty: string
-  descriptionProperty: string
 }
 
 export const DEFAULT_NOTION_CALENDAR_SETTINGS: NotionCalendarSettings = {
@@ -36,11 +34,9 @@ export const DEFAULT_NOTION_CALENDAR_SETTINGS: NotionCalendarSettings = {
   titleProperty: "Name",
   dateProperty: "Date",
   typeProperty: "Type",
+  completedProperty: "Complete",
   subjectProperty: "Subject",
-  locationProperty: "Location",
-  descriptionProperty: "Description",
 }
-
 export function getApiKey(): string | null {
   return localStorage.getItem(KEYS.apiKey)
 }
@@ -105,9 +101,8 @@ export function getNotionCalendarSettings(): NotionCalendarSettings {
     titleProperty: localStorage.getItem(KEYS.notionTitleProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty,
     dateProperty: localStorage.getItem(KEYS.notionDateProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty,
     typeProperty: localStorage.getItem(KEYS.notionTypeProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.typeProperty,
+    completedProperty: localStorage.getItem(KEYS.notionCompletedProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.completedProperty,
     subjectProperty: localStorage.getItem(KEYS.notionSubjectProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.subjectProperty,
-    locationProperty: localStorage.getItem(KEYS.notionLocationProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.locationProperty,
-    descriptionProperty: localStorage.getItem(KEYS.notionDescriptionProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.descriptionProperty,
   }
 }
 
@@ -117,9 +112,8 @@ export function setNotionCalendarSettings(settings: NotionCalendarSettings) {
   localStorage.setItem(KEYS.notionTitleProperty, settings.titleProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty)
   localStorage.setItem(KEYS.notionDateProperty, settings.dateProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty)
   localStorage.setItem(KEYS.notionTypeProperty, settings.typeProperty.trim())
+  localStorage.setItem(KEYS.notionCompletedProperty, settings.completedProperty.trim())
   localStorage.setItem(KEYS.notionSubjectProperty, settings.subjectProperty.trim())
-  localStorage.setItem(KEYS.notionLocationProperty, settings.locationProperty.trim())
-  localStorage.setItem(KEYS.notionDescriptionProperty, settings.descriptionProperty.trim())
 }
 
 export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; max_tokens?: number; exclude?: boolean } } {

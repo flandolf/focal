@@ -31,7 +31,6 @@ function normaliseEvent(raw: unknown): CalendarEvent {
     obj.eventType === "sac" ||
     obj.eventType === "exam" ||
     obj.eventType === "assignment" ||
-    obj.eventType === "gat" ||
     obj.eventType === "event" ||
     obj.eventType === "homework" ||
     obj.eventType === "other" ||
@@ -56,6 +55,7 @@ function normaliseEvent(raw: unknown): CalendarEvent {
         id: source.id,
         url: typeof source.url === "string" ? source.url : undefined,
         lastEditedTime: typeof source.lastEditedTime === "string" ? source.lastEditedTime : undefined,
+        kind: source.kind === "event" || source.kind === "session" ? source.kind : undefined,
       }
       : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),

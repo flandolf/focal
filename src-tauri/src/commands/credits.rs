@@ -29,18 +29,18 @@ fn error_response(code: &str, message: &str) -> CreditsResponse {
 }
 
 #[tauri::command]
-pub fn get_credits(api_key: String) -> CreditsResponse {
+pub async fn get_credits(api_key: String) -> CreditsResponse {
     if api_key.trim().is_empty() {
         return error_response("VALIDATION_ERROR", "API key is required");
     }
 
-    let client = reqwest::blocking::Client::new();
-    let resp = client
+    let client = reqwest::Client::new();
+    let resp = match client
         .get("https://openrouter.ai/api/v1/credits")
         .bearer_auth(api_key)
-        .send();
-
-    let resp = match resp {
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => return error_response("NETWORK_ERROR", &format!("Network error: {}", e)),
     };
@@ -59,7 +59,7 @@ pub fn get_credits(api_key: String) -> CreditsResponse {
         );
     }
 
-    let json: serde_json::Value = match resp.json() {
+    let json: serde_json::Value = match resp.json().await {
         Ok(j) => j,
         Err(e) => return error_response("OPENROUTER_ERROR", &format!("Invalid response: {}", e)),
     };
