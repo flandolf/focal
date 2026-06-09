@@ -1,9 +1,11 @@
 import { useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
+import { downloadDir } from "@tauri-apps/api/path"
+import { open } from "@tauri-apps/plugin-dialog"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
 import { Toaster, toast } from "sonner"
-import { FolderOpen, Loader2, Search, Settings } from "lucide-react"
+import { FolderOpen, Search, Settings } from "lucide-react"
 import { Sidebar } from "@/components/Sidebar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
@@ -17,13 +19,17 @@ import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
 import { SettingsView } from "@/components/SettingsView"
 import { AnalyticsView } from "@/components/analytics/AnalyticsView"
+import { NotionConflictDialog, type NotionConflict } from "@/components/NotionConflictDialog"
+import { NotionSyncIndicator } from "@/components/NotionSyncIndicator"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 import { useTheme } from "@/lib/themes"
 import { cn, getSubjectById } from "@/lib/utils"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
+import { showUndoToast } from "@/lib/undoToast"
 import { getNotionCalendarSettings } from "@/lib/settings"
 import { syncNotionCalendar, type NotionCalendarSyncResult, pushEventToNotion, pushSessionToNotion } from "@/lib/notionSync"
 import { Button } from "@/components/ui/button"
@@ -153,9 +159,9 @@ function getAdjacentPomodoroSession(
 }
 
 function App() {
-  const { projects, addProject, updateProject, deleteProject, addCustomSubfolder } = useProjects()
-  const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
-  const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, updateAndDeleteEvents, syncEvents } = useEvents()
+  const { projects, addProject, updateProject, deleteProject, addCustomSubfolder, removeCustomSubfolder, restoreProject } = useProjects()
+  const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
+  const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, restoreEvent, restoreEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [homeSelected, setHomeSelected] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -167,7 +173,9 @@ function App() {
   const [newItemInitialDate, setNewItemInitialDate] = useState<Date | undefined>(undefined)
   const [newItemDialogKey, setNewItemDialogKey] = useState(0)
   const [lastSyncTime, setLastSyncTime] = useState(0)
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle")
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error" | "success">("idle")
+  const [notionConflicts, setNotionConflicts] = useState<NotionConflict[]>([])
+  const [notionConflictDialogOpen, setNotionConflictDialogOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [searchOpen, setSearchOpen] = useState(false)
@@ -256,9 +264,21 @@ function App() {
           })
         }
         if (result.conflicts > 0) {
-          toast.warning(`${result.conflicts} item${result.conflicts === 1 ? "" : "s"} not pushed (modified in Notion)`, {
-            description: result.conflictDetails?.[0],
-          })
+          const conflicts: NotionConflict[] = result.conflictDetails.map((detail, i) => ({
+            id: `conflict-${i}`,
+            type: detail.toLowerCase().includes("session") ? "session" : "event",
+            title: detail.split('"')[1] ?? `Item ${i + 1}`,
+            localVersion: {
+              title: detail.split('"')[1] ?? "Local version",
+              startTime: undefined,
+            },
+            notionVersion: {
+              title: "Notion version",
+              startTime: undefined,
+            },
+          }))
+          setNotionConflicts(conflicts)
+          setNotionConflictDialogOpen(true)
         }
         if (result.pushErrors.length > 0) {
           toast.error(`${result.pushErrors.length} push error${result.pushErrors.length === 1 ? "" : "s"}`, {
@@ -276,9 +296,10 @@ function App() {
       console.error(`Notion sync failed: ${String(e)}`)
       return null
     } finally {
-      setSyncStatus("idle")
       const now = Date.now()
       setLastSyncTime(now)
+      setSyncStatus("success")
+      setTimeout(() => setSyncStatus("idle"), 2000)
       notionSyncInFlightRef.current = false
       if (notionSyncQueuedRef.current) {
         notionSyncQueuedRef.current = false
@@ -373,17 +394,6 @@ function App() {
     setHiddenSubjectIds([])
   }, [])
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault()
-        setSearchOpen(true)
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
-
   const initialAutoSyncDoneRef = useRef(false)
   useEffect(() => {
     if (eventsLoading || sessionsLoading) return
@@ -472,6 +482,49 @@ function App() {
     setEventDialogOpen(true)
   }
 
+  useKeyboardShortcuts({
+    onSearch: () => setSearchOpen(true),
+    onNewAssessment: () => setDialogOpen(true),
+    onNewEvent: () => handleOpenNewEvent(),
+    onNewSession: () => handleOpenNewSession(),
+    onGoHome: handleSelectHome,
+    onGoAnalytics: handleSelectAnalytics,
+    onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
+  })
+
+  const handleAddFileFromSidebar = useCallback(async (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId)
+    if (!project) return
+
+    const selected = await open({
+      multiple: true,
+      directory: false,
+      defaultPath: await downloadDir(),
+    })
+
+    if (!selected || selected.length === 0) return
+
+    try {
+      await invoke("move_files_to_project", {
+        files: selected,
+        projectName: project.name,
+      })
+      await refreshFileCounts()
+      toast.success(`Added ${selected.length} file${selected.length === 1 ? "" : "s"} to ${project.name}`)
+    } catch (e) {
+      console.error("Failed to add files:", e)
+      toast.error("Failed to add files")
+    }
+  }, [projects, refreshFileCounts])
+
+  const handleResolveConflicts = useCallback((resolutions: Record<string, "local" | "notion" | "skip">) => {
+    const resolved = Object.entries(resolutions).map(([id, resolution]) => `${id}: ${resolution}`)
+    toast.success(`Resolved ${Object.keys(resolutions).length} conflict${Object.keys(resolutions).length === 1 ? "" : "s"}`, {
+      description: resolved.join(", "),
+    })
+    setNotionConflicts([])
+  }, [])
+
   const handleCreateProject = async (data: {
     name: string
     description?: string
@@ -532,7 +585,13 @@ function App() {
         setSelectedId(null)
         setHomeSelected(true)
       }
-      toast.success(`Assessment "${project.name}" deleted`)
+      showUndoToast({
+        message: `Assessment "${project.name}" deleted`,
+        onUndo: async () => {
+          await restoreProject(project)
+          toast.success(`Assessment "${project.name}" restored`)
+        },
+      })
       void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to delete assessment: ${String(e)}`)
@@ -740,7 +799,13 @@ function App() {
     if (!confirmed) return
     try {
       await deleteSession(id)
-      toast.success("Study session deleted")
+      showUndoToast({
+        message: "Study session deleted",
+        onUndo: async () => {
+          await restoreSession(session)
+          toast.success("Study session restored")
+        },
+      })
       setSessionDialogOpen(false)
       setSelectedSession(null)
       void requestNotionSync(false)
@@ -826,7 +891,13 @@ function App() {
     if (!confirmed) return
     try {
       await deleteEvent(id)
-      toast.success("Event deleted")
+      showUndoToast({
+        message: "Event deleted",
+        onUndo: async () => {
+          await restoreEvent(event)
+          toast.success("Event restored")
+        },
+      })
       setEditEventDialogOpen(false)
       setSelectedEvent(null)
       void requestNotionSync(false)
@@ -844,12 +915,29 @@ function App() {
       actionLabel: "Delete",
     })
     if (!confirmed) return
+
+    const deletedEvents = itemIds.eventIds
+      .map((id) => events.find((e) => e.id === id))
+      .filter((e): e is CalendarEvent => Boolean(e))
+    const deletedSessions = itemIds.sessionIds
+      .map((id) => sessions.find((s) => s.id === id))
+      .filter((s): s is StudySession => Boolean(s))
+
     try {
       await Promise.all([
         itemIds.eventIds.length > 0 ? deleteEvents(itemIds.eventIds) : Promise.resolve(),
         itemIds.sessionIds.length > 0 ? deleteSessions(itemIds.sessionIds) : Promise.resolve(),
       ])
-      toast.success(`${total} calendar item${total === 1 ? "" : "s"} deleted`)
+      showUndoToast({
+        message: `${total} calendar item${total === 1 ? "" : "s"} deleted`,
+        onUndo: async () => {
+          await Promise.all([
+            deletedEvents.length > 0 ? restoreEvents(deletedEvents) : Promise.resolve(),
+            deletedSessions.length > 0 ? restoreSessions(deletedSessions) : Promise.resolve(),
+          ])
+          toast.success(`${total} calendar item${total === 1 ? "" : "s"} restored`)
+        },
+      })
       void requestNotionSync(false)
     } catch (e) {
       toast.error(`Failed to delete calendar items: ${String(e)}`)
@@ -1101,28 +1189,12 @@ function App() {
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start">Settings</TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => requestNotionSync(true)}
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                  syncStatus === "syncing"
-                    ? "text-accent"
-                    : syncStatus === "error"
-                      ? "text-destructive/70 hover:bg-background/65 hover:text-destructive"
-                      : "text-muted-foreground/50 hover:bg-background/65 hover:text-muted-foreground",
-                )}
-                aria-label={syncStatus === "syncing" ? "Syncing…" : syncStatus === "error" ? "Sync error — click to retry" : "Sync to Notion"}
-                disabled={syncStatus === "syncing"}
-              >
-                <Loader2 className={cn("h-3 w-3", syncStatus === "syncing" && "animate-spin")} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start">
-              {syncStatus === "syncing" ? "Syncing…" : syncStatus === "error" ? "Sync error — click to retry" : "Sync to Notion"}
-            </TooltipContent>
-          </Tooltip>
+          <NotionSyncIndicator
+            status={syncStatus}
+            lastSyncTime={lastSyncTime}
+            onClick={() => requestNotionSync(true)}
+            disabled={syncStatus === "syncing"}
+          />
         </div>
         <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
         <div
@@ -1154,6 +1226,8 @@ function App() {
               onToggleFinished={handleToggleFinished}
               onStartPomodoroSession={handleStartPomodoroSession}
               onUpdatePomodoroSession={handleUpdatePomodoroSession}
+              onDeletePomodoroSession={handleDeleteStudySession}
+              onAddFile={handleAddFileFromSidebar}
               fileCounts={fileCounts}
             />
           </motion.div>
@@ -1223,6 +1297,7 @@ function App() {
                     onNewSession={() => handleOpenNewSession()}
                     onCreateEvents={handleCreateEvents}
                     onAddCustomSubfolder={addCustomSubfolder}
+                    onRemoveCustomSubfolder={removeCustomSubfolder}
                   />
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center px-8 text-center">
@@ -1269,6 +1344,7 @@ function App() {
           availableSubjects={availableSubjects}
           initialDate={newItemInitialDate}
           onSubmit={handleCreateEvent}
+          onSubmitMultiple={handleCreateEvents}
         />
         <EditEventDialog
           open={editEventDialogOpen}
@@ -1311,6 +1387,12 @@ function App() {
           onSave={setCustomSubjects}
           open={subjectsOpen}
           onOpenChange={setSubjectsOpen}
+        />
+        <NotionConflictDialog
+          open={notionConflictDialogOpen}
+          onOpenChange={setNotionConflictDialogOpen}
+          conflicts={notionConflicts}
+          onResolve={handleResolveConflicts}
         />
         <Toaster
           className="focal-toaster"

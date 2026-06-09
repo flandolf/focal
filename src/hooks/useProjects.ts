@@ -137,6 +137,13 @@ export function useProjects() {
     await saveProjects(updated)
   }, [projects, saveProjects])
 
+  const restoreProject = useCallback(async (project: Project) => {
+    const exists = projects.some((p) => p.id === project.id)
+    if (exists) return
+    const updated = [...projects, project]
+    await saveProjects(updated)
+  }, [projects, saveProjects])
+
   const addCustomSubfolder = useCallback(async (id: string, folderName: string) => {
     const sanitised = sanitiseFolderName(folderName)
     if (!sanitised) {
@@ -173,6 +180,25 @@ export function useProjects() {
     await saveProjects(updated)
   }, [projects, saveProjects])
 
+  const removeCustomSubfolder = useCallback(async (id: string, folderName: string) => {
+    const project = projects.find((p) => p.id === id)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+    
+    const currentSubfolders = project.customSubfolders ?? []
+    if (!currentSubfolders.includes(folderName)) {
+      throw new Error("Folder not found in custom subfolders")
+    }
+    
+    const updated = projects.map((p) =>
+      p.id === id
+        ? { ...p, customSubfolders: currentSubfolders.filter((f) => f !== folderName) }
+        : p
+    )
+    await saveProjects(updated)
+  }, [projects, saveProjects])
+
   const getProjectById = useCallback((id: string) => {
     return projects.find((p) => p.id === id) ?? null
   }, [projects])
@@ -189,8 +215,10 @@ export function useProjects() {
     addProject,
     updateProject,
     deleteProject,
+    restoreProject,
     getProjectById,
     addCustomSubfolder,
+    removeCustomSubfolder,
     refresh: loadProjects,
   }
 }

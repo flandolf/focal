@@ -5,6 +5,8 @@ import type { Project, StudySession } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { StudyTimeTrendChart } from "./StudyTimeTrendChart"
 import { SubjectBreakdownChart } from "./SubjectBreakdownChart"
+import { SubjectCompletionChart } from "./SubjectCompletionChart"
+import { EfficiencyChart } from "./EfficiencyChart"
 import { ConsistencyHeatmap } from "./ConsistencyHeatmap"
 import { TimeOfDayChart } from "./TimeOfDayChart"
 import { EmptyAnalytics } from "./EmptyAnalytics"
@@ -63,7 +65,9 @@ export function AnalyticsView({ sessions, projects, onNewSession }: AnalyticsVie
             <StudyTimeTrendChart data={data.timeTrends} />
           </div>
           <SubjectBreakdownChart data={data.subjectBreakdown} />
+          <SubjectCompletionChart data={data.subjectCompletion} />
           <TimeOfDayChart data={data.timeOfDay} />
+          <EfficiencyChart data={data.efficiency} />
           <div className="min-[900px]:col-span-2">
             <ConsistencyHeatmap days={data.consistency.days} stats={data.consistency.stats} />
           </div>

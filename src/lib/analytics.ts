@@ -36,11 +36,27 @@ export interface TimeOfDayBucket {
   minutes: number
 }
 
+export interface SubjectCompletion {
+  subjectId: string
+  completed: number
+  total: number
+  rate: number
+}
+
+export interface EfficiencyPoint {
+  subjectId: string
+  minutes: number
+  averageConfidence: number
+  sessionCount: number
+}
+
 export interface AnalyticsData {
   timeTrends: StudyTimePoint[]
   subjectBreakdown: SubjectMinutes[]
   consistency: { days: ConsistencyDay[]; stats: ConsistencyStats }
   timeOfDay: TimeOfDayBucket[]
+  subjectCompletion: SubjectCompletion[]
+  efficiency: EfficiencyPoint[]
   hasData: boolean
 }
 
@@ -261,6 +277,81 @@ export function getTimeOfDayAnalysis(
   return buckets
 }
 
+export function getSubjectCompletion(
+  sessions: StudySession[],
+  projects: Project[],
+  range: AnalyticsRange,
+): SubjectCompletion[] {
+  const cutoff = getRangeCutoff(range)
+  const subjectStats = new Map<string, { completed: number; total: number }>()
+
+  sessions.forEach((session) => {
+    const start = new Date(session.startTime).getTime()
+    if (Number.isNaN(start)) return
+    if (cutoff > 0 && start < cutoff) return
+
+    const project = projects.find((p) => p.id === session.projectId)
+    const subjectIds = getSessionSubjectIds(session, project)
+    if (subjectIds.length === 0) return
+
+    subjectIds.forEach((subjectId) => {
+      const stats = subjectStats.get(subjectId) ?? { completed: 0, total: 0 }
+      stats.total++
+      if (session.status === "completed") stats.completed++
+      subjectStats.set(subjectId, stats)
+    })
+  })
+
+  return Array.from(subjectStats.entries())
+    .map(([subjectId, stats]) => ({
+      subjectId,
+      completed: stats.completed,
+      total: stats.total,
+      rate: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
+    }))
+    .filter((s) => s.total > 0)
+    .sort((a, b) => b.rate - a.rate)
+}
+
+export function getStudyEfficiency(
+  sessions: StudySession[],
+  projects: Project[],
+  range: AnalyticsRange,
+): EfficiencyPoint[] {
+  const completed = getCompletedSessions(sessions, range)
+  const subjectData = new Map<string, { totalMinutes: number; totalConfidence: number; count: number }>()
+
+  completed.forEach((session) => {
+    const minutes = getSessionMinutes(session)
+    if (minutes <= 0) return
+
+    const project = projects.find((p) => p.id === session.projectId)
+    const subjectIds = getSessionSubjectIds(session, project)
+    const confidence = session.confidence ?? 3
+
+    const minutesPerSubject = splitMinutesAcrossSubjects(minutes, subjectIds.length > 0 ? subjectIds : ["_unassigned"])
+    const subjects = subjectIds.length > 0 ? subjectIds : ["_unassigned"]
+
+    subjects.forEach((subjectId) => {
+      const data = subjectData.get(subjectId) ?? { totalMinutes: 0, totalConfidence: 0, count: 0 }
+      data.totalMinutes += minutesPerSubject
+      data.totalConfidence += confidence
+      data.count++
+      subjectData.set(subjectId, data)
+    })
+  })
+
+  return Array.from(subjectData.entries())
+    .map(([subjectId, data]) => ({
+      subjectId,
+      minutes: data.totalMinutes,
+      averageConfidence: data.count > 0 ? Math.round((data.totalConfidence / data.count) * 10) / 10 : 0,
+      sessionCount: data.count,
+    }))
+    .filter((s) => s.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes)
+}
+
 export function getAnalyticsData(
   sessions: StudySession[],
   projects: Project[],
@@ -270,8 +361,10 @@ export function getAnalyticsData(
   const subjectBreakdown = getSubjectBreakdown(sessions, projects, range)
   const consistency = getConsistencyData(sessions, range)
   const timeOfDay = getTimeOfDayAnalysis(sessions, range)
+  const subjectCompletion = getSubjectCompletion(sessions, projects, range)
+  const efficiency = getStudyEfficiency(sessions, projects, range)
 
   const hasData = sessions.some((s) => s.status === "completed")
 
-  return { timeTrends, subjectBreakdown, consistency, timeOfDay, hasData }
+  return { timeTrends, subjectBreakdown, consistency, timeOfDay, subjectCompletion, efficiency, hasData }
 }

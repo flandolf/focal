@@ -17,6 +17,7 @@ import {
   SkipForward,
   Target,
   Timer,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -280,6 +281,7 @@ interface StudyTimerProps {
     id: string,
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => Promise<void>
+  onDeleteSession?: (id: string) => Promise<void>
 }
 interface FocusStatProps {
   label: string
@@ -292,6 +294,67 @@ interface FocusMetricProps {
   label: string
   value: string
   detail?: string
+}
+
+interface RecoveryDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  sessionId: string
+  onResume: () => void
+  onFinish: () => void
+  onDiscard: () => void
+}
+
+function RecoveryDialog({
+  open,
+  onOpenChange,
+  sessionId,
+  onResume,
+  onFinish,
+  onDiscard,
+}: RecoveryDialogProps) {
+  if (!open) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-background p-6 shadow-xl">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+          <Timer className="h-6 w-6 text-primary" />
+        </div>
+        <h3 className="font-heading text-lg font-semibold">Recover Study Session</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          You had an active Pomodoro session when the app was closed. What would you like to do?
+        </p>
+        <div className="mt-6 space-y-2">
+          <Button
+            onClick={() => { onResume(); onOpenChange(false) }}
+            className="w-full justify-start gap-2 text-primary-foreground"
+            variant="default"
+          >
+            <Play className="h-4 w-4" />
+            Resume session
+          </Button>
+          <Button
+            onClick={() => { onFinish(); onOpenChange(false) }}
+            className="w-full justify-start gap-2"
+            variant="outline"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Finish and save
+          </Button>
+          <Button
+            onClick={() => { onDiscard(); onOpenChange(false) }}
+            className="w-full justify-start gap-2 text-destructive hover:text-destructive"
+            variant="ghost"
+          >
+            <Trash2 className="h-4 w-4" />
+            Discard session
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
 }
 
 function formatMinutes(totalMinutes: number) {
@@ -358,6 +421,7 @@ export function StudyTimer({
   selectedProject,
   onStartSession,
   onUpdateSession,
+  onDeleteSession,
 }: StudyTimerProps) {
   const [expanded, setExpanded] = useState(true)
   const [focusViewOpen, setFocusViewOpen] = useState(false)
@@ -378,6 +442,8 @@ export function StudyTimer({
     }
   })
   const [saving, setSaving] = useState(false)
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
+  const [recoverySessionId, setRecoverySessionId] = useState<string | null>(null)
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSessionIdRef = useRef<string | null>(null)
@@ -388,6 +454,25 @@ export function StudyTimer({
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const focusCloseButtonRef = useRef<HTMLButtonElement | null>(null)
   const selectedProjectSubjectId = selectedProject?.subjectId
+  const hasCheckedRecoveryRef = useRef(false)
+
+  // Check for session recovery on mount
+  useEffect(() => {
+    if (hasCheckedRecoveryRef.current) return
+    hasCheckedRecoveryRef.current = true
+
+    try {
+      const stored = localStorage.getItem(TIMER_STATE_KEY)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as Partial<StoredTimerState>
+      if (parsed.running && typeof parsed.activeSessionId === "string" && parsed.activeSessionId) {
+        setRecoverySessionId(parsed.activeSessionId)
+        setRecoveryDialogOpen(true)
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [])
 
   const setFocusViewWithTransition = useCallback((nextOpen: boolean) => {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -463,6 +548,48 @@ export function StudyTimer({
       setActiveSessionId(null)
     }
   }, [onUpdateSession])
+
+  const handleRecoveryResume = useCallback(() => {
+    // Keep the session and timer as-is, just close the dialog
+    setRecoveryDialogOpen(false)
+    setRecoverySessionId(null)
+  }, [])
+
+  const handleRecoveryFinish = useCallback(async () => {
+    if (!recoverySessionId) return
+    try {
+      await onUpdateSession(recoverySessionId, {
+        endTime: new Date().toISOString(),
+        status: "completed",
+        completedAt: new Date().toISOString(),
+      })
+    } catch (e) {
+      console.error("Failed to complete recovered session:", e)
+    } finally {
+      activeSessionIdRef.current = null
+      setActiveSessionId(null)
+      setRecoverySessionId(null)
+      setRecoveryDialogOpen(false)
+      dispatch({ type: "RESET", settings })
+    }
+  }, [recoverySessionId, onUpdateSession, settings])
+
+  const handleRecoveryDiscard = useCallback(async () => {
+    if (!recoverySessionId) return
+    try {
+      if (onDeleteSession) {
+        await onDeleteSession(recoverySessionId)
+      }
+    } catch (e) {
+      console.error("Failed to discard recovered session:", e)
+    } finally {
+      activeSessionIdRef.current = null
+      setActiveSessionId(null)
+      setRecoverySessionId(null)
+      setRecoveryDialogOpen(false)
+      dispatch({ type: "RESET", settings })
+    }
+  }, [recoverySessionId, onDeleteSession, settings])
 
   useEffect(() => {
     if (isInitialMountRef.current) {
@@ -783,7 +910,7 @@ export function StudyTimer({
                       disabled={saving}
                       size="lg"
                       variant="default"
-                      className="h-11 flex-1 gap-2 rounded-md text-sm"
+                      className="h-11 flex-1 gap-2 rounded-md text-sm text-primary-foreground"
                     >
                       <Coffee className="h-4 w-4" />
                       break time!
@@ -1098,6 +1225,14 @@ export function StudyTimer({
     return (
       <>
         {focusPortal}
+        <RecoveryDialog
+          open={recoveryDialogOpen}
+          onOpenChange={setRecoveryDialogOpen}
+          sessionId={recoverySessionId ?? ""}
+          onResume={handleRecoveryResume}
+          onFinish={handleRecoveryFinish}
+          onDiscard={handleRecoveryDiscard}
+        />
         <div className="flex justify-center py-2">
           <button
             onClick={onExpand}
@@ -1119,6 +1254,14 @@ export function StudyTimer({
     return (
       <>
         {focusPortal}
+        <RecoveryDialog
+          open={recoveryDialogOpen}
+          onOpenChange={setRecoveryDialogOpen}
+          sessionId={recoverySessionId ?? ""}
+          onResume={handleRecoveryResume}
+          onFinish={handleRecoveryFinish}
+          onDiscard={handleRecoveryDiscard}
+        />
         <div className="border-t border-sidebar-border/70 px-3 py-2">
           <button
             onClick={() => setExpanded(true)}
@@ -1142,6 +1285,14 @@ export function StudyTimer({
   return (
     <>
       {focusPortal}
+      <RecoveryDialog
+        open={recoveryDialogOpen}
+        onOpenChange={setRecoveryDialogOpen}
+        sessionId={recoverySessionId ?? ""}
+        onResume={handleRecoveryResume}
+        onFinish={handleRecoveryFinish}
+        onDiscard={handleRecoveryDiscard}
+      />
       <div className="space-y-3 border-t border-sidebar-border/70 px-3 py-3">
         <div className="flex items-center justify-between">
           <button
@@ -1292,7 +1443,7 @@ export function StudyTimer({
             disabled={saving}
             size="sm"
             variant="default"
-            className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control"
+            className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control text-primary-foreground"
           >
             <Coffee className="h-3 w-3" />
             break time!

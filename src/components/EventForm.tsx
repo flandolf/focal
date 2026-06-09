@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react"
-import { addMinutes } from "date-fns"
-import { CalendarIcon, CheckCircle2, Clock, MapPin, Tag } from "lucide-react"
+import { addMinutes, addWeeks, addMonths, format } from "date-fns"
+import { CalendarIcon, CheckCircle2, Clock, MapPin, Repeat, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DialogBody, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,8 @@ const fieldLabelClass = "text-control font-medium text-muted-foreground"
 const inputWithIconClass = "flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background/65 px-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
 const sectionIconClass = "h-3.5 w-3.5 text-muted-foreground"
 
+export type RecurrencePattern = "none" | "weekly" | "biweekly" | "monthly"
+
 export interface EventFormValues {
   title: string
   description?: string
@@ -22,6 +24,10 @@ export interface EventFormValues {
   location?: string
   isFinished?: boolean
   finishedAt?: string
+  recurrence?: {
+    pattern: RecurrencePattern
+    endDate?: string
+  }
 }
 
 interface EventFormInitialValues {
@@ -46,6 +52,7 @@ interface EventFormProps {
   onSubmit: (values: EventFormValues) => void
   showFinishedControl?: boolean
   footerStart?: ReactNode
+  showRecurrence?: boolean
 }
 
 function EventForm({
@@ -57,6 +64,7 @@ function EventForm({
   onSubmit,
   showFinishedControl = false,
   footerStart,
+  showRecurrence = true,
 }: EventFormProps) {
   const [title, setTitle] = useState(initialValues?.title ?? "")
   const [description, setDescription] = useState(initialValues?.description ?? "")
@@ -67,6 +75,8 @@ function EventForm({
   const [startTime, setStartTime] = useState(initialValues?.startTime ?? "09:00")
   const [duration, setDuration] = useState(initialValues?.duration ?? "120")
   const [isFinished, setIsFinished] = useState(initialValues?.isFinished ?? false)
+  const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("none")
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | undefined>(undefined)
 
   const baseSubjects = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects]
   const initialSubject = getSubjectById(initialValues?.subjectId)
@@ -97,6 +107,10 @@ function EventForm({
       location: location.trim() ? location.trim() : undefined,
       isFinished,
       finishedAt: isFinished ? (initialValues?.finishedAt ?? new Date().toISOString()) : undefined,
+      recurrence: recurrencePattern !== "none" ? {
+        pattern: recurrencePattern,
+        endDate: recurrenceEndDate?.toISOString(),
+      } : undefined,
     })
   }
 
@@ -216,6 +230,41 @@ function EventForm({
             </FormField>
           </div>
         </FormSection>
+
+        {showRecurrence && (
+          <FormSection
+            title="Repeat"
+            icon={<Repeat className={sectionIconClass} />}
+            className="rounded-lg border border-border/70 bg-muted/20 p-3"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SelectField
+                label="Frequency"
+                labelClassName={fieldLabelClass}
+                value={recurrencePattern}
+                onChange={(event) => setRecurrencePattern(event.target.value as RecurrencePattern)}
+              >
+                <option value="none">No repeat</option>
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Every 2 weeks</option>
+                <option value="monthly">Monthly</option>
+              </SelectField>
+              {recurrencePattern !== "none" && (
+                <DatePickerField
+                  label="End date (optional)"
+                  date={recurrenceEndDate}
+                  onDateChange={setRecurrenceEndDate}
+                  buttonClassName="h-10 rounded-lg bg-background/65"
+                />
+              )}
+            </div>
+            {recurrencePattern !== "none" && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Creates {recurrencePattern === "weekly" ? "weekly" : recurrencePattern === "biweekly" ? "bi-weekly" : "monthly"} events until {recurrenceEndDate ? format(recurrenceEndDate, "MMM d, yyyy") : "manually stopped"}.
+              </p>
+            )}
+          </FormSection>
+        )}
 
         <FormSection
           title="Context"
