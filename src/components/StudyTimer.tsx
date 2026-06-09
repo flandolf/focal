@@ -525,7 +525,7 @@ export function StudyTimer({
   const progress = isStudyOvertime ? 1 : Math.min(1, Math.max(0, 1 - secondsLeft / totalSeconds))
   const timeDisplay = isStudyOvertime ? `+${formatTimer(overtimeSeconds)}` : formatTimer(secondsLeft)
   const modeLabel = isStudyOvertime ? "Overtime" : mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
-  const modeColor = mode === "work" || isStudyOvertime ? "text-primary" : "text-emerald-500"
+  const modeColor = mode === "work" || isStudyOvertime ? "text-background" : "text-emerald-500"
   const activeSubjects = subjects.filter((subject) => selectedSubjectIds.includes(subject.id))
   const activeSubjectLabel = activeSubjects.length === 0
     ? "No subject"
@@ -616,7 +616,7 @@ export function StudyTimer({
               <span className={cn(
                 "inline-flex h-6 items-center rounded-md border px-2 text-micro font-semibold uppercase tracking-normal",
                 mode === "work" || isStudyOvertime
-                  ? "border-primary/25 bg-primary/10 text-primary"
+                  ? "border-primary/25 bg-primary/10 text-background"
                   : "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
               )}>
                 {modeLabel}
@@ -716,7 +716,7 @@ export function StudyTimer({
                       strokeLinecap="round"
                       className={cn(
                         "transition-[stroke-dashoffset] duration-1000 ease-out motion-reduce:transition-none",
-                        mode === "work" || isStudyOvertime ? "text-primary" : "text-emerald-500"
+                        mode === "work" || isStudyOvertime ? "text-background" : "text-emerald-500"
                       )}
                     />
                   </svg>
@@ -768,13 +768,13 @@ export function StudyTimer({
                     className="h-11 flex-1 gap-2 rounded-md text-sm"
                   >
                     {running ? (
-                      <>
+                      <p className="flex items-center justify-center gap-2 text-background">
                         <Pause className="h-4 w-4" /> Pause
-                      </>
+                      </p>
                     ) : (
-                      <>
+                      <p className="flex items-center justify-center gap-2 text-background">
                         <Play className="h-4 w-4" /> {timerActionLabel}
-                      </>
+                      </p>
                     )}
                   </Button>
                   {isStudyOvertime ? (
@@ -900,7 +900,7 @@ export function StudyTimer({
                           className={cn(
                             "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
                             selected
-                              ? "border-transparent bg-primary/10 text-primary"
+                              ? "border-transparent bg-primary/10 text-background"
                               : "border-border/70 bg-background/40 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                           )}
                           style={selected ? {
@@ -1200,7 +1200,7 @@ export function StudyTimer({
         <div className="flex items-center justify-between gap-2">
           <span className="text-micro font-semibold uppercase text-muted-foreground/70">Studying</span>
           {activeSessionId && (
-            <span className="text-micro font-medium text-primary">Logging now</span>
+            <span className="text-micro font-medium text-background">Logging now</span>
           )}
         </div>
         <ScrollArea className="w-full whitespace-nowrap">
@@ -1259,7 +1259,7 @@ export function StudyTimer({
               strokeLinecap="round"
               className={cn(
                 "transition-[stroke-dashoffset] duration-1000",
-                mode === "work" || isStudyOvertime ? "text-primary" : "text-emerald-500"
+                mode === "work" || isStudyOvertime ? "text-background" : "text-emerald-500"
               )}
             />
           </svg>
@@ -1273,7 +1273,7 @@ export function StudyTimer({
           disabled={mode === "work" && !canStartFocus && !running}
           size="sm"
           variant={running ? "outline" : "default"}
-          className="mt-3 h-8 w-full gap-1.5 rounded-xl text-control"
+          className="mt-3 h-8 w-full gap-1.5 rounded-xl text-control text-primary-foreground"
         >
           {running ? (
             <>

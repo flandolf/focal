@@ -476,22 +476,17 @@ function App() {
     name: string
     description?: string
     icon?: string
-    deadline?: string
     subjectId?: string
     unit?: "1" | "2" | "3" | "4"
-    deadlineType?: "sac" | "exam" | "assignment"
-    examDate?: string
   }) => {
     try {
       const project = await addProject(
         data.name,
         data.description,
         data.icon,
-        data.deadline,
+        undefined,
         data.subjectId,
         data.unit,
-        data.deadlineType,
-        data.examDate,
       )
       setSelectedId(project.id)
       setHomeSelected(false)
@@ -507,11 +502,8 @@ function App() {
       name: string
       description?: string
       icon?: string
-      deadline?: string
       subjectId?: string
       unit?: "1" | "2" | "3" | "4"
-      deadlineType?: "sac" | "exam" | "assignment"
-      examDate?: string
       isFavorite?: boolean
       isArchived?: boolean
       isFinished?: boolean

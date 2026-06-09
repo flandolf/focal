@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { AssessmentForm, type AssessmentFormValues } from "@/components/AssessmentForm"
-import type { DeadlineType, Subject, Unit } from "@/lib/types"
+import type { Subject, Unit } from "@/lib/types"
 
 interface NewProjectDialogProps {
   open: boolean
@@ -15,11 +15,8 @@ interface NewProjectDialogProps {
     name: string
     description?: string
     icon?: string
-    deadline?: string
     subjectId?: string
     unit?: Unit
-    deadlineType?: DeadlineType
-    examDate?: string
   }) => void
   customSubjects?: Subject[]
   availableSubjects?: Subject[]

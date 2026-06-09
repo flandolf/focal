@@ -1,30 +1,24 @@
 import { useState, type FormEvent } from "react"
-import { format } from "date-fns"
 import { Archive, CheckCircle2, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DialogBody, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
-  ChoiceGrid,
-  DatePickerField,
   EmojiPicker,
   FormField,
   SelectField,
   ToggleChip,
 } from "@/components/ui/form-controls"
-import { ASSESSMENT_ICONS, ASSESSMENT_TYPES, VCE_UNITS } from "@/lib/assessmentOptions"
-import { VCE_SUBJECTS, type DeadlineType, type Subject, type Unit } from "@/lib/types"
+import { ASSESSMENT_ICONS, VCE_UNITS } from "@/lib/assessmentOptions"
+import { VCE_SUBJECTS, type Subject, type Unit } from "@/lib/types"
 import { cn, getSubjectById } from "@/lib/utils"
 
 export interface AssessmentFormValues {
   name: string
   description?: string
   icon?: string
-  deadline?: string
   subjectId?: string
   unit?: Unit
-  deadlineType?: DeadlineType
-  examDate?: string
   isFavorite?: boolean
   isArchived?: boolean
   isFinished?: boolean
@@ -34,11 +28,8 @@ interface AssessmentFormInitialValues {
   name?: string
   description?: string
   icon?: string
-  deadline?: string
   subjectId?: string
   unit?: Unit
-  deadlineType?: DeadlineType
-  examDate?: string
   isFavorite?: boolean
   isArchived?: boolean
   isFinished?: boolean
@@ -54,10 +45,6 @@ interface AssessmentFormProps {
   showStatusControls?: boolean
 }
 
-function parseOptionalDate(value?: string) {
-  return value ? new Date(value) : undefined
-}
-
 function AssessmentForm({
   customSubjects = [],
   availableSubjects,
@@ -70,11 +57,8 @@ function AssessmentForm({
   const [name, setName] = useState(initialValues?.name ?? "")
   const [description, setDescription] = useState(initialValues?.description ?? "")
   const [icon, setIcon] = useState(initialValues?.icon ?? "📁")
-  const [deadline, setDeadline] = useState<Date | undefined>(() => parseOptionalDate(initialValues?.deadline))
-  const [examDate, setExamDate] = useState<Date | undefined>(() => parseOptionalDate(initialValues?.examDate))
   const [subjectId, setSubjectId] = useState(initialValues?.subjectId ?? "")
   const [unit, setUnit] = useState<Unit | "">(initialValues?.unit ?? "")
-  const [deadlineType, setDeadlineType] = useState<DeadlineType | "">(initialValues?.deadlineType ?? "")
   const [isFavorite, setIsFavorite] = useState(initialValues?.isFavorite ?? false)
   const [isArchived, setIsArchived] = useState(initialValues?.isArchived ?? false)
   const [isFinished, setIsFinished] = useState(initialValues?.isFinished ?? false)
@@ -92,11 +76,8 @@ function AssessmentForm({
       name: name.trim(),
       description: description.trim() ? description.trim() : undefined,
       icon,
-      deadline: deadline ? format(deadline, "yyyy-MM-dd") : undefined,
       subjectId: subjectId || undefined,
       unit: unit || undefined,
-      deadlineType: deadlineType || undefined,
-      examDate: examDate ? format(examDate, "yyyy-MM-dd") : undefined,
       isFavorite,
       isArchived,
       isFinished,
@@ -150,50 +131,6 @@ function AssessmentForm({
               </option>
             ))}
           </SelectField>
-        </div>
-
-        <div className={cn("grid gap-4", showStatusControls ? "sm:grid-cols-2" : "grid-cols-1")}>
-          <FormField label="Assessment Type">
-            <ChoiceGrid
-              options={ASSESSMENT_TYPES.map((type) => ({
-                value: type.value,
-                label: type.label,
-                icon: type.icon,
-              }))}
-              value={deadlineType}
-              onChange={setDeadlineType}
-              className={showStatusControls ? "grid-cols-2" : "grid-cols-4"}
-            />
-          </FormField>
-          {showStatusControls && (
-            <DatePickerField
-              label="Assessment Date"
-              date={deadline}
-              onDateChange={setDeadline}
-              placeholder="Pick a date"
-              formatPattern="PPP"
-              clearLabel="Clear deadline"
-            />
-          )}
-        </div>
-
-        {!showStatusControls && (
-          <DatePickerField
-            label="Assessment Date"
-            date={deadline}
-            onDateChange={setDeadline}
-          />
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <DatePickerField
-            label="Exam Date"
-            date={examDate}
-            onDateChange={setExamDate}
-            placeholder={showStatusControls ? "Pick a date" : "Pick date"}
-            formatPattern={showStatusControls ? "PPP" : "MMM d"}
-            clearLabel={showStatusControls ? "Clear" : undefined}
-          />
         </div>
 
         <EmojiPicker
