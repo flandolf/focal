@@ -317,18 +317,49 @@ export function CalendarGrid({
                   </div>
                 )}
                   <div className="mt-0.5 w-[calc(100%+0.75rem)] -mx-1.5 space-y-px">
-                  {visibleItems.map((item, idx) => (
-                    <div
-                      key={`${item.type}-${idx}`}
-                      className="flex h-5 w-full items-center gap-1 overflow-hidden rounded-[3px]"
-                      style={{ backgroundColor: item.color + "12" }}
-                    >
-                      <div className="h-full w-[3px] shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="truncate text-[10px] font-medium leading-5 text-foreground/75">
-                        {item.name}
-                      </span>
-                    </div>
-                  ))}
+                  {visibleItems.map((item, idx) => {
+                    const isDraggableEvent = "event" in item && item.type === "event"
+                    const sharedClasses = "flex h-5 w-full items-center gap-1 overflow-hidden rounded-[3px]"
+                    const content = (
+                      <>
+                        <div className="h-full w-[3px] shrink-0" style={{ backgroundColor: item.color }} />
+                        <span className="truncate text-[10px] font-medium leading-5 text-foreground/75">
+                          {item.name}
+                        </span>
+                      </>
+                    )
+                    if (isDraggableEvent) {
+                      const ev = (item as { event: CalendarEvent }).event
+                      return (
+                        <button
+                          key={`${item.type}-${idx}`}
+                          type="button"
+                          draggable
+                          onDragStart={(e) => {
+                            e.stopPropagation()
+                            handleDragStart(e, ev.id, dateKey)
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onSelectEvent(ev)
+                          }}
+                          className={cn(sharedClasses, "cursor-grab active:cursor-grabbing")}
+                          style={{ backgroundColor: item.color + "12" }}
+                        >
+                          {content}
+                        </button>
+                      )
+                    }
+                    return (
+                      <div
+                        key={`${item.type}-${idx}`}
+                        className={sharedClasses}
+                        style={{ backgroundColor: item.color + "12" }}
+                      >
+                        {content}
+                      </div>
+                    )
+                  })}
                   {overflow > 0 && (
                     <div className={cn(
                       "text-micro leading-tight text-muted-foreground/50 font-medium",
