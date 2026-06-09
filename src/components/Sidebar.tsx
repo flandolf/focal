@@ -299,7 +299,7 @@ export function Sidebar({
     >
       <div className={cn(
         "pb-2 pt-2.5 min-[1200px]:pb-3 min-[1200px]:pt-3",
-        isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-3 min-[1200px]:px-4"
+        isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-3 min-[1200px]:px-4"
       )}>
         <div className={cn(
           "flex items-center gap-3 select-none",
@@ -346,7 +346,7 @@ export function Sidebar({
 
       <div className={cn(
         "space-y-1.5 min-[1200px]:space-y-2",
-        isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-2.5 min-[1200px]:px-3"
+        isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-2.5 min-[1200px]:px-3"
       )}>
         <motion.button
           onClick={onSelectHome}
@@ -452,7 +452,7 @@ export function Sidebar({
       <ScrollArea className="min-h-0 w-full max-w-full flex-1 overflow-hidden">
         <div className={cn(
           "w-full max-w-full overflow-x-hidden pb-1.5 pt-2 min-[1200px]:pt-2.5",
-          isCollapsed ? "px-2 min-[1200px]:px-2.5" : "px-1.5 min-[1200px]:px-2"
+          "px-1.5 min-[1200px]:px-2"
         )}>
           {subjectGroups.length > 0 ? (
             <div className="flex w-full min-w-0 max-w-full flex-col gap-2">

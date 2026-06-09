@@ -1,12 +1,13 @@
-import { useState, useMemo } from "react"
-import { Clock, Pencil, AlertCircle, CalendarDays, Edit3 } from "lucide-react"
+import { useState, useMemo, useEffect } from "react"
+import { Clock, Pencil, AlertCircle, CalendarDays, Edit3, MapPin, Wand2 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { cn, getSubjectById } from "@/lib/utils"
-import { getDayLabelForDate, getTimetableEntriesForDay } from "@/lib/timetable"
+import { cn, getSubjectById, formatTime12 } from "@/lib/utils"
+import { getDayLabelForDate, getTimetableEntriesForDay, getCurrentPeriodInfo } from "@/lib/timetable"
 import { getTimetableConfig } from "@/lib/settings"
 import { TimetableDialog } from "@/components/TimetableDialog"
 import { InlineEditDayDialog } from "@/components/timetable/InlineEditDayDialog"
+import { TimetableAiEditor } from "@/components/timetable/TimetableAiEditor"
 import type { TimetableDayLabel, Subject } from "@/lib/types"
 
 interface TimetableViewProps {
@@ -15,10 +16,16 @@ interface TimetableViewProps {
 
 export function TimetableView({ customSubjects }: TimetableViewProps) {
   const [config, setConfig] = useState(getTimetableConfig)
+  const [aiEditOpen, setAiEditOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editDayOpen, setEditDayOpen] = useState(false)
   const [editDayLabel, setEditDayLabel] = useState<TimetableDayLabel>(1)
+  const [now, setNow] = useState(() => new Date())
 
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
   const days = useMemo(() => {
     if (!config.enabled || config.entries.length === 0) return []
     return Array.from({ length: 10 }, (_, i) => (i + 1) as TimetableDayLabel).map((dayLabel) => {
@@ -31,6 +38,15 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
     if (!config.enabled || !config.day1Starts) return null
     return getDayLabelForDate(new Date(), config.day1Starts, config.holidays)
   }, [config])
+
+  const todayPeriods = useMemo(() => {
+    if (currentDayLabel === null) return []
+    const entries = getTimetableEntriesForDay(currentDayLabel, config.entries as Parameters<typeof getTimetableEntriesForDay>[1])
+    return entries.flatMap((e) => e.periods).sort((a, b) => a.startTime.localeCompare(b.startTime))
+  }, [currentDayLabel, config])
+
+  const todayPeriodInfo = useMemo(() => getCurrentPeriodInfo(todayPeriods, now), [todayPeriods, now])
+
 
   return (
     <>
@@ -46,7 +62,29 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
                 <h2 className="font-heading text-lg font-semibold">Timetable</h2>
                 {currentDayLabel !== null && config.enabled && (
                   <p className="text-caption text-muted-foreground">
-                    Today is Day {currentDayLabel}
+                    Day {currentDayLabel}
+                    {todayPeriods.length > 0 && (
+                      <>
+                        <span className="mx-1.5 text-muted-foreground/40">·</span>
+                        {todayPeriods.length} period{todayPeriods.length !== 1 ? "s" : ""}
+                      </>
+                    )}
+                    {todayPeriodInfo.next && (
+                      <>
+                        <span className="mx-1.5 text-muted-foreground/40">·</span>
+                        Next: {getSubjectById(todayPeriodInfo.next.subject)?.name ?? todayPeriodInfo.next.subject}{" "}
+                        <span className="tabular-nums">{todayPeriodInfo.next.startTime}</span>
+                      </>
+                    )}
+                    {todayPeriodInfo.current && (
+                      <>
+                        <span className="mx-1.5 text-muted-foreground/40">·</span>
+                        <span className="inline-flex items-center gap-1 text-primary">
+                          <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                          Now
+                        </span>
+                      </>
+                    )}
                   </p>
                 )}
               </div>
@@ -60,6 +98,15 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Timetable
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 rounded-xl"
+                onClick={() => setAiEditOpen(true)}
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                AI Editor
               </Button>
             </div>
           </div>
@@ -131,26 +178,64 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
                         <div className="space-y-1">
                           {entries.flatMap((entry) => entry.periods).map((period, idx) => {
                             const subject = getSubjectById(period.subject)
+                            const isCurrentPeriod = isToday
+                              && todayPeriodInfo.current?.startTime === period.startTime
+                              && todayPeriodInfo.current?.subject === period.subject
+                            const isNextPeriod = isToday
+                              && !isCurrentPeriod
+                              && todayPeriodInfo.next?.startTime === period.startTime
+                              && todayPeriodInfo.next?.subject === period.subject
                             return (
                               <div
                                 key={idx}
                                 className={cn(
-                                  "flex items-center gap-1.5 rounded-lg px-2 py-1",
+                                  "relative flex items-start gap-2 rounded-lg px-2 py-1.5",
                                   subject ? "bg-background/70" : "bg-background/40",
+                                  isCurrentPeriod && "bg-primary/[0.06] ring-1 ring-primary/15",
                                 )}
                               >
-                                <span className="text-sm font-medium text-muted-foreground w-10 shrink-0 tabular-nums">
-                                  {period.startTime}
+                                {/* Subject color accent bar */}
+                                {subject && (
+                                  <div
+                                    className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full"
+                                    style={{ backgroundColor: subject.color }}
+                                  />
+                                )}
+
+                                {/* Current period live dot */}
+                                {isCurrentPeriod && (
+                                  <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0 animate-pulse" />
+                                )}
+
+                                {/* Time */}
+                                        <span className="text-sm font-medium text-muted-foreground w-12 shrink-0 tabular-nums mt-0.5">
+                                  {formatTime12(period.startTime)}
                                 </span>
-                                <span className={cn(
-                                  "text-sm truncate",
-                                  subject ? "text-foreground" : "text-muted-foreground",
-                                  
-                                )} style={{
-                                  color: subject ? subject.color : undefined,
-                                }}>
-                                  {subject ? subject.name : period.subject}
-                                </span>
+
+                                {/* Subject details */}
+                                <div className="flex min-w-0 flex-col gap-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className="text-sm truncate"
+                                      style={{ color: subject ? subject.color : undefined }}
+                                    >
+                                      {subject ? subject.name : period.subject}
+                                    </span>
+                                    {isNextPeriod && !isCurrentPeriod && (
+                                      <span className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider">
+                                        Up next
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Location */}
+                                  {period.location && (
+                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/40 mt-0.5">
+                                      <MapPin className="h-2.5 w-2.5 shrink-0" />
+                                      <span className="truncate">{period.location}</span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )
                           })}
@@ -187,12 +272,22 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
       />
 
       <InlineEditDayDialog
+        key={editDayLabel}
         open={editDayOpen}
         onOpenChange={(open) => {
           setEditDayOpen(open)
           if (!open) setConfig(getTimetableConfig())
         }}
         dayLabel={editDayLabel}
+        customSubjects={customSubjects}
+      />
+
+      <TimetableAiEditor
+        open={aiEditOpen}
+        onOpenChange={(open) => {
+          setAiEditOpen(open)
+          if (!open) setConfig(getTimetableConfig())
+        }}
         customSubjects={customSubjects}
       />
     </>

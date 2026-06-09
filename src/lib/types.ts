@@ -24,6 +24,7 @@ export interface StudySession {
   confidence?: ConfidenceScore;
   blockers?: string;
   nextAction?: string;
+  activeDurations?: { start: string; end: string }[]; // For merged sessions: individual active periods within startTime-endTime span
   completedAt?: string;
   source?: {
     type: "notion";

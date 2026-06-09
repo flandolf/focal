@@ -8,7 +8,7 @@ import {
   Timer,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { VCE_SUBJECTS, type Project, type StudySession, type Subject } from "@/lib/types"
+import { VCE_SUBJECTS, type Project, type StudySession, type ConfidenceScore, type Subject } from "@/lib/types"
 import { FocusView } from "@/components/timer/FocusView"
 import { TimerControls } from "@/components/timer/TimerControls"
 import { SubjectPicker } from "@/components/timer/SubjectPicker"
@@ -332,6 +332,10 @@ export function StudyTimer({
     }
   })
   const [saving, setSaving] = useState(false)
+  const [reflectionSessionId, setReflectionSessionId] = useState<string | null>(null)
+  const [reflectionConfidence, setReflectionConfidence] = useState<ConfidenceScore | undefined>(undefined)
+  const [reflectionBlockers, setReflectionBlockers] = useState("")
+  const [reflectionNextAction, setReflectionNextAction] = useState("")
   const [recoverySessionId, setRecoverySessionId] = useState<string | null>(() => {
     try {
       const stored = localStorage.getItem(TIMER_STATE_KEY)
@@ -405,6 +409,10 @@ export function StudyTimer({
         status: "completed",
         completedAt: nextEndTime.toISOString(),
       })
+      setReflectionSessionId(sessionId)
+      setReflectionConfidence(undefined)
+      setReflectionBlockers("")
+      setReflectionNextAction("")
     } catch (e) {
       console.error("Failed to complete session:", e)
     } finally {
@@ -633,6 +641,7 @@ export function StudyTimer({
     })
     activeSessionIdRef.current = session.id
     setActiveSessionId(session.id)
+    setReflectionSessionId(null)
     return true
   }
 
@@ -696,6 +705,28 @@ export function StudyTimer({
       setSaving(false)
     }
   }
+
+const saveReflection = useCallback(async () => {
+    const sessionId = reflectionSessionId
+    if (!sessionId) return
+    setSaving(true)
+    try {
+      await onUpdateSession(sessionId, {
+        confidence: reflectionConfidence,
+        blockers: reflectionBlockers.trim() ? reflectionBlockers : undefined,
+        nextAction: reflectionNextAction.trim() ? reflectionNextAction : undefined,
+      })
+      setReflectionSessionId(null)
+    } catch (e) {
+      console.error("Failed to save reflection:", e)
+    } finally {
+      setSaving(false)
+    }
+  }, [reflectionSessionId, reflectionConfidence, reflectionBlockers, reflectionNextAction, onUpdateSession])
+
+  const dismissReflection = useCallback(() => {
+    setReflectionSessionId(null)
+  }, [])
 
   const handleReturnToBreak = async () => {
     if (!isStudyOvertime) return
@@ -927,6 +958,70 @@ export function StudyTimer({
           onStartStudyOvertime={handleStartStudyOvertime}
           onMoreBreakTime={handleMoreBreakTime}
         />
+        {reflectionSessionId && (
+          <div className="mt-3 space-y-3 border-t border-border/30 pt-3">
+            <p className="text-xs font-semibold text-foreground/80">Review this session</p>
+            <div>
+              <p className="text-micro font-medium text-muted-foreground mb-1.5">Confidence</p>
+              <div className="grid grid-cols-5 gap-1">
+                {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
+                  <button
+                    key={score}
+                    type="button"
+                    onClick={() => setReflectionConfidence(score)}
+                    aria-pressed={reflectionConfidence === score}
+                    className={cn(
+                      "h-7 rounded-md border text-xs font-medium transition-colors",
+                      reflectionConfidence === score
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                    )}
+                  >
+                    {score}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-micro font-medium text-muted-foreground mb-1">Blockers</p>
+              <textarea
+                placeholder="What felt unclear?"
+                value={reflectionBlockers}
+                onChange={(e) => setReflectionBlockers(e.target.value)}
+                rows={2}
+                className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+              />
+            </div>
+            <div>
+              <p className="text-micro font-medium text-muted-foreground mb-1">Next action</p>
+              <textarea
+                placeholder="e.g. redo practice exam"
+                value={reflectionNextAction}
+                onChange={(e) => setReflectionNextAction(e.target.value)}
+                rows={2}
+                className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={saveReflection}
+                disabled={saving}
+                className="flex-1 h-7 rounded-lg bg-primary text-primary-foreground text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={dismissReflection}
+                disabled={saving}
+                className="flex-1 h-7 rounded-lg border border-border/70 bg-background/45 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   </>

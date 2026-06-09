@@ -2,6 +2,8 @@ import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
 import type { TimetableEntry, TimetableDayLabel, SchoolHoliday } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
+import type { TimetablePeriod } from "@/lib/types"
+
 // --- Types ---
 
 export interface TimetableParseDraft {
@@ -337,4 +339,257 @@ export function getTimetableEntriesForDay(
   entries: TimetableEntry[],
 ): TimetableEntry[] {
   return entries.filter((e) => e.dayLabel === dayLabel)
+}
+
+export interface CurrentPeriodInfo {
+  current: TimetablePeriod | null
+  next: TimetablePeriod | null
+  remainingMinutes: number
+}
+
+/**
+ * Find the current (in-progress) and next upcoming period from a list of periods,
+ * based on the current wall-clock time.
+ */
+export function getCurrentPeriodInfo(periods: TimetablePeriod[], now?: Date): CurrentPeriodInfo {
+  const date = now ?? new Date()
+  const currentMinutes = date.getHours() * 60 + date.getMinutes()
+
+  const parsed = periods.map((p) => {
+    const [sh, sm] = p.startTime.split(":").map(Number)
+    const [eh, em] = p.endTime.split(":").map(Number)
+    return { period: p, start: sh * 60 + sm, end: eh * 60 + em }
+  })
+
+  let current: TimetablePeriod | null = null
+  let next: TimetablePeriod | null = null
+  let remainingMinutes = 0
+
+  for (const p of parsed) {
+    if (currentMinutes >= p.start && currentMinutes < p.end) {
+      current = p.period
+      remainingMinutes = p.end - currentMinutes
+    }
+    if (currentMinutes < p.start && !next) {
+      next = p.period
+    }
+  }
+
+  return { current, next, remainingMinutes }
+}
+
+export interface TimetableAiEditDraft {
+  dayLabel: TimetableDayLabel
+  periods: {
+    period: string
+    subject: string
+    location: string
+    startTime: string
+    endTime: string
+  }[]
+}
+
+export interface TimetableAiEditResult {
+  day1Starts: string
+  holidays: { name: string; startDate: string; endDate: string }[]
+  entries: TimetableAiEditDraft[]
+  summary: string
+}
+
+/**
+ * Ask the AI to modify the current timetable according to a natural-language instruction.
+ * Returns a full proposed timetable (not a diff) that the user can review and edit before saving.
+ */
+export async function aiEditTimetable(
+  currentConfig: {
+    day1Starts: string
+    holidays: { name: string; startDate: string; endDate: string }[]
+    entries: { dayLabel: number; periods: { period: string; subject: string; location?: string; startTime: string; endTime: string }[] }[]
+  },
+  instruction: string,
+  subjects: { id: string; name: string; shortCode: string; color: string }[],
+): Promise<TimetableAiEditResult> {
+  const apiKey = getApiKey()
+  const model = getModel()
+  if (!apiKey) throw new Error("OpenRouter API key not configured")
+
+  const subjectLines = subjects.map((s) => `  - "${s.id}" = ${s.name}`).join("\n")
+
+  const currentJson = JSON.stringify(currentConfig, null, 2)
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: `You are a timetable editor for a VCE (Victorian Certificate of Education) school in Australia.
+TASK: Edit the user's school timetable according to their natural-language instruction. Return the COMPLETE modified timetable as JSON.
+CURRENT TIMETABLE (JSON):
+${currentJson}
+
+AVAILABLE SUBJECT IDs:
+${subjectLines}
+
+KEY RULES:
+- Day numbers run on a 10-day cycle: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+- "period" is the period slot name (e.g. "Period 1", "Recess", "Lunch", "Homeroom", "Assembly", "Form")
+- "subject" must be a subject ID from the list when a real subject applies, OR a custom label like "Roll Call", "Assembly", "Form" for non-subject events
+- Keep custom labels rather than forcing them to a subject ID
+- Times use HH:mm format (e.g. "09:00")
+- Holidays use YYYY-MM-DD format
+
+OUTPUT FORMAT — return a JSON object:
+{
+  "day_1_starts": "2026-01-29",
+  "holidays": [
+    { "name": "Term 1 Holidays", "start_date": "2026-03-31", "end_date": "2026-04-07" }
+  ],
+  "entries": [
+    {
+      "day_label": 1,
+      "periods": [
+        {
+          "period": "Period 1",
+          "subject": "chem",
+          "location": "Room 101",
+          "start_time": "09:00",
+          "end_time": "10:15"
+        }
+      ]
+    }
+  ],
+  "summary": "Brief explanation of what was changed"
+}
+
+If the instruction doesn't require changes to day_1_starts or holidays, keep them as-is from the current timetable.
+The summary should be a brief sentence explaining the key change made.`,
+        },
+        {
+          role: "user",
+          content: instruction,
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "timetable_edit",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              day_1_starts: { type: "string" },
+              holidays: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    start_date: { type: "string" },
+                    end_date: { type: "string" },
+                  },
+                  required: ["name", "start_date", "end_date"],
+                  additionalProperties: false,
+                },
+              },
+              entries: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    day_label: { type: "number" },
+                    periods: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          period: { type: "string" },
+                          subject: { type: "string" },
+                          location: { type: "string" },
+                          start_time: { type: "string" },
+                          end_time: { type: "string" },
+                        },
+                        required: ["period", "subject", "location", "start_time", "end_time"],
+                        additionalProperties: false,
+                      },
+                    },
+                  },
+                  required: ["day_label", "periods"],
+                  additionalProperties: false,
+                },
+              },
+              summary: { type: "string" },
+            },
+            required: ["day_1_starts", "holidays", "entries", "summary"],
+            additionalProperties: false,
+          },
+        },
+      },
+      provider: { require_parameters: true },
+      temperature: 0.1,
+      max_tokens: 4000,
+      ...getReasoningConfig(),
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`OpenRouter API error (${response.status}): ${text}`)
+  }
+
+  const data = await response.json() as { choices?: { message?: { content?: unknown } }[] }
+  const content = data.choices?.[0]?.message?.content
+  if (typeof content !== "string") {
+    throw new Error("No structured content in OpenRouter response")
+  }
+
+  const parsed: unknown = JSON.parse(content)
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("Invalid AI response")
+  }
+
+  const record = parsed as Record<string, unknown>
+
+  const summary = typeof record.summary === "string" ? record.summary.trim() : "Timetable updated"
+
+  const day1Starts = typeof record.day_1_starts === "string" ? record.day_1_starts.trim() : currentConfig.day1Starts
+
+  const rawHolidays = Array.isArray(record.holidays) ? record.holidays : []
+  const holidays = rawHolidays
+    .filter((h): h is Record<string, unknown> => typeof h === "object" && h !== null)
+    .map((h) => ({
+      name: typeof h.name === "string" ? h.name.trim() : "Holiday",
+      startDate: typeof h.start_date === "string" ? h.start_date.trim() : "",
+      endDate: typeof h.end_date === "string" ? h.end_date.trim() : "",
+    }))
+    .filter((h) => h.startDate && h.endDate)
+
+  const rawEntries = Array.isArray(record.entries) ? record.entries : []
+  const entries: TimetableAiEditDraft[] = rawEntries
+    .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+    .map((e) => {
+      const dayLabel = typeof e.day_label === "number" && e.day_label >= 1 && e.day_label <= 10
+        ? (e.day_label as TimetableDayLabel)
+        : 1
+      const rawPeriods = Array.isArray(e.periods) ? e.periods : []
+      const periods = rawPeriods
+        .filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null)
+        .map((p) => ({
+          period: typeof p.period === "string" ? p.period.trim() : "",
+          subject: typeof p.subject === "string" ? p.subject.trim() : "",
+          location: typeof p.location === "string" ? p.location.trim() : "",
+          startTime: typeof p.start_time === "string" ? p.start_time.trim() : "09:00",
+          endTime: typeof p.end_time === "string" ? p.end_time.trim() : "10:00",
+        }))
+        .filter((p) => p.period)
+      return { dayLabel, periods }
+    })
+    .filter((e) => e.periods.length > 0)
+
+  return { day1Starts, holidays, entries, summary }
 }

@@ -1,13 +1,49 @@
-import { format, parseISO } from "date-fns"
-import { X, Check } from "lucide-react"
+import { useState, useMemo } from "react"
+import { format, parseISO, differenceInDays } from "date-fns"
+import { X, Check, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatDeadline, getSubjectById, getEventTypeInfo, getSessionSubjectIds, cn } from "@/lib/utils"
+import { groupSessionsBySubject } from "@/lib/groupSessions"
 import type { CalendarEvent, Project, StudySession } from "@/lib/types"
 
 function formatTimeRange(startTime: string, endTime?: string) {
   const startLabel = format(parseISO(startTime), "h:mm a")
   if (!endTime) return startLabel
+  const startKey = format(parseISO(startTime), "yyyy-MM-dd")
+  const endKey = format(parseISO(endTime), "yyyy-MM-dd")
+  if (startKey !== endKey) {
+    return `${format(parseISO(startTime), "MMM d, h:mm a")} – ${format(parseISO(endTime), "MMM d, h:mm a")}`
+  }
   return `${startLabel} - ${format(parseISO(endTime), "h:mm a")}`
+}
+
+function formatMultiDayEventMeta(startTime: string, endTime: string): string {
+  const startDate = parseISO(startTime)
+  const endDate = parseISO(endTime)
+  const dayCount = differenceInDays(endDate, startDate) + 1
+  if (dayCount <= 1) {
+    // Same-day event — fall back to normal time display (caller handles this)
+    return `${format(parseISO(startTime), "h:mm a")} - ${format(endDate, "h:mm a")}`
+  }
+  const endLabel = format(endDate, "EEE d MMM")
+  return `Multi-day · Ends ${endLabel} (${dayCount} days)`
+}
+
+function isEventOnDate(event: CalendarEvent, dateKey: string): boolean {
+  const startKey = format(parseISO(event.startTime), "yyyy-MM-dd")
+  if (startKey === dateKey) return true
+  if (!event.endTime) return false
+  const endKey = format(parseISO(event.endTime), "yyyy-MM-dd")
+  return dateKey >= startKey && dateKey <= endKey
+}
+
+function formatDuration(totalMinutes: number): string {
+  if (totalMinutes < 1) return "<1m"
+  const hours = Math.floor(totalMinutes / 60)
+  const mins = Math.round(totalMinutes % 60)
+  if (hours === 0) return `${mins}m`
+  if (mins === 0) return `${hours}h`
+  return `${hours}h ${mins}m`
 }
 
 interface DayDetailProps {
@@ -47,7 +83,22 @@ export function DayDetail({
   onSelectSession,
   onSelectEvent,
 }: DayDetailProps) {
-  const hasItems = deadlines.length > 0 || sessions.length > 0 || events.length > 0
+  const dateKey = selectedDate
+  const dayEvents = useMemo(() =>
+    events.filter((event) => isEventOnDate(event, dateKey)),
+    [events, dateKey],
+  )
+  const hasItems = deadlines.length > 0 || sessions.length > 0 || dayEvents.length > 0
+  const subjectGroups = useMemo(() => groupSessionsBySubject(sessions, projects), [sessions, projects])
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(() => new Set(subjectGroups.map((g) => g.subjectId)))
+  const toggleSubject = (subjectId: string) => {
+    setExpandedSubjects((prev) => {
+      const next = new Set(prev)
+      if (next.has(subjectId)) next.delete(subjectId)
+      else next.add(subjectId)
+      return next
+    })
+  }
 
   return (
     <div className="rounded-2xl border border-border/70 bg-muted/18 p-3 data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-2">
@@ -61,7 +112,7 @@ export function DayDetail({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          {(events.length > 0 || sessions.length > 0) && (
+          {(dayEvents.length > 0 || sessions.length > 0) && (
             <Button
               variant={calendarSelectionMode ? "secondary" : "ghost"}
               size="sm"
@@ -94,7 +145,7 @@ export function DayDetail({
           <p className="text-micro leading-3 text-muted-foreground">due</p>
         </div>
         <div className="rounded-lg bg-background/42 px-2 py-1.5">
-          <p className="text-xs font-semibold tabular-nums">{events.length}</p>
+          <p className="text-xs font-semibold tabular-nums">{dayEvents.length}</p>
           <p className="text-micro leading-3 text-muted-foreground">events</p>
         </div>
         <div className="rounded-lg bg-background/42 px-2 py-1.5">
@@ -142,138 +193,272 @@ export function DayDetail({
               </button>
             )
           })}
-          {sessions.map((s) => {
-            const project = projects.find((p) => p.id === s.projectId)
-            const subjects = getSessionSubjectIds(s, project)
-              .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
-              .join(", ")
-            const selected = selectedSessionIdSet.has(s.id)
+          {subjectGroups.map((group) => {
+            const isExpanded = expandedSubjects.has(group.subjectId)
+            const sessionLabel = group.count === 1 ? "session" : "sessions"
             return (
-              <button
-                key={s.id}
-                onClick={() => {
-                  if (calendarSelectionMode) {
-                    onToggleSessionSelection(s.id)
-                    return
-                  }
-                  onSelectSession(s)
-                }}
-                className={cn(
-                  "w-full rounded-xl border p-2 text-left transition-colors",
-                  selected
-                    ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
-                    : "border-blue-200/40 bg-blue-50/20 hover:border-blue-400/60 dark:border-blue-900/40 dark:bg-blue-950/20"
-                )}
-              >
-                <div className="flex items-start gap-2">
-                  {calendarSelectionMode && (
-                    <span
-                      className={cn(
-                        "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                        selected
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-background/50"
-                      )}
-                      aria-hidden="true"
-                    >
-                      {selected && <Check className="h-3 w-3" />}
-                    </span>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 truncate text-xs font-medium">{s.title}</p>
-                      {s.status === "completed" && (
-                        <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
-                          Done
-                        </span>
-                      )}
+              <div key={group.subjectId} className="rounded-xl border border-border/40 bg-background/20 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleSubject(group.subjectId)}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/20"
+                >
+                  <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
+                  <span className="text-xs font-semibold" style={{ color: group.color }}>
+                    {group.shortCode}
+                  </span>
+                  <span className="text-xs font-medium text-foreground/80">
+                    {group.count} {sessionLabel}
+                  </span>
+                  <span className="text-micro text-muted-foreground tabular-nums">
+                    · {formatDuration(group.totalMinutes)}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "ml-auto h-3.5 w-3.5 text-muted-foreground/50 transition-transform",
+                      isExpanded && "rotate-180",
+                    )}
+                  />
+                </button>
+                {isExpanded && group.projectGroups.map((pg) => (
+                  <div key={pg.projectId ?? "__none__"} className="border-t border-border/30">
+                    {group.projectGroups.length > 1 && (
+                      <div className="px-3 pt-2 pb-1">
+                        <p className="text-micro font-medium text-muted-foreground/70">
+                          {pg.projectName}
+                          <span className="text-muted-foreground/40 ml-1">· {pg.count} {pg.count === 1 ? "session" : "sessions"} · {formatDuration(pg.totalMinutes)}</span>
+                        </p>
+                      </div>
+                    )}
+                    <div className="space-y-1 px-2 pb-2 pt-1">
+                      {pg.sessions.map((s) => {
+                        const project = s.projectId ? projects.find((p) => p.id === s.projectId) : undefined
+                        const subjects = getSessionSubjectIds(s, project)
+                          .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
+                          .join(", ")
+                        const selected = selectedSessionIdSet.has(s.id)
+                        return (
+                          <button
+                            key={s.id}
+                            onClick={() => {
+                              if (calendarSelectionMode) {
+                                onToggleSessionSelection(s.id)
+                                return
+                              }
+                              onSelectSession(s)
+                            }}
+                            className={cn(
+                              "w-full rounded-lg border p-2 text-left transition-colors",
+                              selected
+                                ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
+                                : "border-transparent bg-background/40 hover:bg-accent/20",
+                              s.status === "completed" && "opacity-60 hover:opacity-80",
+                            )}
+                          >
+                            <div className="flex items-start gap-2">
+                              {calendarSelectionMode && (
+                                <span
+                                  className={cn(
+                                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                                    selected
+                                      ? "border-primary bg-primary text-primary-foreground"
+                                      : "border-border bg-background/50",
+                                  )}
+                                  aria-hidden="true"
+                                >
+                                  {selected && <Check className="h-3 w-3" />}
+                                </span>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="min-w-0 truncate text-xs font-medium">{s.title}</p>
+                                  {s.status === "completed" && (
+                                    <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
+                                      Done
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-micro text-muted-foreground mt-0.5">
+                                  {project?.name ?? subjects}
+                                </p>
+                                <p className="text-micro text-muted-foreground mt-1">
+                                  {formatTimeRange(s.startTime, s.endTime)}
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
-                    <p className="text-micro text-muted-foreground mt-0.5">
-                      {project?.name ?? subjects}
-                    </p>
-                    <p className="text-micro text-muted-foreground mt-1">
-                      {formatTimeRange(s.startTime, s.endTime)}
-                    </p>
                   </div>
-                </div>
-              </button>
+                ))}
+              </div>
             )
           })}
-          {events.map((event) => {
-            const subject = getSubjectById(event.subjectId)
-            const eventInfo = getEventTypeInfo(event.eventType)
-            const selected = selectedEventIdSet.has(event.id)
+          {(() => {
+            const upcomingEvents = dayEvents.filter((e) => !e.isFinished)
+            const completedEvents = dayEvents.filter((e) => e.isFinished)
             return (
-              <button
-                key={event.id}
-                onClick={() => {
-                  if (calendarSelectionMode) {
-                    onToggleEventSelection(event.id)
-                    return
-                  }
-                  onSelectEvent(event)
-                }}
-                className={cn(
-                  "w-full rounded-xl border p-2 text-left transition-colors",
-                  selected
-                    ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
-                    : "border-border/70 bg-background/30 hover:border-primary/50 hover:bg-accent/30"
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-start gap-2">
-                    {calendarSelectionMode && (
-                      <span
-                        className={cn(
-                          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background/50"
-                        )}
-                        aria-hidden="true"
-                      >
-                        {selected && <Check className="h-3 w-3" />}
-                      </span>
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium">{event.title}</p>
-                      <p className="text-micro text-muted-foreground mt-0.5">
-                        {formatTimeRange(event.startTime, event.endTime)}
-                        {event.location ? ` · ${event.location}` : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {subject && (
-                      <span
-                        className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                        style={{
-                          backgroundColor: subject.color + "18",
-                          color: subject.color,
-                        }}
-                      >
-                        {subject.shortCode}
-                      </span>
-                    )}
-                    <span
-                      className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                      style={{
-                        backgroundColor: eventInfo.color + "18",
-                        color: eventInfo.color,
+              <>
+                {upcomingEvents.map((event) => {
+                  const subject = getSubjectById(event.subjectId)
+                  const eventInfo = getEventTypeInfo(event.eventType)
+                  const selected = selectedEventIdSet.has(event.id)
+                  const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
+                  return (
+                    <button
+                      key={event.id}
+                      onClick={() => {
+                        if (calendarSelectionMode) {
+                          onToggleEventSelection(event.id)
+                          return
+                        }
+                        onSelectEvent(event)
                       }}
+                      className={cn(
+                        "w-full rounded-xl border p-2 text-left transition-colors",
+                        selected
+                          ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
+                          : "border-border/70 bg-background/30 hover:border-primary/50 hover:bg-accent/30"
+                      )}
                     >
-                      {eventInfo.label}
-                    </span>
-                    {event.isFinished && (
-                      <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
-                        Done
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </button>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-start gap-2">
+                          {calendarSelectionMode && (
+                            <span
+                              className={cn(
+                                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                                selected
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border bg-background/50"
+                              )}
+                              aria-hidden="true"
+                            >
+                              {selected && <Check className="h-3 w-3" />}
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium">{event.title}</p>
+                            <p className="text-micro text-muted-foreground mt-0.5">
+                              {isMultiDay && event.endTime
+                                ? formatMultiDayEventMeta(event.startTime, event.endTime)
+                                : `${formatTimeRange(event.startTime, event.endTime)}${event.location ? ` · ${event.location}` : ""}`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {subject && (
+                            <span
+                              className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
+                              style={{
+                                backgroundColor: subject.color + "18",
+                                color: subject.color,
+                              }}
+                            >
+                              {subject.shortCode}
+                            </span>
+                          )}
+                          <span
+                            className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
+                            style={{
+                              backgroundColor: eventInfo.color + "18",
+                              color: eventInfo.color,
+                            }}
+                          >
+                            {eventInfo.label}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+                {completedEvents.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 py-0.5">
+                      <div className="flex-1 border-t border-border/40" />
+                      <p className="text-micro text-muted-foreground/50 font-medium">Completed</p>
+                      <div className="flex-1 border-t border-border/40" />
+                    </div>
+                    {completedEvents.map((event) => {
+                      const subject = getSubjectById(event.subjectId)
+                      const eventInfo = getEventTypeInfo(event.eventType)
+                      const selected = selectedEventIdSet.has(event.id)
+                      const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
+                      return (
+                        <button
+                          key={event.id}
+                          onClick={() => {
+                            if (calendarSelectionMode) {
+                              onToggleEventSelection(event.id)
+                              return
+                            }
+                            onSelectEvent(event)
+                          }}
+                          className={cn(
+                            "w-full rounded-xl border p-2 text-left transition-colors opacity-60 hover:opacity-80",
+                            selected
+                              ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
+                              : "border-border/70 bg-background/30"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex min-w-0 items-start gap-2">
+                              {calendarSelectionMode && (
+                                <span
+                                  className={cn(
+                                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                                    selected
+                                      ? "border-primary bg-primary text-primary-foreground"
+                                      : "border-border bg-background/50"
+                                  )}
+                                  aria-hidden="true"
+                                >
+                                  {selected && <Check className="h-3 w-3" />}
+                                </span>
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium">{event.title}</p>
+                                <p className="text-micro text-muted-foreground mt-0.5">
+                                  {isMultiDay && event.endTime
+                                    ? formatMultiDayEventMeta(event.startTime, event.endTime)
+                                    : `${formatTimeRange(event.startTime, event.endTime)}${event.location ? ` · ${event.location}` : ""}`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              {subject && (
+                                <span
+                                  className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
+                                  style={{
+                                    backgroundColor: subject.color + "18",
+                                    color: subject.color,
+                                  }}
+                                >
+                                  {subject.shortCode}
+                                </span>
+                              )}
+                              <span
+                                className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
+                                style={{
+                                  backgroundColor: eventInfo.color + "18",
+                                  color: eventInfo.color,
+                                }}
+                              >
+                                {eventInfo.label}
+                              </span>
+                              <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
+                                Done
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+              </>
             )
-          })}
+          })()}
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-border bg-background/24 px-3 py-3">

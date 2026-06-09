@@ -1,5 +1,5 @@
 import type { Project, StudySession } from "@/lib/types"
-import { getSessionSubjectIds } from "@/lib/utils"
+import { getSessionSubjectIds, getSessionEffectiveMinutes } from "@/lib/utils"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -61,10 +61,7 @@ export interface AnalyticsData {
 }
 
 function getSessionMinutes(session: StudySession): number {
-  const start = new Date(session.startTime).getTime()
-  const end = new Date(session.endTime).getTime()
-  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return 0
-  return Math.round((end - start) / (1000 * 60))
+  return getSessionEffectiveMinutes(session)
 }
 
 function toDateString(timestamp: number): string {
