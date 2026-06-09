@@ -29,7 +29,7 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
   const days = useMemo(() => {
     if (!config.enabled || config.entries.length === 0) return []
     return Array.from({ length: 10 }, (_, i) => (i + 1) as TimetableDayLabel).map((dayLabel) => {
-      const entries = getTimetableEntriesForDay(dayLabel, config.entries as Parameters<typeof getTimetableEntriesForDay>[1])
+      const entries = getTimetableEntriesForDay(dayLabel, config.entries)
       return { dayLabel, entries }
     })
   }, [config])
@@ -41,7 +41,7 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
 
   const todayPeriods = useMemo(() => {
     if (currentDayLabel === null) return []
-    const entries = getTimetableEntriesForDay(currentDayLabel, config.entries as Parameters<typeof getTimetableEntriesForDay>[1])
+    const entries = getTimetableEntriesForDay(currentDayLabel, config.entries)
     return entries.flatMap((e) => e.periods).sort((a, b) => a.startTime.localeCompare(b.startTime))
   }, [currentDayLabel, config])
 

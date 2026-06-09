@@ -8,26 +8,11 @@ import {
 } from "@/lib/notion/schema"
 import { queryNotionCalendar } from "@/lib/notion/api"
 import { pullFromNotion } from "@/lib/notion/pull"
-import { executePush, deleteOrphanPages, pushEventToNotion as _pushEventToNotion, pushSessionToNotion as _pushSessionToNotion } from "@/lib/notion/push"
+import { executePush, deleteOrphanPages } from "@/lib/notion/push"
 
 export type { NotionCalendarSyncResult } from "@/lib/notion/schema"
 export type { PushSingleResult } from "@/lib/notion/push"
-
-export async function pushEventToNotion(
-  settings: NotionCalendarSettings,
-  event: CalendarEvent,
-  subjects: Subject[],
-) {
-  return _pushEventToNotion(settings, event, subjects)
-}
-
-export async function pushSessionToNotion(
-  settings: NotionCalendarSettings,
-  session: StudySession,
-  subjects: Subject[],
-) {
-  return _pushSessionToNotion(settings, session, subjects)
-}
+export { pushEventToNotion, pushSessionToNotion } from "@/lib/notion/push"
 
 export async function syncNotionCalendar(
   settings: NotionCalendarSettings,

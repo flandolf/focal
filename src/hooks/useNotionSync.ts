@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { getNotionCalendarSettings } from "@/lib/settings"
-import { syncNotionCalendar, pushEventToNotion, pushSessionToNotion, type NotionCalendarSyncResult } from "@/lib/notionSync"
+import { syncNotionCalendar, pushEventToNotion, pushSessionToNotion, type NotionCalendarSyncResult } from "@/lib/notion"
 import type { CalendarEvent, StudySession, Subject } from "@/lib/types"
 import type { NotionConflict } from "@/components/NotionConflictDialog"
 

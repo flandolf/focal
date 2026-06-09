@@ -809,7 +809,7 @@ export function HomeView({
             {timetableConfig?.enabled && (() => {
               const dayLabel = getDayLabelForDate(new Date(), timetableConfig.day1Starts, timetableConfig.holidays)
               if (dayLabel === null) return null
-              const entries = getTimetableEntriesForDay(dayLabel, timetableConfig.entries as Parameters<typeof getTimetableEntriesForDay>[1])
+              const entries = getTimetableEntriesForDay(dayLabel, timetableConfig.entries)
               if (entries.length === 0) return null
               const periods = entries
                 .flatMap((e) => e.periods)

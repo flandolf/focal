@@ -299,9 +299,13 @@ pub struct SearchResult {
 
 #[tauri::command]
 pub fn delete_files(file_paths: Vec<String>) -> Result<usize, String> {
+    let projects_dir = get_documents_dir()?;
     let mut deleted = 0;
     for path in &file_paths {
         let p = PathBuf::from(path);
+        if !p.starts_with(&projects_dir) {
+            return Err(format!("Refusing to delete outside projects directory: {}", path));
+        }
         if p.exists() && p.is_file() {
             std::fs::remove_file(&p).map_err(|e| format!("Failed to delete {}: {}", path, e))?;
             deleted += 1;
@@ -314,7 +318,11 @@ pub fn delete_files(file_paths: Vec<String>) -> Result<usize, String> {
 }
 #[tauri::command]
 pub fn rename_file(file_path: String, new_name: String) -> Result<String, String> {
+    let projects_dir = get_documents_dir()?;
     let src = PathBuf::from(&file_path);
+    if !src.starts_with(&projects_dir) {
+        return Err(format!("Refusing to rename outside projects directory: {}", file_path));
+    }
     if !src.exists() {
         return Err(format!("File not found: {}", file_path));
     }
@@ -335,7 +343,11 @@ pub fn rename_file(file_path: String, new_name: String) -> Result<String, String
 
 #[tauri::command]
 pub fn move_file_to_folder(file_path: String, dest_folder: String) -> Result<String, String> {
+    let projects_dir = get_documents_dir()?;
     let src = PathBuf::from(&file_path);
+    if !src.starts_with(&projects_dir) {
+        return Err(format!("Refusing to move outside projects directory: {}", file_path));
+    }
     if !src.exists() {
         return Err(format!("File not found: {}", file_path));
     }
@@ -343,6 +355,9 @@ pub fn move_file_to_folder(file_path: String, dest_folder: String) -> Result<Str
         return Err("Cannot move: path is not a file".to_string());
     }
     let dest_dir = PathBuf::from(&dest_folder);
+    if !dest_dir.starts_with(&projects_dir) {
+        return Err(format!("Refusing to move to outside projects directory: {}", dest_folder));
+    }
     if !dest_dir.exists() {
         return Err(format!("Destination folder not found: {}", dest_folder));
     }
@@ -482,7 +497,7 @@ pub fn import_folder_to_project(source_path: String) -> Result<String, String> {
         .unwrap_or_default())
 }
 
-fn copy_dir_recursive(src: &PathBuf, dest: &PathBuf) -> Result<(), std::io::Error> {
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), std::io::Error> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
@@ -498,7 +513,7 @@ fn copy_dir_recursive(src: &PathBuf, dest: &PathBuf) -> Result<(), std::io::Erro
 }
 
 fn read_project_files_recursive(
-    dir: &PathBuf,
+    dir: &Path,
     query: &str,
     project_prefix: &str,
 ) -> Result<Vec<SearchResult>, String> {

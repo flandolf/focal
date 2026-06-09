@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 import type { CalendarEvent, EventType } from "@/lib/types"
+import { generateId } from "@/lib/utils"
 
 function getEventEndTime(event: Pick<CalendarEvent, "startTime" | "endTime">): number {
   const value = event.endTime ?? event.startTime
@@ -65,10 +66,6 @@ function normaliseEvent(raw: unknown): CalendarEvent {
 
 function getEventsFilePath(baseDir: string) {
   return `${baseDir}/events.json`
-}
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
 export function useEvents() {

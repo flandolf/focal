@@ -130,15 +130,8 @@ export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; 
 
 // --- Timetable ---
 
-export interface TimetableConfig {
-  enabled: boolean
-  day1Starts: string
-  holidays: { name: string; startDate: string; endDate: string }[]
-  entries: {
-    dayLabel: number
-    periods: { period: string; subject: string; location?: string; startTime: string; endTime: string }[]
-  }[]
-}
+import type { TimetableConfig, TimetableDayLabel } from "@/lib/types"
+export type { TimetableConfig } from "@/lib/types"
 
 export const DEFAULT_TIMETABLE_CONFIG: TimetableConfig = {
   enabled: false,
@@ -147,16 +140,28 @@ export const DEFAULT_TIMETABLE_CONFIG: TimetableConfig = {
   entries: [],
 }
 
+function isValidDayLabel(value: unknown): value is TimetableDayLabel {
+  return typeof value === "number" && value >= 1 && value <= 10 && Number.isInteger(value)
+}
+
 export function getTimetableConfig(): TimetableConfig {
   try {
     const raw = localStorage.getItem("focal-timetable-config")
     if (!raw) return DEFAULT_TIMETABLE_CONFIG
     const parsed = JSON.parse(raw) as Partial<Record<keyof TimetableConfig, unknown>>
+    const rawEntries = Array.isArray(parsed.entries) ? parsed.entries : []
+    const entries = rawEntries
+      .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+      .filter((e) => isValidDayLabel(e.dayLabel))
+      .map((e) => ({
+        dayLabel: e.dayLabel as TimetableDayLabel,
+        periods: Array.isArray(e.periods) ? e.periods : [],
+      }))
     return {
       enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : false,
       day1Starts: typeof parsed.day1Starts === "string" ? parsed.day1Starts : "",
       holidays: Array.isArray(parsed.holidays) ? (parsed.holidays as TimetableConfig["holidays"]) : [],
-      entries: Array.isArray(parsed.entries) ? (parsed.entries as TimetableConfig["entries"]) : [],
+      entries,
     }
   } catch {
     return DEFAULT_TIMETABLE_CONFIG

@@ -125,7 +125,7 @@ function toTimetableEntry(raw: unknown): TimetableParseDraft | null {
 export async function parseTimetableFromImage(
   imageBase64: string, // data:image/...;base64,...
   holidays: { name: string; startDate: string; endDate: string }[],
-  _existingDay1Starts: string,
+  _existingDay1Starts: string, // reserved for future use
 ): Promise<TimetableParseResult> {
   const apiKey = getApiKey()
   const model = getModel()

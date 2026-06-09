@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { isRecord } from "@/lib/utils"
 
 export type ThemeId = "focal" | "codex" | "claude" | "github" | "linear" | "notion"
 export type ThemeMode = "light" | "dark" | "system"
@@ -17,15 +18,11 @@ export const THEMES: ThemeDef[] = [
   { id: "notion", name: "Notion" },
 ]
 
+const STORAGE_KEY = "focal-theme"
+
 interface ThemeSelection {
   theme: ThemeId
   mode: ThemeMode
-}
-
-const STORAGE_KEY = "focal-theme"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function isThemeId(value: unknown): value is ThemeId {
@@ -52,13 +49,13 @@ function getInitialTheme(): ThemeSelection {
   if (stored) {
     try {
       const parsed = JSON.parse(stored) as unknown
-      if (typeof parsed === "object" && parsed !== null) {
+      if (isRecord(parsed)) {
         // Migrate old format: { theme, dark: boolean }
-        if (isRecord(parsed) && typeof parsed.dark === "boolean" && isThemeId(parsed.theme)) {
+        if (typeof parsed.dark === "boolean" && isThemeId(parsed.theme)) {
           return { theme: parsed.theme, mode: parsed.dark ? "dark" : "light" }
         }
         // New format: { theme, mode }
-        if (isRecord(parsed) && isThemeId(parsed.theme) && isThemeMode(parsed.mode)) {
+        if (isThemeId(parsed.theme) && isThemeMode(parsed.mode)) {
           return { theme: parsed.theme, mode: parsed.mode }
         }
       }
@@ -88,7 +85,6 @@ export function useTheme() {
     root.classList.toggle("dark", resolvedDark)
   }, [selection, resolvedDark])
 
-  // Listen for OS theme changes when mode is "system"
   useEffect(() => {
     if (selection.mode !== "system") return
     const mq = window.matchMedia("(prefers-color-scheme: dark)")
