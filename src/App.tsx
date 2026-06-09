@@ -9,29 +9,29 @@ import { FolderOpen, Search, Settings } from "lucide-react"
 import { Sidebar } from "@/components/Sidebar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
-import { NewProjectDialog } from "@/components/NewProjectDialog"
+import { ProjectDialog } from "@/components/ProjectDialog"
 import { StudySessionDialog } from "@/components/StudySessionDialog"
-import { NewEventDialog } from "@/components/NewEventDialog"
-import { EditEventDialog } from "@/components/EditEventDialog"
-import { ProjectSettingsDialog } from "@/components/ProjectSettingsDialog"
+import { EventDialog } from "@/components/EventDialog"
 import { GlobalSearch } from "@/components/GlobalSearch"
+import { TimetableView } from "@/components/timetable/TimetableView"
 import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
 import { SettingsView } from "@/components/SettingsView"
 import { AnalyticsView } from "@/components/analytics/AnalyticsView"
-import { NotionConflictDialog, type NotionConflict } from "@/components/NotionConflictDialog"
+import { NotionConflictDialog } from "@/components/NotionConflictDialog"
 import { NotionSyncIndicator } from "@/components/NotionSyncIndicator"
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
+import { useNotionSync } from "@/hooks/useNotionSync"
 import { useTheme } from "@/lib/themes"
-import { cn, getSubjectById } from "@/lib/utils"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { showUndoToast } from "@/lib/undoToast"
-import { getNotionCalendarSettings } from "@/lib/settings"
-import { syncNotionCalendar, type NotionCalendarSyncResult, pushEventToNotion, pushSessionToNotion } from "@/lib/notionSync"
+import { getNotionCalendarSettings, getTimetableConfig } from "@/lib/settings"
+import { isPomodoroSession, getPomodoroDescription, getPomodoroNotes, getPomodoroTitle, POMODORO_DESCRIPTION_PREFIX, getAdjacentPomodoroSession, getUniqueStrings, getUniqueArrayItems } from "@/lib/pomodoro"
+import { deleteNotionPage } from "@/lib/notion/api"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
@@ -39,36 +39,6 @@ import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType,
 const MOTION_EASE = [0.16, 1, 0.3, 1] as const
 const SHELL_LAYOUT_TRANSITION = { duration: 0.24, ease: MOTION_EASE } as const
 const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
-const POMODORO_MERGE_WINDOW_MS = 15 * 60 * 1000
-const POMODORO_DESCRIPTION_PREFIX = "Pomodoro —"
-const LEGACY_POMODORO_DESCRIPTION = "Started from the Pomodoro timer."
-const LEGACY_POMODORO_NOTES = "Focus block logged from the sidebar timer."
-
-function isPomodoroSession(session: StudySession) {
-  return (typeof session.description === "string" && (
-    session.description.startsWith(POMODORO_DESCRIPTION_PREFIX)
-    || session.description === LEGACY_POMODORO_DESCRIPTION
-  )) || session.notes === LEGACY_POMODORO_NOTES
-}
-
-function getPomodoroDescription(durationMinutes: number, cycleNumber: number) {
-  const startedAt = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-  return `${POMODORO_DESCRIPTION_PREFIX} ${durationMinutes}m focus block #${cycleNumber} · started ${startedAt}`
-}
-
-function getPomodoroNotes(cycleNumber: number) {
-  const stored = typeof window !== "undefined" ? localStorage.getItem("focal-pomodoro-settings") : null
-  let work = 25, brk = 5, long = 15
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored) as Record<string, unknown>
-      if (typeof parsed.workMinutes === "number") work = parsed.workMinutes
-      if (typeof parsed.breakMinutes === "number") brk = parsed.breakMinutes
-      if (typeof parsed.longBreakMinutes === "number") long = parsed.longBreakMinutes
-    } catch { /* use defaults */ }
-  }
-  return `Timer: ${work}m work / ${brk}m break / ${long}m long break. Focus block #${cycleNumber} of current run.`
-}
 const HIDDEN_SUBJECTS_STORAGE_KEY = "focal-hidden-subjects"
 
 function getStoredHiddenSubjectIds() {
@@ -107,57 +77,6 @@ function getStoredCustomSubjects() {
   }
 }
 
-
-function haveSameSubjects(a: string[], b: string[]) {
-  if (a.length !== b.length) return false
-  const sortedA = [...a].sort()
-  const sortedB = [...b].sort()
-  return sortedA.every((id, index) => id === sortedB[index])
-}
-
-function getUniqueStrings(items: (string | undefined)[]) {
-  return Array.from(new Set(items.map((item) => item?.trim()).filter((item): item is string => Boolean(item))))
-}
-
-function getUniqueArrayItems(items: (string[] | undefined)[]) {
-  return Array.from(new Set(items.flatMap((item) => item ?? []).map((item) => item.trim()).filter(Boolean)))
-}
-
-function isMergeablePomodoroSession(session: StudySession, data: { projectId?: string; subjectIds: string[] }) {
-  return isPomodoroSession(session)
-    && session.projectId === data.projectId
-    && haveSameSubjects(session.subjectIds, data.subjectIds)
-}
-
-function getAdjacentPomodoroSession(
-  sessions: StudySession[],
-  data: { projectId?: string; subjectIds: string[] },
-  start: Date,
-  end: Date,
-) {
-  const startMs = start.getTime()
-  const endMs = end.getTime()
-
-  const adjacentSessions = sessions
-    .filter((session) => isMergeablePomodoroSession(session, data))
-    .map((session) => ({
-      session,
-      startMs: new Date(session.startTime).getTime(),
-      endMs: new Date(session.endTime).getTime(),
-    }))
-    .filter(({ startMs: candidateStartMs, endMs: candidateEndMs }) => (
-      Number.isFinite(candidateStartMs)
-      && Number.isFinite(candidateEndMs)
-      && (
-        Math.abs(startMs - candidateEndMs) <= POMODORO_MERGE_WINDOW_MS
-        || Math.abs(candidateStartMs - endMs) <= POMODORO_MERGE_WINDOW_MS
-      )
-    ))
-    .sort((a, b) => Math.min(Math.abs(startMs - a.endMs), Math.abs(endMs - a.startMs)) - Math.min(Math.abs(startMs - b.endMs), Math.abs(endMs - b.startMs)))
-
-  return adjacentSessions[0]?.session
-}
-
 function App() {
   const { projects, addProject, updateProject, deleteProject, addCustomSubfolder, removeCustomSubfolder, restoreProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
@@ -168,14 +87,9 @@ function App() {
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<StudySession | null>(null)
   const [eventDialogOpen, setEventDialogOpen] = useState(false)
-  const [editEventDialogOpen, setEditEventDialogOpen] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [newItemInitialDate, setNewItemInitialDate] = useState<Date | undefined>(undefined)
   const [newItemDialogKey, setNewItemDialogKey] = useState(0)
-  const [lastSyncTime, setLastSyncTime] = useState(0)
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error" | "success">("idle")
-  const [notionConflicts, setNotionConflicts] = useState<NotionConflict[]>([])
-  const [notionConflictDialogOpen, setNotionConflictDialogOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [searchOpen, setSearchOpen] = useState(false)
@@ -184,6 +98,15 @@ function App() {
   const [settingsView, setSettingsView] = useState(false)
   const [analyticsView, setAnalyticsView] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [timetableView, setTimetableView] = useState(false)
+  const [timetableConfig, setTimetableConfig] = useState(getTimetableConfig)
+
+  // Keep timetableConfig in sync with localStorage changes
+  useEffect(() => {
+    const handler = () => setTimetableConfig(getTimetableConfig())
+    window.addEventListener("focal-timetable-updated", handler)
+    return () => window.removeEventListener("focal-timetable-updated", handler)
+  }, [])
   const reduceMotion = useReducedMotion()
   const [customSubjects, setCustomSubjects] = useState<Subject[]>(getStoredCustomSubjects)
   const [hiddenSubjectIds, setHiddenSubjectIds] = useState<string[]>(getStoredHiddenSubjectIds)
@@ -195,6 +118,19 @@ function App() {
     [allSubjects, hiddenSubjectIds],
   )
 
+  const {
+    syncStatus,
+    lastSyncTime,
+    notionConflicts,
+    notionConflictDialogOpen,
+    setNotionConflictDialogOpen,
+    setNotionConflicts,
+    performNotionSync,
+    requestNotionSync,
+    pushEventChange,
+    pushSessionChange,
+  } = useNotionSync({ events, sessions, allSubjects, syncEvents, syncSessions })
+
   useEffect(() => {
     localStorage.setItem("focal-custom-subjects", JSON.stringify(customSubjects))
   }, [customSubjects])
@@ -202,185 +138,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem(HIDDEN_SUBJECTS_STORAGE_KEY, JSON.stringify(hiddenSubjectIds))
   }, [hiddenSubjectIds])
-
-  const notionSyncInFlightRef = useRef(false)
-  const notionSyncQueuedRef = useRef(false)
-  const notionSyncQueuedNotifyRef = useRef(false)
-  const notionSyncQueuedResolverRef = useRef<{ resolve: (value: NotionCalendarSyncResult | null) => void; reject: (reason: unknown) => void } | null>(null)
-  const notionSyncRunnerRef = useRef<((notify: boolean, onProgress?: (msg: string) => void) => Promise<NotionCalendarSyncResult | null>) | null>(null)
-  const eventsRef = useRef(events)
-  const sessionsRef = useRef(sessions)
-  const allSubjectsRef = useRef(allSubjects)
-
-  useEffect(() => {
-    eventsRef.current = events
-    sessionsRef.current = sessions
-    allSubjectsRef.current = allSubjects
-  })
-
-  const performNotionSync = useCallback(async (notify: boolean, onProgress?: (msg: string) => void) => {
-    const settings = getNotionCalendarSettings()
-    if (!settings.token.trim() || !settings.dataSourceId.trim()) return null
-    if (notionSyncInFlightRef.current) {
-      notionSyncQueuedRef.current = true
-      notionSyncQueuedNotifyRef.current = notionSyncQueuedNotifyRef.current || notify
-      // Return a promise that resolves when the queued sync finishes, so
-      // callers (SettingsView) see the actual result instead of "Sync skipped".
-      if (notify) {
-        return new Promise<NotionCalendarSyncResult | null>((resolve, reject) => {
-          notionSyncQueuedResolverRef.current = { resolve, reject }
-        })
-      }
-      return null
-    }
-
-    notionSyncInFlightRef.current = true
-    notionSyncQueuedRef.current = false
-    setSyncStatus("syncing")
-    try {
-      const result = await syncNotionCalendar(settings, eventsRef.current, sessionsRef.current, allSubjectsRef.current, onProgress)
-      if (result.created.length > 0 || result.updated.length > 0) {
-        await syncEvents(result.created, result.updated)
-      }
-      if (result.createdSessions.length > 0 || result.updatedSessions.length > 0) {
-        await syncSessions(result.createdSessions, result.updatedSessions)
-      }
-
-      if (notify) {
-        const pulled = result.created.length + result.updated.length + result.createdSessions.length + result.updatedSessions.length
-        const pushed = result.pushedCreated + result.pushedUpdated
-        const parts: string[] = []
-        if (pulled > 0) parts.push(`${pulled} pulled`)
-        if (pushed > 0) parts.push(`${pushed} pushed`)
-        if (result.deleted > 0) parts.push(`${result.deleted} deleted`)
-        toast.success(
-          parts.length > 0
-            ? `Synced Notion items: ${parts.join(", ")}`
-            : "Notion items already up to date",
-        )
-        if (result.skipped > 0) {
-          toast.info(`${result.skipped} Notion item${result.skipped === 1 ? "" : "s"} skipped without a valid date`, {
-            description: result.skippedReasons[0],
-          })
-        }
-        if (result.conflicts > 0) {
-          const conflicts: NotionConflict[] = result.conflictDetails.map((detail, i) => ({
-            id: `conflict-${i}`,
-            type: detail.toLowerCase().includes("session") ? "session" : "event",
-            title: detail.split('"')[1] ?? `Item ${i + 1}`,
-            localVersion: {
-              title: detail.split('"')[1] ?? "Local version",
-              startTime: undefined,
-            },
-            notionVersion: {
-              title: "Notion version",
-              startTime: undefined,
-            },
-          }))
-          setNotionConflicts(conflicts)
-          setNotionConflictDialogOpen(true)
-        }
-        if (result.pushErrors.length > 0) {
-          toast.error(`${result.pushErrors.length} push error${result.pushErrors.length === 1 ? "" : "s"}`, {
-            description: result.pushErrors[0],
-          })
-        }
-        return result
-      }
-    } catch (e) {
-      setSyncStatus("error")
-      if (notify) {
-        toast.error(`Notion sync failed: ${String(e)}`)
-        throw e
-      }
-      console.error(`Notion sync failed: ${String(e)}`)
-      return null
-    } finally {
-      const now = Date.now()
-      setLastSyncTime(now)
-      setSyncStatus("success")
-      setTimeout(() => setSyncStatus("idle"), 2000)
-      notionSyncInFlightRef.current = false
-      if (notionSyncQueuedRef.current) {
-        notionSyncQueuedRef.current = false
-        const queuedNotify = notionSyncQueuedNotifyRef.current
-        notionSyncQueuedNotifyRef.current = false
-        const queuedResolver = notionSyncQueuedResolverRef.current
-        notionSyncQueuedResolverRef.current = null
-        const result = notionSyncRunnerRef.current?.(queuedNotify)
-        if (queuedResolver && result) {
-          result.then(
-            (r) => queuedResolver.resolve(r),
-            (err) => queuedResolver.reject(err),
-          )
-        }
-      }
-    }
-    return null
-  }, [syncEvents, syncSessions])
-
-  useEffect(() => {
-    notionSyncRunnerRef.current = performNotionSync
-  }, [performNotionSync])
-
-  const requestNotionSync = useCallback((notify = false) => {
-    const settings = getNotionCalendarSettings()
-    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
-    if (notionSyncInFlightRef.current) {
-      notionSyncQueuedRef.current = true
-      notionSyncQueuedNotifyRef.current = notionSyncQueuedNotifyRef.current || notify
-      return
-    }
-    void performNotionSync(notify)
-  }, [performNotionSync])
-
-  /**
-   * Push a single event to Notion immediately without a full pull.
-   * Accepts the full event object (post-mutation) to avoid stale-ref issues.
-   * Falls back to a full sync if the schema isn't cached yet.
-   */
-  const pushEventChange = useCallback(async (event: CalendarEvent) => {
-    const settings = getNotionCalendarSettings()
-    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
-    setSyncStatus("syncing")
-    try {
-      const result = await pushEventToNotion(settings, event, allSubjectsRef.current)
-      if (result) {
-        await syncEvents([], [{ id: event.id, updates: { source: result.source } }])
-      } else {
-        void requestNotionSync(false)
-      }
-    } catch (e) {
-      console.error("Failed to push event to Notion:", e)
-      setSyncStatus("error")
-    } finally {
-      setSyncStatus("idle")
-    }
-  }, [syncEvents, requestNotionSync])
-
-  /**
-   * Push a single study session to Notion immediately without a full pull.
-   * Accepts the full session object (post-mutation) to avoid stale-ref issues.
-   * Falls back to a full sync if the schema isn't cached yet.
-   */
-  const pushSessionChange = useCallback(async (session: StudySession) => {
-    const settings = getNotionCalendarSettings()
-    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
-    setSyncStatus("syncing")
-    try {
-      const result = await pushSessionToNotion(settings, session, allSubjectsRef.current)
-      if (result) {
-        await syncSessions([], [{ id: session.id, updates: { source: result.source } }])
-      } else {
-        void requestNotionSync(false)
-      }
-    } catch (e) {
-      console.error("Failed to push session to Notion:", e)
-      setSyncStatus("error")
-    } finally {
-      setSyncStatus("idle")
-    }
-  }, [syncSessions, requestNotionSync])
 
   const handleToggleSubjectVisibility = useCallback((subjectId: string) => {
     setHiddenSubjectIds((current) => (
@@ -398,10 +155,9 @@ function App() {
   useEffect(() => {
     if (eventsLoading || sessionsLoading) return
     if (initialAutoSyncDoneRef.current) return
-    if (!notionSyncRunnerRef.current) return
     initialAutoSyncDoneRef.current = true
-    void notionSyncRunnerRef.current(false)
-  }, [eventsLoading, sessionsLoading])
+    void performNotionSync(false)
+  }, [eventsLoading, sessionsLoading, performNotionSync])
 
   useEffect(() => {
     if (eventsLoading || sessionsLoading) return
@@ -459,13 +215,23 @@ function App() {
     setSelectedId(null)
     setHomeSelected(true)
     setSettingsView(false)
+    setTimetableView(false)
     setAnalyticsView(false)
+  }
+
+  const handleSelectTimetable = () => {
+    setSelectedId(null)
+    setHomeSelected(false)
+    setSettingsView(false)
+    setAnalyticsView(false)
+    setTimetableView(true)
   }
 
   const handleSelectAnalytics = () => {
     setSelectedId(null)
     setHomeSelected(false)
     setSettingsView(false)
+    setTimetableView(false)
     setAnalyticsView(true)
   }
 
@@ -477,6 +243,7 @@ function App() {
   }
 
   const handleOpenNewEvent = (initialDate?: Date) => {
+    setSelectedEvent(null)
     setNewItemInitialDate(initialDate)
     setNewItemDialogKey((key) => key + 1)
     setEventDialogOpen(true)
@@ -523,7 +290,7 @@ function App() {
       description: resolved.join(", "),
     })
     setNotionConflicts([])
-  }, [])
+  }, [setNotionConflicts])
 
   const handleCreateProject = async (data: {
     name: string
@@ -651,21 +418,6 @@ function App() {
       toast.error(`Failed to create study sessions: ${String(e)}`)
       throw e
     }
-  }
-
-  const getPomodoroTitle = (subjectIds: string[], cycleNumber: number, projectName?: string) => {
-    const labels = subjectIds
-      .map((id) => getSubjectById(id)?.shortCode ?? getSubjectById(id)?.name)
-      .filter((label): label is string => Boolean(label))
-
-    const subjectPart = labels.length === 0
-      ? "Pomodoro"
-      : labels.length === 1
-        ? labels[0]
-        : labels.slice(0, 2).join(" + ")
-
-    const prefix = projectName ? `${projectName} — ` : ""
-    return `${prefix}${subjectPart} · Focus #${cycleNumber}`
   }
 
   const handleStartPomodoroSession = async (data: {
@@ -799,6 +551,15 @@ function App() {
     if (!confirmed) return
     try {
       await deleteSession(id)
+      if (session.source?.type === "notion" && session.source.id) {
+        const settings = getNotionCalendarSettings()
+        if (settings.token.trim() && settings.dataSourceId.trim()) {
+          void deleteNotionPage(settings, session.source.id).catch((e) => {
+            console.error("Failed to delete Notion page:", e)
+            toast.error("Failed to delete session from Notion — it may reappear on next sync")
+          })
+        }
+      }
       showUndoToast({
         message: "Study session deleted",
         onUndo: async () => {
@@ -871,7 +632,7 @@ function App() {
         finishedAt: data.finishedAt,
       })
       toast.success("Event updated")
-      setEditEventDialogOpen(false)
+      setEventDialogOpen(false)
       setSelectedEvent(null)
       const { id, ...rest } = data
       void pushEventChange({ ...events.find((e: CalendarEvent) => e.id === id), ...rest } as CalendarEvent)
@@ -891,6 +652,15 @@ function App() {
     if (!confirmed) return
     try {
       await deleteEvent(id)
+      if (event.source?.type === "notion" && event.source.id) {
+        const settings = getNotionCalendarSettings()
+        if (settings.token.trim() && settings.dataSourceId.trim()) {
+          void deleteNotionPage(settings, event.source.id).catch((e) => {
+            console.error("Failed to delete Notion page:", e)
+            toast.error("Failed to delete event from Notion — it may reappear on next sync")
+          })
+        }
+      }
       showUndoToast({
         message: "Event deleted",
         onUndo: async () => {
@@ -898,7 +668,7 @@ function App() {
           toast.success("Event restored")
         },
       })
-      setEditEventDialogOpen(false)
+      setEventDialogOpen(false)
       setSelectedEvent(null)
       void requestNotionSync(false)
     } catch (e) {
@@ -928,6 +698,28 @@ function App() {
         itemIds.eventIds.length > 0 ? deleteEvents(itemIds.eventIds) : Promise.resolve(),
         itemIds.sessionIds.length > 0 ? deleteSessions(itemIds.sessionIds) : Promise.resolve(),
       ])
+      // Delete Notion pages for sourced items in parallel (collect failures for toast)
+      const settings = getNotionCalendarSettings()
+      const canDeleteNotion = settings.token.trim() && settings.dataSourceId.trim()
+      if (canDeleteNotion) {
+        const notionPageIds: string[] = [
+          ...deletedEvents.filter((e) => e.source?.type === "notion" && e.source.id).map((e) => e.source!.id),
+          ...deletedSessions.filter((s) => s.source?.type === "notion" && s.source.id).map((s) => s.source!.id),
+        ]
+        const failedIds: string[] = []
+        await Promise.allSettled(
+          notionPageIds.map((pageId) =>
+            deleteNotionPage(settings, pageId).catch((e) => {
+              console.error("Failed to delete Notion page:", e)
+              failedIds.push(pageId)
+            })
+          )
+        )
+        if (failedIds.length > 0) {
+          toast.error(`${failedIds.length} item${failedIds.length === 1 ? "" : "s"} failed to delete from Notion — they may reappear on next sync`)
+        }
+      }
+
       showUndoToast({
         message: `${total} calendar item${total === 1 ? "" : "s"} deleted`,
         onUndo: async () => {
@@ -1019,6 +811,21 @@ function App() {
         }],
         selectedEvents.slice(1).map((event) => event.id),
       )
+
+      // Delete Notion pages for merged-away events in parallel
+      const settings = getNotionCalendarSettings()
+      const canDeleteNotion = settings.token.trim() && settings.dataSourceId.trim()
+      if (canDeleteNotion) {
+        const notionPageIds = selectedEvents.slice(1)
+          .filter((e) => e.source?.type === "notion" && e.source.id)
+          .map((e) => e.source!.id)
+        notionPageIds.forEach((pageId) => {
+          void deleteNotionPage(settings, pageId).catch((e) => {
+            console.error("Failed to delete Notion page:", e)
+          })
+        })
+      }
+
       toast.success(`${selectedEvents.length} events merged`)
       void requestNotionSync(false)
     } catch (e) {
@@ -1082,6 +889,21 @@ function App() {
         }],
         selectedSessions.slice(1).map((session) => session.id),
       )
+
+      // Delete Notion pages for merged-away sessions in parallel
+      const settings = getNotionCalendarSettings()
+      const canDeleteNotion = settings.token.trim() && settings.dataSourceId.trim()
+      if (canDeleteNotion) {
+        const notionPageIds = selectedSessions.slice(1)
+          .filter((s) => s.source?.type === "notion" && s.source.id)
+          .map((s) => s.source!.id)
+        notionPageIds.forEach((pageId) => {
+          void deleteNotionPage(settings, pageId).catch((e) => {
+            console.error("Failed to delete Notion page:", e)
+          })
+        })
+      }
+
       toast.success(`${selectedSessions.length} study sessions merged`)
       void requestNotionSync(false)
     } catch (e) {
@@ -1139,7 +961,7 @@ function App() {
 
   const handleSelectEvent = (event: CalendarEvent) => {
     setSelectedEvent(event)
-    setEditEventDialogOpen(true)
+    setEventDialogOpen(true)
   }
 
   const handleSyncNotionCalendar = async (onProgress: (msg: string) => void) => {
@@ -1151,7 +973,7 @@ function App() {
     void getCurrentWindow().startDragging().catch(() => undefined)
   }
 
-  const contentKey = settingsView ? "settings" : analyticsView ? "analytics" : homeSelected ? "home" : selectedProject ? `project-${selectedProject.id}` : "empty"
+  const contentKey = settingsView ? "settings" : analyticsView ? "analytics" : timetableView ? "timetable" : homeSelected ? "home" : selectedProject ? `project-${selectedProject.id}` : "empty"
   const layoutTransition = reduceMotion ? { duration: 0 } : SHELL_LAYOUT_TRANSITION
   const viewTransition = reduceMotion ? { duration: 0 } : VIEW_TRANSITION
 
@@ -1229,6 +1051,8 @@ function App() {
               onDeletePomodoroSession={handleDeleteStudySession}
               onAddFile={handleAddFileFromSidebar}
               fileCounts={fileCounts}
+              onSelectTimetable={handleSelectTimetable}
+              timetableSelected={timetableView}
             />
           </motion.div>
           <motion.main
@@ -1262,6 +1086,10 @@ function App() {
                     onSyncNotionCalendar={handleSyncNotionCalendar}
                     lastSyncTime={lastSyncTime}
                   />
+                ) : timetableView ? (
+                  <TimetableView
+                    customSubjects={customSubjects}
+                  />
                 ) : analyticsView ? (
                   <AnalyticsView
                     sessions={sessions}
@@ -1284,7 +1112,9 @@ function App() {
                     onDeleteCalendarItems={handleDeleteCalendarItems}
                     onSetCalendarItemsCompleted={handleSetCalendarItemsCompleted}
                     onMergeEvents={handleMergeEvents}
-                    onMergeStudySessions={handleMergeStudySessions}
+              onMergeStudySessions={handleMergeStudySessions}
+              onGoTimetable={handleSelectTimetable}
+              timetableConfig={timetableConfig}
                   />
                 ) : selectedProject ? (
                   <ProjectDetail
@@ -1317,7 +1147,7 @@ function App() {
             </AnimatePresence>
           </motion.main>
         </div>
-        <NewProjectDialog
+        <ProjectDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           onSubmit={handleCreateProject}
@@ -1336,35 +1166,26 @@ function App() {
           onSubmit={selectedSession ? handleEditStudySession : handleCreateStudySession}
           onDelete={selectedSession ? handleDeleteStudySession : undefined}
         />
-        <NewEventDialog
-          key={`new-event-${newItemDialogKey}`}
+        <EventDialog
+          key={`event-${selectedEvent?.id ?? `new-${newItemDialogKey}`}`}
           open={eventDialogOpen}
           onOpenChange={setEventDialogOpen}
-          customSubjects={customSubjects}
-          availableSubjects={availableSubjects}
-          initialDate={newItemInitialDate}
-          onSubmit={handleCreateEvent}
-          onSubmitMultiple={handleCreateEvents}
-        />
-        <EditEventDialog
-          open={editEventDialogOpen}
-          onOpenChange={setEditEventDialogOpen}
           event={selectedEvent}
           customSubjects={customSubjects}
           availableSubjects={availableSubjects}
-          onSubmit={handleEditEvent}
-          onDelete={handleDeleteEvent}
+          initialDate={selectedEvent ? undefined : newItemInitialDate}
+          onSubmit={(selectedEvent ? handleEditEvent : handleCreateEvent) as unknown as Parameters<typeof EventDialog>[0]["onSubmit"]}
+          onSubmitMultiple={handleCreateEvents}
+          onDelete={selectedEvent ? handleDeleteEvent : undefined}
         />
-        {selectedProject && (
-          <ProjectSettingsDialog
-            project={selectedProject}
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            onSubmit={handleUpdateProject}
-            customSubjects={customSubjects}
-            availableSubjects={availableSubjects}
-          />
-        )}
+        <ProjectDialog
+          project={selectedProject}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          onSubmitEdit={handleUpdateProject}
+          customSubjects={customSubjects}
+          availableSubjects={availableSubjects}
+        />
         <GlobalSearch
           projects={projects}
           sessions={sessions}

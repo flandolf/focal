@@ -1,75 +1,20 @@
-import { createElement, useEffect, useState, useCallback } from "react"
-import { FolderOpen, Plus, FolderUp, Loader2, Settings, Folder, Search, X, Trash2, Clock, Calendar, CheckCircle2, BookOpen, Languages, Library, Calculator, ChartNoAxesColumn, FlaskConical, Atom, Dna, Brain, Landmark, Map, TrendingUp, BriefcaseBusiness, ArrowUp, ArrowDown, Tag, MoveRight, type LucideIcon } from "lucide-react"
-import { format, parseISO } from "date-fns"
+import { useEffect, useState, useCallback } from "react"
+import { Plus, Loader2 } from "lucide-react"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow"
 import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { FileRow } from "@/components/FileRow"
-import { AutoRenameButton } from "@/components/AutoRenameButton"
-import { FileStudyPlannerButton } from "@/components/FileStudyPlannerButton"
-import { useProjectFiles, type SortKey } from "@/hooks/useProjectFiles"
+import type { UnlistenFn } from "@tauri-apps/api/event"
+import { useProjectFiles } from "@/hooks/useProjectFiles"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
-import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
 import type { CalendarEvent, Project, FileInfo, StudySession } from "@/lib/types"
-import type { UnlistenFn } from "@tauri-apps/api/event"
-import { cn } from "@/lib/utils"
-
-const PROJECT_ICONS: Record<string, LucideIcon> = {
-  eng: BookOpen,
-  "eng-lang": Languages,
-  lit: Library,
-  mm: Calculator,
-  sm: Calculator,
-  gm: ChartNoAxesColumn,
-  chem: FlaskConical,
-  phys: Atom,
-  bio: Dna,
-  psych: Brain,
-  hist: Landmark,
-  geo: Map,
-  econ: TrendingUp,
-  bm: BriefcaseBusiness,
-}
-
-const FILE_TABLE_GRID = "grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_2rem] min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem_2rem]"
-const SEGMENTED_BUTTON_CLASS = "rounded-md px-2.5 py-1 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-const SEGMENTED_ACTIVE_CLASS = "bg-background text-foreground font-medium shadow-sm"
-const SEGMENTED_IDLE_CLASS = "text-muted-foreground hover:bg-background/40 hover:text-foreground"
-const POPOVER_ITEM_BUTTON_CLASS = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35"
-
-function getSegmentedButtonClassName(selected: boolean, className?: string) {
-  return cn(
-    SEGMENTED_BUTTON_CLASS,
-    selected ? SEGMENTED_ACTIVE_CLASS : SEGMENTED_IDLE_CLASS,
-    className,
-  )
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function notifyProjectActionError(message: string, error: unknown) {
-  toast.error(`${message}: ${getErrorMessage(error)}`)
-}
-
-function joinHomePath(home: string, ...segments: string[]) {
-  return [home.replace(/\/+$/, ""), ...segments].join("/")
-}
-
-function getProjectIcon(subjectId?: string): LucideIcon {
-  if (subjectId && PROJECT_ICONS[subjectId]) return PROJECT_ICONS[subjectId]
-  return Folder
-}
+import { ProjectHeader } from "@/components/project/ProjectHeader"
+import { FileTree } from "@/components/project/FileTree"
+import { SessionList } from "@/components/project/SessionList"
+import { AutoRenameButton } from "@/components/AutoRenameButton"
+import { notifyProjectActionError, joinHomePath } from "@/components/project/shared"
 
 interface ProjectDetailProps {
   project: Project
@@ -101,7 +46,6 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   const [newFolderName, setNewFolderName] = useState("")
   const [isAddingFolder, setIsAddingFolder] = useState(false)
 
-  // Combine default folders with custom subfolders from the project
   const allSubfolders = [...DEFAULT_SUBFOLDERS, ...(project.customSubfolders ?? [])]
 
   useEffect(() => {
@@ -130,7 +74,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             case "drop":
               setIsDragging(false)
               if (payload.paths.length > 0) {
-                const targetFolder = selectedSubfolder 
+                const targetFolder = selectedSubfolder
                   ? `${project.folder_path}/${selectedSubfolder}`
                   : project.folder_path
                 invoke("move_files_to_project", {
@@ -167,30 +111,6 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     const count = await addFiles(selectedSubfolder)
     if (count) {
       onFilesChanged()
-    }
-  }
-
-  const handleAddCustomFolder = async () => {
-    if (!newFolderName.trim() || !onAddCustomSubfolder) return
-    
-    try {
-      await onAddCustomSubfolder(project.id, newFolderName.trim())
-      setNewFolderName("")
-      setIsAddingFolder(false)
-    } catch (e) {
-      notifyProjectActionError("Could not add custom folder", e)
-    }
-  }
-
-  const handleRemoveCustomFolder = async (folderName: string) => {
-    if (!onRemoveCustomSubfolder) return
-    try {
-      await onRemoveCustomSubfolder(project.id, folderName)
-      if (selectedSubfolder === folderName) {
-        setSelectedSubfolder(null)
-      }
-    } catch (e) {
-      notifyProjectActionError("Could not remove custom folder", e)
     }
   }
 
@@ -313,7 +233,6 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     }
   }
 
-
   const handleApplyAutoRenames = useCallback(
     async (renames: { filePath: string; newName: string }[]) => {
       let failed = 0
@@ -379,9 +298,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       notifyProjectActionError("Could not delete selected files", e)
     }
   }
-  const subject = getSubjectById(project.subjectId)
-  const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
-  const projectIcon = getProjectIcon(project.subjectId)
+
   return (
     <div className="relative flex h-full flex-col">
       {isDragging && (
@@ -395,304 +312,23 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         </div>
       )}
 
-      <div className="border-b border-border/70">
-        <div className="px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-3 min-[1200px]:gap-3.5">
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-background/45 shadow-sm"
-                  style={subject ? { backgroundColor: subject.color + "14", color: subject.color } : undefined}
-                >
-                  {createElement(projectIcon, { className: "h-5 w-5", "aria-hidden": true })}
-                </span>
-                <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
-              </div>
-              <p className="mt-1.5 truncate text-caption text-muted-foreground">
-                Files folder / <span className="font-mono">{project.folder_path}{selectedSubfolder ? `/${selectedSubfolder}` : ""}</span>
-              </p>
-              {project.description && (
-                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{project.description}</p>
-              )}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {project.unit && (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    Unit {project.unit}
-                  </span>
-                )}
-                {subject && (
-                  <span
-                    className="flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium"
-                    style={{ backgroundColor: subject.color + "14", color: subject.color }}
-                  >
-                    {subject.icon} {subject.name}
-                  </span>
-                )}
-                {project.deadline && (
-                  <Badge
-                    variant={!project.isFinished && isOverdue(project.deadline) ? "destructive" : "secondary"}
-                    className="gap-1 font-normal"
-                    style={project.deadlineType ? { backgroundColor: deadlineInfo.color + "14", color: deadlineInfo.color, border: 'none' } : undefined}
-                  >
-                    {deadlineInfo.icon} {formatDeadline(project.deadline)}
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onOpenSettings}>
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                  <TooltipContent side="bottom">Assessment details</TooltipContent>
-              </Tooltip>
-              {onToggleFinished && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg"
-                      onClick={() => onToggleFinished(project.id)}>
-                      <CheckCircle2 className={cn("h-4 w-4", project.isFinished && "text-green-500")} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {project.isFinished ? "Mark as current" : "Mark as complete"}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={handleOpenFolder} className="h-8 gap-1.5 rounded-lg bg-background/45">
-                    <FolderUp className="h-4 w-4" />
-                    <span className="max-[950px]:hidden">Open Folder</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Open in Finder</TooltipContent>
-              </Tooltip>
-              {onCreateEvents && (
-                <FileStudyPlannerButton
-                  project={project}
-                  files={filteredFiles}
-                  selectedFilePaths={selectedFiles}
-                  onCreateEvents={onCreateEvents}
-                />
-              )}
-              <Button size="sm" onClick={handleAddFiles} className="h-8 gap-1.5 rounded-lg">
-                <Plus className="h-4 w-4" />
-                <span>Add Files</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode("files")}
-                aria-pressed={viewMode === "files"}
-                className={getSegmentedButtonClassName(viewMode === "files", "flex items-center gap-1.5")}
-              >
-                <Folder className="h-3.5 w-3.5" />
-                Files
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("sessions")}
-                aria-pressed={viewMode === "sessions"}
-                className={getSegmentedButtonClassName(viewMode === "sessions", "flex items-center gap-1.5")}
-              >
-                <Clock className="h-3.5 w-3.5" />
-                Sessions
-                {sessions.length > 0 && (
-                  <span className="tabular-nums text-micro">{sessions.length}</span>
-                )}
-              </button>
-            </div>
-
-            {viewMode === "files" && (
-              <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setSelectedSubfolder(null)}
-                  aria-pressed={selectedSubfolder === null}
-                  className={getSegmentedButtonClassName(selectedSubfolder === null)}
-                >
-                  All
-                </button>
-                {allSubfolders.map((folder) => {
-                  const isCustom = (project.customSubfolders ?? []).includes(folder)
-                  return (
-                    <span key={folder} className="group/folder relative inline-flex">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
-                        aria-pressed={selectedSubfolder === folder}
-                        className={getSegmentedButtonClassName(selectedSubfolder === folder)}
-                      >
-                        {folder}
-                      </button>
-                      {isCustom && onRemoveCustomSubfolder && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void handleRemoveCustomFolder(folder)
-                          }}
-                          className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive/80 text-[10px] text-destructive-foreground opacity-0 transition-opacity hover:flex hover:opacity-100 group-hover/folder:opacity-60"
-                          aria-label={`Remove ${folder} folder`}
-                        >
-                          <X className="h-2.5 w-2.5" />
-                        </button>
-                      )}
-                    </span>
-                  )
-                })}
-                {onAddCustomSubfolder && (
-                  <>
-                    {isAddingFolder ? (
-                      <div className="flex items-center gap-1">
-                        <Input
-                          value={newFolderName}
-                          onChange={(e) => setNewFolderName(e.target.value)}
-                          placeholder="Folder name"
-                          className="h-6 w-24 text-xs"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") void handleAddCustomFolder()
-                            if (e.key === "Escape") {
-                              setIsAddingFolder(false)
-                              setNewFolderName("")
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void handleAddCustomFolder()}
-                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-background/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                          aria-label="Add custom folder"
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAddingFolder(false)
-                            setNewFolderName("")
-                          }}
-                          className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-background/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                          aria-label="Cancel custom folder"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingFolder(true)}
-                        className={getSegmentedButtonClassName(false, "px-2")}
-                        aria-label="Add custom folder"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-
-            {viewMode === "files" && files.length > 0 && (
-              <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setSortAsc(!sortAsc)}
-                  className={getSegmentedButtonClassName(false, "flex items-center gap-1 px-2")}
-                  title={`Sort ${sortAsc ? "descending" : "ascending"}`}
-                  aria-label={`Sort ${sortAsc ? "descending" : "ascending"}`}
-                >
-                  {sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                </button>
-                {(["name", "modified", "size", "extension"] as SortKey[]).map((key) => (
-                  <button
-                    type="button"
-                    key={key}
-                    onClick={() => {
-                      if (sortKey === key) setSortAsc(!sortAsc)
-                      else setSortKey(key)
-                    }}
-                    aria-pressed={sortKey === key}
-                    className={getSegmentedButtonClassName(sortKey === key, "px-2")}
-                  >
-                    {{ name: "Name", modified: "Date", size: "Size", extension: "Type" }[key]}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex-1" />
-            {viewMode === "sessions" && onNewSession && (
-              <Button size="sm" onClick={onNewSession} className="h-7 gap-1.5 rounded-lg text-xs">
-                <Plus className="h-3.5 w-3.5" />
-                New Session
-              </Button>
-            )}
-          </div>
-
-          {viewMode === "files" && files.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <div className="relative min-w-0 flex-1 max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
-                <Input
-                  placeholder="Search files..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 rounded-lg bg-background/45 pl-8 text-xs"
-                />
-              </div>
-              {searchQuery && (
-                <Button variant="ghost" size="sm" onClick={() => setSearchQuery("")} className="h-7 w-7 rounded-lg p-0">
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              )}
-              <div className="mx-0.5 h-4 w-px bg-border/40" />
-              {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
-                <button
-                  type="button"
-                  key={tag}
-                  onClick={() => setSelectedTags(
-                    selectedTags.includes(tag)
-                      ? selectedTags.filter(t => t !== tag)
-                      : [...selectedTags, tag]
-                  )}
-                  aria-pressed={selectedTags.includes(tag)}
-                  className={getSegmentedButtonClassName(
-                    selectedTags.includes(tag),
-                    "px-2 py-0.5 text-caption capitalize",
-                  )}
-                >
-                  {tag}
-                </button>
-              ))}
-              {selectedTags.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedTags([])}
-                  className="rounded-md px-1.5 py-0.5 text-caption text-muted-foreground transition-colors outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      <ProjectHeader
+        project={project}
+        sessions={sessions}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onOpenSettings={onOpenSettings}
+        onToggleFinished={onToggleFinished}
+        onOpenFolder={handleOpenFolder}
+        onAddFiles={handleAddFiles}
+        onCreateEvents={onCreateEvents}
+        filteredFiles={filteredFiles}
+        selectedFiles={selectedFiles}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col">
         {viewMode === "sessions" ? (
-          <SessionsView
+          <SessionList
             sessions={sessions}
             project={project}
             projectName={project.name}
@@ -703,145 +339,51 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
           </div>
-        ) : files.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-5 text-center min-[1200px]:px-8">
-            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background/35">
-              <FolderOpen className="h-6 w-6 text-muted-foreground/40" />
-            </div>
-            <p className="text-sm font-medium text-foreground mb-1">No files yet</p>
-            <p className="text-xs text-muted-foreground mb-5 max-w-56 leading-relaxed">
-              Drag and drop files here, or select them from your computer.
-            </p>
-            <Button variant="secondary" size="sm" onClick={handleAddFiles} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              Add Files
-            </Button>
-          </div>
         ) : (
-          <>
-            {/* Column headers */}
-            <div className={cn(
-              "grid items-center gap-3 border-b border-border/50 bg-muted/25 px-5 py-2.5 text-xs uppercase text-muted-foreground/70 min-[1200px]:px-8",
-              FILE_TABLE_GRID,
-            )}>
-              <span aria-hidden="true" />
-              <span aria-hidden="true" />
-              <span>Name</span>
-              <span className="text-right">Size</span>
-              <span className="hidden text-right min-[1000px]:block">Type</span>
-              <span className="sr-only">Actions</span>
-            </div>
-
-            {/* Selection bar */}
-            {selectedFiles.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-accent/20 px-5 py-2.5 min-[1200px]:gap-3 min-[1200px]:px-8">
-                <span className="text-xs font-medium">{selectedFiles.size} selected</span>
-                <Button variant="ghost" size="sm" onClick={handleSelectAll} className="h-7 px-2 text-xs">
-                  Select All
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleClearSelection} className="h-7 px-2 text-xs">
-                  Clear
-                </Button>
-
-                {/* Bulk tag */}
-                <Popover
-                  open={showBulkTagMenu}
-                  onOpenChange={(open) => {
-                    setShowBulkTagMenu(open)
-                    if (open) setShowBulkMoveMenu(false)
-                  }}
-                >
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 gap-1 px-2 text-xs"
-                    >
-                      <Tag className="h-3 w-3" />
-                      Tag
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-36 gap-1 p-1">
-                    {(["sac", "notes", "past-paper", "exam", "resource", "other"] as FileTag[]).map((tag) => (
-                      <button
-                        type="button"
-                        key={tag}
-                        onClick={() => { void handleBulkTag(tag); setShowBulkTagMenu(false) }}
-                        className={cn(POPOVER_ITEM_BUTTON_CLASS, "capitalize")}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </PopoverContent>
-                </Popover>
-
-                {/* Bulk move */}
-                <Popover
-                  open={showBulkMoveMenu}
-                  onOpenChange={(open) => {
-                    setShowBulkMoveMenu(open)
-                    if (open) setShowBulkTagMenu(false)
-                  }}
-                >
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 gap-1 px-2 text-xs"
-                    >
-                      <MoveRight className="h-3 w-3" />
-                      Move
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-40 gap-1 p-1">
-                    {allSubfolders.map((folder) => (
-                      <button
-                        type="button"
-                        key={folder}
-                        onClick={() => { void handleBulkMove(folder); setShowBulkMoveMenu(false) }}
-                        className={POPOVER_ITEM_BUTTON_CLASS}
-                      >
-                        {folder}
-                      </button>
-                    ))}
-                  </PopoverContent>
-                </Popover>
-
-                <div className="flex-1" />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDeleteSelected}
-                  className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  Delete
-                </Button>
-              </div>
-            )}
-
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="divide-y divide-border/60">
-                {filteredFiles.map((file) => (
-                  <FileRow
-                    key={file.path}
-                    file={file}
-                    onOpen={handleOpenFile}
-                    onRename={handleRenameFile}
-                    onRemoveTag={handleRemoveTag}
-                    onAddTag={handleAddTag}
-                    onToggleFavorite={handleToggleFavorite}
-                    onShowInFinder={handleShowInFinder}
-                    onCopyPath={handleCopyPath}
-                    onMoveFile={handleMoveFile}
-                    isSelected={selectedFiles.has(file.path)}
-                    onSelectionChange={handleFileSelectionChange}
-                    subfolders={allSubfolders}
-                  />
-                ))}
-              </div>
-            </ScrollArea>
-          </>
+          <FileTree
+            project={project}
+            files={files}
+            loading={loading}
+            filteredFiles={filteredFiles}
+            selectedFiles={selectedFiles}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            selectedTags={selectedTags}
+            setSelectedTags={setSelectedTags}
+            selectedSubfolder={selectedSubfolder}
+            setSelectedSubfolder={setSelectedSubfolder}
+            sortKey={sortKey}
+            sortAsc={sortAsc}
+            setSortKey={setSortKey}
+            setSortAsc={setSortAsc}
+            allSubfolders={allSubfolders}
+            customSubfolders={project.customSubfolders ?? []}
+            showBulkTagMenu={showBulkTagMenu}
+            setShowBulkTagMenu={setShowBulkTagMenu}
+            showBulkMoveMenu={showBulkMoveMenu}
+            setShowBulkMoveMenu={setShowBulkMoveMenu}
+            newFolderName={newFolderName}
+            setNewFolderName={setNewFolderName}
+            isAddingFolder={isAddingFolder}
+            setIsAddingFolder={setIsAddingFolder}
+            onAddCustomSubfolder={onAddCustomSubfolder}
+            onRemoveCustomSubfolder={onRemoveCustomSubfolder}
+            onAddFiles={handleAddFiles}
+            onOpenFile={handleOpenFile}
+            onRenameFile={handleRenameFile}
+            onRemoveTag={handleRemoveTag}
+            onAddTag={handleAddTag}
+            onToggleFavorite={handleToggleFavorite}
+            onShowInFinder={handleShowInFinder}
+            onCopyPath={handleCopyPath}
+            onMoveFile={handleMoveFile}
+            onBulkTag={handleBulkTag}
+            onBulkMove={handleBulkMove}
+            onSelectAll={handleSelectAll}
+            onClearSelection={handleClearSelection}
+            onDeleteSelected={handleDeleteSelected}
+            onFileSelectionChange={handleFileSelectionChange}
+          />
         )}
       </div>
 
@@ -852,127 +394,5 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
         />
       )}
     </div>
-  )
-}
-
-function SessionsView({
-  sessions,
-  project,
-  projectName,
-  onSelectSession,
-  onNewSession,
-}: {
-  sessions: StudySession[]
-  project: Project
-  projectName: string
-  onSelectSession?: (session: StudySession) => void
-  onNewSession?: () => void
-}) {
-  if (sessions.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-5 min-[1200px]:px-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background/35">
-          <Clock className="h-6 w-6 text-muted-foreground/40" />
-        </div>
-        <p className="text-sm font-medium text-foreground mb-1">No study sessions</p>
-        <p className="text-xs text-muted-foreground mb-5 max-w-56 leading-relaxed">
-          Plan study sessions for {projectName} to track your revision time and progress.
-        </p>
-        {onNewSession && (
-          <Button variant="secondary" size="sm" onClick={onNewSession} className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
-            Plan Session
-          </Button>
-        )}
-      </div>
-    )
-  }
-
-  const sorted = [...sessions].sort(
-    (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-  )
-
-  return (
-    <ScrollArea className="flex-1">
-      <div className="space-y-1.5 px-5 py-3 min-[1200px]:px-8">
-        {sorted.map((session) => {
-          const start = parseISO(session.startTime)
-          const end = parseISO(session.endTime)
-          const durationMs = end.getTime() - start.getTime()
-          const hours = Math.floor(durationMs / (1000 * 60 * 60))
-          const minutes = Math.round((durationMs % (1000 * 60 * 60)) / (1000 * 60))
-          const sessionSubjects = getSessionSubjectIds(session, project)
-
-          return (
-            <button
-              type="button"
-              key={session.id}
-              onClick={() => onSelectSession?.(session)}
-              className="w-full rounded-lg border border-border/60 bg-background/20 p-3 text-left transition-colors outline-none hover:border-border hover:bg-accent/25 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium truncate">{session.title}</p>
-                    <StatusBadge status={session.status} />
-                  </div>
-                  {session.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{session.description}</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {format(start, "MMM d, yyyy")}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {format(start, "h:mm a")} — {format(end, "h:mm a")}
-                    </span>
-                    <span className="tabular-nums">{hours > 0 ? `${hours}h ` : ""}{minutes}m</span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {sessionSubjects.map((subjectId) => {
-                      const subject = getSubjectById(subjectId)
-                      return (
-                        <span
-                          key={subjectId}
-                          className="text-micro px-1.5 py-0.5 rounded font-medium"
-                          style={subject ? { backgroundColor: subject.color + "14", color: subject.color } : undefined}
-                        >
-                          {subject?.shortCode ?? subjectId}
-                        </span>
-                      )
-                    })}
-                    {session.topics && session.topics.length > 0 && session.topics.map((topic, i) => (
-                      <span key={i} className="text-micro px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                        {topic}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </ScrollArea>
-  )
-}
-
-function StatusBadge({ status }: { status: StudySession["status"] }) {
-  const config = {
-    planned: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-    "in-progress": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-    completed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-  }
-  const labels = {
-    planned: "Planned",
-    "in-progress": "In Progress",
-    completed: "Completed",
-  }
-  return (
-    <span className={cn("text-micro px-1.5 py-0.5 rounded font-medium", config[status])}>
-      {labels[status]}
-    </span>
   )
 }

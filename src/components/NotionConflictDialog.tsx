@@ -4,7 +4,6 @@ import { AlertTriangle, CheckCircle2, ExternalLink, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import type { CalendarEvent, StudySession } from "@/lib/types"
 
 export interface NotionConflict {
   id: string

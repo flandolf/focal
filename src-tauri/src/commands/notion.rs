@@ -90,6 +90,39 @@ async fn parse_notion_response(response: reqwest::Response) -> NotionPageRespons
     }
 }
 
+// -- Fetch schema (lightweight single page) --
+
+#[tauri::command]
+pub async fn fetch_notion_schema(token: String, data_source_id: String) -> NotionPageResponse {
+    let token = token.trim();
+    let data_source_id = data_source_id.trim();
+    if token.is_empty() {
+        return page_error("VALIDATION_ERROR", "Notion integration token is required");
+    }
+    if data_source_id.is_empty() {
+        return page_error("VALIDATION_ERROR", "Notion database id is required");
+    }
+
+    // Retrieve a single page (or empty results) from the database to get the schema.
+    // Notion's POST /databases/{id}/query returns property schema in the response even
+    // with no results, so we page_size=1 and stop immediately after the first batch.
+    let body = json!({ "page_size": 1 });
+
+    let response = match HTTP_CLIENT
+        .post(&format!("{}/databases/{}/query", NOTION_BASE_URL, data_source_id))
+        .bearer_auth(token)
+        .header("Notion-Version", NOTION_API_VERSION)
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return page_error("NETWORK_ERROR", &format!("Network error: {}", e)),
+    };
+
+    parse_notion_response(response).await
+}
+
 // -- Query --
 
 #[tauri::command]
@@ -264,7 +297,7 @@ pub async fn update_notion_calendar_page(
 async fn replace_page_children(token: &str, page_id: &str, new_children: Value) {
     let children_url = format!("{}/blocks/{}/children", NOTION_BASE_URL, page_id);
 
-    // Delete existing children
+    // Delete existing children in parallel
     if let Ok(response) = HTTP_CLIENT
         .get(&children_url)
         .bearer_auth(token)
@@ -274,16 +307,20 @@ async fn replace_page_children(token: &str, page_id: &str, new_children: Value) 
     {
         if let Ok(json) = response.json::<Value>().await {
             if let Some(results) = json.get("results").and_then(|v| v.as_array()) {
-                for block in results {
-                    if let Some(block_id) = block.get("id").and_then(|v| v.as_str()) {
-                        let _ = HTTP_CLIENT
-                            .delete(format!("{}/blocks/{}", NOTION_BASE_URL, block_id))
-                            .bearer_auth(token)
-                            .header("Notion-Version", NOTION_API_VERSION)
-                            .send()
-                            .await;
-                    }
-                }
+                let block_ids: Vec<String> = results
+                    .iter()
+                    .filter_map(|block| block.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .collect();
+
+                // Delete all blocks concurrently
+                let delete_futures = block_ids.iter().map(|block_id| {
+                    HTTP_CLIENT
+                        .delete(format!("{}/blocks/{}", NOTION_BASE_URL, block_id))
+                        .bearer_auth(token)
+                        .header("Notion-Version", NOTION_API_VERSION)
+                        .send()
+                });
+                let _ = futures_util::future::join_all(delete_futures).await;
             }
         }
     }

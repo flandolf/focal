@@ -1,29 +1,19 @@
-import { useState, useEffect, useRef, useCallback, useReducer, useMemo, type ReactNode } from "react"
+import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from "react"
 import { createPortal } from "react-dom"
 import {
-  BarChart3,
-  BookOpen,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Coffee,
-  Gauge,
   Maximize2,
-  Minimize2,
-  Pause,
-  Play,
-  Plus,
   RotateCcw,
-  SkipForward,
-  Target,
   Timer,
-  Trash2,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { VCE_SUBJECTS, type Project, type StudySession, type Subject } from "@/lib/types"
+import { FocusView } from "@/components/timer/FocusView"
+import { TimerControls } from "@/components/timer/TimerControls"
+import { SubjectPicker } from "@/components/timer/SubjectPicker"
+import { DurationInputs } from "@/components/timer/DurationInputs"
+import { RecoveryDialog } from "@/components/timer/RecoveryDialog"
 
 const TIMER_SETTINGS_KEY = "focal-pomodoro-settings"
 const TIMER_STATE_KEY = "focal-pomodoro-state"
@@ -283,79 +273,6 @@ interface StudyTimerProps {
   ) => Promise<void>
   onDeleteSession?: (id: string) => Promise<void>
 }
-interface FocusStatProps {
-  label: string
-  value: string
-  icon: ReactNode
-  detail?: string
-}
-
-interface FocusMetricProps {
-  label: string
-  value: string
-  detail?: string
-}
-
-interface RecoveryDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  sessionId: string
-  onResume: () => void
-  onFinish: () => void
-  onDiscard: () => void
-}
-
-function RecoveryDialog({
-  open,
-  onOpenChange,
-  sessionId,
-  onResume,
-  onFinish,
-  onDiscard,
-}: RecoveryDialogProps) {
-  if (!open) return null
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-background p-6 shadow-xl">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-          <Timer className="h-6 w-6 text-primary" />
-        </div>
-        <h3 className="font-heading text-lg font-semibold">Recover Study Session</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          You had an active Pomodoro session when the app was closed. What would you like to do?
-        </p>
-        <div className="mt-6 space-y-2">
-          <Button
-            onClick={() => { onResume(); onOpenChange(false) }}
-            className="w-full justify-start gap-2 text-primary-foreground"
-            variant="default"
-          >
-            <Play className="h-4 w-4" />
-            Resume session
-          </Button>
-          <Button
-            onClick={() => { onFinish(); onOpenChange(false) }}
-            className="w-full justify-start gap-2"
-            variant="outline"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Finish and save
-          </Button>
-          <Button
-            onClick={() => { onDiscard(); onOpenChange(false) }}
-            className="w-full justify-start gap-2 text-destructive hover:text-destructive"
-            variant="ghost"
-          >
-            <Trash2 className="h-4 w-4" />
-            Discard session
-          </Button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
-}
 
 function formatMinutes(totalMinutes: number) {
   const safeMinutes = Math.max(0, Math.round(totalMinutes))
@@ -383,33 +300,6 @@ function getTodayRange(now: Date) {
   const end = new Date(start)
   end.setDate(start.getDate() + 1)
   return { startMs: start.getTime(), endMs: end.getTime() }
-}
-
-function FocusStat({ label, value, icon, detail }: FocusStatProps) {
-  return (
-    <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2.5 px-1 py-2.5">
-      <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-muted/35 text-muted-foreground" aria-hidden="true">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</p>
-          <p className="shrink-0 text-lg font-semibold tabular-nums text-foreground">{value}</p>
-        </div>
-        {detail && <p className="mt-1 text-xs leading-4 text-muted-foreground">{detail}</p>}
-      </div>
-    </div>
-  )
-}
-
-function FocusMetric({ label, value, detail }: FocusMetricProps) {
-  return (
-    <div className="min-w-0 rounded-md border border-border/60 bg-background/45 px-2.5 py-1.5 min-[520px]:px-3">
-      <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold tabular-nums text-foreground min-[520px]:text-base">{value}</p>
-      {detail && <p className="mt-0.5 truncate text-caption text-muted-foreground">{detail}</p>}
-    </div>
-  )
 }
 
 export function StudyTimer({
@@ -442,8 +332,18 @@ export function StudyTimer({
     }
   })
   const [saving, setSaving] = useState(false)
-  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
-  const [recoverySessionId, setRecoverySessionId] = useState<string | null>(null)
+  const [recoverySessionId, setRecoverySessionId] = useState<string | null>(() => {
+    try {
+      const stored = localStorage.getItem(TIMER_STATE_KEY)
+      if (!stored) return null
+      const parsed = JSON.parse(stored) as Record<string, unknown>
+      if (parsed.running && typeof parsed.activeSessionId === "string" && parsed.activeSessionId) {
+        return parsed.activeSessionId
+      }
+    } catch { /* ignore parse errors */ }
+    return null
+  })
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(recoverySessionId !== null)
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSessionIdRef = useRef<string | null>(null)
@@ -454,25 +354,7 @@ export function StudyTimer({
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const focusCloseButtonRef = useRef<HTMLButtonElement | null>(null)
   const selectedProjectSubjectId = selectedProject?.subjectId
-  const hasCheckedRecoveryRef = useRef(false)
 
-  // Check for session recovery on mount
-  useEffect(() => {
-    if (hasCheckedRecoveryRef.current) return
-    hasCheckedRecoveryRef.current = true
-
-    try {
-      const stored = localStorage.getItem(TIMER_STATE_KEY)
-      if (!stored) return
-      const parsed = JSON.parse(stored) as Partial<StoredTimerState>
-      if (parsed.running && typeof parsed.activeSessionId === "string" && parsed.activeSessionId) {
-        setRecoverySessionId(parsed.activeSessionId)
-        setRecoveryDialogOpen(true)
-      }
-    } catch {
-      // Ignore parse errors
-    }
-  }, [])
 
   const setFocusViewWithTransition = useCallback((nextOpen: boolean) => {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -507,24 +389,6 @@ export function StudyTimer({
   }, [])
 
   useEffect(() => {
-    if (!focusViewOpen) return
-
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    window.setTimeout(() => focusCloseButtonRef.current?.focus(), 0)
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeFocusView()
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [closeFocusView, focusViewOpen])
-
-  useEffect(() => {
     if (!selectedProject?.subjectId || activeSessionIdRef.current) return
     setSelectedSubjectIds((current) => (
       current.length > 0 || !selectedProject.subjectId ? current : [selectedProject.subjectId]
@@ -550,7 +414,6 @@ export function StudyTimer({
   }, [onUpdateSession])
 
   const handleRecoveryResume = useCallback(() => {
-    // Keep the session and timer as-is, just close the dialog
     setRecoveryDialogOpen(false)
     setRecoverySessionId(null)
   }, [])
@@ -652,7 +515,7 @@ export function StudyTimer({
   const progress = isStudyOvertime ? 1 : Math.min(1, Math.max(0, 1 - secondsLeft / totalSeconds))
   const timeDisplay = isStudyOvertime ? `+${formatTimer(overtimeSeconds)}` : formatTimer(secondsLeft)
   const modeLabel = isStudyOvertime ? "Overtime" : mode === "work" ? "Focus" : mode === "long-break" ? "Long Break" : "Break"
-  const modeColor = mode === "work" || isStudyOvertime ? "text-background" : "text-emerald-500"
+  const modeColor = mode === "work" || isStudyOvertime ? "" : "text-emerald-500"
   const activeSubjects = subjects.filter((subject) => selectedSubjectIds.includes(subject.id))
   const activeSubjectLabel = activeSubjects.length === 0
     ? "No subject"
@@ -726,369 +589,6 @@ export function StudyTimer({
   const sessionScopeLabel = selectedProject
     ? selectedProject.name
     : activeSubjects.length > 0 ? activeSubjects.map((subject) => subject.name).join(", ") : "No subject selected"
-  const focusTicks = Array.from({ length: 24 }, (_, index) => index)
-  const renderFocusView = () => focusViewOpen ? (
-    <div
-      className="fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background text-foreground"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Full screen study timer"
-    >
-      <div className="pointer-events-none absolute inset-0 hairline-grid opacity-30" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-linear-to-b from-primary/8 to-transparent" />
-      <div className="relative z-10 flex h-dvh min-h-0 flex-col px-4 pb-2 pt-[calc(var(--app-titlebar-inset)+0.25rem)] sm:px-5 min-[1200px]:px-6">
-        <header className="grid shrink-0 gap-2 border-b border-border/60 pb-2 min-[640px]:grid-cols-[minmax(0,1fr)_auto] min-[640px]:items-end">
-          <div className="min-w-0 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={cn(
-                "inline-flex h-6 items-center rounded-md border px-2 text-micro font-semibold uppercase tracking-normal",
-                mode === "work" || isStudyOvertime
-                  ? "border-primary/25 bg-primary/10 text-background"
-                  : "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-              )}>
-                {modeLabel}
-              </span>
-              <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-background/55 px-2 text-micro font-semibold uppercase tracking-normal text-muted-foreground">
-                Cycle {cycles + 1}
-              </span>
-              <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-background/55 px-2 text-micro font-semibold uppercase tracking-normal text-muted-foreground">
-                {nextModeLabel}
-              </span>
-            </div>
-            <div className="min-w-0">
-              <h2 className="truncate font-heading text-lg font-semibold tracking-normal text-foreground min-[1200px]:text-xl">
-                {workbenchTitle}
-              </h2>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{sessionScopeLabel}</p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 min-[640px]:justify-end">
-            <Button
-              onClick={handleReset}
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 rounded-md bg-background/60"
-              aria-label="Reset timer"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-            <Button
-              ref={focusCloseButtonRef}
-              onClick={closeFocusView}
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 rounded-md bg-background/60"
-              aria-label="Close full screen timer"
-            >
-              <Minimize2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </header>
-
-        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto py-3 min-[740px]:grid-cols-[minmax(0,1fr)_15rem] min-[740px]:overflow-hidden min-[1080px]:grid-cols-[minmax(0,1fr)_20rem] min-[1400px]:grid-cols-[minmax(0,1fr)_22rem]">
-          <main className="relative flex min-h-[30rem] flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 shadow-xs min-[740px]:min-h-0">
-            <div className="grid shrink-0 grid-cols-1 border-b border-border/55 bg-background/35 min-[520px]:grid-cols-3">
-              <FocusMetric label="Elapsed" value={formatMinutes(Math.ceil(elapsedSeconds / 60))} detail={progressDetail} />
-              <FocusMetric label="Remaining" value={formatMinutes(Math.ceil(secondsLeft / 60))} detail={currentBlockDetail} />
-              <FocusMetric label="Logged" value={activeSessionId ? "Active" : "Ready"} detail={activeSessionId ? isStudyOvertime ? "Overtime session" : "Calendar session" : "Awaiting start"} />
-            </div>
-
-            <div className="relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] px-3 py-3 sm:px-4 min-[1200px]:px-6">
-              <div className="pointer-events-none absolute inset-x-4 top-5 h-px bg-border/55" />
-              <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-col items-center justify-center text-center">
-                <div
-                  className={cn(
-                    "relative aspect-square w-full max-w-[min(34vh,21rem)] min-[900px]:max-w-[min(38vh,23rem)] min-[1200px]:max-w-[min(42vh,26rem)]",
-                    running && "motion-safe:animate-[pulse_4s_ease-in-out_infinite]"
-                  )}
-                >
-                  <svg className="h-full w-full -rotate-90 drop-shadow-sm" viewBox="0 0 260 260" aria-hidden="true">
-                    <circle
-                      cx="130"
-                      cy="130"
-                      r="112"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                      strokeDasharray="2 10"
-                      className="text-muted-foreground/18"
-                    />
-                    <circle
-                      cx="130"
-                      cy="130"
-                      r="96"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                      className="text-border/70"
-                    />
-                    <circle
-                      cx="130"
-                      cy="130"
-                      r="112"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="10"
-                      className="text-muted-foreground/10"
-                    />
-                    <circle
-                      cx="130"
-                      cy="130"
-                      r="112"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="10"
-                      strokeDasharray={`${2 * Math.PI * 112}`}
-                      strokeDashoffset={`${2 * Math.PI * 112 * (1 - progress)}`}
-                      strokeLinecap="round"
-                      className={cn(
-                        "transition-[stroke-dashoffset] duration-1000 ease-out motion-reduce:transition-none",
-                        mode === "work" || isStudyOvertime ? "text-background" : "text-emerald-500"
-                      )}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center px-8">
-                    <span className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">
-                      {running ? "Timer running" : activeSessionId ? "Timer paused" : "Ready to start"}
-                    </span>
-                    <span className="mt-2 font-heading text-4xl font-semibold leading-none tabular-nums tracking-normal text-foreground min-[520px]:text-5xl min-[1200px]:text-6xl">
-                      {timeDisplay}
-                    </span>
-                    <span className={cn("mt-4 text-sm font-semibold", modeColor)}>
-                      {timerStageDetail}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4 w-full max-w-3xl">
-                  <div className="grid grid-cols-6 gap-1" aria-hidden="true">
-                    {focusTicks.map((tick) => {
-                      const isFilled = tick / (focusTicks.length - 1) <= progress
-                      return (
-                        <span
-                          key={tick}
-                          className={cn(
-                            "h-1.5 rounded-full transition-colors duration-700 motion-reduce:transition-none",
-                            isFilled
-                              ? mode === "work" || isStudyOvertime ? "bg-primary" : "bg-emerald-500"
-                              : "bg-muted"
-                          )}
-                        />
-                      )
-                    })}
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-micro font-semibold uppercase tracking-normal text-muted-foreground">
-                    <span>0m</span>
-                    <span>{formatMinutes(Math.ceil(totalSeconds / 60))}</span>
-                  </div>
-                </div>
-
-              </div>
-
-              <div className="mx-auto mt-3 w-full max-w-3xl border-t border-border/55 pt-3">
-                <div className="flex w-full flex-col gap-2 sm:flex-row">
-                  <Button
-                    onClick={handleToggle}
-                    disabled={mode === "work" && !canStartFocus && !running}
-                    size="lg"
-                    variant={running ? "outline" : "default"}
-                    className="h-11 flex-1 gap-2 rounded-md text-sm"
-                  >
-                    {running ? (
-                      <p className="flex items-center justify-center gap-2 text-background">
-                        <Pause className="h-4 w-4" /> Pause
-                      </p>
-                    ) : (
-                      <p className="flex items-center justify-center gap-2 text-background">
-                        <Play className="h-4 w-4" /> {timerActionLabel}
-                      </p>
-                    )}
-                  </Button>
-                  {isStudyOvertime ? (
-                    <Button
-                      onClick={handleReturnToBreak}
-                      disabled={saving}
-                      size="lg"
-                      variant="default"
-                      className="h-11 flex-1 gap-2 rounded-md text-sm text-primary-foreground"
-                    >
-                      <Coffee className="h-4 w-4" />
-                      break time!
-                    </Button>
-                  ) : activeSessionId && (
-                    <Button
-                      onClick={handleFinish}
-                      disabled={saving}
-                      size="lg"
-                      variant="outline"
-                      className="h-11 flex-1 gap-2 rounded-md text-sm"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Finish & save
-                    </Button>
-                  )}
-                </div>
-
-                {mode !== "work" && !isStudyOvertime && (
-                  <div className="mt-2 grid grid-cols-1 gap-2 min-[520px]:grid-cols-3">
-                    <Button
-                      onClick={handleSkipBreak}
-                      size="sm"
-                      variant="ghost"
-                      className="h-10 gap-2 rounded-md text-sm"
-                    >
-                      <SkipForward className="h-4 w-4" />
-                      Skip
-                    </Button>
-                    <Button
-                      onClick={handleStartStudyOvertime}
-                      disabled={!canStartFocus}
-                      size="sm"
-                      variant="outline"
-                      className="h-10 min-w-0 gap-2 rounded-md text-sm"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      Study overtime
-                    </Button>
-                    <Button
-                      onClick={handleMoreBreakTime}
-                      size="sm"
-                      variant="outline"
-                      className="h-10 gap-2 rounded-md text-sm"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {EXTRA_BREAK_MINUTES} min
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </main>
-
-          <aside className="flex min-h-0 flex-col gap-3 min-[740px]:overflow-y-auto min-[740px]:pr-1">
-            <section className="rounded-lg border border-border/60 bg-card/45 px-3 py-1.5 shadow-xs">
-              <div className="flex items-center justify-between gap-3 border-b border-border/55 py-2.5">
-                <div>
-                  <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Focus Record</p>
-                  <p className="mt-1 text-sm font-medium text-foreground">Today&apos;s timer context</p>
-                </div>
-                <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              </div>
-              <FocusStat
-                label="Today"
-                value={formatMinutes(todayAnalytics.totalMinutes)}
-                detail={`${todayAnalytics.completedBlocks} completed block${todayAnalytics.completedBlocks === 1 ? "" : "s"}${todayAnalytics.activeBlocks > 0 ? " · active now" : ""}`}
-                icon={<BarChart3 className="h-4 w-4" />}
-              />
-              <FocusStat
-                label="Current Block"
-                value={formatMinutes(Math.ceil(elapsedSeconds / 60))}
-                detail={currentBlockDetail}
-                icon={<Timer className="h-4 w-4" />}
-              />
-              <FocusStat
-                label="Momentum"
-                value={`${cycles}`}
-                detail={`Completed focus cycle${cycles === 1 ? "" : "s"} in this Pomodoro run`}
-                icon={<Target className="h-4 w-4" />}
-              />
-              <FocusStat
-                label="Top Subject"
-                value={todayAnalytics.topSubject?.subject?.shortCode ?? "None"}
-                detail={todayAnalytics.topSubject ? `${formatMinutes(todayAnalytics.topSubject.minutes)} logged today` : "Start a block to build today's focus record"}
-                icon={<BookOpen className="h-4 w-4" />}
-              />
-            </section>
-
-            <section className="rounded-lg border border-border/60 bg-card/45 p-3 shadow-xs">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Session</p>
-                  <p className="mt-1 truncate text-sm font-medium text-foreground">{sessionStateLabel}</p>
-                </div>
-                <Coffee className={cn("h-5 w-5 shrink-0", mode === "work" || isStudyOvertime ? "text-muted-foreground" : "text-emerald-500")} />
-              </div>
-
-              <div className="mt-3 space-y-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Subjects</p>
-                    <span className="text-micro font-medium text-muted-foreground">{activeSubjects.length} selected</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {subjects.map((subject) => {
-                      const selected = selectedSubjectIds.includes(subject.id)
-                      return (
-                        <button
-                          key={subject.id}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => handleSubjectClick(subject.id)}
-                          className={cn(
-                            "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
-                            selected
-                              ? "border-transparent bg-primary/10 text-background"
-                              : "border-border/70 bg-background/40 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                          )}
-                          style={selected ? {
-                            backgroundColor: `${subject.color}18`,
-                            borderColor: `${subject.color}40`,
-                            color: subject.color,
-                          } : undefined}
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: subject.color }} />
-                          {subject.shortCode}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    ["workMinutes", "Focus"],
-                    ["breakMinutes", "Break"],
-                    ["longBreakMinutes", "Long"],
-                  ] as const).map(([key, label]) => (
-                    <label key={key} className="space-y-1">
-                      <span className="block text-micro font-semibold uppercase tracking-normal text-muted-foreground">{label}</span>
-                      <Input
-                        type="number"
-                        min={MIN_DURATION_MINUTES}
-                        max={MAX_DURATION_MINUTES}
-                        step={1}
-                        value={settings[key]}
-                        onChange={(event) => updateDuration(key, event.target.value)}
-                        className="h-8 rounded-md px-2 text-center text-sm tabular-nums"
-                        aria-label={`${label} minutes`}
-                      />
-                    </label>
-                  ))}
-                </div>
-
-                <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <Gauge className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Block Signal</p>
-                  </div>
-                  <p className="mt-1 text-sm font-medium text-foreground">
-                    {activeSessionId ? isStudyOvertime ? "Overtime is extending calendar study" : "Session is writing to the calendar" : mode === "work" ? "Starting focus will create a calendar block" : "Breaks stay off the calendar"}
-                  </p>
-                </div>
-
-                {selectedProject && (
-                  <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-                    <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">Assessment Link</p>
-                    <p className="mt-1 truncate text-sm font-medium text-foreground">{selectedProject.name}</p>
-                  </div>
-                )}
-              </div>
-            </section>
-          </aside>
-        </div>
-      </div>
-    </div>
-  ) : null
 
   const updateDuration = (key: keyof TimerSettings, value: string) => {
     const nextValue = clampMinutes(Number(value))
@@ -1219,7 +719,50 @@ export function StudyTimer({
     dispatch({ type: "ADD_BREAK_TIME", minutes: EXTRA_BREAK_MINUTES })
   }
 
-  const focusPortal = focusViewOpen ? createPortal(renderFocusView(), document.body) : null
+  const focusPortal = focusViewOpen ? createPortal(
+    <FocusView
+      running={running}
+      mode={mode}
+      isStudyOvertime={isStudyOvertime}
+      secondsLeft={secondsLeft}
+      overtimeSeconds={overtimeSeconds}
+      totalSeconds={totalSeconds}
+      progress={progress}
+      timeDisplay={timeDisplay}
+      modeLabel={modeLabel}
+      modeColor={modeColor}
+      nextModeLabel={nextModeLabel}
+      timerStageDetail={timerStageDetail}
+      timerActionLabel={timerActionLabel}
+      canStartFocus={canStartFocus}
+      saving={saving}
+      cycles={cycles}
+      activeSessionId={activeSessionId}
+      elapsedSeconds={elapsedSeconds}
+      progressDetail={progressDetail}
+      currentBlockDetail={currentBlockDetail}
+      todayAnalytics={todayAnalytics}
+      subjects={subjects}
+      selectedSubjectIds={selectedSubjectIds}
+      settings={settings}
+      selectedProject={selectedProject}
+      workbenchTitle={workbenchTitle}
+      sessionScopeLabel={sessionScopeLabel}
+      sessionStateLabel={sessionStateLabel}
+      onToggle={handleToggle}
+      onReset={handleReset}
+      onReturnToBreak={handleReturnToBreak}
+      onFinish={handleFinish}
+      onSkipBreak={handleSkipBreak}
+      onStartStudyOvertime={handleStartStudyOvertime}
+      onMoreBreakTime={handleMoreBreakTime}
+      onSubjectClick={handleSubjectClick}
+      onChangeDuration={updateDuration}
+      onClose={closeFocusView}
+      closeButtonRef={focusCloseButtonRef}
+    />,
+    document.body,
+  ) : null
 
   if (isCollapsed) {
     return (
@@ -1325,70 +868,19 @@ export function StudyTimer({
         {modeLabel} · Cycle {cycles + 1}
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5">
-        {([
-          ["workMinutes", "Focus"],
-          ["breakMinutes", "Break"],
-          ["longBreakMinutes", "Long"],
-        ] as const).map(([key, label]) => (
-          <label key={key} className="space-y-1">
-            <span className="block text-micro font-semibold uppercase text-muted-foreground/70">{label}</span>
-            <Input
-              type="number"
-              min={MIN_DURATION_MINUTES}
-              max={MAX_DURATION_MINUTES}
-              step={1}
-              value={settings[key]}
-              onChange={(event) => updateDuration(key, event.target.value)}
-              className="h-8 rounded-lg px-2 text-center text-control tabular-nums"
-              aria-label={`${label} minutes`}
-            />
-          </label>
-        ))}
-      </div>
+      <DurationInputs
+        variant="sidebar"
+        settings={settings}
+        onChange={updateDuration}
+      />
 
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-micro font-semibold uppercase text-muted-foreground/70">Studying</span>
-          {activeSessionId && (
-            <span className="text-micro font-medium text-background">Logging now</span>
-          )}
-        </div>
-        <ScrollArea className="w-full whitespace-nowrap">
-          <div className="flex w-max gap-1.5 pb-2">
-            {subjects.map((subject) => {
-              const selected = selectedSubjectIds.includes(subject.id)
-              return (
-                <button
-                  key={subject.id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => handleSubjectClick(subject.id)}
-                  className={cn(
-                    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
-                    selected
-                      ? "border-transparent text-foreground shadow-xs"
-                      : "border-sidebar-border bg-background/35 text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
-                  )}
-                  style={selected ? {
-                    backgroundColor: `${subject.color}18`,
-                    borderColor: `${subject.color}40`,
-                    color: subject.color,
-                  } : undefined}
-                  title={activeSessionId && selected ? `${subject.name} is logged for this session` : subject.name}
-                >
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: subject.color }}
-                  />
-                  {subject.shortCode}
-                </button>
-              )
-            })}
-          </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
-      </div>
+      <SubjectPicker
+        variant="sidebar"
+        subjects={subjects}
+        selectedSubjectIds={selectedSubjectIds}
+        activeSessionId={activeSessionId}
+        onSubjectClick={handleSubjectClick}
+      />
 
       <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-3">
         <div className="mx-auto relative h-20 w-20">
@@ -1419,80 +911,22 @@ export function StudyTimer({
           </div>
         </div>
 
-        <Button
-          onClick={handleToggle}
-          disabled={mode === "work" && !canStartFocus && !running}
-          size="sm"
-          variant={running ? "outline" : "default"}
-          className="mt-3 h-8 w-full gap-1.5 rounded-xl text-control text-primary-foreground"
-        >
-          {running ? (
-            <>
-              <Pause className="h-3 w-3" /> Pause
-            </>
-          ) : (
-            <>
-              <Play className="h-3 w-3" /> {timerActionLabel}
-            </>
-          )}
-        </Button>
-
-        {isStudyOvertime ? (
-          <Button
-            onClick={handleReturnToBreak}
-            disabled={saving}
-            size="sm"
-            variant="default"
-            className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control text-primary-foreground"
-          >
-            <Coffee className="h-3 w-3" />
-            break time!
-          </Button>
-        ) : activeSessionId && (
-          <Button
-            onClick={handleFinish}
-            disabled={saving}
-            size="sm"
-            variant="ghost"
-            className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control text-muted-foreground hover:text-foreground"
-          >
-            <CheckCircle2 className="h-3 w-3" />
-            Finish & save
-          </Button>
-        )}
-
-        {mode !== "work" && !isStudyOvertime && (
-          <div className="mt-1.5 grid grid-cols-1 gap-1.5 min-[240px]:grid-cols-3">
-            <Button
-              onClick={handleSkipBreak}
-              size="sm"
-              variant="ghost"
-              className="h-8 gap-1.5 rounded-xl text-control text-muted-foreground hover:text-foreground"
-            >
-              <SkipForward className="h-3 w-3" />
-              Skip
-            </Button>
-            <Button
-              onClick={handleStartStudyOvertime}
-              disabled={!canStartFocus}
-              size="sm"
-              variant="outline"
-              className="h-8 min-w-0 gap-1.5 rounded-xl px-1.5 text-control"
-            >
-              <BookOpen className="h-3 w-3" />
-              Study
-            </Button>
-            <Button
-              onClick={handleMoreBreakTime}
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 rounded-xl text-control"
-            >
-              <Plus className="h-3 w-3" />
-              {EXTRA_BREAK_MINUTES} min
-            </Button>
-          </div>
-        )}
+        <TimerControls
+          variant="sidebar"
+          running={running}
+          mode={mode}
+          isStudyOvertime={isStudyOvertime}
+          canStartFocus={canStartFocus}
+          saving={saving}
+          hasActiveSession={!!activeSessionId}
+          timerActionLabel={timerActionLabel}
+          onToggle={handleToggle}
+          onReturnToBreak={handleReturnToBreak}
+          onFinish={handleFinish}
+          onSkipBreak={handleSkipBreak}
+          onStartStudyOvertime={handleStartStudyOvertime}
+          onMoreBreakTime={handleMoreBreakTime}
+        />
       </div>
     </div>
   </>
