@@ -3,28 +3,51 @@ import { twMerge } from "tailwind-merge"
 import type { Project, DeadlineType, EventType, StudySession, Subject } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
+export function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+let _customSubjectsCache: Subject[] | null = null
+let _customSubjectsCacheRaw: string | null = null
+
+function getCustomSubjectsFromStorage(): Subject[] {
+  if (typeof window === "undefined") return []
+  const raw = localStorage.getItem("focal-custom-subjects")
+  if (raw === _customSubjectsCacheRaw && _customSubjectsCache) return _customSubjectsCache
+  _customSubjectsCacheRaw = raw
+  if (!raw) { _customSubjectsCache = []; return _customSubjectsCache }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    _customSubjectsCache = Array.isArray(parsed) ? parsed.filter(isSubject) : []
+  } catch {
+    _customSubjectsCache = []
+  }
+  return _customSubjectsCache
+}
+
+function isSubject(value: unknown): value is Subject {
+  return (
+    typeof value === "object" && value !== null &&
+    typeof (value as Record<string, unknown>).id === "string" &&
+    typeof (value as Record<string, unknown>).name === "string" &&
+    typeof (value as Record<string, unknown>).shortCode === "string" &&
+    typeof (value as Record<string, unknown>).color === "string"
+  )
 }
 
 export function getSubjectById(id?: string): Subject | undefined {
   if (!id) return undefined
   const builtin = VCE_SUBJECTS.find((s) => s.id === id)
   if (builtin) return builtin
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("focal-custom-subjects")
-    if (stored) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const customs: Subject[] = JSON.parse(stored)
-        const found = customs.find((s) => s.id === id)
-        if (found) return found
-      } catch {
-        // ignore
-      }
-    }
-  }
-  return undefined
+  return getCustomSubjectsFromStorage().find((s) => s.id === id)
 }
 
 export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label: string; color: string } {

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 import type { Project, DeadlineType, Unit } from "@/lib/types"
-import { sanitiseFolderName } from "@/lib/utils"
+import { sanitiseFolderName, generateId } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS } from "@/lib/types"
 
 function normaliseProject(raw: unknown): Project {
@@ -29,10 +29,6 @@ function normaliseProject(raw: unknown): Project {
 
 function getProjectsFilePath(baseDir: string) {
   return `${baseDir}/projects.json`
-}
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
 export function useProjects() {

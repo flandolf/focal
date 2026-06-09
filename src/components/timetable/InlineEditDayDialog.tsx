@@ -617,7 +617,7 @@ export function InlineEditDayDialog({
 }: InlineEditDayDialogProps) {
   const config = getTimetableConfig()
 
-  const existingEntries = getTimetableEntriesForDay(dayLabel, config.entries as TimetableEntry[])
+  const existingEntries = getTimetableEntriesForDay(dayLabel, config.entries)
   const existing = existingEntries[0]
 
   const getInitialPeriods = (): PeriodDraft[] =>
@@ -678,7 +678,7 @@ export function InlineEditDayDialog({
 
   const handleSave = useCallback(() => {
     if (periods.length === 0) {
-      const filtered = (config.entries as TimetableEntry[]).filter((e) => e.dayLabel !== dayLabel)
+      const filtered = (config.entries).filter((e) => e.dayLabel !== dayLabel)
       setTimetableConfig({ ...config, entries: filtered, enabled: filtered.length > 0 })
       window.dispatchEvent(new Event("focal-timetable-updated"))
       onOpenChange(false)
@@ -696,7 +696,7 @@ export function InlineEditDayDialog({
       })),
     }
 
-    const filtered = (config.entries as TimetableEntry[]).filter((e) => e.dayLabel !== dayLabel)
+    const filtered = (config.entries).filter((e) => e.dayLabel !== dayLabel)
     const updated = [...filtered, newEntry]
     setTimetableConfig({ ...config, entries: updated, enabled: updated.length > 0 })
     window.dispatchEvent(new Event("focal-timetable-updated"))

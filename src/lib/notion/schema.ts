@@ -1,8 +1,6 @@
+import { isRecord } from "@/lib/utils"
+export { isRecord }
 import type { CalendarEvent, EventType, StudySession, Subject } from "@/lib/types"
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export type NotionProperty = Record<string, unknown>
 
@@ -81,9 +79,6 @@ export function setCachedSchema(dataSourceId: string, schema: Record<string, Not
 // Utility helpers
 // ---------------------------------------------------------------------------
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
 
 export function getRichTextPlainText(items: unknown): string | undefined {
   if (!Array.isArray(items)) return undefined

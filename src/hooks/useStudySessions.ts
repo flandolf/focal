@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 import type { ConfidenceScore, StudySession } from "@/lib/types"
+import { generateId } from "@/lib/utils"
 
 function isConfidenceScore(value: unknown): value is ConfidenceScore {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
@@ -41,10 +42,6 @@ function normaliseSession(raw: unknown): StudySession {
 
 function getSessionsFilePath(baseDir: string) {
   return `${baseDir}/sessions.json`
-}
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
 export function useStudySessions() {

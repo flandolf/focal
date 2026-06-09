@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, ExternalLink, Search } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, isRecord } from "@/lib/utils"
 import { getApiKey, setApiKey, getModel, setModel, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude } from "@/lib/settings"
 import type { ReasoningEffort } from "@/lib/settings"
 import { SETTINGS_SECTION_CLASS, SETTINGS_CHECKBOX_CLASS, SETTINGS_LINK_CLASS, getSettingsOptionClassName } from "./constants"
@@ -65,10 +65,6 @@ function supportsStructuredOutput(model: OpenRouterModel): boolean {
 function supportsFileUploads(model: OpenRouterModel): boolean {
   const modalities = model.architecture?.input_modalities ?? []
   return modalities.includes("file")
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function isCredits(value: unknown): value is OpenRouterCredits {

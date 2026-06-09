@@ -182,15 +182,19 @@ function App() {
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null
 
   const refreshFileCounts = useCallback(async () => {
+    const results = await Promise.allSettled(
+      projects.map((project) =>
+        invoke<number>("get_project_file_count", { projectName: project.folder_path })
+          .then((count) => ({ id: project.id, count }))
+      )
+    )
     const counts: Record<string, number> = {}
-    for (const project of projects) {
-      try {
-        const count = await invoke<number>("get_project_file_count", {
-          projectName: project.folder_path,
-        })
-        counts[project.id] = count
-      } catch {
-        counts[project.id] = 0
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+      if (result.status === "fulfilled") {
+        counts[result.value.id] = result.value.count
+      } else {
+        counts[projects[i].id] = 0
       }
     }
     setFileCounts(counts)

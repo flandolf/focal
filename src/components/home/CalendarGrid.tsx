@@ -280,9 +280,10 @@ export function CalendarGrid({
                       const color = getEventTypeInfo(event.eventType).color
                       const isStart = position === "start" || position === "alone"
                       return (
-                        <button
+                        <div
                           key={event.id}
-                          type="button"
+                          role="button"
+                          tabIndex={0}
                           draggable
                           onDragStart={(e) => {
                             e.stopPropagation()
@@ -292,7 +293,7 @@ export function CalendarGrid({
                             e.stopPropagation()
                             onSelectEvent(event)
                           }}
-                          className="flex h-5 w-full items-center gap-1 overflow-hidden text-left transition-opacity hover:opacity-85 rounded-none"
+                          className="flex h-5 w-full items-center gap-1 overflow-hidden text-left transition-opacity hover:opacity-85 rounded-none cursor-pointer"
                           style={{ backgroundColor: isStart ? color + "12" : color + "08" }}
                         >
                           {isStart && (
@@ -311,7 +312,7 @@ export function CalendarGrid({
                               </span>
                             ) : null
                           })()}
-                        </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -331,9 +332,10 @@ export function CalendarGrid({
                     if (isDraggableEvent) {
                       const ev = (item as { event: CalendarEvent }).event
                       return (
-                        <button
+                        <div
                           key={`${item.type}-${idx}`}
-                          type="button"
+                          role="button"
+                          tabIndex={0}
                           draggable
                           onDragStart={(e) => {
                             e.stopPropagation()
@@ -347,7 +349,7 @@ export function CalendarGrid({
                           style={{ backgroundColor: item.color + "12" }}
                         >
                           {content}
-                        </button>
+                        </div>
                       )
                     }
                     return (

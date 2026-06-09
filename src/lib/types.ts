@@ -147,6 +147,7 @@ export interface SchoolHoliday {
   endDate: string   // YYYY-MM-DD
 }
 
+/** Relaxed timetable config for localStorage persistence. Use TimetableEntry from types.ts for runtime access. */
 export interface TimetableConfig {
   enabled: boolean
   day1Starts: string // YYYY-MM-DD — the first day of the cycle
