@@ -300,7 +300,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
       <Button
         onClick={handleOpen}
         size="sm"
-        className="fixed bottom-6 right-6 z-40 shadow-lg gap-1.5 rounded-full px-4 h-10 bg-primary hover:bg-primary/90"
+        className="fixed bottom-6 right-6 z-40 shadow-lg gap-1.5 rounded-full px-4 h-10 bg-primary hover:bg-primary/90 text-primary-foreground"
       >
         <Wand2 className="h-4 w-4" />
         <span className="text-sm font-medium">Auto Rename</span>

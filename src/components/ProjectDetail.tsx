@@ -81,9 +81,10 @@ interface ProjectDetailProps {
   onNewSession?: () => void
   onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
   onAddCustomSubfolder?: (projectId: string, folderName: string) => Promise<void>
+  onRemoveCustomSubfolder?: (projectId: string, folderName: string) => Promise<void>
 }
 
-export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents, onAddCustomSubfolder }: ProjectDetailProps) {
+export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents, onAddCustomSubfolder, onRemoveCustomSubfolder }: ProjectDetailProps) {
   const {
     files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
     addFileTags, removeFileTag, toggleFavorite,
@@ -178,6 +179,18 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       setIsAddingFolder(false)
     } catch (e) {
       notifyProjectActionError("Could not add custom folder", e)
+    }
+  }
+
+  const handleRemoveCustomFolder = async (folderName: string) => {
+    if (!onRemoveCustomSubfolder) return
+    try {
+      await onRemoveCustomSubfolder(project.id, folderName)
+      if (selectedSubfolder === folderName) {
+        setSelectedSubfolder(null)
+      }
+    } catch (e) {
+      notifyProjectActionError("Could not remove custom folder", e)
     }
   }
 
@@ -509,17 +522,34 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                 >
                   All
                 </button>
-                {allSubfolders.map((folder) => (
-                  <button
-                    type="button"
-                    key={folder}
-                    onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
-                    aria-pressed={selectedSubfolder === folder}
-                    className={getSegmentedButtonClassName(selectedSubfolder === folder)}
-                  >
-                    {folder}
-                  </button>
-                ))}
+                {allSubfolders.map((folder) => {
+                  const isCustom = (project.customSubfolders ?? []).includes(folder)
+                  return (
+                    <span key={folder} className="group/folder relative inline-flex">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
+                        aria-pressed={selectedSubfolder === folder}
+                        className={getSegmentedButtonClassName(selectedSubfolder === folder)}
+                      >
+                        {folder}
+                      </button>
+                      {isCustom && onRemoveCustomSubfolder && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleRemoveCustomFolder(folder)
+                          }}
+                          className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive/80 text-[10px] text-destructive-foreground opacity-0 transition-opacity hover:flex hover:opacity-100 group-hover/folder:opacity-60"
+                          aria-label={`Remove ${folder} folder`}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      )}
+                    </span>
+                  )
+                })}
                 {onAddCustomSubfolder && (
                   <>
                     {isAddingFolder ? (

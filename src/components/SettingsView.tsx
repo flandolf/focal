@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
-import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput, Database, Palette, EyeOff, RefreshCw } from "lucide-react"
+import { ArrowLeft, Loader2, ExternalLink, Search, FolderInput, Database, Palette, EyeOff, RefreshCw, Palette as PaletteIcon, Key, Cloud, Brain, Cog, FolderDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -12,6 +12,8 @@ import type { NotionCalendarSettings, ReasoningEffort } from "@/lib/settings"
 import type { Subject } from "@/lib/types"
 
 type NotionPropertyField = "titleProperty" | "dateProperty" | "typeProperty" | "completedProperty" | "subjectProperty"
+
+type SettingsSection = "appearance" | "subjects" | "api" | "notion" | "ai" | "auto-rename" | "reasoning" | "data"
 
 interface OpenRouterModel {
   id: string
@@ -64,9 +66,7 @@ interface PerfData {
 interface SettingsViewProps {
   onBack: () => void
   theme: ThemeId
-  // New theme API: mode can be light | dark | system
   mode: "light" | "dark" | "system"
-  // Resolved dark value according to mode and OS preference
   resolvedDark: boolean
   setTheme: (theme: ThemeId) => void
   setMode: (mode: "light" | "dark" | "system") => void
@@ -186,12 +186,8 @@ async function fetchCredits(apiKey: string): Promise<OpenRouterCredits> {
   return credits
 }
 
-// Attempt to call a backend Tauri command if available; fall back to direct fetch
 async function fetchCreditsWithBackend(apiKey: string): Promise<OpenRouterCredits> {
   try {
-    // Prefer calling the Tauri backend command if available. The backend returns a wrapper
-    // { data?: { total_credits, total_usage }, error?: { code, message } }. We handle both
-    // the wrapper shape and the raw success shape for compatibility.
     const res = await invoke<unknown>("get_credits", { api_key: apiKey })
     if (isCredits(res)) {
       return res
@@ -298,25 +294,27 @@ function ModelRow({
                 : `${perf.throughput.toFixed(1)}t/s`}
             </span>
           )}
-          <span className="text-micro text-muted-foreground tabular-nums">
-            {model.context_length >= 1000
-              ? `${(model.context_length / 1000).toFixed(0)}k`
-              : model.context_length}
-          </span>
         </div>
       </div>
-      <p className="text-caption text-muted-foreground/60 mt-0.5 truncate">
-        {model.id}
-      </p>
     </button>
   )
 }
+
+const SECTION_ITEMS: { id: SettingsSection; label: string; icon: typeof PaletteIcon }[] = [
+  { id: "appearance", label: "Appearance", icon: PaletteIcon },
+  { id: "subjects", label: "Subjects", icon: EyeOff },
+  { id: "api", label: "API Key", icon: Key },
+  { id: "notion", label: "Notion Sync", icon: Cloud },
+  { id: "ai", label: "AI Model", icon: Brain },
+  { id: "auto-rename", label: "Auto Rename", icon: Cog },
+  { id: "reasoning", label: "Reasoning", icon: Brain },
+  { id: "data", label: "Data", icon: FolderDown },
+]
 
 export function SettingsView({
   onBack,
   theme,
   mode,
-  resolvedDark: _resolvedDark,
   setTheme,
   setMode,
   subjects,
@@ -328,161 +326,99 @@ export function SettingsView({
   onSyncNotionCalendar,
   lastSyncTime,
 }: SettingsViewProps) {
-  const [key, setKey] = useState(() => getApiKey() ?? "")
+  const [activeSection, setActiveSection] = useState<SettingsSection>("appearance")
+  const [key, setKeyState] = useState(() => getApiKey())
   const [model, setModelState] = useState(() => getModel())
-  const [models, setModels] = useState<OpenRouterModel[]>([])
-  const [modelsLoading, setModelsLoading] = useState(false)
-  const [modelsError, setModelsError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
-  const [modelSearch, setModelSearch] = useState("")
   const [autoRenameUseFileContent, setAutoRenameUseFileContentState] = useState(() => getAutoRenameUseFileContent())
   const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => getReasoningEffort())
   const [reasoningMaxTokens, setReasoningMaxTokensState] = useState(() => getReasoningMaxTokens())
   const [reasoningExclude, setReasoningExcludeState] = useState(() => getReasoningExclude())
+
+  const [saved, setSaved] = useState(false)
+  const [credits, setCredits] = useState<OpenRouterCredits | null>(null)
+  const [creditsLoading, setCreditsLoading] = useState(false)
+  const [creditsError, setCreditsError] = useState<string | null>(null)
+
+  const [models, setModels] = useState<OpenRouterModel[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelSearch, setModelSearch] = useState("")
+  const perfCacheRef = useRef(new Map<string, PerfData>())
+  const [perfCacheTick, setPerfCacheTick] = useState(0)
+  const perfQueueRef = useRef<string[]>([])
+  const perfInflightRef = useRef(0)
+
   const [notionSettings, setNotionSettings] = useState<NotionCalendarSettings>(() => getNotionCalendarSettings())
   const [notionSaved, setNotionSaved] = useState(false)
   const [notionSyncing, setNotionSyncing] = useState(false)
   const [notionSyncResult, setNotionSyncResult] = useState<string | null>(null)
   const [notionSyncPhase, setNotionSyncPhase] = useState<string | null>(null)
-  const didFetchRef = useRef(false)
+
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ name: string; error?: string } | null>(null)
-  const [credits, setCredits] = useState<OpenRouterCredits | null>(null)
-  const [creditsLoading, setCreditsLoading] = useState(false)
-  const [creditsError, setCreditsError] = useState<string | null>(null)
-  const hiddenSubjectCount = subjects.filter((subject) => hiddenSubjectIds.includes(subject.id)).length
-  // Centralised perf cache (Map modelId -> PerfData) stored in state so updates re-render ModelRow children
-  const [perfCache, setPerfCache] = useState<Map<string, PerfData>>(() => new Map())
 
-  // Queue + concurrency limiter for endpoint fetches
-  const pendingRef = useRef<string[]>([])
-  const activeCountRef = useRef(0)
-  const keyRef = useRef(key)
-  const startQueueRef = useRef<() => void>(() => undefined)
-  const MAX_CONCURRENT_FETCHES = 4
+  const hiddenSubjectCount = hiddenSubjectIds.length
 
   useEffect(() => {
-    keyRef.current = key
+    if (!key) { setCredits(null); return }
+    setCreditsLoading(true)
+    setCreditsError(null)
+    fetchCreditsWithBackend(key)
+      .then((c) => { setCredits(c); setCreditsError(null) })
+      .catch((e) => { setCredits(null); setCreditsError(getErrorDetails(e).message) })
+      .finally(() => setCreditsLoading(false))
   }, [key])
 
-  const startQueue = useCallback(() => {
-    startQueueRef.current()
-  }, [])
-
   useEffect(() => {
-    startQueueRef.current = () => {
-      // Start as many queued requests as allowed
-      while (activeCountRef.current < MAX_CONCURRENT_FETCHES && pendingRef.current.length > 0) {
-        const id = pendingRef.current.shift()
-        const apiKey = keyRef.current
-        if (!id || !apiKey) continue
-        activeCountRef.current += 1
-        void (async (modelId: string) => {
-          try {
-            const data = await fetchModelEndpoints(modelId, apiKey)
-            setPerfCache((prev) => {
-              const next = new Map(prev)
-              next.set(modelId, data)
-              return next
-            })
-          } catch {
-            // On error, store null values so we don't keep retrying endlessly
-            setPerfCache((prev) => {
-              const next = new Map(prev)
-              next.set(modelId, { latency: null, throughput: null })
-              return next
-            })
-          } finally {
-            activeCountRef.current -= 1
-            // schedule next batch
-            setTimeout(startQueue, 0)
-          }
-        })(id)
-      }
-    }
-  }, [startQueue])
-
-  const enqueuePerfFetch = useCallback((modelId: string) => {
-    if (!key) return
-    if (perfCache.has(modelId)) return
-    if (pendingRef.current.includes(modelId)) return
-    pendingRef.current.push(modelId)
-    startQueue()
-  }, [key, perfCache, startQueue])
-
-  // Prefetch top N models when models list or API key becomes available
-  useEffect(() => {
-    const PREFETCH_COUNT = 3
-    if (!key || models.length === 0) return
-    const top = models.slice(0, PREFETCH_COUNT)
-    for (const m of top) enqueuePerfFetch(m.id)
-  }, [models, key, enqueuePerfFetch])
-
-  useEffect(() => {
-    if (didFetchRef.current) return
-    didFetchRef.current = true
     setModelsLoading(true)
+    setModelsError(null)
     fetchModels()
       .then(setModels)
       .catch((e) => setModelsError(e instanceof Error ? e.message : String(e)))
       .finally(() => setModelsLoading(false))
   }, [])
 
-  const fetchCreditsFor = useCallback((apiKey: string) => {
-    setCreditsLoading(true)
-    setCreditsError(null)
-    fetchCreditsWithBackend(apiKey)
-      .then(setCredits)
-      .catch((e) => {
-        // Provide friendly messages based on structured error codes from the backend
-        const { code, message } = getErrorDetails(e)
-        if (code === "OPENROUTER_UNAUTHORIZED") {
-          setCreditsError("A Management key is required to view credits")
-        } else if (code === "VALIDATION_ERROR") {
-          setCreditsError(message || "Invalid API key")
-        } else if (code === "NETWORK_ERROR") {
-          setCreditsError("Network error while fetching credits")
-        } else if (code === "OPENROUTER_ERROR") {
-          setCreditsError(message || "OpenRouter returned an error")
-        } else {
-          setCreditsError(message)
-        }
-      })
-      .finally(() => setCreditsLoading(false))
-  }, [])
+  const filteredModels = useMemo(() => {
+    const q = modelSearch.toLowerCase()
+    if (!q) return models
+    return models.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))
+  }, [models, modelSearch])
 
-  const didFetchCreditsRef = useRef(false)
-  useEffect(() => {
-    if (!key) return
-    if (didFetchCreditsRef.current) return
-    didFetchCreditsRef.current = true
-    fetchCreditsFor(key)
-  }, [key, fetchCreditsFor])
+  const enqueuePerfFetch = useCallback((id: string) => {
+    if (perfCacheRef.current.has(id)) return
+    perfQueueRef.current.push(id)
+    const run = async () => {
+      if (!key || perfInflightRef.current >= 4) return
+      const next = perfQueueRef.current.shift()
+      if (!next) return
+      perfInflightRef.current++
+      try {
+        const data = await fetchModelEndpoints(next, key)
+        perfCacheRef.current.set(next, data)
+        setPerfCacheTick((t) => t + 1)
+      } finally {
+        perfInflightRef.current--
+        if (perfQueueRef.current.length > 0) run()
+      }
+    }
+    run()
+  }, [key])
 
   const handleKeyChange = useCallback((value: string) => {
-    setKey(value)
+    setKeyState(value)
     setApiKey(value)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-    if (!value) {
-      setCredits(null)
-      setCreditsError(null)
-      setCreditsLoading(false)
-      didFetchCreditsRef.current = false
-    } else {
-      didFetchCreditsRef.current = true
-      fetchCreditsFor(value)
-    }
-  }, [fetchCreditsFor])
+  }, [])
 
   const handleModelChange = useCallback((value: string) => {
     setModelState(value)
     setModel(value)
   }, [])
 
-  const handleAutoRenameUseFileContentChange = useCallback((value: boolean) => {
-    setAutoRenameUseFileContentState(value)
-    setAutoRenameUseFileContent(value)
+  const handleAutoRenameUseFileContentChange = useCallback((checked: boolean) => {
+    setAutoRenameUseFileContentState(checked)
+    setAutoRenameUseFileContent(checked)
   }, [])
 
   const handleReasoningEffortChange = useCallback((value: ReasoningEffort) => {
@@ -495,9 +431,9 @@ export function SettingsView({
     setReasoningMaxTokens(value)
   }, [])
 
-  const handleReasoningExcludeChange = useCallback((value: boolean) => {
-    setReasoningExcludeState(value)
-    setReasoningExclude(value)
+  const handleReasoningExcludeChange = useCallback((checked: boolean) => {
+    setReasoningExcludeState(checked)
+    setReasoningExclude(checked)
   }, [])
 
   const handleNotionSettingChange = useCallback((field: keyof NotionCalendarSettings, value: string) => {
@@ -518,20 +454,18 @@ export function SettingsView({
     setNotionSyncPhase("Connecting to Notion...")
     onSyncNotionCalendar((msg) => setNotionSyncPhase(msg))
       .then((result) => {
-        if (!result) {
-          setNotionSyncResult("Sync skipped")
-          return
-        }
-        const pulled = result.created.length + result.updated.length + (result.createdSessions?.length ?? 0) + (result.updatedSessions?.length ?? 0)
-        const pushed = (result.pushedCreated ?? 0) + (result.pushedUpdated ?? 0)
-        const deleted = result.deleted ?? 0
-        const reasons = result.skippedReasons?.length ? `: ${result.skippedReasons.join("; ")}` : ""
-        const errors = result.pushErrors?.length ? `, ${result.pushErrors.length} push error(s)` : ""
+        if (!result) { setNotionSyncResult("Sync skipped"); return }
         const parts: string[] = []
-        if (pulled > 0) parts.push(`${pulled} pulled`)
-        if (pushed > 0) parts.push(`${pushed} pushed`)
-        if (deleted > 0) parts.push(`${deleted} deleted`)
-        const summary = parts.length > 0 ? parts.join(", ") : "up to date"
+        if (result.created.length > 0) parts.push(`${result.created.length} created`)
+        if (result.updated.length > 0) parts.push(`${result.updated.length} updated`)
+        if (result.createdSessions?.length) parts.push(`${result.createdSessions.length} sessions created`)
+        if (result.updatedSessions?.length) parts.push(`${result.updatedSessions.length} sessions updated`)
+        if (result.pushedCreated && result.pushedCreated > 0) parts.push(`${result.pushedCreated} pushed`)
+        if (result.pushedUpdated && result.pushedUpdated > 0) parts.push(`${result.pushedUpdated} pushed updates`)
+        if (result.deleted && result.deleted > 0) parts.push(`${result.deleted} deleted`)
+        const errors = result.pushErrors?.length ? ` (${result.pushErrors.length} push errors)` : ""
+        const reasons = result.skippedReasons?.length ? ` (${result.skippedReasons[0]})` : ""
+        const summary = parts.length > 0 ? parts.join(", ") : "Already up to date"
         setNotionSyncResult(`${summary}${result.skipped > 0 ? `, ${result.skipped} skipped${reasons}` : ""}${errors}`)
       })
       .catch((e) => setNotionSyncResult(e instanceof Error ? e.message : String(e)))
@@ -542,22 +476,15 @@ export function SettingsView({
   }, [onSyncNotionCalendar])
 
   const handleImportFolder = useCallback(async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-    })
-
+    const selected = await open({ directory: true, multiple: false })
     if (!selected) return
-
     setImporting(true)
     setImportResult(null)
     try {
-      const folderName = await invoke<string>("import_folder_to_project", {
-        sourcePath: selected,
-      })
-      setImportResult({ name: folderName })
+      const name = await invoke<string>("import_folder_to_projects", { folderPath: selected })
+      setImportResult({ name })
     } catch (e) {
-      setImportResult({ name: "", error: e instanceof Error ? e.message : String(e) })
+      setImportResult({ name: selected.split("/").pop() ?? "Folder", error: String(e) })
     } finally {
       setImporting(false)
     }
@@ -567,36 +494,21 @@ export function SettingsView({
     field: NotionPropertyField
     label: string
     value: string
-  }[] = [
+  }[] = useMemo(() => [
     { field: "titleProperty", label: "Title property", value: notionSettings.titleProperty },
     { field: "dateProperty", label: "Date property", value: notionSettings.dateProperty },
     { field: "typeProperty", label: "Type property", value: notionSettings.typeProperty },
     { field: "completedProperty", label: "Complete property", value: String(notionSettings.completedProperty) },
     { field: "subjectProperty", label: "Subject property", value: notionSettings.subjectProperty },
-  ]
-
-  const filteredModels = (modelSearch
-    ? models.filter(
-        (m) =>
-          m.name.toLowerCase().includes(modelSearch.toLowerCase()) ||
-          m.id.toLowerCase().includes(modelSearch.toLowerCase()),
-      )
-    : models
-  ).sort((a, b) => {
-    if (a.id === model) return -1
-    if (b.id === model) return 1
-    return 0
-  })
+  ], [notionSettings])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-3 border-b border-border/70 px-6 py-4">
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-3 border-b border-border/70 px-4 py-3 min-[1200px]:px-6">
         <Button
-          type="button"
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           onClick={onBack}
-          className="h-8 w-8 rounded-xl"
           aria-label="Back"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -607,475 +519,517 @@ export function SettingsView({
         </div>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-        <div className="mx-auto max-w-2xl space-y-5 px-6 py-8">
-          <section className={SETTINGS_SECTION_CLASS}>
-            <h2 className="text-sm font-medium">Theme</h2>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {([
-                { id: "focal" as ThemeId, name: "Focal", lightBg: "bg-slate-100", accent: "bg-blue-500" },
-                { id: "codex" as ThemeId, name: "Codex", lightBg: "bg-violet-50", accent: "bg-violet-500" },
-                { id: "claude" as ThemeId, name: "Claude", lightBg: "bg-amber-50", accent: "bg-orange-400" },
-                { id: "github" as ThemeId, name: "GitHub", lightBg: "bg-gray-100", accent: "bg-blue-600" },
-                { id: "linear" as ThemeId, name: "Linear", lightBg: "bg-purple-50", accent: "bg-indigo-500" },
-                { id: "notion" as ThemeId, name: "Notion", lightBg: "bg-stone-100", accent: "bg-stone-700" },
-              ]).map((t) => (
+      <div className="flex min-h-0 flex-1">
+        <nav className="w-48 shrink-0 border-r border-border/70 py-3 min-[1200px]:w-52">
+          <div className="space-y-0.5 px-2">
+            {SECTION_ITEMS.map((item) => {
+              const Icon = item.icon
+              return (
                 <button
-                  type="button"
-                  key={t.id}
-                  onClick={() => setTheme(t.id)}
-                  aria-pressed={theme === t.id}
-                  className={getSettingsOptionClassName(theme === t.id, "flex flex-col items-center gap-1.5 p-3 text-foreground")}
+                  key={item.id}
+                  onClick={() => setActiveSection(item.id)}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors outline-none",
+                    "focus-visible:ring-2 focus-visible:ring-ring/35",
+                    activeSection === item.id
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+                  )}
                 >
-                  <div className="flex h-8 w-full items-center justify-center gap-1 rounded-md bg-background/60">
-                    <div className={cn("h-3 w-3 rounded-sm", t.lightBg)} />
-                    <div className={cn("h-3 w-3 rounded-sm", t.accent)} />
-                  </div>
-                  <span className="text-caption font-medium">{t.name}</span>
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {item.label}
                 </button>
-              ))}
-            </div>
+              )
+            })}
+          </div>
+        </nav>
 
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setMode("light")}
-                aria-pressed={mode === "light"}
-                className={getSettingsOptionClassName(mode === "light", "flex-1 px-3 py-2")}
-              >
-                Light
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("dark")}
-                aria-pressed={mode === "dark"}
-                className={getSettingsOptionClassName(mode === "dark", "flex-1 px-3 py-2")}
-              >
-                Dark
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("system")}
-                aria-pressed={mode === "system"}
-                className={getSettingsOptionClassName(mode === "system", "flex-1 px-3 py-2")}
-              >
-                System
-              </button>
-            </div>
-          </section>
-
-          <section className={SETTINGS_SECTION_CLASS}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-sm font-medium">Visible Subjects</h2>
-                <p className="mt-1 text-caption text-muted-foreground/70">
-                  Hide subjects you are not taking from assessment, event, and study-session pickers.
-                </p>
-              </div>
-              {hiddenSubjectCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onShowAllSubjects}
-                  className="h-7 shrink-0 px-2 text-xs"
-                >
-                  Show all
-                </Button>
-              )}
-            </div>
-            <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
-              {subjects.map((subject) => {
-                const hidden = hiddenSubjectIds.includes(subject.id)
-                return (
-                  <label
-                    key={subject.id}
-                    className={cn(
-                      "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
-                      hidden
-                        ? "border-border/60 bg-background/20 text-muted-foreground"
-                        : "border-border/70 bg-background/35 text-foreground"
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!hidden}
-                      onChange={() => onToggleSubjectVisibility(subject.id)}
-                      className={SETTINGS_CHECKBOX_CLASS}
-                    />
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: subject.color }}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1 truncate">
-                      {subject.icon} {subject.name}
-                    </span>
-                    {hidden && <EyeOff className="h-3.5 w-3.5 shrink-0" />}
-                  </label>
-                )
-              })}
-            </div>
-          </section>
-
-          <section className={SETTINGS_SECTION_CLASS}>
-            <label className="text-sm font-medium" htmlFor="openrouter-api-key">OpenRouter API Key</label>
-            <Input
-              id="openrouter-api-key"
-              type="password"
-              value={key}
-              onChange={(e) => handleKeyChange(e.target.value)}
-              placeholder="sk-or-..."
-              className="mt-2 font-mono text-xs"
-            />
-            <div className="mt-1.5 flex items-start justify-between gap-2">
-              <p className="min-w-0 text-caption text-muted-foreground/60">
-                Stored locally. Used for AI file renaming.
-                {saved && (
-                  <span className="ml-1 text-emerald-600 dark:text-emerald-400">Saved</span>
-                )}
-              </p>
-              <a
-                href="https://openrouter.ai/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={SETTINGS_LINK_CLASS}
-              >
-                Get a key
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
-            {key && (
-              <div className="mt-3 rounded-xl border border-border/70 bg-background/30 p-3">
-                {creditsLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Loading credits...
-                  </div>
-                ) : creditsError ? (
-                  <div>
-                    <p className="text-xs text-destructive">{creditsError}</p>
-                    {creditsError.includes("Management key") && (
-                      <a
-                        href="https://openrouter.ai/settings/keys"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={cn(SETTINGS_LINK_CLASS, "mt-1")}
-                      >
-                        Create a Management key
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-                ) : credits ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-caption text-muted-foreground/70">Remaining</span>
-                    <span className="text-sm font-medium tabular-nums">
-                      ${(credits.total_credits - credits.total_usage).toFixed(2)}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </section>
-
-          <section className={SETTINGS_SECTION_CLASS}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-sm font-medium">Notion Calendar Sync</h2>
-                <p className="mt-1 text-caption text-muted-foreground/70">
-                  Pull pages from a Notion database into Focal calendar items and study sessions.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleSyncNotionCalendar}
-                disabled={notionSyncing || !notionSettings.token.trim() || !notionSettings.dataSourceId.trim()}
-                className="shrink-0 gap-1.5"
-              >
-                {notionSyncing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                Sync
-              </Button>
-            </div>
-            <div className="mt-3 grid gap-2">
-              <label className="text-caption text-muted-foreground/70" htmlFor="notion-token">Integration token</label>
-              <Input
-                id="notion-token"
-                type="password"
-                value={notionSettings.token}
-                onChange={(event) => handleNotionSettingChange("token", event.target.value)}
-                placeholder="secret_..."
-                className="font-mono text-xs"
-              />
-              <label className="text-caption text-muted-foreground/70" htmlFor="notion-data-source-id">Data source or database id</label>
-              <Input
-                id="notion-data-source-id"
-                value={notionSettings.dataSourceId}
-                onChange={(event) => handleNotionSettingChange("dataSourceId", event.target.value)}
-                placeholder="Notion calendar id"
-                className="font-mono text-xs"
-              />
-              <div className="grid gap-2 sm:grid-cols-2">
-                {notionPropertyInputs.map(({ field, label, value }) => (
-                  <label key={field} className="min-w-0">
-                    <span className="text-caption text-muted-foreground/70">{label}</span>
-                    <Input
-                      value={value}
-                      onChange={(event) => handleNotionSettingChange(field, event.target.value)}
-                      className="mt-1 text-xs"
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="mt-3 flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                {notionSyncing && notionSyncPhase ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/30 px-3 py-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
-                    <p className="text-caption text-muted-foreground truncate">{notionSyncPhase}</p>
-                  </div>
-                ) : notionSyncResult ? (
-                  <p className={cn(
-                    "text-caption rounded-lg border px-3 py-2",
-                    notionSyncResult.includes("error") || notionSyncResult.includes("failed")
-                      ? "border-destructive/30 bg-destructive/5 text-destructive"
-                      : "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
-                  )}>
-                    {notionSyncResult}
-                  </p>
-                ) : lastSyncTime && lastSyncTime > 0 ? (
-                  <p className="text-caption text-muted-foreground/60">
-                    Last synced {formatTimeAgo(lastSyncTime)}
-                  </p>
-                ) : (
-                  <p className="text-caption text-muted-foreground/50">Never synced</p>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {notionSaved && <span className="text-caption text-emerald-600 dark:text-emerald-400">Saved</span>}
-                <a
-                  href="https://developers.notion.com/docs/getting-started"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={SETTINGS_LINK_CLASS}
-                >
-                  Setup
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
-            </div>
-          </section>
-
-          <section className={SETTINGS_SECTION_CLASS}>
-            <h2 className="text-sm font-medium">AI Model</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70">
-              Showing only models that support structured output and file uploads. Latency and throughput shown when API key is set.
-            </p>
-            {modelsLoading ? (
-              <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading models...
-              </div>
-            ) : modelsError ? (
-              <div className="mt-2">
-                <p className="text-xs text-destructive">{modelsError}</p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setModelsError(null)
-                    setModelsLoading(true)
-                    fetchModels()
-                      .then(setModels)
-                      .catch((e) => setModelsError(e instanceof Error ? e.message : String(e)))
-                      .finally(() => setModelsLoading(false))
-                  }}
-                  className="mt-1 h-7 text-xs"
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : (
-              <>
-                <div className="relative mt-2">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground/50" />
-                  <Input
-                    placeholder="Search models..."
-                    value={modelSearch}
-                    onChange={(e) => setModelSearch(e.target.value)}
-                    className="h-8 pl-8 text-xs"
-                  />
+        <ScrollArea className="min-h-0 flex-1 overflow-hidden">
+          <div className="mx-auto max-w-2xl px-6 py-6">
+            {activeSection === "appearance" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <h2 className="text-sm font-medium">Theme</h2>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {([
+                    { id: "focal" as ThemeId, name: "Focal", lightBg: "bg-slate-100", accent: "bg-blue-500" },
+                    { id: "codex" as ThemeId, name: "Codex", lightBg: "bg-violet-50", accent: "bg-violet-500" },
+                    { id: "claude" as ThemeId, name: "Claude", lightBg: "bg-amber-50", accent: "bg-orange-400" },
+                    { id: "github" as ThemeId, name: "GitHub", lightBg: "bg-gray-100", accent: "bg-blue-600" },
+                    { id: "linear" as ThemeId, name: "Linear", lightBg: "bg-purple-50", accent: "bg-indigo-500" },
+                    { id: "notion" as ThemeId, name: "Notion", lightBg: "bg-stone-100", accent: "bg-stone-700" },
+                  ]).map((t) => (
+                    <button
+                      type="button"
+                      key={t.id}
+                      onClick={() => setTheme(t.id)}
+                      aria-pressed={theme === t.id}
+                      className={getSettingsOptionClassName(theme === t.id, "flex flex-col items-center gap-1.5 p-3 text-foreground")}
+                    >
+                      <div className="flex h-8 w-full items-center justify-center gap-1 rounded-md bg-background/60">
+                        <div className={cn("h-3 w-3 rounded-sm", t.lightBg)} />
+                        <div className={cn("h-3 w-3 rounded-sm", t.accent)} />
+                      </div>
+                      <span className="text-caption font-medium">{t.name}</span>
+                    </button>
+                  ))}
                 </div>
-                <ScrollArea className="mt-2 h-56 rounded-lg border border-border/70">
-                  <div className="p-1">
-                    {filteredModels.length === 0 ? (
-                      <p className="py-8 text-center text-xs text-muted-foreground">
-                        No models match your search.
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode("light")}
+                    aria-pressed={mode === "light"}
+                    className={getSettingsOptionClassName(mode === "light", "flex-1 px-3 py-2")}
+                  >
+                    Light
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode("dark")}
+                    aria-pressed={mode === "dark"}
+                    className={getSettingsOptionClassName(mode === "dark", "flex-1 px-3 py-2")}
+                  >
+                    Dark
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode("system")}
+                    aria-pressed={mode === "system"}
+                    className={getSettingsOptionClassName(mode === "system", "flex-1 px-3 py-2")}
+                  >
+                    System
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {activeSection === "subjects" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-medium">Visible Subjects</h2>
+                    <p className="mt-1 text-caption text-muted-foreground/70">
+                      Hide subjects you are not taking from assessment, event, and study-session pickers.
+                    </p>
+                  </div>
+                  {hiddenSubjectCount > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onShowAllSubjects}
+                      className="h-7 shrink-0 px-2 text-xs"
+                    >
+                      Show all
+                    </Button>
+                  )}
+                </div>
+                <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                  {subjects.map((subject) => {
+                    const hidden = hiddenSubjectIds.includes(subject.id)
+                    return (
+                      <label
+                        key={subject.id}
+                        className={cn(
+                          "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+                          hidden
+                            ? "border-border/60 bg-background/20 text-muted-foreground"
+                            : "border-border/70 bg-background/35 text-foreground"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          onChange={() => onToggleSubjectVisibility(subject.id)}
+                          className={SETTINGS_CHECKBOX_CLASS}
+                        />
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: subject.color }}
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {subject.icon} {subject.name}
+                        </span>
+                        {hidden && <EyeOff className="h-3.5 w-3.5 shrink-0" />}
+                      </label>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
+            {activeSection === "api" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <label className="text-sm font-medium" htmlFor="openrouter-api-key">OpenRouter API Key</label>
+                <Input
+                  id="openrouter-api-key"
+                  type="password"
+                  value={key ?? ""}
+                  onChange={(e) => handleKeyChange(e.target.value)}
+                  placeholder="sk-or-..."
+                  className="mt-2 font-mono text-xs"
+                />
+                <div className="mt-1.5 flex items-start justify-between gap-2">
+                  <p className="min-w-0 text-caption text-muted-foreground/60">
+                    Stored locally. Used for AI file renaming.
+                    {saved && (
+                      <span className="ml-1 text-emerald-600 dark:text-emerald-400">Saved</span>
+                    )}
+                  </p>
+                  <a
+                    href="https://openrouter.ai/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={SETTINGS_LINK_CLASS}
+                  >
+                    Get a key
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+                {key && (
+                  <div className="mt-3 rounded-xl border border-border/70 bg-background/30 p-3">
+                    {creditsLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Loading credits...
+                      </div>
+                    ) : creditsError ? (
+                      <div>
+                        <p className="text-xs text-destructive">{creditsError}</p>
+                        {creditsError.includes("Management key") && (
+                          <a
+                            href="https://openrouter.ai/settings/keys"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(SETTINGS_LINK_CLASS, "mt-1")}
+                          >
+                            Create a Management key
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                    ) : credits ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-caption text-muted-foreground/70">Remaining</span>
+                        <span className="text-sm font-medium tabular-nums">
+                          ${(credits.total_credits - credits.total_usage).toFixed(2)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeSection === "notion" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-medium">Notion Calendar Sync</h2>
+                    <p className="mt-1 text-caption text-muted-foreground/70">
+                      Pull pages from a Notion database into Focal calendar items and study sessions.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSyncNotionCalendar}
+                    disabled={notionSyncing || !notionSettings.token.trim() || !notionSettings.dataSourceId.trim()}
+                    className="shrink-0 gap-1.5"
+                  >
+                    {notionSyncing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Sync
+                  </Button>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  <label className="text-caption text-muted-foreground/70" htmlFor="notion-token">Integration token</label>
+                  <Input
+                    id="notion-token"
+                    type="password"
+                    value={notionSettings.token}
+                    onChange={(event) => handleNotionSettingChange("token", event.target.value)}
+                    placeholder="secret_..."
+                    className="font-mono text-xs"
+                  />
+                  <label className="text-caption text-muted-foreground/70" htmlFor="notion-data-source-id">Data source or database id</label>
+                  <Input
+                    id="notion-data-source-id"
+                    value={notionSettings.dataSourceId}
+                    onChange={(event) => handleNotionSettingChange("dataSourceId", event.target.value)}
+                    placeholder="Notion calendar id"
+                    className="font-mono text-xs"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {notionPropertyInputs.map(({ field, label, value }) => (
+                      <label key={field} className="min-w-0">
+                        <span className="text-caption text-muted-foreground/70">{label}</span>
+                        <Input
+                          value={value}
+                          onChange={(event) => handleNotionSettingChange(field, event.target.value)}
+                          className="mt-1 text-xs"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    {notionSyncing && notionSyncPhase ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/30 px-3 py-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                        <p className="text-caption text-muted-foreground truncate">{notionSyncPhase}</p>
+                      </div>
+                    ) : notionSyncResult ? (
+                      <p className={cn(
+                        "text-caption rounded-lg border px-3 py-2",
+                        notionSyncResult.includes("error") || notionSyncResult.includes("failed")
+                          ? "border-destructive/30 bg-destructive/5 text-destructive"
+                          : "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
+                      )}>
+                        {notionSyncResult}
+                      </p>
+                    ) : lastSyncTime && lastSyncTime > 0 ? (
+                      <p className="text-caption text-muted-foreground/60">
+                        Last synced {formatTimeAgo(lastSyncTime)}
                       </p>
                     ) : (
-                      filteredModels.map((m) => (
-                        <ModelRow
-                          key={m.id}
-                          model={m}
-                          isSelected={model === m.id}
-                          onSelect={() => handleModelChange(m.id)}
-                          apiKey={key}
-                          perfCache={perfCache}
-                          enqueuePerfFetch={enqueuePerfFetch}
-                        />
-                      ))
+                      <p className="text-caption text-muted-foreground/50">Never synced</p>
                     )}
                   </div>
-                </ScrollArea>
-              </>
-            )}
-          </section>
-
-          <section className={SETTINGS_SECTION_CLASS}>
-            <h2 className="text-sm font-medium">Auto Rename Context</h2>
-            <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
-              <input
-                type="checkbox"
-                checked={autoRenameUseFileContent}
-                onChange={(e) => handleAutoRenameUseFileContentChange(e.target.checked)}
-                className={cn(SETTINGS_CHECKBOX_CLASS, "mt-0.5")}
-              />
-              <div className="min-w-0">
-                <p className="text-sm">Read file content for rename suggestions</p>
-                <p className="mt-0.5 text-caption text-muted-foreground/70">
-                  Uses a short text preview to generate more accurate filenames.
-                </p>
-              </div>
-            </label>
-          </section>
-
-          <section className={SETTINGS_SECTION_CLASS}>
-            <h2 className="text-sm font-medium">Reasoning Tokens</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70">
-              Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
-            </p>
-
-            <p className="mt-3 block text-caption text-muted-foreground/70">Effort Level</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
-                <button
-                  type="button"
-                  key={level}
-                  onClick={() => handleReasoningEffortChange(level)}
-                  aria-pressed={reasoningEffort === level}
-                  className={getSettingsOptionClassName(reasoningEffort === level, "px-2.5 py-1 text-xs")}
-                >
-                  {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
-                </button>
-              ))}
-            </div>
-
-            {reasoningEffort !== "none" && (
-              <>
-                <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">Max Tokens (Anthropic models)</label>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <input
-                    id="reasoning-max-tokens"
-                    type="range"
-                    min={1024}
-                    max={32000}
-                    step={1024}
-                    value={reasoningMaxTokens}
-                    onChange={(e) => handleReasoningMaxTokensChange(Number(e.target.value))}
-                    className="flex-1 accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                  />
-                  <span className="w-12 text-right text-xs tabular-nums text-muted-foreground">{reasoningMaxTokens >= 1000 ? `${(reasoningMaxTokens / 1000).toFixed(1)}k` : reasoningMaxTokens}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {notionSaved && <span className="text-caption text-emerald-600 dark:text-emerald-400">Saved</span>}
+                    <a
+                      href="https://developers.notion.com/docs/getting-started"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={SETTINGS_LINK_CLASS}
+                    >
+                      Setup
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
                 </div>
+              </section>
+            )}
 
-                <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
+            {activeSection === "ai" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <h2 className="text-sm font-medium">AI Model</h2>
+                <p className="mt-1 text-caption text-muted-foreground/70">
+                  Showing only models that support structured output and file uploads. Latency and throughput shown when API key is set.
+                </p>
+                {modelsLoading ? (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading models...
+                  </div>
+                ) : modelsError ? (
+                  <div className="mt-2">
+                    <p className="text-xs text-destructive">{modelsError}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setModelsError(null)
+                        setModelsLoading(true)
+                        fetchModels()
+                          .then(setModels)
+                          .catch((e) => setModelsError(e instanceof Error ? e.message : String(e)))
+                          .finally(() => setModelsLoading(false))
+                      }}
+                      className="mt-1 h-7 text-xs"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative mt-2">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground/50" />
+                      <Input
+                        placeholder="Search models..."
+                        value={modelSearch}
+                        onChange={(e) => setModelSearch(e.target.value)}
+                        className="h-8 pl-8 text-xs"
+                      />
+                    </div>
+                    <ScrollArea className="mt-2 h-56 rounded-lg border border-border/70">
+                      <div className="p-1">
+                        {filteredModels.length === 0 ? (
+                          <p className="py-8 text-center text-xs text-muted-foreground">
+                            No models match your search.
+                          </p>
+                        ) : (
+                          filteredModels.map((m) => (
+                            <ModelRow
+                              key={m.id}
+                              model={m}
+                              isSelected={model === m.id}
+                              onSelect={() => handleModelChange(m.id)}
+                              apiKey={key ?? ""}
+                              perfCache={perfCacheRef.current}
+                              enqueuePerfFetch={enqueuePerfFetch}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </>
+                )}
+              </section>
+            )}
+
+            {activeSection === "auto-rename" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <h2 className="text-sm font-medium">Auto Rename Context</h2>
+                <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
                   <input
                     type="checkbox"
-                    checked={reasoningExclude}
-                    onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
+                    checked={autoRenameUseFileContent}
+                    onChange={(e) => handleAutoRenameUseFileContentChange(e.target.checked)}
                     className={cn(SETTINGS_CHECKBOX_CLASS, "mt-0.5")}
                   />
                   <div className="min-w-0">
-                    <p className="text-sm">Exclude reasoning from response</p>
+                    <p className="text-sm">Read file content for rename suggestions</p>
                     <p className="mt-0.5 text-caption text-muted-foreground/70">
-                      Model still uses reasoning internally but will not include it in output.
+                      Uses a short text preview to generate more accurate filenames.
                     </p>
                   </div>
                 </label>
-              </>
+              </section>
             )}
-          </section>
 
-          <section className={SETTINGS_SECTION_CLASS}>
-            <h2 className="text-sm font-medium">Import Folder</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70">
-              Copy an existing folder from your filesystem into the projects directory.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleImportFolder}
-              disabled={importing}
-              className="mt-2 gap-1.5"
-            >
-              {importing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <FolderInput className="h-4 w-4" />
-              )}
-              {importing ? "Importing..." : "Choose Folder"}
-            </Button>
-            {importResult && (
-              <p className={cn(
-                "mt-2 text-caption",
-                importResult.error ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
-              )}>
-                {importResult.error
-                  ? `Import failed: ${importResult.error}`
-                  : `Imported "${importResult.name}" successfully`}
-              </p>
+            {activeSection === "reasoning" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <h2 className="text-sm font-medium">Reasoning Tokens</h2>
+                <p className="mt-1 text-caption text-muted-foreground/70">
+                  Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
+                </p>
+
+                <p className="mt-3 block text-caption text-muted-foreground/70">Effort Level</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
+                    <button
+                      type="button"
+                      key={level}
+                      onClick={() => handleReasoningEffortChange(level)}
+                      aria-pressed={reasoningEffort === level}
+                      className={getSettingsOptionClassName(reasoningEffort === level, "px-2.5 py-1 text-xs")}
+                    >
+                      {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
+                    </button>
+                  ))}
+                </div>
+
+                {reasoningEffort !== "none" && (
+                  <>
+                    <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">Max Tokens (Anthropic models)</label>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <input
+                        id="reasoning-max-tokens"
+                        type="range"
+                        min={1024}
+                        max={32000}
+                        step={1024}
+                        value={reasoningMaxTokens}
+                        onChange={(e) => handleReasoningMaxTokensChange(Number(e.target.value))}
+                        className="flex-1 accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                      />
+                      <span className="w-12 text-right text-xs tabular-nums text-muted-foreground">{reasoningMaxTokens >= 1000 ? `${(reasoningMaxTokens / 1000).toFixed(1)}k` : reasoningMaxTokens}</span>
+                    </div>
+
+                    <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
+                      <input
+                        type="checkbox"
+                        checked={reasoningExclude}
+                        onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
+                        className={cn(SETTINGS_CHECKBOX_CLASS, "mt-0.5")}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm">Exclude reasoning from response</p>
+                        <p className="mt-0.5 text-caption text-muted-foreground/70">
+                          Model still uses reasoning internally but will not include it in output.
+                        </p>
+                      </div>
+                    </label>
+                  </>
+                )}
+              </section>
             )}
-          </section>
 
-          {(onOpenExport != null || onOpenSubjects != null) && (
-            <section className={SETTINGS_SECTION_CLASS}>
-              <h2 className="text-sm font-medium">Data</h2>
-              <p className="mt-1 text-caption text-muted-foreground/70">
-                Manage your project data and custom subjects.
-              </p>
-              <div className="mt-3 flex gap-2">
-                {onOpenExport && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onOpenExport}
-                    className="gap-1.5"
-                  >
-                    <Database className="h-4 w-4" />
-                    Export
-                  </Button>
+            {activeSection === "data" && (
+              <section className={SETTINGS_SECTION_CLASS}>
+                <h2 className="text-sm font-medium">Import Folder</h2>
+                <p className="mt-1 text-caption text-muted-foreground/70">
+                  Copy an existing folder from your filesystem into the projects directory.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleImportFolder}
+                  disabled={importing}
+                  className="mt-2 gap-1.5"
+                >
+                  {importing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FolderInput className="h-4 w-4" />
+                  )}
+                  {importing ? "Importing..." : "Choose Folder"}
+                </Button>
+                {importResult && (
+                  <p className={cn(
+                    "mt-2 text-caption",
+                    importResult.error ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
+                  )}>
+                    {importResult.error
+                      ? `Import failed: ${importResult.error}`
+                      : `Imported "${importResult.name}" successfully`}
+                  </p>
                 )}
-                {onOpenSubjects && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onOpenSubjects}
-                    className="gap-1.5"
-                  >
-                    <Palette className="h-4 w-4" />
-                    Subjects
-                  </Button>
+
+                {(onOpenExport != null || onOpenSubjects != null) && (
+                  <div className="mt-5 border-t border-border/70 pt-5">
+                    <h2 className="text-sm font-medium">Data Management</h2>
+                    <p className="mt-1 text-caption text-muted-foreground/70">
+                      Manage your project data and custom subjects.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      {onOpenExport && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onOpenExport}
+                          className="gap-1.5"
+                        >
+                          <Database className="h-4 w-4" />
+                          Export
+                        </Button>
+                      )}
+                      {onOpenSubjects && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onOpenSubjects}
+                          className="gap-1.5"
+                        >
+                          <Palette className="h-4 w-4" />
+                          Subjects
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </div>
-            </section>
-          )}
-        </div>
-      </ScrollArea>
+              </section>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   )
 }

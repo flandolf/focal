@@ -192,6 +192,7 @@ export function HomeView({
 }: HomeViewProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<string | null>(() => getLocalDateValue(new Date()))
+  const [calendarView, setCalendarView] = useState<"month" | "week">("month")
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(() => {
     const stored = localStorage.getItem(QUICK_LINKS_KEY)
     return stored ? (JSON.parse(stored) as QuickLink[]) : []
@@ -678,6 +679,23 @@ export function HomeView({
     setSelectedDate(getLocalDateValue(today))
   }
 
+  // Week view data
+  const weekStart = useMemo(() => {
+    const date = selectedCalendarDate ?? new Date()
+    const start = new Date(date)
+    start.setDate(start.getDate() - start.getDay())
+    start.setHours(0, 0, 0, 0)
+    return start
+  }, [selectedCalendarDate])
+
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(weekStart)
+      date.setDate(date.getDate() + i)
+      return date
+    })
+  }, [weekStart])
+
   const handleOpenTextPlanner = useCallback(() => {
     setTextPlannerTitle("Text to Events")
     setTextPlannerDescription("Paste a notice, rough plan, or teacher message. Review drafts before adding them.")
@@ -761,7 +779,7 @@ export function HomeView({
             <Button
               variant="default"
               size="sm"
-              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs"
+              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs text-primary-foreground"
               onClick={handleToggleSelectedEventsComplete}
               disabled={eventBatchSaving}
             >
@@ -825,7 +843,7 @@ export function HomeView({
               <CalendarPlus className="h-3.5 w-3.5" />
               Event
             </Button>
-            <Button size="sm" onClick={() => onNewSession(selectedCalendarDate)} className="h-8 gap-1.5 rounded-xl text-background bg-primary">
+            <Button size="sm" onClick={() => onNewSession(selectedCalendarDate)} className="h-8 gap-1.5 rounded-xl text-background bg-primary text-primary-foreground">
               <Calendar className="h-3.5 w-3.5" />
               Plan Session
             </Button>
@@ -859,12 +877,38 @@ export function HomeView({
         <div className="grid grid-cols-1 gap-4 min-[1200px]:gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
           <Card className="rounded-2xl border border-border/70 bg-background/48 p-4 shadow-sm backdrop-blur min-[1200px]:rounded-[1.25rem] min-[1200px]:p-6">
             <div className="flex h-full flex-col gap-4 min-[1200px]:gap-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="font-heading text-lg font-semibold">Assessment Calendar</h2>
                   <p className="text-caption text-muted-foreground">Deadlines, events, and planned sessions share the same grid.</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <div className="flex gap-0.5 rounded-lg border border-border/70 bg-background/55 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setCalendarView("month")}
+                      className={cn(
+                        "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                        calendarView === "month"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarView("week")}
+                      className={cn(
+                        "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                        calendarView === "week"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Week
+                    </button>
+                  </div>
                   <Button variant="ghost" size="sm" onClick={handlePrevMonth} className="h-8 w-8 rounded-xl p-0">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -886,84 +930,163 @@ export function HomeView({
               </div>
 
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-medium text-sm text-foreground/90">{format(currentMonth, "MMMM yyyy")}</h3>
-                  <div className="flex items-center gap-1.5 text-micro text-muted-foreground">
-                    <span className="rounded-md bg-muted/65 px-1.5 py-0.5 tabular-nums">{monthAssessments} assessments</span>
-                    <span className="rounded-md bg-muted/65 px-1.5 py-0.5 tabular-nums">{monthBusyDays} busy days</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-7 gap-1">
-                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                    <div key={day} className="flex h-6 items-center justify-center text-micro font-medium uppercase text-muted-foreground/70">
-                      {day}
+                {calendarView === "month" && (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="font-medium text-sm text-foreground/90">{format(currentMonth, "MMMM yyyy")}</h3>
+                      <div className="flex items-center gap-1.5 text-micro text-muted-foreground">
+                        <span className="rounded-md bg-muted/65 px-1.5 py-0.5 tabular-nums">{monthAssessments} assessments</span>
+                        <span className="rounded-md bg-muted/65 px-1.5 py-0.5 tabular-nums">{monthBusyDays} busy days</span>
+                      </div>
                     </div>
-                  ))}
-                  {calendarPad.map((_, i) => (
-                    <div key={`pad-${i}`} className="h-22 rounded-xl border border-transparent" />
-                  ))}
-                  {daysInMonth.map((date) => {
-                    const dateKey = format(date, "yyyy-MM-dd")
-                    const dayDeadlines = deadlinesByDate[dateKey] || []
-                    const daySessions = sessionsByDate[dateKey] || []
-                    const dayEvents = eventsByDate[dateKey] || []
-                    const isCurrentMonth = isSameMonth(date, currentMonth)
-                    const isTodayDate = isToday(date)
-                    const allItems = [
-                      ...dayDeadlines.map((p) => ({ type: "deadline" as const, name: p.name, color: getSubjectById(p.subjectId)?.color ?? CALENDAR_FALLBACK_COLOR })),
-                      ...daySessions.map((s) => ({ type: "session" as const, name: s.title, color: CALENDAR_SESSION_COLOR })),
-                      ...dayEvents.map((e) => ({ type: "event" as const, name: e.title, color: getEventTypeInfo(e.eventType).color })),
-                    ]
-                    const visibleItems = allItems.slice(0, 3)
-                    const overflow = allItems.length - 3
 
-                    return (
-                      <button
-                        type="button"
-                        key={dateKey}
-                        onClick={() => handleSelectCalendarDate(dateKey)}
-                        className={cn(
-                          "relative flex h-22 w-full flex-col items-start justify-start rounded-xl border p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
-                          selectedDate === dateKey
-                            ? "border-primary/65 bg-primary/8 ring-1 ring-primary/25"
-                            : "border-border/35 bg-background/16 hover:border-border hover:bg-accent/24",
-                          isTodayDate && selectedDate !== dateKey && "border-primary/40 bg-primary/5",
-                          !isCurrentMonth && "opacity-30"
-                        )}
-                      >
-                        <div className={cn(
-                          "flex h-5 w-5 items-center justify-center rounded-md text-micro font-semibold leading-none",
-                          isTodayDate && "bg-primary/12",
-                          isTodayDate ? "text-primary" : "text-foreground/80"
-                        )}>
-                          {date.getDate()}
+                    <div className="grid grid-cols-7 gap-1">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                        <div key={day} className="flex h-6 items-center justify-center text-micro font-medium uppercase text-muted-foreground/70">
+                          {day}
                         </div>
-                        <div className="mt-1 w-full space-y-0.5">
-                          {visibleItems.map((item, idx) => (
-                            <div
-                              key={`${item.type}-${idx}`}
-                              className="flex items-center gap-1 min-w-0"
+                      ))}
+                      {calendarPad.map((_, i) => (
+                        <div key={`pad-${i}`} className="h-22 rounded-xl border border-transparent" />
+                      ))}
+                      {daysInMonth.map((date) => {
+                        const dateKey = format(date, "yyyy-MM-dd")
+                        const dayDeadlines = deadlinesByDate[dateKey] || []
+                        const daySessions = sessionsByDate[dateKey] || []
+                        const dayEvents = eventsByDate[dateKey] || []
+                        const isCurrentMonth = isSameMonth(date, currentMonth)
+                        const isTodayDate = isToday(date)
+                        const allItems = [
+                          ...dayDeadlines.map((p) => ({ type: "deadline" as const, name: p.name, color: getSubjectById(p.subjectId)?.color ?? CALENDAR_FALLBACK_COLOR })),
+                          ...daySessions.map((s) => ({ type: "session" as const, name: s.title, color: CALENDAR_SESSION_COLOR })),
+                          ...dayEvents.map((e) => ({ type: "event" as const, name: e.title, color: getEventTypeInfo(e.eventType).color })),
+                        ]
+                        const visibleItems = allItems.slice(0, 3)
+                        const overflow = allItems.length - 3
+
+                        return (
+                          <button
+                            type="button"
+                            key={dateKey}
+                            onClick={() => handleSelectCalendarDate(dateKey)}
+                            className={cn(
+                              "relative flex h-22 w-full flex-col items-start justify-start rounded-xl border p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+                              selectedDate === dateKey
+                                ? "border-primary/65 bg-primary/8 ring-1 ring-primary/25"
+                                : "border-border/35 bg-background/16 hover:border-border hover:bg-accent/24",
+                              isTodayDate && selectedDate !== dateKey && "border-primary/40 bg-primary/5",
+                              !isCurrentMonth && "opacity-30"
+                            )}
+                          >
+                            <div className={cn(
+                              "flex h-5 w-5 items-center justify-center rounded-md text-micro font-semibold leading-none",
+                              isTodayDate && "bg-primary/12",
+                              isTodayDate ? "text-primary" : "text-foreground/80"
+                            )}>
+                              {date.getDate()}
+                            </div>
+                            <div className="mt-1 w-full space-y-0.5">
+                              {visibleItems.map((item, idx) => (
+                                <div
+                                  key={`${item.type}-${idx}`}
+                                  className="flex items-center gap-1 min-w-0"
+                                >
+                                  <div
+                                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: item.color }}
+                                  />
+                                  <span className="text-micro leading-tight truncate text-foreground/60">
+                                    {item.name}
+                                  </span>
+                                </div>
+                              ))}
+                              {overflow > 0 && (
+                                <div className="text-micro leading-tight text-muted-foreground/50 font-medium pl-2.5">
+                                  +{overflow}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {calendarView === "week" && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="font-medium text-sm text-foreground/90">
+                        Week of {format(weekStart, "MMM d")} - {format(weekDays[6], "MMM d, yyyy")}
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {weekDays.map((date) => {
+                        const dateKey = format(date, "yyyy-MM-dd")
+                        const dayDeadlines = deadlinesByDate[dateKey] || []
+                        const daySessions = sessionsByDate[dateKey] || []
+                        const dayEvents = eventsByDate[dateKey] || []
+                        const isTodayDate = isToday(date)
+                        const allItems = [
+                          ...dayDeadlines.map((p) => ({ type: "deadline" as const, name: p.name, color: getSubjectById(p.subjectId)?.color ?? CALENDAR_FALLBACK_COLOR, project: p })),
+                          ...daySessions.map((s) => ({ type: "session" as const, name: s.title, color: CALENDAR_SESSION_COLOR, session: s })),
+                          ...dayEvents.map((e) => ({ type: "event" as const, name: e.title, color: getEventTypeInfo(e.eventType).color, event: e })),
+                        ]
+
+                        return (
+                          <div
+                            key={dateKey}
+                            className={cn(
+                              "min-h-[10rem] rounded-xl border p-2 transition-colors",
+                              selectedDate === dateKey
+                                ? "border-primary/65 bg-primary/8 ring-1 ring-primary/25"
+                                : "border-border/35 bg-background/16 hover:border-border hover:bg-accent/24",
+                              isTodayDate && selectedDate !== dateKey && "border-primary/40 bg-primary/5"
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleSelectCalendarDate(dateKey)}
+                              className={cn(
+                                "mb-2 flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold transition-colors",
+                                isTodayDate
+                                  ? "bg-primary text-primary-foreground"
+                                  : "text-foreground/80 hover:bg-muted/65"
+                              )}
                             >
-                              <div
-                                className="w-1.5 h-1.5 rounded-full shrink-0"
-                                style={{ backgroundColor: item.color }}
-                              />
-                              <span className="text-micro leading-tight truncate text-foreground/60">
-                                {item.name}
-                              </span>
+                              {date.getDate()}
+                            </button>
+                            <div className="space-y-1">
+                              {allItems.map((item, idx) => (
+                                <button
+                                  key={`${item.type}-${idx}`}
+                                  type="button"
+                                  onClick={() => {
+                                    if (item.type === "deadline" && "project" in item) onSelectProject(item.project.id)
+                                    else if (item.type === "session" && "session" in item) onSelectSession(item.session)
+                                    else if (item.type === "event" && "event" in item) onSelectEvent(item.event)
+                                  }}
+                                  className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/45"
+                                >
+                                  <div
+                                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                    style={{ backgroundColor: item.color }}
+                                  />
+                                  <span className="min-w-0 truncate text-[11px] font-medium leading-tight text-foreground/80">
+                                    {item.name}
+                                  </span>
+                                </button>
+                              ))}
+                              {allItems.length === 0 && (
+                                <p className="px-1.5 text-[10px] text-muted-foreground/50">No items</p>
+                              )}
                             </div>
-                          ))}
-                          {overflow > 0 && (
-                            <div className="text-micro leading-tight text-muted-foreground/50 font-medium pl-2.5">
-                              +{overflow}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {selectedDate && (
                     <div className="rounded-2xl border border-border/70 bg-muted/18 p-3 data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-2">

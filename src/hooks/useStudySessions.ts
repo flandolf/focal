@@ -174,10 +174,25 @@ export function useStudySessions() {
     await saveSessions(updated)
   }, [saveSessions])
 
+  const restoreSession = useCallback(async (session: StudySession) => {
+    const exists = sessionsRef.current.some((s) => s.id === session.id)
+    if (exists) return
+    const updated = [...sessionsRef.current, session]
+    await saveSessions(updated)
+  }, [saveSessions])
+
   const deleteSessions = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return
     const idSet = new Set(ids)
     const updated = sessionsRef.current.filter((session) => !idSet.has(session.id))
+    await saveSessions(updated)
+  }, [saveSessions])
+
+  const restoreSessions = useCallback(async (sessionsToRestore: StudySession[]) => {
+    const existingIds = new Set(sessionsRef.current.map((s) => s.id))
+    const newSessions = sessionsToRestore.filter((s) => !existingIds.has(s.id))
+    if (newSessions.length === 0) return
+    const updated = [...sessionsRef.current, ...newSessions]
     await saveSessions(updated)
   }, [saveSessions])
 
@@ -259,6 +274,8 @@ export function useStudySessions() {
     updateSessions,
     deleteSession,
     deleteSessions,
+    restoreSession,
+    restoreSessions,
     updateAndDeleteSessions,
     syncSessions,
     getSessionsByProject,

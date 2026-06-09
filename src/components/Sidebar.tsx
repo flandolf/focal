@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import {
   Archive,
@@ -28,6 +28,8 @@ import {
   PanelLeftOpen,
   Plus,
   Star,
+  Timer,
+  Upload,
   Trash2,
   TrendingUp,
   type LucideIcon,
@@ -184,6 +186,8 @@ interface SidebarProps {
     id: string,
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => Promise<void>
+  onDeletePomodoroSession?: (id: string) => Promise<void>
+  onAddFile?: (projectId: string) => void
   fileCounts: Record<string, number>
 }
 
@@ -207,9 +211,13 @@ export function Sidebar({
   onToggleFinished,
   onStartPomodoroSession,
   onUpdatePomodoroSession,
+  onDeletePomodoroSession,
+  onAddFile,
   fileCounts,
 }: SidebarProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("active")
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; project: Project } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
   const reduceMotion = useReducedMotion() === true
   const sorted = sortProjectsByDeadline(projects)
 
@@ -236,6 +244,50 @@ export function Sidebar({
   const hoverLift = reduceMotion ? undefined : { scale: 1.025 }
   const tapPress = reduceMotion ? undefined : { scale: 0.96 }
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, project: Project) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, project })
+  }, [])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const handleClick = () => setContextMenu(null)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null)
+    }
+    document.addEventListener("click", handleClick)
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("click", handleClick)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [contextMenu])
+
+  const handleStartSessionFromContext = useCallback(async () => {
+    if (!contextMenu) return
+    const project = contextMenu.project
+    const subjectIds = project.subjectId ? [project.subjectId] : []
+    try {
+      await onStartPomodoroSession({
+        subjectIds,
+        durationSeconds: 25 * 60,
+        projectId: project.id,
+        cycleNumber: 0,
+      })
+    } catch (e) {
+      console.error("Failed to start session:", e)
+    } finally {
+      setContextMenu(null)
+    }
+  }, [contextMenu, onStartPomodoroSession])
+
+  const handleAddFileFromContext = useCallback(() => {
+    if (!contextMenu || !onAddFile) return
+    onAddFile(contextMenu.project.id)
+    setContextMenu(null)
+  }, [contextMenu, onAddFile])
+
   return (
     <aside
       className="glass-sidebar flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground transition-all duration-300 ease-out min-[1200px]:rounded-[1.35rem]"
@@ -248,13 +300,6 @@ export function Sidebar({
           "flex items-center gap-3 select-none",
           isCollapsed && "justify-center gap-1"
         )}>
-            {!isCollapsed && (
-              <span
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-sidebar-border bg-background/55 text-sm shadow-sm backdrop-blur min-[1200px]:h-9 min-[1200px]:w-9 min-[1200px]:rounded-2xl"
-              >
-                F
-              </span>
-            )}
             <CollapsibleBlock show={!isCollapsed}>
               <h1 className="font-heading text-base font-semibold">Focal</h1>
               <p className="text-caption text-muted-foreground max-[900px]:hidden">Study workspace</p>
@@ -428,6 +473,7 @@ export function Sidebar({
                       project.isFinished && "opacity-70"
                     )}
                     onClick={() => onSelect(project.id)}
+                    onContextMenu={(e) => handleContextMenu(e, project)}
                   >
                     <span
                       className={cn(
@@ -564,7 +610,33 @@ export function Sidebar({
         selectedProject={selectedProject}
         onStartSession={onStartPomodoroSession}
         onUpdateSession={onUpdatePomodoroSession}
+        onDeleteSession={onDeletePomodoroSession}
       />
+
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[180px] rounded-xl border border-border bg-background p-1 shadow-xl"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={handleStartSessionFromContext}
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground outline-none transition-colors hover:bg-muted"
+          >
+            <Timer className="h-4 w-4 text-muted-foreground" />
+            Start Session
+          </button>
+          {onAddFile && (
+            <button
+              onClick={handleAddFileFromContext}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground outline-none transition-colors hover:bg-muted"
+            >
+              <Upload className="h-4 w-4 text-muted-foreground" />
+              Add File
+            </button>
+          )}
+        </div>
+      )}
     </aside>
   )
 }

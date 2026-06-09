@@ -203,9 +203,24 @@ export function useEvents() {
     await saveEvents(updated)
   }, [saveEvents])
 
+  const restoreEvent = useCallback(async (event: CalendarEvent) => {
+    const exists = eventsRef.current.some((e) => e.id === event.id)
+    if (exists) return
+    const updated = [...eventsRef.current, event]
+    await saveEvents(updated)
+  }, [saveEvents])
+
   const deleteEvents = useCallback(async (ids: string[]) => {
     const idSet = new Set(ids)
     const updated = eventsRef.current.filter((event) => !idSet.has(event.id))
+    await saveEvents(updated)
+  }, [saveEvents])
+
+  const restoreEvents = useCallback(async (eventsToRestore: CalendarEvent[]) => {
+    const existingIds = new Set(eventsRef.current.map((e) => e.id))
+    const newEvents = eventsToRestore.filter((e) => !existingIds.has(e.id))
+    if (newEvents.length === 0) return
+    const updated = [...eventsRef.current, ...newEvents]
     await saveEvents(updated)
   }, [saveEvents])
 
@@ -292,6 +307,8 @@ export function useEvents() {
     updateEvents,
     deleteEvent,
     deleteEvents,
+    restoreEvent,
+    restoreEvents,
     updateAndDeleteEvents,
     syncEvents,
     refresh: loadEvents,
