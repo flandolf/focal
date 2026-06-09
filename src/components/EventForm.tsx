@@ -1,5 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from "react"
-import { addMinutes, addWeeks, addMonths, format } from "date-fns"
+import { useState, useMemo, type FormEvent, type ReactNode } from "react"
+import { addMinutes, format, parseISO } from "date-fns"
 import { CalendarIcon, CheckCircle2, Clock, MapPin, Repeat, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DialogBody, DialogFooter } from "@/components/ui/dialog"
@@ -39,6 +39,7 @@ interface EventFormInitialValues {
   date?: Date
   startTime?: string
   duration?: string
+  endTime?: string
   isFinished?: boolean
   finishedAt?: string
 }
@@ -74,6 +75,21 @@ function EventForm({
   const [eventDate, setEventDate] = useState<Date | undefined>(() => initialValues?.date ?? new Date())
   const [startTime, setStartTime] = useState(initialValues?.startTime ?? "09:00")
   const [duration, setDuration] = useState(initialValues?.duration ?? "120")
+  const [endTimeMode, setEndTimeMode] = useState<"duration" | "end">(() => {
+    // If initialValues has an endTime (for editing), start in end-time mode
+    if (initialValues?.endTime) return "end"
+    return "duration"
+  })
+  const [explicitEndTime, setExplicitEndTime] = useState<string>(() => {
+    // Parse initial endTime to HH:mm if available (for edit mode)
+    if (initialValues?.endTime) {
+      const parsed = parseISO(initialValues.endTime)
+      if (!Number.isNaN(parsed.getTime())) {
+        return format(parsed, "HH:mm")
+      }
+    }
+    return ""
+  })
   const [isFinished, setIsFinished] = useState(initialValues?.isFinished ?? false)
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("none")
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | undefined>(undefined)
@@ -84,6 +100,40 @@ function EventForm({
     ? [initialSubject, ...baseSubjects]
     : baseSubjects
 
+  // Compute effective endTime for submit — explicitEndTime takes priority over duration
+  const effectiveEndTime = useMemo(() => {
+    const [sh, sm] = startTime.split(":").map(Number)
+    const start = new Date(eventDate ?? new Date())
+    start.setHours(sh, sm, 0, 0)
+
+    if (endTimeMode === "end" && explicitEndTime) {
+      const [eh, em] = explicitEndTime.split(":").map(Number)
+      const end = new Date(start)
+      end.setHours(eh, em, 0, 0)
+      if (end > start) return end
+      return undefined
+    }
+
+    const durationMinutes = Number.parseInt(duration, 10)
+    if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+      return addMinutes(start, durationMinutes)
+    }
+    return undefined
+  }, [startTime, eventDate, duration, endTimeMode, explicitEndTime])
+
+  // When in end-time mode, compute a read-only duration for display
+  const computedDurationMinutes = useMemo(() => {
+    if (endTimeMode !== "end" || !explicitEndTime) return undefined
+    const [sh, sm] = startTime.split(":").map(Number)
+    const [eh, em] = explicitEndTime.split(":").map(Number)
+    const start = new Date(eventDate ?? new Date())
+    start.setHours(sh, sm, 0, 0)
+    const end = new Date(start)
+    end.setHours(eh, em, 0, 0)
+    if (end <= start) return undefined
+    return Math.round((end.getTime() - start.getTime()) / (1000 * 60))
+  }, [startTime, eventDate, explicitEndTime, endTimeMode])
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     if (!title.trim() || !eventDate) return
@@ -92,16 +142,11 @@ function EventForm({
     const start = new Date(eventDate)
     start.setHours(hours, minutes, 0, 0)
 
-    const durationMinutes = Number.parseInt(duration, 10)
-    const end = Number.isFinite(durationMinutes) && durationMinutes > 0
-      ? addMinutes(start, durationMinutes)
-      : undefined
-
     onSubmit({
       title: title.trim(),
       description: description.trim() ? description.trim() : undefined,
       startTime: start.toISOString(),
-      endTime: end?.toISOString(),
+      endTime: effectiveEndTime?.toISOString(),
       eventType,
       subjectId: subjectId || undefined,
       location: location.trim() ? location.trim() : undefined,
@@ -112,6 +157,24 @@ function EventForm({
         endDate: recurrenceEndDate?.toISOString(),
       } : undefined,
     })
+  }
+
+  const getDefaultEndTime = () => {
+    const [sh, sm] = (initialValues?.startTime ?? "09:00").split(":").map(Number)
+    const d = new Date()
+    d.setHours(sh, sm + 30, 0, 0)
+    return format(d, "HH:mm")
+  }
+
+  const handleEndTimeChange = (value: string) => {
+    setExplicitEndTime(value)
+    if (value) setEndTimeMode("end")
+  }
+
+  const handleDurationChange = (value: string) => {
+    setDuration(value)
+    // Switch to duration mode — explicit end time is overridden
+    setEndTimeMode("duration")
   }
 
   return (
@@ -218,17 +281,61 @@ function EventForm({
               </div>
             </FormField>
 
-            <FormField label="Duration" labelClassName={fieldLabelClass}>
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                value={duration}
-                onChange={(event) => setDuration(event.target.value)}
-                className="h-10 rounded-lg bg-background/65"
-              />
+            <FormField
+              label="End"
+              labelClassName={fieldLabelClass}
+              labelAccessory={
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (endTimeMode === "end") {
+                      setEndTimeMode("duration")
+                    } else {
+                      setExplicitEndTime(getDefaultEndTime())
+                      setEndTimeMode("end")
+                    }
+                  }}
+                  className={cn(
+                    "cursor-pointer text-micro font-medium uppercase tracking-normal",
+                    endTimeMode === "end"
+                      ? "text-primary underline underline-offset-2"
+                      : "text-muted-foreground/60 hover:text-muted-foreground"
+                  )}
+                >
+                  {endTimeMode === "end" ? "use duration" : "set time"}
+                </button>
+              }
+            >
+              {endTimeMode === "end" ? (
+                <div className={inputWithIconClass}>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="time"
+                    value={explicitEndTime}
+                    onChange={(e) => handleEndTimeChange(e.target.value)}
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={duration}
+                    onChange={(e) => handleDurationChange(e.target.value)}
+                    className="h-10 rounded-lg bg-background/65"
+                  />
+                  <span className="text-sm text-muted-foreground">min</span>
+                </div>
+              )}
             </FormField>
           </div>
+          {endTimeMode === "end" && computedDurationMinutes !== undefined && (
+            <p className="text-xs text-muted-foreground">
+              {computedDurationMinutes} minutes
+            </p>
+          )}
         </FormSection>
 
         {showRecurrence && (

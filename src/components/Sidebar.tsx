@@ -8,6 +8,7 @@ import {
   Brain,
   BriefcaseBusiness,
   CalendarDays,
+  Calendar as CalendarIcon,
   Calculator,
   ChartNoAxesColumn,
   CheckCircle2,
@@ -165,11 +166,13 @@ interface SidebarProps {
   availableSubjects?: Subject[]
   selectedId: string | null
   homeSelected: boolean
+  timetableSelected: boolean
   analyticsSelected: boolean
   isCollapsed: boolean
   onToggleCollapse: () => void
   onSelect: (id: string) => void
   onSelectHome: () => void
+  onSelectTimetable: () => void
   onSelectAnalytics: () => void
   onDelete: (id: string) => void
   onNewProject: () => void
@@ -198,11 +201,13 @@ export function Sidebar({
   availableSubjects,
   selectedId,
   homeSelected,
+  timetableSelected,
   analyticsSelected,
   isCollapsed,
   onToggleCollapse,
   onSelect,
   onSelectHome,
+  onSelectTimetable,
   onSelectAnalytics,
   onDelete,
   onNewProject,
@@ -365,6 +370,26 @@ export function Sidebar({
             <span className="rounded-full bg-background/55 px-2 py-0.5 text-caption text-muted-foreground">
                 {activeCount}
             </span>
+          </CollapsibleInline>
+        </motion.button>
+
+        <motion.button
+          onClick={onSelectTimetable}
+          whileHover={hoverLift}
+          whileTap={tapPress}
+          transition={pressTransition}
+          className={cn(
+            "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            timetableSelected
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+            isCollapsed && "justify-center px-0"
+          )}
+          title={isCollapsed ? "Timetable" : undefined}
+        >
+          <CalendarIcon className="h-4 w-4 shrink-0" />
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
+            Timetable
           </CollapsibleInline>
         </motion.button>
 
@@ -616,7 +641,7 @@ export function Sidebar({
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          className="fixed z-50 min-w-[180px] rounded-xl border border-border bg-background p-1 shadow-xl"
+          className="fixed z-50 min-w-45 rounded-xl border border-border bg-background p-1 shadow-xl"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           <button

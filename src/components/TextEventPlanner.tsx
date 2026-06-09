@@ -1,8 +1,8 @@
 import { useState, useCallback } from "react"
 import { addMinutes } from "date-fns"
-import { AlertCircle, BookOpen, CalendarPlus, Check, CheckCircle2, Loader2, Wand2 } from "lucide-react"
+import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Square, SquareCheck, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
 import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
 import type { CalendarEvent, EventType, Project, StudySession, Subject } from "@/lib/types"
@@ -28,7 +28,6 @@ interface TextEventDraft {
 // --- Constants ---
 
 const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"])
-const fieldLabelClass = "text-control font-medium text-muted-foreground"
 const textareaClass = "min-h-20 resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 // --- API / Parsing ---
@@ -281,6 +280,10 @@ export function TextEventPlanner({
   const [plannerApplying, setPlannerApplying] = useState(false)
   const [plannerError, setPlannerError] = useState<string | null>(null)
 
+  const approvedCount = plannerDrafts.filter((draft) => draft.approved).length
+  const hasDrafts = plannerDrafts.length > 0
+  const allApproved = hasDrafts && approvedCount === plannerDrafts.length
+
   const handleGenerate = useCallback(async () => {
     const key = getApiKey()
     if (!key) {
@@ -309,6 +312,10 @@ export function TextEventPlanner({
       idx === index ? { ...draft, approved: !draft.approved } : draft
     )))
   }, [])
+
+  const handleToggleAll = useCallback(() => {
+    setPlannerDrafts((current) => current.map((draft) => ({ ...draft, approved: !allApproved })))
+  }, [allApproved])
 
   const handleApply = useCallback(async () => {
     const approvedDrafts = plannerDrafts.filter((draft) => draft.approved)
@@ -370,8 +377,7 @@ export function TextEventPlanner({
     }
   }, [onCreateEvents, onCreateStudySessions, plannerDrafts, onOpenChange])
 
-  const approvedCount = plannerDrafts.filter((draft) => draft.approved).length
-  const hasDrafts = plannerDrafts.length > 0
+  const apiMissing = !getApiKey()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -381,7 +387,7 @@ export function TextEventPlanner({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-4 pb-4">
           {plannerError && (
             <p className="flex shrink-0 items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -389,93 +395,104 @@ export function TextEventPlanner({
             </p>
           )}
 
-          {!getApiKey() && (
+          {apiMissing && (
             <p className="flex shrink-0 items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               OpenRouter API key not configured. Go to Settings to set it up.
             </p>
           )}
 
-          <div className="shrink-0 space-y-1.5">
-            <label className={fieldLabelClass} htmlFor="text-event-planner-input">Source text</label>
+          <div className="grid shrink-0 gap-2">
+            <label className="text-control font-medium text-muted-foreground" htmlFor="text-event-planner-input">Source text</label>
             <textarea
               id="text-event-planner-input"
               value={plannerText}
               onChange={(event) => setPlannerText(event.target.value)}
               placeholder="Paste dates, tasks, teacher notes, or a weekly plan..."
-              rows={5}
+              rows={4}
               className={textareaClass}
             />
+            <p className="text-xs text-muted-foreground/70">AI extracts events, SACs, study sessions, and deadlines.</p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center justify-between gap-3">
+            <div className="min-w-0">
+              {hasDrafts && (
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {approvedCount} of {plannerDrafts.length} selected
+                </span>
+              )}
+            </div>
             <Button
               onClick={handleGenerate}
-              disabled={plannerLoading || !plannerText.trim() || !getApiKey()}
+              disabled={plannerLoading || !plannerText.trim() || apiMissing}
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 text-background"
             >
               {plannerLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
               {plannerLoading ? "Generating..." : "Generate Drafts"}
             </Button>
-            {hasDrafts && (
-              <span className="text-xs text-muted-foreground">
-                {approvedCount} of {plannerDrafts.length} approved
-              </span>
-            )}
           </div>
 
           {hasDrafts && (
             <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border/60">
+              <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2 backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={handleToggleAll}
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors"
+                  aria-label={allApproved ? "Deselect all" : "Select all"}
+                >
+                  {allApproved
+                    ? <SquareCheck className="h-3 w-3 text-primary" />
+                    : <Square className="h-3 w-3 text-muted-foreground/50" />}
+                </button>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {allApproved ? "All selected" : `${approvedCount} of ${plannerDrafts.length}`}
+                </span>
+              </div>
+
               <div className="divide-y divide-border/50">
                 {plannerDrafts.map((draft, index) => {
                   const subject = getSubjectById(draft.subjectId)
                   const sessionSubjects = draft.subjectIds
                     .map((subjectId) => getSubjectById(subjectId))
                     .filter((item): item is Subject => Boolean(item))
-                  const project = draft.projectId
-                    ? projects.find((item) => item.id === draft.projectId)
-                    : undefined
 
                   return (
                     <div
                       key={`${draft.title}-${draft.date}-${draft.startTime}`}
                       className={cn(
-                        "flex items-start gap-3 bg-background/40 px-4 py-3",
-                        !draft.approved && "opacity-50",
+                        "flex items-center gap-3 bg-background/40 px-3 py-2.5 transition-opacity",
+                        !draft.approved && "opacity-40",
                       )}
                     >
                       <button
                         type="button"
                         onClick={() => handleToggleDraft(index)}
-                        className={cn(
-                          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                          draft.approved
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-muted-foreground/30 hover:border-muted-foreground/60",
-                        )}
-                        aria-label={draft.approved ? "Reject draft" : "Approve draft"}
+                        className="flex h-4 w-4 shrink-0 items-center justify-center"
+                        aria-label={draft.approved ? "Deselect" : "Select"}
                       >
-                        {draft.approved && <Check className="h-3 w-3" />}
+                        {draft.approved
+                          ? <SquareCheck className="h-3.5 w-3.5 text-primary" />
+                          : <Square className="h-3.5 w-3.5 text-muted-foreground/50" />}
                       </button>
 
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{draft.title}</p>
-                        {draft.description && (
-                          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{draft.description}</p>
-                        )}
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-medium">{draft.title}</p>
                           {draft.kind === "session" ? (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
                               <BookOpen className="h-2.5 w-2.5" />
-                              Session
+                              Study
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
-                              <CalendarPlus className="h-2.5 w-2.5" />
+                            <span className="inline-flex shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-micro font-medium capitalize text-muted-foreground">
                               {draft.eventType}
                             </span>
                           )}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
                           {draft.kind === "event" && subject && (
                             <span
                               className="rounded-md px-1.5 py-0.5 text-micro font-medium"
@@ -493,13 +510,8 @@ export function TextEventPlanner({
                               {sessionSubject.shortCode}
                             </span>
                           ))}
-                          {project && (
-                            <span className="max-w-36 truncate rounded-md bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground">
-                              {project.name}
-                            </span>
-                          )}
                           {draft.location && (
-                            <span className="max-w-36 truncate rounded-md bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground">
+                            <span className="max-w-36 truncate text-micro text-muted-foreground">
                               {draft.location}
                             </span>
                           )}
@@ -519,15 +531,35 @@ export function TextEventPlanner({
             </div>
           )}
 
+          {plannerLoading && (
+            <div className="min-h-0 flex-1 space-y-0 overflow-hidden rounded-lg border border-border/60">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3 border-b border-border/40 bg-background/40 px-3 py-3 last:border-b-0">
+                  <div className="h-3.5 w-3.5 shrink-0 animate-pulse rounded bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-3/5 animate-pulse rounded bg-muted" />
+                    <div className="h-2.5 w-1/4 animate-pulse rounded bg-muted/60" />
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <div className="h-3 w-14 animate-pulse rounded bg-muted" />
+                    <div className="h-2.5 w-10 animate-pulse rounded bg-muted/60" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {!hasDrafts && !plannerLoading && (
             <div className="flex flex-1 items-center justify-center">
-              <div className="flex flex-col items-center gap-2 text-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/50">
-                  <CalendarPlus className="h-5 w-5 text-muted-foreground/60" />
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted/40">
+                  <ClipboardList className="h-5 w-5 text-muted-foreground/60" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">No drafts yet</p>
-                  <p className="text-caption text-muted-foreground/70">Paste text above and click Generate Drafts</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Paste text to get started</p>
+                  <p className="max-w-64 text-xs leading-relaxed text-muted-foreground/70">
+                    School notices, teacher messages, rough plans, or weekly schedules. AI will extract what matters.
+                  </p>
                 </div>
               </div>
             </div>
@@ -542,7 +574,7 @@ export function TextEventPlanner({
             size="sm"
             onClick={handleApply}
             disabled={plannerApplying || approvedCount === 0}
-            className="gap-1.5"
+            className="gap-1.5 text-background"
           >
             {plannerApplying ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -127,3 +127,42 @@ export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; 
     },
   }
 }
+
+// --- Timetable ---
+
+export interface TimetableConfig {
+  enabled: boolean
+  day1Starts: string
+  holidays: { name: string; startDate: string; endDate: string }[]
+  entries: {
+    dayLabel: number
+    periods: { period: string; subject: string; location?: string; startTime: string; endTime: string }[]
+  }[]
+}
+
+export const DEFAULT_TIMETABLE_CONFIG: TimetableConfig = {
+  enabled: false,
+  day1Starts: "",
+  holidays: [],
+  entries: [],
+}
+
+export function getTimetableConfig(): TimetableConfig {
+  try {
+    const raw = localStorage.getItem("focal-timetable-config")
+    if (!raw) return DEFAULT_TIMETABLE_CONFIG
+    const parsed = JSON.parse(raw) as Partial<Record<keyof TimetableConfig, unknown>>
+    return {
+      enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : false,
+      day1Starts: typeof parsed.day1Starts === "string" ? parsed.day1Starts : "",
+      holidays: Array.isArray(parsed.holidays) ? (parsed.holidays as TimetableConfig["holidays"]) : [],
+      entries: Array.isArray(parsed.entries) ? (parsed.entries as TimetableConfig["entries"]) : [],
+    }
+  } catch {
+    return DEFAULT_TIMETABLE_CONFIG
+  }
+}
+
+export function setTimetableConfig(config: TimetableConfig): void {
+  localStorage.setItem("focal-timetable-config", JSON.stringify(config))
+}

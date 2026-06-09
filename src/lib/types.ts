@@ -106,9 +106,6 @@ export interface Project {
   customSubfolders?: string[];
 }
 
-// UI-facing name for the legacy Project record. Persisted data remains projects.json for migration compatibility.
-export type Assessment = Project;
-
 export interface FileInfo {
   name: string;
   path: string;
@@ -124,6 +121,36 @@ export interface FileInfo {
 export interface SearchResult {
   file: FileInfo;
   projectFolder: string;
+}
+
+// --- Timetable ---
+
+export type TimetableDayLabel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+
+export interface TimetablePeriod {
+  period: string
+  subject: string
+  location?: string
+  startTime: string // HH:mm
+  endTime: string   // HH:mm
+}
+
+export interface TimetableEntry {
+  dayLabel: TimetableDayLabel // 1–10
+  periods: TimetablePeriod[]
+}
+
+export interface SchoolHoliday {
+  name: string
+  startDate: string // YYYY-MM-DD
+  endDate: string   // YYYY-MM-DD
+}
+
+export interface TimetableConfig {
+  enabled: boolean
+  day1Starts: string // YYYY-MM-DD — the first day of the cycle
+  holidays: SchoolHoliday[]
+  entries: TimetableEntry[]
 }
 
 export type PriorityItemKind =

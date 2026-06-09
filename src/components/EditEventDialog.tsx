@@ -1,4 +1,5 @@
 import { format, parseISO } from "date-fns"
+import { Clock } from "lucide-react"
 import { Trash2 } from "lucide-react"
 import {
   Dialog,
@@ -34,9 +35,12 @@ interface EditEventDialogProps {
 
 function getDurationMinutes(event: CalendarEvent) {
   if (!event.endTime) return ""
-
   const durationMs = parseISO(event.endTime).getTime() - parseISO(event.startTime).getTime()
   return String(Math.round(durationMs / (1000 * 60)))
+}
+
+function getEndTimeStr(event: CalendarEvent) {
+  return event.endTime ? format(parseISO(event.endTime), "HH:mm") : undefined
 }
 
 export function EditEventDialog({
@@ -68,6 +72,11 @@ export function EditEventDialog({
   if (!event) return null
 
   const start = parseISO(event.startTime)
+  const end = event.endTime ? parseISO(event.endTime) : null
+
+  const timeLabel = end
+    ? `${format(start, "h:mm a")} — ${format(end, "h:mm a")}`
+    : format(start, "h:mm a")
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,8 +84,11 @@ export function EditEventDialog({
         <DialogHeader className="border-b px-5 pb-4 pt-5">
           <div className="space-y-2 pr-9">
             <DialogTitle>Edit Event</DialogTitle>
-            <DialogDescription>
-              Update this one-off calendar item.
+            <DialogDescription asChild>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Clock className="h-3.5 w-3.5 shrink-0" />
+                <span>{format(start, "EEEE, MMMM d")} · {timeLabel}</span>
+              </div>
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -93,6 +105,7 @@ export function EditEventDialog({
             date: start,
             startTime: format(start, "HH:mm"),
             duration: getDurationMinutes(event),
+            endTime: getEndTimeStr(event),
             isFinished: event.isFinished,
             finishedAt: event.finishedAt,
           }}

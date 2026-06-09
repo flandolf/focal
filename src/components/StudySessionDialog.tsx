@@ -452,7 +452,7 @@ export function StudySessionDialog({
                     </div>
                   )}
 
-                  <div className="max-h-[18rem] overflow-y-auto rounded-lg border border-input bg-background/45 p-2 dark:bg-input/20">
+                  <div className="max-h-72 overflow-y-auto rounded-lg border border-input bg-background/45 p-2 dark:bg-input/20">
                     <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-1.5">
                       {subjects.map((subject) => {
                         const selected = subjectIds.includes(subject.id)

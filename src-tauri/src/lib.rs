@@ -23,6 +23,7 @@ pub fn run() {
             commands::files::import_folder_to_project,
             commands::credits::get_credits,
             commands::notion::query_notion_calendar,
+            commands::notion::fetch_notion_schema,
             commands::notion::create_notion_calendar_page,
             commands::notion::delete_notion_page,
             commands::notion::update_notion_calendar_page,

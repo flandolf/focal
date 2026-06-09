@@ -1,3 +1,5 @@
+import { format } from "date-fns"
+import { Clock } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -35,13 +37,23 @@ interface NewEventDialogProps {
   }[]) => void
 }
 
+interface RecurringEventBase {
+  title: string
+  description?: string
+  startTime: string
+  endTime?: string
+  eventType: EventType
+  subjectId?: string
+  location?: string
+}
+
 function generateRecurringEvents(
-  base: Omit<ReturnType<typeof Object>, never>,
+  base: RecurringEventBase,
   pattern: "weekly" | "biweekly" | "monthly",
   endDate?: Date,
   maxEvents = 52,
-): ReturnType<typeof Object>[] {
-  const events = []
+): RecurringEventBase[] {
+  const events: RecurringEventBase[] = []
   const start = new Date(base.startTime)
   const limit = endDate ?? addWeeks(start, 26)
 
@@ -106,14 +118,20 @@ export function NewEventDialog({
     onOpenChange(false)
   }
 
+  const dateLabel = initialDate ? format(initialDate, "EEEE, MMMM d") : format(new Date(), "EEEE, MMMM d")
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b px-5 pb-4 pt-5">
           <div className="space-y-2 pr-9">
             <DialogTitle>Add Event</DialogTitle>
-            <DialogDescription>
-              Add a one-off exam, SAC, or reminder without creating a project.
+            <DialogDescription asChild>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Clock className="h-3.5 w-3.5 shrink-0" />
+                <span>{dateLabel} · 9:00 AM</span>
+                <span className="text-muted-foreground/60">· start time can be adjusted below</span>
+              </div>
             </DialogDescription>
           </div>
         </DialogHeader>
