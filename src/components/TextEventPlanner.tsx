@@ -14,6 +14,7 @@ interface TextEventDraft {
   title: string
   description?: string
   date: string
+  endDate?: string
   startTime: string
   durationMinutes: number
   eventType: EventType
@@ -31,7 +32,6 @@ const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "even
 const textareaClass = "min-h-20 resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 // --- API / Parsing ---
-
 function parseTextEventResponse(content: string, subjectIds: string[], projectIds: string[]): TextEventDraft[] {
   const parsed: unknown = JSON.parse(content)
   if (typeof parsed !== "object" || parsed === null) {
@@ -48,6 +48,7 @@ function parseTextEventResponse(content: string, subjectIds: string[], projectId
     const record = item as Record<string, unknown>
     const title = typeof record.title === "string" ? record.title.trim() : ""
     const date = typeof record.date === "string" ? record.date.trim() : ""
+    const endDate = typeof record.end_date === "string" ? record.end_date.trim() : undefined
     const startTime = typeof record.start_time === "string" ? record.start_time.trim() : ""
     const durationMinutes = typeof record.duration_minutes === "number" ? record.duration_minutes : 60
     const kind = record.item_type === "session" ? "session" : "event"
@@ -72,6 +73,7 @@ function parseTextEventResponse(content: string, subjectIds: string[], projectId
         ? record.description.trim()
         : undefined,
       date,
+      endDate: endDate && endDate !== date ? endDate : undefined,
       startTime,
       durationMinutes: Math.min(180, Math.max(15, Math.round(durationMinutes))),
       eventType,
@@ -146,7 +148,8 @@ ${modeRules}
 - Use subject_id "none" when the subject is unclear for an event.
 - Study sessions must include at least one concrete subject id in subject_ids.
 - Use project_id when a study session clearly supports an existing active assessment; otherwise use "none".
-- Prefer concise titles that fit in a calendar cell.`,
+- Prefer concise titles that fit in a calendar cell.
+- For events spanning multiple days (e.g. a 3-day camp, multi-day exam block, or week-long event), set end_date to the last day in YYYY-MM-DD format. Omit end_date for single-day events. When end_date is set, start_time applies to the start date and the event continues through end_date.`,
         },
         {
           role: "user",
@@ -184,6 +187,7 @@ ${sourceText}
                       enum: itemTypeEnum,
                     },
                     date: { type: "string", description: "YYYY-MM-DD" },
+                    end_date: { type: "string", description: "YYYY-MM-DD — end date for multi-day events. Omit or set same as date for single-day events." },
                     start_time: { type: "string", description: "HH:mm in 24-hour time" },
                     duration_minutes: { type: "number" },
                     event_type: {
@@ -325,7 +329,14 @@ export function TextEventPlanner({
       if (draft.kind !== "event") return []
       const start = combineDateAndTime(draft.date, draft.startTime)
       if (!start) return []
-      const end = addMinutes(start, draft.durationMinutes)
+      let end: Date
+      if (draft.endDate) {
+        // Multi-day event: end time on end date = same start time
+        const endDateWithTime = combineDateAndTime(draft.endDate, draft.startTime)
+        end = endDateWithTime ?? addMinutes(start, draft.durationMinutes)
+      } else {
+        end = addMinutes(start, draft.durationMinutes)
+      }
       return [{
         title: draft.title,
         description: draft.description,
@@ -519,7 +530,9 @@ export function TextEventPlanner({
                       </div>
 
                       <div className="flex shrink-0 flex-col items-end text-right">
-                        <p className="text-xs font-medium tabular-nums text-foreground/80">{draft.date}</p>
+                        <p className="text-xs font-medium tabular-nums text-foreground/80">
+                          {draft.endDate ? `${draft.date} – ${draft.endDate}` : draft.date}
+                        </p>
                         <p className="mt-0.5 text-micro tabular-nums text-muted-foreground">
                           {draft.startTime} · {draft.durationMinutes}m
                         </p>

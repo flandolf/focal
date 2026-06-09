@@ -8,6 +8,7 @@ import {
   FileText,
   ListChecks,
   PlayCircle,
+  Plus,
   Timer,
   Trash2,
 } from "lucide-react"
@@ -64,6 +65,7 @@ interface StudySessionDialogProps {
     blockers?: string
     nextAction?: string
     completedAt?: string
+    activeDurations?: { start: string; end: string }[]
   }) => void
   onDelete?: (id: string) => void
 }
@@ -93,6 +95,19 @@ export function StudySessionDialog({
   const [startTime, setStartTime] = useState("14:00")
   const [duration, setDuration] = useState("60")
   const [isDeleting, setIsDeleting] = useState(false)
+  const [segments, setSegments] = useState<{ start: string; end: string }[]>([])
+  const hasSegments = segments.length > 0
+  const computedSegmentStart = hasSegments ? segments[0].start : null
+  const computedSegmentEnd = hasSegments ? segments[segments.length - 1].end : null
+  const getMinutes = (time: string) => { const [h, m] = time.split(":").map(Number); return h * 60 + m }
+  const formatDurationStr = (totalMin: number) =>
+    totalMin >= 60 ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m` : `${totalMin}m`
+  const segmentTotalActive = hasSegments
+    ? segments.reduce((sum, seg) => sum + Math.max(0, getMinutes(seg.end) - getMinutes(seg.start)), 0)
+    : 0
+  const segmentWallSpan = hasSegments
+    ? getMinutes(computedSegmentEnd!) - getMinutes(computedSegmentStart!)
+    : 0
 
   const isEdit = Boolean(session)
   const activeProject = projects.find((project) => project.id === projectId)
@@ -105,12 +120,13 @@ export function StudySessionDialog({
     })
   const subjects = [...hiddenSelectedSubjects, ...baseSubjects]
   const selectedSubjects = subjects.filter((subject) => subjectIds.includes(subject.id))
-  const durationMinutes = Number.parseInt(duration, 10)
+  const durationMinutes = hasSegments ? segmentTotalActive : Number.parseInt(duration, 10)
   const canSave = title.trim().length > 0
     && subjectIds.length > 0
     && Boolean(startDate)
     && Number.isFinite(durationMinutes)
     && durationMinutes > 0
+    && (!hasSegments || (Number.isFinite(segmentTotalActive) && segmentTotalActive > 0))
   const selectedDateLabel = startDate ? format(startDate, "EEE d MMM") : "No date"
   const subjectSummary = selectedSubjects.length > 0
     ? selectedSubjects.map((subject) => subject.shortCode).join(", ")
@@ -140,8 +156,53 @@ export function StudySessionDialog({
       const endMs = new Date(session.endTime).getTime()
       const durationMs = endMs - startMs
       setDuration(String(Math.round(durationMs / (1000 * 60))))
+
+      // Initialize editable segments from activeDurations
+      if (session.activeDurations && session.activeDurations.length > 0) {
+        setSegments(
+          session.activeDurations
+            .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+            .map((d) => ({
+              start: format(parseISO(d.start), "HH:mm"),
+              end: format(parseISO(d.end), "HH:mm"),
+            })),
+        )
+      } else {
+        setSegments([])
+      }
     }
   }, [projects, session])
+
+  const addSegment = () => {
+    setSegments((prev) => {
+      const lastEnd = prev.length > 0 ? prev[prev.length - 1].end : "09:00"
+      const [h, m] = lastEnd.split(":").map(Number)
+      const nextStart = new Date(0, 0, 0, h, m + 30)
+      const nextEnd = new Date(nextStart.getTime() + 30 * 60000)
+      const fmt = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+      return [...prev, { start: fmt(nextStart), end: fmt(nextEnd) }]
+    })
+  }
+
+  const removeSegment = (index: number) => {
+    setSegments((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updateSegment = (index: number, field: "start" | "end", value: string) => {
+    setSegments((prev) => prev.map((seg, i) => (i === index ? { ...seg, [field]: value } : seg)))
+  }
+
+  const clearSegments = () => {
+    setSegments([])
+    // Reset start/duration from overall session time
+    if (session) {
+      const start = parseISO(session.startTime)
+      setStartTime(format(start, "HH:mm"))
+      const startMs = new Date(session.startTime).getTime()
+      const endMs = new Date(session.endTime).getTime()
+      setDuration(String(Math.round((endMs - startMs) / (1000 * 60))))
+    }
+  }
 
   const toggleSubject = (id: string) => {
     setSubjectIds((current) =>
@@ -158,18 +219,56 @@ export function StudySessionDialog({
   }
 
   const buildSubmitData = (nextStatus = status) => {
-    const durationMinutes = Number.parseInt(duration, 10)
-    if (!title.trim() || !startDate || subjectIds.length === 0 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) return null
-
-    const [hours, minutes] = startTime.split(":").map(Number)
-    const start = new Date(startDate)
-    start.setHours(hours, minutes, 0, 0)
-    const end = addMinutes(start, durationMinutes)
+    if (!title.trim() || !startDate || subjectIds.length === 0) return null
 
     const topics = topicsInput
       .split(",")
       .map((topic) => topic.trim())
       .filter((topic) => topic.length > 0)
+
+    if (hasSegments) {
+      const toDate = (time: string) => {
+        const [h, m] = time.split(":").map(Number)
+        const d = new Date(startDate)
+        d.setHours(h, m, 0, 0)
+        return d
+      }
+      const segStart = toDate(segments[0].start)
+      const segEnd = toDate(segments[segments.length - 1].end)
+      if (segEnd.getTime() <= segStart.getTime()) return null
+      if (!Number.isFinite(segmentTotalActive) || segmentTotalActive <= 0) return null
+
+      const activeDurations = segments.map((seg) => ({
+        start: toDate(seg.start).toISOString(),
+        end: toDate(seg.end).toISOString(),
+      }))
+
+      return {
+        id: session?.id,
+        projectId: projectId || undefined,
+        subjectIds,
+        title: title.trim(),
+        description: description.trim() ? description : undefined,
+        startTime: segStart.toISOString(),
+        endTime: segEnd.toISOString(),
+        activeDurations,
+        topics: topics.length > 0 ? topics : undefined,
+        notes: notes.trim() ? notes : undefined,
+        status: nextStatus,
+        confidence,
+        blockers: blockers.trim() ? blockers : undefined,
+        nextAction: nextAction.trim() ? nextAction : undefined,
+        completedAt: nextStatus === "completed" ? (session?.completedAt ?? new Date().toISOString()) : undefined,
+      }
+    }
+
+    const durationMinutes = Number.parseInt(duration, 10)
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null
+
+    const [hours, minutes] = startTime.split(":").map(Number)
+    const start = new Date(startDate)
+    start.setHours(hours, minutes, 0, 0)
+    const end = addMinutes(start, durationMinutes)
 
     return {
       id: session?.id,
@@ -179,6 +278,7 @@ export function StudySessionDialog({
       description: description.trim() ? description : undefined,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
+      activeDurations: undefined,
       topics: topics.length > 0 ? topics : undefined,
       notes: notes.trim() ? notes : undefined,
       status: nextStatus,
@@ -254,11 +354,13 @@ export function StudySessionDialog({
             </span>
             <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
               <Clock className="h-3 w-3" />
-              {startTime}
+              {hasSegments ? `${computedSegmentStart} – ${computedSegmentEnd}` : startTime}
             </span>
             <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
               <Timer className="h-3 w-3" />
-              {Number.isFinite(durationMinutes) && durationMinutes > 0 ? `${durationMinutes} min` : "Duration"}
+              {hasSegments
+                ? `${formatDurationStr(segmentTotalActive)} active`
+                : Number.isFinite(durationMinutes) && durationMinutes > 0 ? `${durationMinutes} min` : "Duration"}
             </span>
           </div>
         </DialogHeader>
@@ -301,48 +403,75 @@ export function StudySessionDialog({
                       labelClassName={fieldLabelClass}
                     />
 
-                    <FormField label="Start" labelClassName={fieldLabelClass}>
-                      <div className={inputWithIconClass}>
-                        <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <input
-                          type="time"
-                          value={startTime}
-                          onChange={(event) => setStartTime(event.target.value)}
-                          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                        />
-                      </div>
-                    </FormField>
-
-                    <FormField label="Duration" labelClassName={fieldLabelClass}>
-                      <Input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={duration}
-                        onChange={(event) => setDuration(event.target.value)}
-                        placeholder="60"
-                        className={inputClass}
-                      />
-                    </FormField>
+                    {hasSegments ? (
+                      <>
+                        <FormField label="Span" labelClassName={fieldLabelClass}>
+                          <div className={cn(inputWithIconClass, "text-sm")}>
+                            <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="tabular-nums">
+                              {computedSegmentStart} – {computedSegmentEnd}
+                            </span>
+                          </div>
+                        </FormField>
+                        <FormField label="Active time" labelClassName={fieldLabelClass}>
+                          <div className={cn(inputWithIconClass, "text-sm")}>
+                            <Timer className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="tabular-nums font-medium">
+                              {formatDurationStr(segmentTotalActive)}
+                            </span>
+                            <span className="text-muted-foreground/60 ml-auto text-micro">
+                              {segmentWallSpan > segmentTotalActive ? formatDurationStr(segmentWallSpan) + " span" : ""}
+                            </span>
+                          </div>
+                        </FormField>
+                      </>
+                    ) : (
+                      <>
+                        <FormField label="Start" labelClassName={fieldLabelClass}>
+                          <div className={inputWithIconClass}>
+                            <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <input
+                              type="time"
+                              value={startTime}
+                              onChange={(event) => setStartTime(event.target.value)}
+                              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                            />
+                          </div>
+                        </FormField>
+                        <FormField label="Duration" labelClassName={fieldLabelClass}>
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={duration}
+                            onChange={(event) => setDuration(event.target.value)}
+                            placeholder="60"
+                            className={inputClass}
+                          />
+                        </FormField>
+                      </>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {DURATION_OPTIONS.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setDuration(option)}
-                        aria-pressed={duration === option}
-                        className={cn(
-                          "h-7 rounded-md border px-2 text-micro font-medium transition-colors",
-                          duration === option
-                            ? "border-primary/35 bg-primary/10 text-primary"
-                            : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                        )}
-                      >
-                        {option}m
-                      </button>
-                    ))}
-                  </div>
+                  {!hasSegments && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {DURATION_OPTIONS.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setDuration(option)}
+                          aria-pressed={duration === option}
+                          className={cn(
+                            "h-7 rounded-md border px-2 text-micro font-medium transition-colors",
+                            duration === option
+                              ? "border-primary/35 bg-primary/10 text-primary"
+                              : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                          )}
+                        >
+                          {option}m
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </FormSection>
 
                 <FormSection
@@ -451,12 +580,10 @@ export function StudySessionDialog({
                       ))}
                     </div>
                   )}
-
                   <div className="max-h-72 overflow-y-auto rounded-lg border border-input bg-background/45 p-2 dark:bg-input/20">
                     <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-1.5">
                       {subjects.map((subject) => {
                         const selected = subjectIds.includes(subject.id)
-
                         return (
                           <label
                             key={subject.id}
@@ -489,11 +616,104 @@ export function StudySessionDialog({
                   )}
                 </FormSection>
 
+                {isEdit && hasSegments && (() => {
+                  let totalRest = 0
+                  const segDuration = (start: string, end: string) => Math.max(0, getMinutes(end) - getMinutes(start))
+                  return (
+                    <FormSection
+                      title="Study Blocks"
+                      icon={<Timer className={sectionIconClass} />}
+                      className={panelClass}
+                    >
+                      <div className="space-y-2">
+                        {segments.map((seg, i) => {
+                          const activeMin = segDuration(seg.start, seg.end)
+                          // Compute rest before this segment
+                          let restMin = 0
+                          if (i > 0) {
+                            restMin = Math.max(0, getMinutes(seg.start) - getMinutes(segments[i - 1].end))
+                            totalRest += restMin
+                          }
+                          return (
+                            <div key={i}>
+                              {i > 0 && (
+                                <div className="flex items-center gap-2 py-1 px-1">
+                                  <div className="flex-1 border-t border-border/30" />
+                                  <span className="text-micro text-muted-foreground/50">
+                                    Rest {formatDurationStr(restMin)}
+                                  </span>
+                                  <div className="flex-1 border-t border-border/30" />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5 rounded-lg bg-primary/8 p-1.5">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold bg-primary/12 text-primary">
+                                  A{i + 1}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="time"
+                                    value={seg.start}
+                                    onChange={(e) => updateSegment(i, "start", e.target.value)}
+                                    className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                  />
+                                  <span className="text-micro text-muted-foreground/60">to</span>
+                                  <input
+                                    type="time"
+                                    value={seg.end}
+                                    onChange={(e) => updateSegment(i, "end", e.target.value)}
+                                    className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                  />
+                                </div>
+                                <span className="ml-auto text-xs tabular-nums font-medium text-foreground/80">
+                                  {formatDurationStr(activeMin)}
+                                </span>
+                                {segments.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSegment(i)}
+                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                    aria-label={`Remove block ${i + 1}`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <div className="mt-1 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={addSegment}
+                          className="flex items-center gap-1 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Add block
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearSegments}
+                          className="rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                          Simplify
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-border/40 pt-2 text-xs text-muted-foreground">
+                        <span>Active: <span className="font-semibold text-foreground tabular-nums">{formatDurationStr(segmentTotalActive)}</span></span>
+                        <span>Rest: <span className="font-semibold text-foreground tabular-nums">{formatDurationStr(totalRest)}</span></span>
+                        <span>Span: <span className="font-semibold text-foreground tabular-nums">{formatDurationStr(segmentWallSpan)}</span></span>
+                      </div>
+                    </FormSection>
+                  )
+                })()}
                 {isEdit && (
-                  <FormSection
-                    title="Review"
-                    icon={<CheckCircle2 className={sectionIconClass} />}
-                    className={panelClass}
+                <FormSection
+                  title="Review"
+                  icon={<CheckCircle2 className={sectionIconClass} />}
+                  className={panelClass}
                   >
                     <FormField label="Confidence" labelClassName={fieldLabelClass}>
                       <div className="grid grid-cols-5 gap-1.5">

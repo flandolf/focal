@@ -182,6 +182,7 @@ export function EventDialog({
             startTime: format(start, "HH:mm"),
             duration: getDurationMinutes(existingEvent),
             endTime: getEndTimeStr(existingEvent),
+            endDate: end && format(end, "yyyy-MM-dd") !== format(start, "yyyy-MM-dd") ? end : undefined,
             isFinished: existingEvent.isFinished,
             finishedAt: existingEvent.finishedAt,
           } : { date: initialDate ? new Date(initialDate) : new Date() }}

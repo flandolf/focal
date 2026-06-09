@@ -61,6 +61,19 @@ export function getSessionSubjectIds(session: StudySession, project?: Project): 
   return project?.subjectId ? [project.subjectId] : []
 }
 
+export function getSessionEffectiveMinutes(session: StudySession): number {
+  if (session.activeDurations && session.activeDurations.length > 0) {
+    const total = session.activeDurations.reduce((sum, d) => {
+      return sum + Math.max(0, new Date(d.end).getTime() - new Date(d.start).getTime())
+    }, 0)
+    return Math.round(total / 60000)
+  }
+  const start = new Date(session.startTime).getTime()
+  const end = new Date(session.endTime).getTime()
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return 0
+  return Math.round((end - start) / 60000)
+}
+
 export function formatDeadline(dateString: string): string {
   const date = new Date(dateString)
   const now = new Date()
@@ -159,4 +172,14 @@ export function combineDateAndTime(dateValue: string, timeValue: string): Date |
 
   const date = new Date(year, month - 1, day, hours, minutes, 0, 0)
   return Number.isNaN(date.getTime()) ? null : date
+}
+
+export function formatTime12(time24: string): string {
+  const [hStr, mStr] = time24.split(":")
+  const h = Number(hStr)
+  const m = Number(mStr)
+  if (Number.isNaN(h) || Number.isNaN(m)) return time24
+  const period = h >= 12 ? "PM" : "AM"
+  const displayH = h % 12 === 0 ? 12 : h % 12
+  return `${displayH}:${String(m).padStart(2, "0")} ${period}`
 }

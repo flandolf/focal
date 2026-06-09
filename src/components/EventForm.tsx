@@ -41,6 +41,7 @@ interface EventFormInitialValues {
   duration?: string
   endTime?: string
   isFinished?: boolean
+  endDate?: Date
   finishedAt?: string
 }
 
@@ -73,6 +74,7 @@ function EventForm({
   const [subjectId, setSubjectId] = useState(initialValues?.subjectId ?? "")
   const [location, setLocation] = useState(initialValues?.location ?? "")
   const [eventDate, setEventDate] = useState<Date | undefined>(() => initialValues?.date ?? new Date())
+  const [endDate, setEndDate] = useState<Date | undefined>(() => initialValues?.endDate ?? undefined)
   const [startTime, setStartTime] = useState(initialValues?.startTime ?? "09:00")
   const [duration, setDuration] = useState(initialValues?.duration ?? "120")
   const [endTimeMode, setEndTimeMode] = useState<"duration" | "end">(() => {
@@ -99,6 +101,15 @@ function EventForm({
   const subjects = initialSubject && !baseSubjects.some((subject) => subject.id === initialSubject.id)
     ? [initialSubject, ...baseSubjects]
     : baseSubjects
+  // Number of days the event spans (1 = same day)
+  const multiDaySpanDays = useMemo(() => {
+    if (!eventDate || !endDate) return 1
+    const raw = format(endDate, "yyyy-MM-dd") !== format(eventDate, "yyyy-MM-dd")
+    if (!raw) return 1
+    return Math.round((new Date(endDate).setHours(0,0,0,0) - new Date(eventDate).setHours(0,0,0,0)) / (1000 * 60 * 60 * 24)) + 1
+  }, [eventDate, endDate])
+
+  const isMultiDay = multiDaySpanDays > 1
 
   // Compute effective endTime for submit — explicitEndTime takes priority over duration
   const effectiveEndTime = useMemo(() => {
@@ -106,9 +117,12 @@ function EventForm({
     const start = new Date(eventDate ?? new Date())
     start.setHours(sh, sm, 0, 0)
 
+    const endDateToUse = isMultiDay ? endDate : eventDate
+    if (!endDateToUse) return undefined
+
     if (endTimeMode === "end" && explicitEndTime) {
       const [eh, em] = explicitEndTime.split(":").map(Number)
-      const end = new Date(start)
+      const end = new Date(endDateToUse)
       end.setHours(eh, em, 0, 0)
       if (end > start) return end
       return undefined
@@ -116,10 +130,15 @@ function EventForm({
 
     const durationMinutes = Number.parseInt(duration, 10)
     if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+      if (isMultiDay && endDate) {
+        const end = new Date(endDate)
+        end.setHours(sh, sm, 0, 0)
+        return end >= start ? end : undefined
+      }
       return addMinutes(start, durationMinutes)
     }
     return undefined
-  }, [startTime, eventDate, duration, endTimeMode, explicitEndTime])
+  }, [startTime, eventDate, endDate, isMultiDay, duration, endTimeMode, explicitEndTime])
 
   // When in end-time mode, compute a read-only duration for display
   const computedDurationMinutes = useMemo(() => {
@@ -128,11 +147,11 @@ function EventForm({
     const [eh, em] = explicitEndTime.split(":").map(Number)
     const start = new Date(eventDate ?? new Date())
     start.setHours(sh, sm, 0, 0)
-    const end = new Date(start)
+    const end = new Date(endDate ?? eventDate ?? new Date())
     end.setHours(eh, em, 0, 0)
     if (end <= start) return undefined
     return Math.round((end.getTime() - start.getTime()) / (1000 * 60))
-  }, [startTime, eventDate, explicitEndTime, endTimeMode])
+  }, [startTime, eventDate, endDate, explicitEndTime, endTimeMode])
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
@@ -261,15 +280,32 @@ function EventForm({
           title="Schedule"
           icon={<CalendarIcon className={sectionIconClass} />}
         >
-          <div className="grid gap-3 sm:grid-cols-[1.25fr_1fr_1fr]">
+          <div className="grid gap-3 sm:grid-cols-2">
             <DatePickerField
-              label="Date"
+              label="Start date"
               date={eventDate}
               onDateChange={setEventDate}
               buttonClassName="h-10 rounded-lg bg-background/65"
             />
+            <DatePickerField
+              label="End date"
+              date={endDate ?? eventDate}
+              onDateChange={(date) => setEndDate(date)}
+              buttonClassName="h-10 rounded-lg bg-background/65"
+            />
+          </div>
 
-            <FormField label="Start" labelClassName={fieldLabelClass}>
+          {isMultiDay && (
+            <div className="flex items-center gap-2 rounded-lg bg-primary/8 px-3 py-2">
+              <span className="text-xs font-semibold text-primary tabular-nums">{multiDaySpanDays} days</span>
+              <span className="text-xs text-muted-foreground">
+                {format(eventDate!, "MMM d")} – {format(endDate!, "MMM d, yyyy")}
+              </span>
+            </div>
+          )}
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <FormField label="Start time" labelClassName={fieldLabelClass}>
               <div className={inputWithIconClass}>
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <input
@@ -282,9 +318,9 @@ function EventForm({
             </FormField>
 
             <FormField
-              label="End"
+              label="End time"
               labelClassName={fieldLabelClass}
-              labelAccessory={
+              labelAccessory={!isMultiDay && (
                 <button
                   type="button"
                   onClick={() => {
@@ -302,9 +338,8 @@ function EventForm({
                       : "text-muted-foreground/60 hover:text-muted-foreground"
                   )}
                 >
-                  {endTimeMode === "end" ? "use duration" : "set time"}
                 </button>
-              }
+              )}
             >
               {endTimeMode === "end" ? (
                 <div className={inputWithIconClass}>
@@ -313,6 +348,19 @@ function EventForm({
                     type="time"
                     value={explicitEndTime}
                     onChange={(e) => handleEndTimeChange(e.target.value)}
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  />
+                </div>
+              ) : isMultiDay ? (
+                <div className={inputWithIconClass}>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="time"
+                    value={explicitEndTime || startTime}
+                    onChange={(e) => {
+                      setExplicitEndTime(e.target.value)
+                      setEndTimeMode("end")
+                    }}
                     className="min-w-0 flex-1 bg-transparent text-sm outline-none"
                   />
                 </div>
@@ -331,8 +379,13 @@ function EventForm({
               )}
             </FormField>
           </div>
-          {endTimeMode === "end" && computedDurationMinutes !== undefined && (
-            <p className="text-xs text-muted-foreground">
+          {endDate && eventDate && endDate < eventDate && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              End date is before start date.
+            </p>
+          )}
+          {endTimeMode === "end" && computedDurationMinutes !== undefined && !isMultiDay && (
+            <p className="ml-0.25 mt-2 text-xs text-muted-foreground">
               {computedDurationMinutes} minutes
             </p>
           )}

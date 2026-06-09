@@ -21,6 +21,36 @@ import {
 import { findSubjectIdFromValues } from "@/lib/notion/subjectMatch"
 import { createNotionPage, updateNotionPage, deleteNotionPage, fetchNotionSchema } from "@/lib/notion/api"
 
+
+function buildSessionBodyText(session: StudySession): string | undefined {
+  const base = [session.description, session.notes].filter(Boolean).join("\n\n")
+  if (!session.activeDurations || session.activeDurations.length === 0) {
+    return base || undefined
+  }
+  const sorted = [...session.activeDurations].sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+  )
+  const lines: string[] = []
+  let lastEnd: Date | null = null
+  let totalActive = 0
+  for (const d of sorted) {
+    const startDate = new Date(d.start)
+    const endDate = new Date(d.end)
+    const durationMin = Math.round((endDate.getTime() - startDate.getTime()) / 60000)
+    totalActive += durationMin
+    const timeFmt = (date: Date) =>
+      date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
+    if (lastEnd) {
+      const restMin = Math.round((startDate.getTime() - lastEnd.getTime()) / 60000)
+      lines.push(`Break: ${timeFmt(lastEnd)} – ${timeFmt(startDate)} (${restMin}m)`)
+    }
+    lines.push(`Active: ${timeFmt(startDate)} – ${timeFmt(endDate)} (${durationMin}m)`)
+    lastEnd = endDate
+  }
+  lines.push(`\nTotal active study: ${totalActive}m`)
+  const timeline = lines.join("\n")
+  return base ? `${base}\n\n${timeline}` : timeline
+}
 // ---------------------------------------------------------------------------
 // Push helpers: retry, concurrency
 // ---------------------------------------------------------------------------
@@ -200,10 +230,10 @@ export async function pushSessionToNotion(
     setCachedSchema(settings.dataSourceId, schema)
   }
 
-  const bodyText = [session.description, session.notes].filter(Boolean).join("\n\n") || undefined
-  const properties = buildNotionSessionProperties(settings, session, subjects, schema)
+  const bodyText = buildSessionBodyText(session)
   const children = buildPageChildren(bodyText)
-  const bodyHash = hashBody(bodyText)
+  const properties = buildNotionSessionProperties(settings, session, subjects, schema)
+  const bodyHash = hashBody(bodyText ?? "")
 
   const page = session.source?.type === "notion"
     ? await updateOrCreatePage(settings, session.source.id, properties, children)
@@ -344,9 +374,9 @@ export function collectSessionPushTasks(
     const isFastPush = fastPushIds?.has(session.id)
     if (!isFastPush && !session.source && ctx.matchedSessionIds.has(session.id)) continue
     if (!isFastPush && !session.source && ctx.blockedSessionFingerprints.has(sessionFingerprint(session))) continue
-    const bodyText = [session.description, session.notes].filter(Boolean).join("\n\n") || undefined
+    const bodyText = buildSessionBodyText(session)
     const children = buildPageChildren(bodyText)
-    const bodyHash = hashBody(bodyText)
+    const bodyHash = hashBody(bodyText ?? "")
     const properties = buildNotionSessionProperties(settings, session, subjects, schema)
     if (session.source?.type === "notion") {
       if (isFastPush) {

@@ -434,33 +434,44 @@ function App() {
       if (adjacentSession) {
         const mergedStart = new Date(Math.min(new Date(adjacentSession.startTime).getTime(), start.getTime()))
         const mergedEnd = new Date(Math.max(new Date(adjacentSession.endTime).getTime(), end.getTime()))
-        const mergedDurationMin = Math.round((mergedEnd.getTime() - mergedStart.getTime()) / 60000)
+
+        const existingDurations = adjacentSession.activeDurations && adjacentSession.activeDurations.length > 0
+          ? adjacentSession.activeDurations
+          : [{ start: adjacentSession.startTime, end: adjacentSession.endTime }]
+        const newActiveDurations = [...existingDurations, { start: start.toISOString(), end: end.toISOString() }]
+        const mergedDurationMin = Math.round(newActiveDurations.reduce((sum, d) => {
+          return sum + (new Date(d.end).getTime() - new Date(d.start).getTime())
+        }, 0) / 60000)
 
         await updateSession(adjacentSession.id, {
           startTime: mergedStart.toISOString(),
           endTime: mergedEnd.toISOString(),
+          activeDurations: newActiveDurations,
           status: "in-progress",
           completedAt: undefined,
           description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)`,
         })
         toast.success("Pomodoro session merged on calendar")
-        const updatedSession = { ...adjacentSession, startTime: mergedStart.toISOString(), endTime: mergedEnd.toISOString(), status: "in-progress" as const, completedAt: undefined, description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)` }
+        const updatedSession = { ...adjacentSession, startTime: mergedStart.toISOString(), endTime: mergedEnd.toISOString(), activeDurations: newActiveDurations, status: "in-progress" as const, completedAt: undefined, description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)` }
         void pushSessionChange(updatedSession)
         return updatedSession
       }
 
       const durationMinutes = Math.round(data.durationSeconds / 60)
       const projectName = data.projectId ? projects.find((p) => p.id === data.projectId)?.name : undefined
+      const blockStart = start.toISOString()
+      const blockEnd = end.toISOString()
       const session = await addSession(
         data.projectId,
         data.subjectIds,
         getPomodoroTitle(data.subjectIds, data.cycleNumber, projectName),
-        start.toISOString(),
-        end.toISOString(),
+        blockStart,
+        blockEnd,
         getPomodoroDescription(durationMinutes, data.cycleNumber),
         undefined,
         getPomodoroNotes(data.cycleNumber),
         "in-progress",
+        [{ start: blockStart, end: blockEnd }],
       )
       toast.success("Pomodoro session added to calendar")
       void pushSessionChange(session)
@@ -878,6 +889,10 @@ function App() {
             description: descriptions.length > 0 ? descriptions.join("\n\n") : keeper.description,
             startTime: new Date(startMs).toISOString(),
             endTime: new Date(endMs).toISOString(),
+            activeDurations: selectedSessions.map((s) => ({
+              start: s.startTime,
+              end: s.endTime,
+            })),
             status: allComplete ? "completed" : anyInProgress ? "in-progress" : "planned",
             topics: topicItems.length > 0 ? topicItems : undefined,
             notes: notes.length > 0 ? notes.join("\n\n") : keeper.notes,
@@ -964,6 +979,14 @@ function App() {
     setEventDialogOpen(true)
   }
 
+  const handleMoveEvent = useCallback((eventId: string, newStartTime: string, newEndTime?: string) => {
+    const updates: Partial<Omit<CalendarEvent, "id" | "created_at">> = { startTime: newStartTime }
+    if (newEndTime) {
+      updates.endTime = newEndTime
+    }
+    void updateEvent(eventId, updates)
+  }, [updateEvent])
+
   const handleSyncNotionCalendar = async (onProgress: (msg: string) => void) => {
     return performNotionSync(true, onProgress)
   }
@@ -1025,7 +1048,7 @@ function App() {
           <motion.div
             layout
             className="min-h-0 shrink-0"
-            style={{ width: sidebarCollapsed ? "4.5rem" : "clamp(13rem, 28vw, 21rem)" }}
+            style={{ width: sidebarCollapsed ? "4.5rem" : "clamp(12rem, 24vw, 17rem)" }}
             transition={layoutTransition}
           >
             <Sidebar
@@ -1104,6 +1127,7 @@ function App() {
                     onSelectProject={handleSelectProject}
                     onSelectSession={handleSelectSession}
                     onSelectEvent={handleSelectEvent}
+                    onMoveEvent={handleMoveEvent}
                     onNewSession={handleOpenNewSession}
                     onNewEvent={handleOpenNewEvent}
                     onNewProject={() => setDialogOpen(true)}

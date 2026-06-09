@@ -1,11 +1,11 @@
 import { useState, useCallback, useMemo } from "react"
 import { createPortal } from "react-dom"
-import { format, isSameMonth, parseISO } from "date-fns"
+import { format, isSameMonth, parseISO, differenceInDays } from "date-fns"
 import { Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, Trash2, X, CheckCircle2, Combine, Check, Brain, Wand2, ArrowRight } from "lucide-react"
-import { getDayLabelForDate, getTimetableEntriesForDay } from "@/lib/timetable"
+import { getDayLabelForDate, getTimetableEntriesForDay, getCurrentPeriodInfo } from "@/lib/timetable"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { formatDeadline, isOverdue, getSubjectById, getEventTypeInfo, getSessionSubjectIds, cn, getLocalDateValue } from "@/lib/utils"
+import { formatDeadline, isOverdue, getSubjectById, getEventTypeInfo, getSessionSubjectIds, getSessionEffectiveMinutes, cn, getLocalDateValue, formatTime12 } from "@/lib/utils"
 import { AssessmentCopilot } from "@/components/AssessmentCopilot"
 import { TextEventPlanner } from "@/components/TextEventPlanner"
 import { getPriorityItems } from "@/lib/studyPriority"
@@ -64,6 +64,7 @@ interface HomeViewProps {
   onMergeStudySessions: (ids: string[]) => Promise<void>
   onGoTimetable: () => void
   timetableConfig: TimetableConfig | null
+  onMoveEvent?: (eventId: string, newStartTime: string, newEndTime?: string) => void
 }
 
 export function HomeView({
@@ -83,6 +84,7 @@ export function HomeView({
   onMergeEvents,
   onMergeStudySessions,
   onGoTimetable,
+  onMoveEvent,
   timetableConfig,
 }: HomeViewProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -114,9 +116,7 @@ export function HomeView({
     .sort((a, b) => parseISO(a.deadline!).getTime() - parseISO(b.deadline!).getTime())
 
   const totalStudyMinutes = sessions.reduce((acc, s) => {
-    const startMs = new Date(s.startTime).getTime()
-    const endMs = new Date(s.endTime).getTime()
-    return acc + (endMs - startMs) / (1000 * 60)
+    return acc + getSessionEffectiveMinutes(s)
   }, 0)
   const totalStudyHours = Math.round(totalStudyMinutes / 60 * 10) / 10
 
@@ -222,9 +222,25 @@ export function HomeView({
 
   const eventsByDate: Record<string, CalendarEvent[]> = {}
   events.forEach((event) => {
-    const dateKey = format(parseISO(event.startTime), "yyyy-MM-dd")
-    if (!eventsByDate[dateKey]) eventsByDate[dateKey] = []
-    eventsByDate[dateKey].push(event)
+    const startKey = format(parseISO(event.startTime), "yyyy-MM-dd")
+    if (!eventsByDate[startKey]) eventsByDate[startKey] = []
+    eventsByDate[startKey].push(event)
+
+    // Index multi-day events on every date they span
+    if (event.endTime) {
+      const endKey = format(parseISO(event.endTime), "yyyy-MM-dd")
+      if (endKey !== startKey) {
+        let current = parseISO(event.startTime)
+        const _endDate = parseISO(event.endTime)
+        while (true) {
+          current = new Date(current.getTime() + 24 * 60 * 60 * 1000)
+          const dateKey = format(current, "yyyy-MM-dd")
+          if (dateKey > endKey) break
+          if (!eventsByDate[dateKey]) eventsByDate[dateKey] = []
+          eventsByDate[dateKey].push(event)
+        }
+      }
+    }
   })
 
   const selectedEventIdSet = useMemo(() => new Set(selectedEventIds), [selectedEventIds])
@@ -331,39 +347,75 @@ export function HomeView({
           projectId: project.id,
         }
       }),
-    ...sessions
-      .filter((session) => session.status === "planned" && isMonthItemVisible(parseISO(session.startTime)))
-      .map((session) => {
+    ...(() => {
+      const plannedSessions = sessions.filter((session) => session.status === "planned" && isMonthItemVisible(parseISO(session.startTime)))
+      const subjectDayMap = new Map<string, { count: number; totalMinutes: number; date: Date; subjectId: string; projectName: string }>()
+      for (const session of plannedSessions) {
         const project = session.projectId ? projects.find((candidate) => candidate.id === session.projectId) : undefined
         const subjectIds = getSessionSubjectIds(session, project)
-        const subject = getSubjectById(subjectIds[0])
-        const durationMinutes = Math.max(0, Math.round((parseISO(session.endTime).getTime() - parseISO(session.startTime).getTime()) / (1000 * 60)))
-        const subjectContext = subjectIds.map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId).join(", ")
-        const sessionContext = project?.name ?? (subjectContext || "Study session")
-        return {
-          id: `session-${session.id}`,
-          title: session.title,
-          meta: `${durationMinutes} min · ${sessionContext}`,
-          date: parseISO(session.startTime),
-          color: subject?.color ?? CALENDAR_SESSION_COLOR,
-          kind: "session" as const,
-          session,
+        const dateKey = format(parseISO(session.startTime), "yyyy-MM-dd")
+        const durationMinutes = getSessionEffectiveMinutes(session)
+        const sessionContext = project?.name ?? (subjectIds.map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId).join(", ") || "Study session")
+        const minutesPerSubject = durationMinutes / (subjectIds.length || 1)
+        for (const subjectId of subjectIds) {
+          const key = `${dateKey}-${subjectId}`
+          const existing = subjectDayMap.get(key)
+          if (existing) {
+            existing.count++
+            existing.totalMinutes += minutesPerSubject
+          } else {
+            subjectDayMap.set(key, {
+              count: 1,
+              totalMinutes: minutesPerSubject,
+              date: parseISO(session.startTime),
+              subjectId,
+              projectName: sessionContext,
+            })
+          }
         }
-      }),
+      }
+      return Array.from(subjectDayMap.entries())
+        .map(([, group]) => {
+          const subject = getSubjectById(group.subjectId)
+          const totalHours = Math.round(group.totalMinutes / 6) / 10
+          const hourLabel = totalHours >= 1 ? `${totalHours}h` : `${Math.round(group.totalMinutes)}m`
+          const meta = group.count > 1
+            ? `${group.count} sessions · ${hourLabel} · ${group.projectName}`
+            : `${hourLabel} · ${group.projectName}`
+          return {
+            id: `session-${group.subjectId}-${format(group.date, "yyyy-MM-dd")}`,
+            title: subject?.shortCode ?? group.subjectId,
+            meta,
+            date: group.date,
+            color: subject?.color ?? CALENDAR_SESSION_COLOR,
+            kind: "session" as const,
+          }
+        })
+    })(),
     ...events
       .filter((event) => !event.isFinished && isMonthItemVisible(parseISO(event.startTime)))
       .map((event) => {
         const subject = getSubjectById(event.subjectId)
         const eventInfo = getEventTypeInfo(event.eventType)
-        const startStr = format(parseISO(event.startTime), "MMM d, h:mm a")
-        const endStr = event.endTime ? format(parseISO(event.endTime), "h:mm a") : null
+        const startDate = parseISO(event.startTime)
+        const isMultiDay = event.endTime && format(startDate, "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
+        let meta: string
+        if (isMultiDay && event.endTime) {
+          const endDate = parseISO(event.endTime)
+          const dayCount = differenceInDays(endDate, startDate) + 1
+          meta = `${eventInfo.label} · ${format(startDate, "MMM d")}–${format(endDate, "MMM d")} · All day (${dayCount}d)`
+        } else {
+          const startStr = format(startDate, "MMM d, h:mm a")
+          const endStr = event.endTime ? format(parseISO(event.endTime), "h:mm a") : null
+          meta = endStr
+            ? `${eventInfo.label} · ${startStr} – ${endStr}`
+            : `${eventInfo.label} · ${startStr}`
+        }
         return {
           id: `event-${event.id}`,
           title: event.title,
-          meta: endStr
-            ? `${eventInfo.label} · ${startStr} – ${endStr}`
-            : `${eventInfo.label} · ${startStr}`,
-          date: parseISO(event.startTime),
+          meta,
+          date: startDate,
           color: subject?.color ?? eventInfo.color,
           kind: "event" as const,
           event,
@@ -374,7 +426,7 @@ export function HomeView({
   const monthStudyMinutes = sessions
     .filter((session) => session.status === "planned" && isMonthItemVisible(parseISO(session.startTime)))
     .reduce((total, session) => {
-      const minutes = Math.max(0, Math.round((parseISO(session.endTime).getTime() - parseISO(session.startTime).getTime()) / (1000 * 60)))
+      const minutes = getSessionEffectiveMinutes(session)
       return total + minutes
     }, 0)
   const monthStudyHours = Math.round(monthStudyMinutes / 60 * 10) / 10
@@ -451,8 +503,7 @@ export function HomeView({
       ? subjectIds
       : subjectIds.filter((subjectId) => hasVisibleAssessmentDueWithinPrepWindow(subjectId, sessionStart))
     if (session.status === "planned" && !isMonthItemVisible(sessionStart)) return
-    if (creditedSubjectIds.length === 0) return
-    const minutes = Math.max(0, Math.round((parseISO(session.endTime).getTime() - sessionStart.getTime()) / (1000 * 60)))
+    const minutes = getSessionEffectiveMinutes(session)
     const minutesPerSubject = minutes / subjectIds.length
     creditedSubjectIds.forEach((subjectId) => {
       ensurePrepBalanceItem(subjectId).plannedMinutes += minutesPerSubject
@@ -482,7 +533,11 @@ export function HomeView({
     }
     if (item.event) {
       onSelectEvent(item.event)
+      return
     }
+    // Grouped session item — navigate to the day
+    setSelectedDate(format(item.date, "yyyy-MM-dd"))
+    clearEventSelection()
   }
 
   const handlePrepBalanceSelect = (item: PrepBalanceItem) => {
@@ -691,6 +746,9 @@ export function HomeView({
                 deadlinesByDate={deadlinesByDate}
                 sessionsByDate={sessionsByDate}
                 eventsByDate={eventsByDate}
+                events={events}
+                projects={projects}
+                onMoveEvent={onMoveEvent}
                 onSetCalendarView={setCalendarView}
                 onPrevMonth={handlePrevMonth}
                 onNextMonth={handleNextMonth}
@@ -706,7 +764,7 @@ export function HomeView({
                   selectedDate={selectedDate}
                   deadlines={selectedDayDeadlines}
                   sessions={selectedDaySessions}
-                  events={selectedDayEvents}
+                  events={events}
                   projects={projects}
                   calendarSelectionMode={calendarSelectionMode}
                   selectedEventIdSet={selectedEventIdSet}
@@ -753,10 +811,13 @@ export function HomeView({
               if (dayLabel === null) return null
               const entries = getTimetableEntriesForDay(dayLabel, timetableConfig.entries as Parameters<typeof getTimetableEntriesForDay>[1])
               if (entries.length === 0) return null
-              const periods = entries.flatMap((e) => e.periods)
+              const periods = entries
+                .flatMap((e) => e.periods)
+                .sort((a, b) => a.startTime.localeCompare(b.startTime))
+              const periodInfo = getCurrentPeriodInfo(periods)
               return (
                 <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
-                  <h3 className="mb-2.5 font-heading text-sm font-semibold flex items-center gap-1.5">
+                  <h3 className="mb-2.5 flex items-center gap-1.5 font-heading text-sm font-semibold">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                     Today&apos;s Timetable · Day {dayLabel}
                     <button
@@ -770,26 +831,87 @@ export function HomeView({
                   <div className="space-y-1">
                     {periods.map((period, idx) => {
                       const subject = getSubjectById(period.subject)
+                      const isCurrent = periodInfo.current?.startTime === period.startTime
+                        && periodInfo.current?.subject === period.subject
+                      const isNext = periodInfo.next?.startTime === period.startTime
+                        && periodInfo.next?.subject === period.subject
                       return (
-                        <div key={idx} className="flex items-center gap-2 rounded-lg bg-background/40 px-2.5 py-1.5">
-                          <span className="text-xs font-medium text-muted-foreground w-16 shrink-0 tabular-nums">
-                            {period.startTime}
+                        <div
+                          key={idx}
+                          className={cn(
+                            "relative flex items-center gap-2 rounded-lg px-2.5 py-1.5",
+                            isCurrent
+                              ? "bg-primary/[0.06] ring-1 ring-primary/15"
+                              : "bg-background/40",
+                          )}
+                        >
+                          {/* Subject color accent bar */}
+                          {subject && (
+                            <div
+                              className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full"
+                              style={{ backgroundColor: subject.color }}
+                            />
+                          )}
+
+                          {/* Current period pulsing dot */}
+                          {isCurrent && (
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-pulse" />
+                          )}
+
+                          {/* Time */}
+                          <span className="w-14 shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+                            {formatTime12(period.startTime)}
                           </span>
-                          <span className="text-xs text-muted-foreground truncate" style={{ color: subject?.color }}>
+
+                          {/* Subject name */}
+                          <span className="min-w-0 truncate text-xs" style={{ color: subject?.color }}>
                             {subject ? subject.name : period.subject}
                           </span>
-                          <span className="text-xs text-muted-foreground tabular-nums shrink-0 ml-auto">
-                            {period.endTime}
+
+                          {/* End time or Up next badge */}
+                          <span className="ml-auto shrink-0 text-xs tabular-nums">
+                            {isNext && !isCurrent ? (
+                              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40">
+                                Up next
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/50">
+                                {formatTime12(period.endTime)}
+                              </span>
+                            )}
                           </span>
+
+                          {/* Location */}
                           {period.location && (
-                            <span className="text-xs text-muted-foreground/60 shrink-0 truncate hidden sm:inline">
-                              · {period.location}
+                            <span className="hidden shrink-0 items-center gap-0.5 truncate text-xs text-muted-foreground/50 sm:flex">
+                              <MapPin className="h-2.5 w-2.5" />
+                              {period.location}
                             </span>
                           )}
                         </div>
                       )
                     })}
                   </div>
+
+                  {/* Next period countdown */}
+                  {periodInfo.current && periodInfo.remainingMinutes > 0 && (
+                    <div className="mt-2 flex items-center gap-2 rounded-lg bg-primary/[0.04] px-2.5 py-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary/40" />
+                      <span className="text-xs text-muted-foreground">
+                        {periodInfo.next ? (
+                          <>
+                            <span className="font-medium text-foreground">{periodInfo.remainingMinutes}m</span> remaining —{" "}
+                            <span className="text-muted-foreground/70">{getSubjectById(periodInfo.next.subject)?.name ?? periodInfo.next.subject}</span> at{" "}
+                            <span className="tabular-nums">{formatTime12(periodInfo.next.startTime)}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-medium text-foreground">{periodInfo.remainingMinutes}m</span> remaining
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )
             })()}
