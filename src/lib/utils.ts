@@ -132,3 +132,32 @@ export function formatFileSize(bytes: number): string {
 export function sanitiseFolderName(name: string): string {
   return name.replace(/[^a-zA-Z0-9-_ ]/g, "").trim()
 }
+
+
+export function getLocalDateValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+export function combineDateAndTime(dateValue: string, timeValue: string): Date | null {
+  const dateParts = dateValue.split("-").map(Number)
+  const timeParts = timeValue.split(":").map(Number)
+  if (dateParts.length !== 3 || timeParts.length < 2) return null
+
+  const [year, month, day] = dateParts
+  const [hours, minutes] = timeParts
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes)
+  ) {
+    return null
+  }
+
+  const date = new Date(year, month - 1, day, hours, minutes, 0, 0)
+  return Number.isNaN(date.getTime()) ? null : date
+}

@@ -166,6 +166,9 @@ fn get_project_files_for_path(
     for entry in dir_entries {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
+        if name == ".DS_Store" {
+            continue;
+        }
         files.push(file_info_from_path(&path, name, None)?);
     }
 
@@ -194,6 +197,9 @@ fn collect_project_files_recursive(
             collect_project_files_recursive(&path, root_dir, files)?;
         } else if file_type.is_file() {
             let name = entry.file_name().to_string_lossy().to_string();
+            if name == ".DS_Store" {
+                continue;
+            }
             let subfolder = path
                 .parent()
                 .and_then(|parent| parent.strip_prefix(root_dir).ok())
@@ -505,6 +511,9 @@ fn read_project_files_recursive(
         let path = entry.path();
         let file_name = entry.file_name().to_string_lossy().to_string();
 
+        if file_name == ".DS_Store" {
+            continue;
+        }
         if path.is_file() && file_name.to_lowercase().contains(query) {
             let metadata = entry
                 .metadata()
