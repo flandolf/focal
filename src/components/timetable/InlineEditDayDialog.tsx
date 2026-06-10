@@ -491,16 +491,19 @@ interface PeriodRowProps {
   onMove: (direction: -1 | 1) => void
   onDuplicate: () => void
   onDelete: () => void
+  invalid?: boolean
 }
 
-function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDelete, subjects }: PeriodRowProps & { subjects: { id: string; name: string; shortCode: string; color: string }[] }) {
+function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDelete, subjects, invalid }: PeriodRowProps & { subjects: { id: string; name: string; shortCode: string; color: string }[] }) {
   return (
     <div
       className={cn(
         "rounded-xl border px-3 py-2.5 transition-colors",
-        period.isBreak
-          ? "border-amber-200/30 bg-amber-50/20 dark:border-amber-900/25 dark:bg-amber-950/15"
-          : "border-border/60 bg-background/50",
+        invalid
+          ? "border-destructive/50 bg-destructive/5"
+          : period.isBreak
+            ? "border-amber-200/30 bg-amber-50/20 dark:border-amber-900/25 dark:bg-amber-950/15"
+            : "border-border/60 bg-background/50",
       )}
     >
       <div className="flex items-start gap-2">
@@ -591,9 +594,14 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
       </div>
 
       {/* Break hint */}
-      {period.isBreak && (
+      {period.isBreak && !invalid && (
         <p className="mt-1.5 pl-7 text-caption text-amber-600/60 dark:text-amber-400/50">
           Marked as a break — subject and room are optional.
+        </p>
+      )}
+      {invalid && (
+        <p className="mt-1.5 pl-7 text-caption text-destructive">
+          Start time must be before end time.
         </p>
       )}
     </div>
@@ -615,7 +623,9 @@ export function InlineEditDayDialog({
   dayLabel,
   customSubjects = [],
 }: InlineEditDayDialogProps) {
-  const config = getTimetableConfig()
+  // Snapshot the config on mount only — the `key={dayLabel}` prop on the parent
+  // forces a remount when the user switches days, so we never edit stale data.
+  const [config] = useState(() => getTimetableConfig())
 
   const existingEntries = getTimetableEntriesForDay(dayLabel, config.entries)
   const existing = existingEntries[0]
@@ -635,6 +645,17 @@ export function InlineEditDayDialog({
   const [periods, setPeriods] = useState<PeriodDraft[]>(getInitialPeriods)
 
   const allSubjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])
+
+  // Live validation — derive from current periods, not state, so it stays in sync.
+  const invalidPeriodIndexes = useMemo(() => {
+    const set = new Set<number>()
+    periods.forEach((p, i) => {
+      if (!p.startTime || !p.endTime) set.add(i)
+      else if (p.startTime >= p.endTime) set.add(i)
+    })
+    return set
+  }, [periods])
+  const hasInvalidPeriods = invalidPeriodIndexes.size > 0
 
   const updatePeriod = useCallback((idx: number, field: keyof PeriodDraft, value: string | boolean) => {
     setPeriods((prev) => prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)))
@@ -662,21 +683,24 @@ export function InlineEditDayDialog({
   }, [])
 
   const addPeriod = useCallback(() => {
-    const last = periods[periods.length - 1]
     const parseTime = (t: string, addMins: number) => {
       const [h, m] = t.split(":").map(Number)
       const total = (h ?? 9) * 60 + (m ?? 0) + addMins
       return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`
     }
-    const newStart = last ? parseTime(last.endTime, 10) : "09:00"
-    const newEnd = last ? parseTime(last.endTime, 70) : "10:00"
-    setPeriods((prev) => [
-      ...prev,
-      { period: `Period ${prev.length + 1}`, subject: "", location: "", startTime: newStart, endTime: newEnd, isBreak: false },
-    ])
-  }, [periods])
+    setPeriods((prev) => {
+      const last = prev[prev.length - 1]
+      const newStart = last ? parseTime(last.endTime, 10) : "09:00"
+      const newEnd = last ? parseTime(last.endTime, 70) : "10:00"
+      return [
+        ...prev,
+        { period: `Period ${prev.length + 1}`, subject: "", location: "", startTime: newStart, endTime: newEnd, isBreak: false },
+      ]
+    })
+  }, [])
 
   const handleSave = useCallback(() => {
+    if (hasInvalidPeriods) return
     if (periods.length === 0) {
       const filtered = (config.entries).filter((e) => e.dayLabel !== dayLabel)
       setTimetableConfig({ ...config, entries: filtered, enabled: filtered.length > 0 })
@@ -701,7 +725,7 @@ export function InlineEditDayDialog({
     setTimetableConfig({ ...config, entries: updated, enabled: updated.length > 0 })
     window.dispatchEvent(new Event("focal-timetable-updated"))
     onOpenChange(false)
-  }, [periods, dayLabel, config, onOpenChange])
+  }, [periods, dayLabel, config, onOpenChange, hasInvalidPeriods])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -742,16 +766,28 @@ export function InlineEditDayDialog({
                 onMove={(dir) => movePeriod(idx, dir)}
                 onDuplicate={() => duplicatePeriod(idx)}
                 onDelete={() => deletePeriod(idx)}
+                invalid={invalidPeriodIndexes.has(idx)}
               />
             ))}
           </div>
+
+          {hasInvalidPeriods && (
+            <p className="text-xs text-destructive">
+              Start time must be before end time for every period.
+            </p>
+          )}
         </DialogBody>
 
         <DialogFooter className="m-0 shrink-0 items-center justify-between gap-3 rounded-none border-t px-5 py-3">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} className="gap-1.5 text-background">
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={hasInvalidPeriods}
+            className="gap-1.5 text-background"
+          >
             Save
           </Button>
         </DialogFooter>

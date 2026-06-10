@@ -25,28 +25,32 @@ export interface TimetableParseResult {
 
 // --- Helpers ---
 
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
 function normaliseSubject(rawSubject: string, subjects: string[]): string {
   const trimmed = rawSubject.trim()
   if (!trimmed) return trimmed
+  const lower = trimmed.toLowerCase()
 
   // Exact match
-  const exact = subjects.find(
-    (s) => s.toLowerCase() === trimmed.toLowerCase(),
-  )
+  const exact = subjects.find((s) => s.toLowerCase() === lower)
   if (exact) return exact
 
-  // Short-code match
+  // Short-code match (last whitespace-delimited token, e.g. "Mathematical Methods" → "Methods")
   const shortCode = subjects.find((s) => {
-    const parts = s.split(" ")
-    return parts[parts.length - 1].toLowerCase() === trimmed.toLowerCase()
+    const parts = s.split(/\s+/)
+    return parts[parts.length - 1].toLowerCase() === lower
   })
   if (shortCode) return shortCode
 
-  // Partial match
-  const partial = subjects.find((s) =>
-    s.toLowerCase().includes(trimmed.toLowerCase()) ||
-    trimmed.toLowerCase().includes(s.split(" ")[0].toLowerCase()),
-  )
+  // Whole-word match against the first word of the subject, so "maths" doesn't match "mathematical" via substring
+  const wordRe = new RegExp(`\\b${lower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+  const partial = subjects.find((s) => wordRe.test(s))
   if (partial) return partial
 
   return trimmed
@@ -58,7 +62,10 @@ function parseTimetableResponse(
   let parsed: Record<string, unknown>
   try {
     parsed = JSON.parse(content) as Record<string, unknown>
-  } catch {
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn("[timetable] failed to parse AI response as JSON", err, content.slice(0, 200))
+    }
     return { entries: [], holidays: [] }
   }
   const rawEntries = Array.isArray(parsed.entries)
@@ -72,7 +79,8 @@ function parseTimetableResponse(
 }
 
 function normalisePeriodTime(time: string): string {
-  // Accept "9:00", "09:00", "9:00am", "09:00", "9:00 AM"
+  if (typeof time !== "string") return "09:00"
+  // Accept "9:00", "09:00", "9:00am", "09:00", "9:00 AM", "9.00"
   const cleaned = time.trim().toLowerCase().replace(/"/g, "")
   const normalized = cleaned.replace(/am|pm/gi, "").trim()
   const parts = normalized.split(/[:\u3001.]/)
@@ -80,6 +88,7 @@ function normalisePeriodTime(time: string): string {
 
   let hours = parseInt(parts[0], 10)
   const minutes = parseInt(parts[1].padEnd(2, "0").slice(0, 2), 10)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return "09:00"
 
   if (cleaned.includes("pm") && hours !== 12) hours += 12
   if (cleaned.includes("am") && hours === 12) hours = 0
@@ -93,7 +102,7 @@ function toTimetableEntry(raw: unknown): TimetableParseDraft | null {
   const r = raw as Record<string, unknown>
   const rawDay = r.day ?? r.day_label ?? r.dayNumber ?? r.day_number
   const dayLabel =
-    typeof rawDay === "number" && rawDay >= 1 && rawDay <= 10
+    typeof rawDay === "number" && rawDay >= 1 && rawDay <= 10 && Number.isInteger(rawDay)
       ? (rawDay as TimetableDayLabel)
       : null
 
@@ -109,13 +118,16 @@ function toTimetableEntry(raw: unknown): TimetableParseDraft | null {
     .map((p) => {
       const rawSubject = typeof p.subject === "string" ? p.subject : typeof p.name === "string" ? p.name : ""
       return {
-        period: typeof p.period === "string" ? p.period.trim() : typeof p.periodNumber === "string" ? p.periodNumber.trim() : "?",
+        period: typeof p.period === "string" ? p.period.trim() : typeof p.periodNumber === "string" ? p.periodNumber.trim() : "Period",
         subject: normaliseSubject(rawSubject, subjectIds),
         location: typeof p.location === "string" ? p.location.trim() : "",
         startTime: normalisePeriodTime(typeof p.start_time === "string" ? p.start_time : typeof p.startTime === "string" ? p.startTime : "09:00"),
         endTime: normalisePeriodTime(typeof p.end_time === "string" ? p.end_time : typeof p.endTime === "string" ? p.endTime : "10:00"),
       }
     })
+    .filter((p) => p.startTime < p.endTime)
+
+  if (periods.length === 0) return null
 
   return { dayLabel, periods }
 }
@@ -306,13 +318,16 @@ RULES:
 }
 
 export function isDateInHoliday(date: Date, holidays: SchoolHoliday[]): boolean {
-  const dateStr = date.toISOString().slice(0, 10)
+  const dateStr = toLocalDateStr(date)
   return holidays.some((h) => dateStr >= h.startDate && dateStr <= h.endDate)
 }
 
 /**
  * Compute the day label (1–10) for a given date based on the configured day-1 start date.
- * Returns null if the date falls within a holiday period.
+ * Returns null if the date falls within a holiday period, or before day-1 starts.
+ *
+ * Uses local-date arithmetic so behaviour is consistent across timezones — VCE schools
+ * operate on local calendar days, not UTC days.
  */
 export function getDayLabelForDate(
   date: Date,
@@ -325,7 +340,10 @@ export function getDayLabelForDate(
   if (Number.isNaN(start.getTime())) return null
 
   const msPerDay = 24 * 60 * 60 * 1000
-  const diffDays = Math.floor((date.getTime() - start.getTime()) / msPerDay)
+  // Compare in local-midnight space so the diff isn't skewed by time-of-day or timezone.
+  const startLocal = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const dateLocal = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const diffDays = Math.round((dateLocal.getTime() - startLocal.getTime()) / msPerDay)
   if (diffDays < 0) return null
 
   return ((diffDays % 10) + 1) as TimetableDayLabel
@@ -350,16 +368,27 @@ export interface CurrentPeriodInfo {
 /**
  * Find the current (in-progress) and next upcoming period from a list of periods,
  * based on the current wall-clock time.
+ *
+ * Sorts periods by start time internally so the result is correct regardless of input order.
+ * Periods with invalid (NaN) times are skipped. If the current time is before all periods,
+ * the first period is reported as `next`. If after all periods, `next` is null.
  */
 export function getCurrentPeriodInfo(periods: TimetablePeriod[], now?: Date): CurrentPeriodInfo {
   const date = now ?? new Date()
   const currentMinutes = date.getHours() * 60 + date.getMinutes()
 
-  const parsed = periods.map((p) => {
-    const [sh, sm] = p.startTime.split(":").map(Number)
-    const [eh, em] = p.endTime.split(":").map(Number)
-    return { period: p, start: sh * 60 + sm, end: eh * 60 + em }
-  })
+  const parsed = periods
+    .map((p) => {
+      const [sh, sm] = p.startTime.split(":").map(Number)
+      const [eh, em] = p.endTime.split(":").map(Number)
+      if (!Number.isFinite(sh) || !Number.isFinite(sm) || !Number.isFinite(eh) || !Number.isFinite(em)) return null
+      const start = sh * 60 + sm
+      const end = eh * 60 + em
+      if (end <= start) return null
+      return { period: p, start, end }
+    })
+    .filter((p): p is { period: TimetablePeriod; start: number; end: number } => p !== null)
+    .sort((a, b) => a.start - b.start)
 
   let current: TimetablePeriod | null = null
   let next: TimetablePeriod | null = null
@@ -369,8 +398,12 @@ export function getCurrentPeriodInfo(periods: TimetablePeriod[], now?: Date): Cu
     if (currentMinutes >= p.start && currentMinutes < p.end) {
       current = p.period
       remainingMinutes = p.end - currentMinutes
+      // A current period is in progress; `next` is the period after it.
+      continue
     }
-    if (currentMinutes < p.start && !next) {
+    if (current === null && currentMinutes < p.start && next === null) {
+      next = p.period
+    } else if (current !== null && next === null && p.start > currentMinutes) {
       next = p.period
     }
   }

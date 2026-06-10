@@ -108,6 +108,7 @@ function AiPeriodRow({
 
 function AiEntryCard({
   draft,
+  duplicate,
   onChangeDay,
   onToggle,
   onDeleteDay,
@@ -116,6 +117,7 @@ function AiEntryCard({
   onAddPeriod,
 }: {
   draft: TimetableAiEditDraft & { id: string; approved: boolean }
+  duplicate?: boolean
   onChangeDay: (day: number) => void
   onToggle: () => void
   onDeleteDay: () => void
@@ -129,9 +131,11 @@ function AiEntryCard({
     <div
       className={cn(
         "rounded-xl border transition-colors",
-        draft.approved
-          ? "border-border/70 bg-background/50"
-          : "border-destructive/25 bg-destructive/4",
+        duplicate
+          ? "border-amber-400/50 bg-amber-50/30 dark:border-amber-800/50 dark:bg-amber-950/20"
+          : draft.approved
+            ? "border-border/70 bg-background/50"
+            : "border-destructive/25 bg-destructive/4",
       )}
     >
       {/* Header row */}
@@ -210,7 +214,8 @@ function AiEntryCard({
 // --- Main dialog ---
 
 export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: TimetableAiEditorProps) {
-  const config = getTimetableConfig()
+  // Snapshot config on each open so a stale entry (e.g. from a previous edit) can't overwrite newer changes.
+  const [config, setConfig] = useState(() => getTimetableConfig())
 
   const [instruction, setInstruction] = useState("")
   const [loading, setLoading] = useState(false)
@@ -225,6 +230,14 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
   const [editableDay1, setEditableDay1] = useState("")
 
   const allSubjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])
+
+  // Detect duplicate day labels (user can change the day in the dropdown)
+  const duplicateDayLabels = useMemo(() => {
+    const counts = new Map<TimetableDayLabel, number>()
+    editableEntries.forEach((e) => counts.set(e.dayLabel, (counts.get(e.dayLabel) ?? 0) + 1))
+    return new Set(Array.from(counts.entries()).filter(([, n]) => n > 1).map(([d]) => d))
+  }, [editableEntries])
+  const hasDuplicates = duplicateDayLabels.size > 0
 
   // Build diff summary from current config vs proposed
   const diffSummary = useMemo(() => {
@@ -255,9 +268,14 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
     if (modified.length > 0) changes.push(`Day${modified.length > 1 ? "s" : ""} modified: ${modified.map((e) => e.dayLabel).join(", ")}`)
 
     if (result.day1Starts !== config.day1Starts) changes.push("Day 1 start date changed")
-    if (config.holidays.length !== result.holidays.length || config.holidays.some((h, i) => result.holidays[i]?.name !== h.name)) {
-      changes.push("Holidays updated")
-    }
+
+    // Compare holidays as sets, not by index, so reordering doesn't flag a false positive.
+    const currentHolidayKeys = new Set(config.holidays.map((h) => `${h.name}|${h.startDate}|${h.endDate}`))
+    const proposedHolidayKeys = new Set(result.holidays.map((h) => `${h.name}|${h.startDate}|${h.endDate}`))
+    const holidaysChanged =
+      currentHolidayKeys.size !== proposedHolidayKeys.size ||
+      Array.from(currentHolidayKeys).some((k) => !proposedHolidayKeys.has(k))
+    if (holidaysChanged) changes.push("Holidays updated")
 
     return changes
   }, [result, config])
@@ -303,8 +321,17 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
   }
 
   const handleApply = () => {
+    if (hasDuplicates) return
+    // If multiple entries target the same day, keep the first approved one and discard the rest
+    // so we never write two entries with the same dayLabel (which would corrupt the data).
     const approved = editableEntries.filter((e) => e.approved)
-    const entries = serializeEntryToTimetable(approved)
+    const seen = new Set<TimetableDayLabel>()
+    const deduped = approved.filter((e) => {
+      if (seen.has(e.dayLabel)) return false
+      seen.add(e.dayLabel)
+      return true
+    })
+    const entries = serializeEntryToTimetable(deduped)
     const updated: TimetableConfig = {
       enabled: entries.length > 0,
       day1Starts: editableDay1,
@@ -316,15 +343,21 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
     setSaved(true)
   }
 
+  const resetState = useCallback(() => {
+    setInstruction("")
+    setResult(null)
+    setError(null)
+    setSaved(false)
+    setEditableEntries([])
+    setConfig(getTimetableConfig())
+  }, [])
+
   const handleClose = () => {
     onOpenChange(false)
-    setTimeout(() => {
-      setInstruction("")
-      setResult(null)
-      setError(null)
-      setSaved(false)
-      setEditableEntries([])
-    }, 150)
+    // Reset on next tick so the close animation isn't interrupted by state churn.
+    // Using rAF is more reliable than a fixed timeout (which can race with the close transition).
+    const id = requestAnimationFrame(() => resetState())
+    return () => cancelAnimationFrame(id)
   }
 
   // --- Entry card callbacks ---
@@ -461,6 +494,12 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
                   </p>
                 </div>
 
+                {hasDuplicates && (
+                  <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                    Two or more entries share the same day number. Only the first approved entry for each day will be saved.
+                  </p>
+                )}
+
                 <ScrollArea className="-mx-5 min-h-0 px-5" style={{ maxHeight: "calc(100% - 2rem)" }}>
                   <div className="space-y-2">
                     {editableEntries.length === 0 ? (
@@ -472,6 +511,7 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
                         <AiEntryCard
                           key={draft.id}
                           draft={draft}
+                          duplicate={duplicateDayLabels.has(draft.dayLabel)}
                           onChangeDay={(day: number) => changeEntryDay(draft.id, day)}
                           onToggle={() => toggleEntry(draft.id)}
                           onDeleteDay={() => deleteEntry(draft.id)}
