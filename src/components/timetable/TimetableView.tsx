@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react"
-import { Clock, Pencil, AlertCircle, CalendarDays, Edit3, MapPin, Wand2 } from "lucide-react"
+import { useState, useMemo, useEffect, useCallback } from "react"
+import { Clock, Pencil, AlertCircle, CalendarDays, ChevronDown, Edit3, MapPin, Pin, PinOff, Wand2 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn, getSubjectById, formatTime12 } from "@/lib/utils"
 import { getDayLabelForDate, getTimetableEntriesForDay, getCurrentPeriodInfo } from "@/lib/timetable"
-import { getTimetableConfig } from "@/lib/settings"
+import { getTimetableConfig, setTimetableCurrentDayOverride } from "@/lib/settings"
 import { TimetableDialog } from "@/components/TimetableDialog"
 import { InlineEditDayDialog } from "@/components/timetable/InlineEditDayDialog"
 import { TimetableAiEditor } from "@/components/timetable/TimetableAiEditor"
@@ -20,6 +21,7 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [editDayOpen, setEditDayOpen] = useState(false)
   const [editDayLabel, setEditDayLabel] = useState<TimetableDayLabel>(1)
+  const [dayPickerOpen, setDayPickerOpen] = useState(false)
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -34,10 +36,18 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
     })
   }, [config])
 
-  const currentDayLabel = useMemo(() => {
+  const autoDayLabel = useMemo(() => {
     if (!config.enabled || !config.day1Starts) return null
-    return getDayLabelForDate(new Date(), config.day1Starts, config.holidays)
-  }, [config])
+    return getDayLabelForDate(now, config.day1Starts, config.holidays)
+  }, [config, now])
+
+  const currentDayLabel = useMemo<TimetableDayLabel | null>(() => {
+    if (!config.enabled) return null
+    if (config.currentDayOverride != null) {
+      return config.currentDayOverride
+    }
+    return autoDayLabel
+  }, [config, autoDayLabel])
 
   const todayPeriods = useMemo(() => {
     if (currentDayLabel === null) return []
@@ -47,6 +57,23 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
 
   const todayPeriodInfo = useMemo(() => getCurrentPeriodInfo(todayPeriods, now), [todayPeriods, now])
 
+  const isDayOverridden = config.currentDayOverride != null
+
+  const handleSetDay = useCallback((day: TimetableDayLabel) => {
+    setTimetableCurrentDayOverride(day)
+    setConfig(getTimetableConfig())
+    setDayPickerOpen(false)
+  }, [])
+
+  const handleResetDay = useCallback(() => {
+    setTimetableCurrentDayOverride(null)
+    setConfig(getTimetableConfig())
+    setDayPickerOpen(false)
+  }, [])
+
+  const refreshConfig = useCallback(() => setConfig(getTimetableConfig()), [])
+
+  const showDayPicker = config.enabled && !!config.day1Starts
 
   return (
     <>
@@ -60,10 +87,80 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
               </div>
               <div>
                 <h2 className="font-heading text-lg font-semibold">Timetable</h2>
-                {currentDayLabel !== null && config.enabled && (
-                  <p className="text-caption text-muted-foreground">
-                    Day {currentDayLabel}
-                    {todayPeriods.length > 0 && (
+                {showDayPicker && (
+                  <p className="flex items-center text-caption text-muted-foreground">
+                    <Popover open={dayPickerOpen} onOpenChange={setDayPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring",
+                            isDayOverridden && "text-primary",
+                          )}
+                          aria-label="Set current day"
+                        >
+                          <span className="font-medium">
+                            {currentDayLabel !== null ? `Day ${currentDayLabel}` : "No day"}
+                          </span>
+                          {isDayOverridden ? (
+                            <Pin className="h-3 w-3 fill-primary" aria-hidden />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 text-muted-foreground/50" aria-hidden />
+                          )}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2" align="start">
+                        <div className="px-1.5 pb-1.5 pt-0.5">
+                          <p className="text-xs font-medium leading-none">Set current day</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                            {isDayOverridden
+                              ? "Pinned to a specific cycle day."
+                              : autoDayLabel === null
+                                ? "Pick a day to override the holiday auto-detection."
+                                : "Pick any day to pin the timetable to it."}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-5 gap-1">
+                          {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as TimetableDayLabel[]).map((d) => {
+                            const isSelected = currentDayLabel === d
+                            const isAuto = autoDayLabel === d
+                            return (
+                              <button
+                                key={d}
+                                type="button"
+                                onClick={() => handleSetDay(d)}
+                                className={cn(
+                                  "relative flex h-8 items-center justify-center rounded-md border text-xs font-semibold transition-colors",
+                                  isSelected
+                                    ? "border-primary bg-primary/10 text-primary"
+                                    : "border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                                )}
+                                aria-pressed={isSelected}
+                              >
+                                {d}
+                                {isAuto && (
+                                  <span
+                                    className="absolute -bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-muted-foreground/40"
+                                    aria-hidden
+                                  />
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {isDayOverridden && (
+                          <button
+                            type="button"
+                            onClick={handleResetDay}
+                            className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-input bg-background/60 px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+                          >
+                            <PinOff className="h-3 w-3" />
+                            Reset to auto
+                          </button>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                    {currentDayLabel !== null && todayPeriods.length > 0 && (
                       <>
                         <span className="mx-1.5 text-muted-foreground/40">·</span>
                         {todayPeriods.length} period{todayPeriods.length !== 1 ? "s" : ""}
@@ -158,6 +255,12 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
                           )}>
                             Day {dayLabel}
                           </span>
+                          {isToday && isDayOverridden && (
+                            <Pin
+                              className="h-3 w-3 text-primary"
+                              aria-label="Pinned"
+                            />
+                          )}
                         </div>
                         <button
                           type="button"
@@ -194,10 +297,10 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
                                   isCurrentPeriod && "bg-primary/[0.06] ring-1 ring-primary/15",
                                 )}
                               >
-                                {/* Subject color accent bar */}
+                                {/* Subject color accent bar — placed just inside the row padding so it isn't clipped */}
                                 {subject && (
                                   <div
-                                    className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full"
+                                    className="absolute left-1.5 top-1 bottom-1 w-0.5 rounded-full"
                                     style={{ backgroundColor: subject.color }}
                                   />
                                 )}
@@ -266,7 +369,7 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
         open={editOpen}
         onOpenChange={(open) => {
           setEditOpen(open)
-          if (!open) setConfig(getTimetableConfig())
+          if (!open) refreshConfig()
         }}
         customSubjects={customSubjects}
       />
@@ -276,7 +379,7 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
         open={editDayOpen}
         onOpenChange={(open) => {
           setEditDayOpen(open)
-          if (!open) setConfig(getTimetableConfig())
+          if (!open) refreshConfig()
         }}
         dayLabel={editDayLabel}
         customSubjects={customSubjects}
@@ -286,7 +389,7 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
         open={aiEditOpen}
         onOpenChange={(open) => {
           setAiEditOpen(open)
-          if (!open) setConfig(getTimetableConfig())
+          if (!open) refreshConfig()
         }}
         customSubjects={customSubjects}
       />
