@@ -1,4 +1,5 @@
 import { createElement } from "react"
+import { motion, useReducedMotion } from "framer-motion"
 import { Clock, Folder, Settings, FolderUp, Plus, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -7,6 +8,7 @@ import { FileStudyPlannerButton } from "@/components/FileStudyPlannerButton"
 import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo } from "@/lib/utils"
 import type { CalendarEvent, FileInfo, Project, StudySession } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { staggerContainer, staggerItem } from "@/lib/motion"
 import { getProjectIcon, getSegmentedButtonClassName } from "./shared"
 
 interface ProjectHeaderProps {
@@ -39,19 +41,27 @@ export function ProjectHeader({
   const subject = getSubjectById(project.subjectId)
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
   const projectIcon = getProjectIcon(project.subjectId)
+  const reduceMotion = useReducedMotion() === true
 
   return (
-    <div className="border-b border-border/70">
+    <motion.div
+      className="border-b border-border/70"
+      variants={staggerContainer(0.06, 0.04)}
+      initial="initial"
+      animate="animate"
+    >
       <div className="px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
+          <motion.div variants={staggerItem} className="min-w-0 flex-1">
             <div className="flex items-center gap-3 min-[1200px]:gap-3.5">
-              <span
+              <motion.span
+                whileHover={reduceMotion ? undefined : { scale: 1.05, transition: { type: "spring", stiffness: 480, damping: 28 } }}
+                whileTap={reduceMotion ? undefined : { scale: 0.95 }}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-background/45 shadow-sm"
                 style={subject ? { backgroundColor: subject.color + "14", color: subject.color } : undefined}
               >
                 {createElement(projectIcon, { className: "h-5 w-5", "aria-hidden": true })}
-              </span>
+              </motion.span>
               <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
             </div>
             <p className="mt-1.5 truncate text-caption text-muted-foreground">
@@ -84,8 +94,8 @@ export function ProjectHeader({
                 </Badge>
               )}
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          </motion.div>
+          <motion.div variants={staggerItem} className="flex shrink-0 items-center gap-1.5">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onOpenSettings}>
@@ -128,11 +138,14 @@ export function ProjectHeader({
               <Plus className="h-4 w-4" />
               <span>Add Files</span>
             </Button>
-          </div>
+          </motion.div>
         </div>
       </div>
 
-      <div className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8">
+      <motion.div
+        variants={staggerItem}
+        className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8"
+      >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
             <button
@@ -158,7 +171,7 @@ export function ProjectHeader({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

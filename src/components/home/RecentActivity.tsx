@@ -1,6 +1,7 @@
 import { format } from "date-fns"
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { ChevronRight, Activity } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { staggerContainer, staggerItem, REDUCED_TRANSITION, hoverNudgeRight } from "@/lib/motion"
 import type { StudySession, CalendarEvent } from "@/lib/types"
 
 interface ActivityItem {
@@ -45,6 +46,7 @@ export function RecentActivity({
   onSelectSession,
   onSelectEvent,
 }: RecentActivityProps) {
+  const reduceMotion = useReducedMotion() === true
   return (
     <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
       <button
@@ -56,36 +58,60 @@ export function RecentActivity({
           <Activity className="h-3.5 w-3.5 text-muted-foreground" />
           Recent Activity
         </h3>
-        <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", isOpen && "rotate-90")} />
+        <motion.span
+          animate={reduceMotion ? undefined : { rotate: isOpen ? 90 : 0 }}
+          transition={reduceMotion ? REDUCED_TRANSITION : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="inline-flex"
+        >
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        </motion.span>
       </button>
-      {isOpen && (
-        <div className="mt-2.5 space-y-1">
-          {items.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Completed sessions and finished events will appear here.
-            </p>
-          ) : (
-            items.map((item) => (
-              <button
-                key={`${item.kind}-${item.id}`}
-                type="button"
-                onClick={() => item.session ? onSelectSession(item.session) : item.event ? onSelectEvent(item.event) : undefined}
-                className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-medium">{item.title}</p>
-                    <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.subtitle}</p>
-                  </div>
-                  <span className="shrink-0 text-micro leading-3 text-muted-foreground tabular-nums">
-                    {getRelativeTime(item.timestamp)}
-                  </span>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            key="recent-activity-body"
+            initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+            animate={reduceMotion ? { height: "auto", opacity: 1 } : { height: "auto", opacity: 1, transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] } }}
+            exit={reduceMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0, transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] } }}
+            className="overflow-hidden"
+          >
+            <motion.div
+              className="mt-2.5 space-y-1"
+              variants={staggerContainer(0.04, 0.05)}
+              initial="initial"
+              animate="animate"
+            >
+              {items.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Completed sessions and finished events will appear here.
+                </p>
+              ) : (
+                items.map((item) => (
+                  <motion.button
+                    key={`${item.kind}-${item.id}`}
+                    variants={staggerItem}
+                    whileHover={reduceMotion ? undefined : hoverNudgeRight(reduceMotion)}
+                    whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+                    type="button"
+                    onClick={() => item.session ? onSelectSession(item.session) : item.event ? onSelectEvent(item.event) : undefined}
+                    className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">{item.title}</p>
+                        <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.subtitle}</p>
+                      </div>
+                      <span className="shrink-0 text-micro leading-3 text-muted-foreground tabular-nums">
+                        {getRelativeTime(item.timestamp)}
+                      </span>
+                    </div>
+                  </motion.button>
+                ))
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

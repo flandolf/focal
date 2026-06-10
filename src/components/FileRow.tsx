@@ -1,5 +1,7 @@
 import { formatFileSize, formatDate } from "@/lib/utils"
 import { useState, useRef, useCallback, useMemo } from "react"
+import { motion, useReducedMotion } from "framer-motion"
+import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, hoverNudgeUp } from "@/lib/motion"
 import type { FileInfo, FileTag } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -104,8 +106,15 @@ export function FileRow({
     [fileTags],
   )
 
+  const reduceMotion = useReducedMotion() === true
+
   return (
-    <div
+    <motion.div
+      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduceMotion ? REDUCED_TRANSITION : { duration: MOTION_DURATION.normal, ease: MOTION_EASE }}
+      whileHover={hoverNudgeUp(reduceMotion, 1)}
+      whileTap={reduceMotion ? undefined : { scale: 0.998 }}
       className={cn(
         "group grid min-h-16 cursor-default items-center gap-3 px-5 py-2.5 transition-colors hover:bg-accent/30 min-[1200px]:px-8",
         FILE_ROW_GRID,
@@ -353,6 +362,6 @@ export function FileRow({
           </Popover>
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }

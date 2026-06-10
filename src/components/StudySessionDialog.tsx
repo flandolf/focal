@@ -646,7 +646,7 @@ export function StudySessionDialog({
                                 </div>
                               )}
                               <div className="flex items-center gap-1.5 rounded-lg bg-primary/8 p-1.5">
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold bg-primary/12 text-primary">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-caption font-bold bg-primary/12 text-primary">
                                   A{i + 1}
                                 </span>
                                 <div className="flex items-center gap-1">

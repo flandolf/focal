@@ -286,7 +286,7 @@ function TimePicker({ value, onChange, label }: TimePickerProps) {
                   setOpen(false)
                 }}
                 className={cn(
-                  "rounded border px-1 py-0.5 text-[10px] tabular-nums transition-colors",
+                  "rounded border px-1 py-0.5 text-caption tabular-nums transition-colors",
                   value === preset
                     ? "border-primary/30 bg-primary/10 text-primary"
                     : "border-input bg-background/60 text-muted-foreground hover:bg-accent/50",
@@ -349,7 +349,7 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
             </>
           ) : isCustomLabel ? (
             <>
-              <span className="flex h-2 w-2 shrink-0 items-center justify-center rounded-full bg-muted-foreground/30 text-[6px] font-bold text-background">✎</span>
+              <span className="flex h-2 w-2 shrink-0 items-center justify-center rounded-full bg-muted-foreground/30 text-micro font-bold text-background">✎</span>
               <span className="truncate text-muted-foreground/80">{value}</span>
             </>
           ) : (
@@ -403,7 +403,7 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
         {/* Custom label */}
         <div className="mt-1.5 border-t pt-1.5">
           <label className="mb-1 flex items-center gap-1.5 px-1 text-caption text-muted-foreground/60">
-            <span className="text-[10px]">✎</span>
+            <span className="text-caption">✎</span>
             Custom label
           </label>
           <input
@@ -559,7 +559,7 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
               type="button"
               onClick={() => onUpdate("isBreak", !period.isBreak)}
               className={cn(
-                "ml-auto flex h-6 items-center gap-1 rounded-full border px-2 text-[10px] font-medium transition-colors",
+                "ml-auto flex h-6 items-center gap-1 rounded-full border px-2 text-caption font-medium transition-colors",
                 period.isBreak
                   ? "border-amber-400/40 bg-amber-100/50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/50 dark:text-amber-400"
                   : "border-input bg-background/60 text-muted-foreground/50 hover:border-amber-400/30 hover:text-amber-600 dark:hover:text-amber-400",
@@ -747,7 +747,7 @@ export function InlineEditDayDialog({
 
           {/* Empty state */}
           {periods.length === 0 && (
-            <div className="rounded-xl border border-dashed border-border/50 bg-muted/15 px-4 py-10 text-center">
+            <div className="rounded-xl border border-dashed border-border/50 bg-muted/15 px-4 py-8 text-center">
               <p className="text-sm text-muted-foreground/60">No periods.</p>
               <p className="mt-1 text-xs text-muted-foreground/50">Add a period or save to remove this day.</p>
             </div>

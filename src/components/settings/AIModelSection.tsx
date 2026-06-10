@@ -476,7 +476,7 @@ export function AIModelSection() {
             <ScrollArea className="mt-2 h-56 rounded-lg border border-border/70">
               <div className="p-1">
                 {filteredModels.length === 0 ? (
-                  <p className="py-8 text-center text-xs text-muted-foreground">
+                  <p className="py-6 text-center text-xs text-muted-foreground">
                     No models match your search.
                   </p>
                 ) : (

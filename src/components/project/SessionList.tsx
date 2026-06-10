@@ -1,8 +1,10 @@
+import { motion, useReducedMotion } from "framer-motion"
 import { Clock, Calendar, Plus } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getSubjectById, getSessionSubjectIds } from "@/lib/utils"
+import { hoverLift, staggerContainer, staggerItem } from "@/lib/motion"
 import type { Project, StudySession, StudySessionStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -21,6 +23,9 @@ export function SessionList({
   onSelectSession,
   onNewSession,
 }: SessionListProps) {
+  // Hooks must run unconditionally, before any early return.
+  const reduceMotion = useReducedMotion() === true
+
   if (sessions.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-5 min-[1200px]:px-8">
@@ -47,7 +52,12 @@ export function SessionList({
 
   return (
     <ScrollArea className="flex-1">
-      <div className="space-y-1.5 px-5 py-3 min-[1200px]:px-8">
+      <motion.div
+        className="space-y-1.5 px-5 py-3 min-[1200px]:px-8"
+        variants={staggerContainer(0.04, 0.05)}
+        initial="initial"
+        animate="animate"
+      >
         {sorted.map((session) => {
           const start = parseISO(session.startTime)
           const end = parseISO(session.endTime)
@@ -57,7 +67,10 @@ export function SessionList({
           const sessionSubjects = getSessionSubjectIds(session, project)
 
           return (
-            <button
+            <motion.button
+              variants={staggerItem}
+              whileHover={hoverLift(reduceMotion)}
+              whileTap={reduceMotion ? undefined : { scale: 0.995 }}
               type="button"
               key={session.id}
               onClick={() => onSelectSession?.(session)}
@@ -104,10 +117,10 @@ export function SessionList({
                   </div>
                 </div>
               </div>
-            </button>
+            </motion.button>
           )
         })}
-      </div>
+      </motion.div>
     </ScrollArea>
   )
 }

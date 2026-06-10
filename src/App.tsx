@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { downloadDir } from "@tauri-apps/api/path"
 import { open } from "@tauri-apps/plugin-dialog"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
+import { MOTION_DURATION, MOTION_EASE, pressable as pressableMotion, staggerContainer, staggerItem } from "@/lib/motion"
 import { Toaster, toast } from "sonner"
 import { FolderOpen, Search, Settings } from "lucide-react"
 import { Sidebar } from "@/components/Sidebar"
@@ -13,13 +14,28 @@ import { ProjectDialog } from "@/components/ProjectDialog"
 import { StudySessionDialog } from "@/components/StudySessionDialog"
 import { EventDialog } from "@/components/EventDialog"
 import { GlobalSearch } from "@/components/GlobalSearch"
-import { TimetableView } from "@/components/timetable/TimetableView"
 import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
-import { SettingsView } from "@/components/SettingsView"
-import { AnalyticsView } from "@/components/analytics/AnalyticsView"
 import { NotionConflictDialog } from "@/components/NotionConflictDialog"
 import { NotionSyncIndicator } from "@/components/NotionSyncIndicator"
+
+const TimetableView = lazy(() =>
+  import("@/components/timetable/TimetableView").then((m) => ({ default: m.TimetableView })),
+)
+const SettingsView = lazy(() =>
+  import("@/components/SettingsView").then((m) => ({ default: m.SettingsView })),
+)
+const AnalyticsView = lazy(() =>
+  import("@/components/analytics/AnalyticsView").then((m) => ({ default: m.AnalyticsView })),
+)
+
+function ViewFallback() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground/70" />
+    </div>
+  )
+}
 import { useProjects } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useEvents } from "@/hooks/useEvents"
@@ -36,9 +52,9 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
 
-const MOTION_EASE = [0.16, 1, 0.3, 1] as const
 const SHELL_LAYOUT_TRANSITION = { duration: 0.24, ease: MOTION_EASE } as const
 const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
+const EMPTY_STATE_TRANSITION = { duration: MOTION_DURATION.slow, ease: MOTION_EASE } as const
 const HIDDEN_SUBJECTS_STORAGE_KEY = "focal-hidden-subjects"
 
 function getStoredHiddenSubjectIds() {
@@ -1016,25 +1032,31 @@ function App() {
         <div className="app-titlebar-actions absolute left-(--app-titlebar-actions-left) top-(--app-titlebar-control-top) z-30 flex h-(--app-titlebar-control-size) items-center gap-1.5">
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <motion.button
                 onClick={() => setSearchOpen(true)}
+                whileHover={reduceMotion ? undefined : { scale: 1.06 }}
+                whileTap={reduceMotion ? undefined : { scale: 0.94 }}
+                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 560, damping: 28, mass: 0.55 }}
                 className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 aria-label="Search"
               >
                 <Search className="h-3.5 w-3.5" />
-              </button>
+              </motion.button>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start">Search · ⌘K</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <motion.button
                 onClick={() => setSettingsView(true)}
+                whileHover={reduceMotion ? undefined : { scale: 1.06 }}
+                whileTap={reduceMotion ? undefined : { scale: 0.94 }}
+                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 560, damping: 28, mass: 0.55 }}
                 className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 aria-label="Settings"
               >
                 <Settings className="h-3.5 w-3.5" />
-              </button>
+              </motion.button>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start">Settings</TooltipContent>
           </Tooltip>
@@ -1096,6 +1118,7 @@ function App() {
                 exit={{ opacity: 0, y: reduceMotion ? 0 : -4 }}
                 transition={viewTransition}
               >
+                <Suspense fallback={<ViewFallback />}>
                 {settingsView ? (
                   <SettingsView
                     onBack={() => setSettingsView(false)}
@@ -1158,19 +1181,45 @@ function App() {
                     onRemoveCustomSubfolder={removeCustomSubfolder}
                   />
                 ) : (
-                  <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-                    <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30">
-                      <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
-                    </div>
-                    <p className="mb-6 max-w-56 text-sm leading-relaxed text-muted-foreground">
+                  <motion.div
+                    className="flex h-full flex-col items-center justify-center px-8 text-center"
+                    variants={staggerContainer(0.08, 0.1)}
+                    initial="initial"
+                    animate="animate"
+                  >
+                    <motion.div
+                      variants={staggerItem}
+                      transition={EMPTY_STATE_TRANSITION}
+                      className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30"
+                    >
+                      <motion.div
+                        animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
+                        transition={reduceMotion ? { duration: 0 } : { duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                      >
+                        <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
+                      </motion.div>
+                    </motion.div>
+                    <motion.p
+                      variants={staggerItem}
+                      transition={EMPTY_STATE_TRANSITION}
+                      className="mb-6 max-w-56 text-sm leading-relaxed text-muted-foreground"
+                    >
                       Choose an assessment from the sidebar or create a new one to start organising your files.
-                    </p>
-                    <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
-                      <FolderOpen className="h-4 w-4" />
-                      New Assessment
-                    </Button>
-                  </div>
+                    </motion.p>
+                    <motion.div variants={staggerItem} transition={EMPTY_STATE_TRANSITION}>
+                      <Button
+                        onClick={() => setDialogOpen(true)}
+                        size="sm"
+                        className="gap-1.5"
+                        {...pressableMotion(reduceMotion)}
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                        New Assessment
+                      </Button>
+                    </motion.div>
+                  </motion.div>
                 )}
+                </Suspense>
               </motion.div>
             </AnimatePresence>
           </motion.main>

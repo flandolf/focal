@@ -444,7 +444,7 @@ export function GlobalSearch({
         )}
 
         {!hasQuery && (
-          <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+          <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 py-8 text-center">
             <Search className="h-4 w-4 text-muted-foreground/55" />
             <p className="text-sm text-muted-foreground">Start typing to search.</p>
           </div>
@@ -465,7 +465,7 @@ export function GlobalSearch({
         )}
 
         {hasQuery && totalResults === 0 && !loading && (
-          <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+          <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 py-8 text-center">
             <Search className="h-4 w-4 text-muted-foreground/55" />
             <p className="max-w-72 truncate text-sm text-muted-foreground">
               No results for "{query.trim()}"

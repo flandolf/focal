@@ -92,6 +92,18 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
           <span>Confidence</span>
         </div>
       </div>
+      <p className="sr-only">
+        Study efficiency: {data
+          .map((d, i) => {
+            const name = getSubjectById(d.subjectId)?.name ?? "Unassigned"
+            const h = Math.floor(d.minutes / 60)
+            const m = d.minutes % 60
+            const time = h > 0 ? `${h}h ${m}m` : `${m}m`
+            return `${i > 0 ? "; " : ""}${name} ${time}, ${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}, confidence ${d.averageConfidence} of 5`
+          })
+          .join("")}
+        .
+      </p>
     </Card>
   )
 }

@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { motion, useReducedMotion } from "framer-motion"
 import { Plus, Pencil, Trash2, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { staggerContainer, staggerItem, hoverLift } from "@/lib/motion"
 
 interface QuickLink {
   id: string
@@ -70,6 +72,7 @@ export function QuickLinks() {
   const [linkColor, setLinkColor] = useState(DEFAULT_QUICK_LINK_COLOR)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; link: QuickLink } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  const reduceMotion = useReducedMotion() === true
 
   const handleContextMenu = useCallback((e: React.MouseEvent, link: QuickLink) => {
     e.preventDefault()
@@ -157,12 +160,23 @@ export function QuickLinks() {
             Add shortcuts to subject resources, VCAA pages, or anything you use often.
           </p>
         ) : (
-          <div className="grid grid-cols-3 gap-2">
+          <motion.div
+            className="grid grid-cols-3 gap-2"
+            variants={staggerContainer(0.04, 0.05)}
+            initial="initial"
+            animate="animate"
+          >
             {quickLinks.slice(0, 6).map((link) => {
               const IconComp = getIconComponent(link.icon)
               const destination = getQuickLinkDestination(link.url)
               return (
-                <div key={link.id} className="group relative min-w-0">
+                <motion.div
+                  key={link.id}
+                  variants={staggerItem}
+                  whileHover={hoverLift(reduceMotion)}
+                  transition={{ type: "spring", stiffness: 480, damping: 32, mass: 0.6 }}
+                  className="group relative min-w-0"
+                >
                   <a
                     href={link.url}
                     target="_blank"
@@ -189,10 +203,10 @@ export function QuickLinks() {
                   >
                     <Pencil className="h-3 w-3" />
                   </button>
-                </div>
+                </motion.div>
               )
             })}
-          </div>
+          </motion.div>
         )}
       </div>
 
