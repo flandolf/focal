@@ -1,21 +1,27 @@
-import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, CheckCircle2 } from "lucide-react"
+import { useRef, useCallback } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, LayoutList } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { FileRow } from "@/components/FileRow"
-import type { FileInfo, FileTag, Project } from "@/lib/types"
+import { FolderRow } from "./FolderRow"
+import { Breadcrumb } from "./Breadcrumb"
+import type { FileInfo, FileTag } from "@/lib/types"
 import type { SortKey } from "@/hooks/useProjectFiles"
 import { cn } from "@/lib/utils"
 import { getSegmentedButtonClassName, POPOVER_ITEM_BUTTON_CLASS } from "./shared"
 
+export type ListItem =
+  | { type: "file"; data: FileInfo }
+  | { type: "folder"; name: string; path: string; fileCount: number }
+
 const FILE_TABLE_GRID = "grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_2rem] min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem_2rem]"
 
 interface FileTreeProps {
-  project: Project
   files: FileInfo[]
   loading: boolean
-  filteredFiles: FileInfo[]
+  listItems: ListItem[]
   selectedFiles: Set<string>
   searchQuery: string
   setSearchQuery: (q: string) => void
@@ -28,17 +34,10 @@ interface FileTreeProps {
   setSortKey: (key: SortKey) => void
   setSortAsc: (asc: boolean) => void
   allSubfolders: string[]
-  customSubfolders: string[]
   showBulkTagMenu: boolean
   setShowBulkTagMenu: (open: boolean) => void
   showBulkMoveMenu: boolean
   setShowBulkMoveMenu: (open: boolean) => void
-  newFolderName: string
-  setNewFolderName: (name: string) => void
-  isAddingFolder: boolean
-  setIsAddingFolder: (adding: boolean) => void
-  onAddCustomSubfolder?: (projectId: string, folderName: string) => Promise<void>
-  onRemoveCustomSubfolder?: (projectId: string, folderName: string) => Promise<void>
   onAddFiles: () => void
   onOpenFile: (file: { path: string }) => void
   onRenameFile: (file: FileInfo, newName: string) => void
@@ -54,13 +53,17 @@ interface FileTreeProps {
   onClearSelection: () => void
   onDeleteSelected: () => void
   onFileSelectionChange: (file: FileInfo, selected: boolean) => void
+  /** Breadcrumb navigation */
+  breadcrumbSegments: { label: string; path: string }[]
+  onBreadcrumbNavigate: (path: string) => void
+  onGoBack: () => void
+  canGoBack: boolean
 }
 
 export function FileTree({
-  project,
   files,
   loading,
-  filteredFiles,
+  listItems,
   selectedFiles,
   searchQuery,
   setSearchQuery,
@@ -73,17 +76,10 @@ export function FileTree({
   setSortKey,
   setSortAsc,
   allSubfolders,
-  customSubfolders,
   showBulkTagMenu,
   setShowBulkTagMenu,
   showBulkMoveMenu,
   setShowBulkMoveMenu,
-  newFolderName,
-  setNewFolderName,
-  isAddingFolder,
-  setIsAddingFolder,
-  onAddCustomSubfolder,
-  onRemoveCustomSubfolder,
   onAddFiles,
   onOpenFile,
   onRenameFile,
@@ -99,30 +95,11 @@ export function FileTree({
   onClearSelection,
   onDeleteSelected,
   onFileSelectionChange,
+  breadcrumbSegments,
+  onBreadcrumbNavigate,
+  onGoBack,
+  canGoBack,
 }: FileTreeProps) {
-  const handleAddCustomFolder = async () => {
-    if (!newFolderName.trim() || !onAddCustomSubfolder) return
-    try {
-      await onAddCustomSubfolder(project.id, newFolderName.trim())
-      setNewFolderName("")
-      setIsAddingFolder(false)
-    } catch {
-      // Error handled by parent
-    }
-  }
-
-  const handleRemoveCustomFolder = async (folderName: string) => {
-    if (!onRemoveCustomSubfolder) return
-    try {
-      await onRemoveCustomSubfolder(project.id, folderName)
-      if (selectedSubfolder === folderName) {
-        setSelectedSubfolder(null)
-      }
-    } catch {
-      // Error handled by parent
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -151,96 +128,39 @@ export function FileTree({
 
   return (
     <>
-      {/* Subfolder tabs */}
+      {/* Navigation bar: breadcrumb + view toggle + sort */}
       <div className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8">
         <div className="flex items-center gap-3">
+          {/* Breadcrumb + back */}
+          <Breadcrumb
+            segments={breadcrumbSegments}
+            onNavigate={onBreadcrumbNavigate}
+            onBack={onGoBack}
+            canGoBack={canGoBack}
+          />
+
+          <div className="flex-1" />
+
+          {/* View toggle: Folders vs All */}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
+            <button
+              type="button"
+              onClick={() => setSelectedSubfolder("__root__")}
+              aria-pressed={selectedSubfolder !== null}
+              className={getSegmentedButtonClassName(selectedSubfolder !== null)}
+              title="Folder view"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </button>
             <button
               type="button"
               onClick={() => setSelectedSubfolder(null)}
               aria-pressed={selectedSubfolder === null}
               className={getSegmentedButtonClassName(selectedSubfolder === null)}
+              title="All files"
             >
-              All
+              <LayoutList className="h-3.5 w-3.5" />
             </button>
-            {allSubfolders.map((folder) => {
-              const isCustom = customSubfolders.includes(folder)
-              return (
-                <span key={folder} className="group/folder relative inline-flex">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedSubfolder(selectedSubfolder === folder ? null : folder)}
-                    aria-pressed={selectedSubfolder === folder}
-                    className={getSegmentedButtonClassName(selectedSubfolder === folder)}
-                  >
-                    {folder}
-                  </button>
-                  {isCustom && onRemoveCustomSubfolder && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void handleRemoveCustomFolder(folder)
-                      }}
-                      className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive/80 text-caption text-destructive-foreground opacity-0 transition-opacity hover:flex hover:opacity-100 group-hover/folder:opacity-60"
-                      aria-label={`Remove ${folder} folder`}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  )}
-                </span>
-              )
-            })}
-            {onAddCustomSubfolder && (
-              <>
-                {isAddingFolder ? (
-                  <div className="flex items-center gap-1">
-                    <Input
-                      value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
-                      placeholder="Folder name"
-                      className="h-6 w-24 text-xs"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void handleAddCustomFolder()
-                        if (e.key === "Escape") {
-                          setIsAddingFolder(false)
-                          setNewFolderName("")
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleAddCustomFolder()}
-                      className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-background/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                      aria-label="Add custom folder"
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAddingFolder(false)
-                        setNewFolderName("")
-                      }}
-                      className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-background/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                      aria-label="Cancel custom folder"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingFolder(true)}
-                    className={getSegmentedButtonClassName(false, "px-2")}
-                    aria-label="Add custom folder"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </>
-            )}
           </div>
 
           {/* Sort controls */}
@@ -269,8 +189,6 @@ export function FileTree({
               </button>
             ))}
           </div>
-
-          <div className="flex-1" />
         </div>
 
         {/* Search and tag filters */}
@@ -421,29 +339,162 @@ export function FileTree({
         </div>
       )}
 
-      {/* File list */}
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="divide-y divide-border/60">
-          {filteredFiles.map((file) => (
-            <FileRow
-              key={file.path}
-              file={file}
-              onOpen={onOpenFile}
-              onRename={onRenameFile}
-              onRemoveTag={onRemoveTag}
-              onAddTag={onAddTag}
-              onToggleFavorite={onToggleFavorite}
-              onShowInFinder={onShowInFinder}
-              onCopyPath={onCopyPath}
-              onMoveFile={onMoveFile}
-              isSelected={selectedFiles.has(file.path)}
-              onSelectionChange={onFileSelectionChange}
-              subfolders={allSubfolders}
-            />
-          ))}
-        </div>
-      </ScrollArea>
+      {/* File list — virtualized */}
+      <VirtualFileList
+        listItems={listItems}
+        selectedFiles={selectedFiles}
+        onOpenFile={onOpenFile}
+        onRenameFile={onRenameFile}
+        onRemoveTag={onRemoveTag}
+        onAddTag={onAddTag}
+        onToggleFavorite={onToggleFavorite}
+        onShowInFinder={onShowInFinder}
+        onCopyPath={onCopyPath}
+        onMoveFile={onMoveFile}
+        onFileSelectionChange={onFileSelectionChange}
+        allSubfolders={allSubfolders}
+        onFolderClick={setSelectedSubfolder}
+      />
 
     </>
+  )
+}
+
+const ESTIMATED_ROW_HEIGHT = 64
+
+interface VirtualFileListProps {
+  listItems: ListItem[]
+  selectedFiles: Set<string>
+  onOpenFile: (file: { path: string }) => void
+  onRenameFile: (file: FileInfo, newName: string) => void
+  onRemoveTag: (file: FileInfo, tag: FileTag) => void
+  onAddTag: (file: FileInfo, tag: FileTag) => void
+  onToggleFavorite: (file: FileInfo) => void
+  onShowInFinder: (file: FileInfo) => void
+  onCopyPath: (file: FileInfo) => void
+  onMoveFile: (file: FileInfo, destSubfolder: string) => void
+  onFileSelectionChange: (file: FileInfo, selected: boolean) => void
+  allSubfolders: string[]
+  onFolderClick: (folder: string) => void
+}
+
+function VirtualFileList({
+  listItems,
+  selectedFiles,
+  onOpenFile,
+  onRenameFile,
+  onRemoveTag,
+  onAddTag,
+  onToggleFavorite,
+  onShowInFinder,
+  onCopyPath,
+  onMoveFile,
+  onFileSelectionChange,
+  allSubfolders,
+  onFolderClick,
+}: VirtualFileListProps) {
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: listItems.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    overscan: 5,
+  })
+
+  const handleOpenFile = useCallback((file: FileInfo) => {
+    onOpenFile(file)
+  }, [onOpenFile])
+
+  const handleRenameFile = useCallback((file: FileInfo, newName: string) => {
+    onRenameFile(file, newName)
+  }, [onRenameFile])
+
+  const handleRemoveTag = useCallback((file: FileInfo, tag: FileTag) => {
+    onRemoveTag(file, tag)
+  }, [onRemoveTag])
+
+  const handleAddTag = useCallback((file: FileInfo, tag: FileTag) => {
+    onAddTag(file, tag)
+  }, [onAddTag])
+
+  const handleToggleFavorite = useCallback((file: FileInfo) => {
+    onToggleFavorite(file)
+  }, [onToggleFavorite])
+
+  const handleShowInFinder = useCallback((file: FileInfo) => {
+    onShowInFinder(file)
+  }, [onShowInFinder])
+
+  const handleCopyPath = useCallback((file: FileInfo) => {
+    onCopyPath(file)
+  }, [onCopyPath])
+
+  const handleMoveFile = useCallback((file: FileInfo, destSubfolder: string) => {
+    onMoveFile(file, destSubfolder)
+  }, [onMoveFile])
+
+  const handleSelectionChange = useCallback((file: FileInfo, selected: boolean) => {
+    onFileSelectionChange(file, selected)
+  }, [onFileSelectionChange])
+
+  const items = virtualizer.getVirtualItems()
+
+  return (
+    <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            transform: `translateY(${items[0]?.start ?? 0}px)`,
+          }}
+        >
+          {items.map((virtualItem) => {
+            const item = listItems[virtualItem.index]
+            return (
+              <div
+                key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={virtualizer.measureElement}
+                className="border-b border-border/60"
+              >
+                {item.type === "folder" ? (
+                  <FolderRow
+                    name={item.name}
+                    fileCount={item.fileCount}
+                    onClick={() => onFolderClick(item.path)}
+                  />
+                ) : (
+                  <FileRow
+                    file={item.data}
+                    onOpen={handleOpenFile}
+                    onRename={handleRenameFile}
+                    onRemoveTag={handleRemoveTag}
+                    onAddTag={handleAddTag}
+                    onToggleFavorite={handleToggleFavorite}
+                    onShowInFinder={handleShowInFinder}
+                    onCopyPath={handleCopyPath}
+                    onMoveFile={handleMoveFile}
+                    isSelected={selectedFiles.has(item.data.path)}
+                    onSelectionChange={handleSelectionChange}
+                    subfolders={allSubfolders}
+                    selectionMode={selectedFiles.size > 0}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
   )
 }

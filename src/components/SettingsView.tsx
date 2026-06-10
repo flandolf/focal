@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { ThemeId } from "@/lib/themes"
-import type { Subject } from "@/lib/types"
+import type { Project, Subject } from "@/lib/types"
 import { AppearanceSection } from "@/components/settings/AppearanceSection"
 import { SubjectsSection } from "@/components/settings/SubjectsSection"
 import { AIModelSection } from "@/components/settings/AIModelSection"
@@ -29,6 +29,8 @@ interface SettingsViewProps {
   onOpenSubjects?: () => void
   onSyncNotionCalendar?: (onProgress: (msg: string) => void) => Promise<{ created: unknown[]; updated: unknown[]; createdSessions?: unknown[]; updatedSessions?: unknown[]; skipped: number; skippedReasons?: string[]; pushedCreated?: number; pushedUpdated?: number; deleted?: number; pushErrors?: string[] } | null>
   lastSyncTime?: number
+  projects?: Project[]
+  onFilesChanged?: () => void
 }
 
 const SECTION_ITEMS: { id: SettingsSection; label: string; icon: typeof PaletteIcon }[] = [
@@ -54,6 +56,8 @@ export function SettingsView({
   onOpenSubjects,
   onSyncNotionCalendar,
   lastSyncTime,
+  projects,
+  onFilesChanged,
 }: SettingsViewProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("appearance")
 
@@ -134,7 +138,10 @@ export function SettingsView({
             )}
 
             {activeSection === "auto-rename" && (
-              <AutoRenameSection />
+              <AutoRenameSection
+                projects={projects ?? []}
+                onFilesChanged={onFilesChanged}
+              />
             )}
 
             {activeSection === "data" && (

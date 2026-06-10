@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, memo } from "react"
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import {
   Clock,
@@ -444,7 +444,7 @@ function DayHeader({
 
 // --- Main view ---
 
-export function TimetableView({ customSubjects }: TimetableViewProps) {
+export const TimetableView = memo(function TimetableView({ customSubjects }: TimetableViewProps) {
   const [config, setConfig] = useState(getTimetableConfig)
   const [aiEditOpen, setAiEditOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -857,4 +857,4 @@ export function TimetableView({ customSubjects }: TimetableViewProps) {
       />
     </>
   )
-}
+})

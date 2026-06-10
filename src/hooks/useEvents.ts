@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react"
-import { appDataDir } from "@tauri-apps/api/path"
-import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
+import { useCallback, useEffect } from "react"
 import type { CalendarEvent, EventType } from "@/lib/types"
 import { generateId } from "@/lib/utils"
+import { usePersistedData } from "@/lib/hooks/usePersistedData"
+import { useLatestRef } from "@/lib/hooks/useLatestRef"
 
 function getEventEndTime(event: Pick<CalendarEvent, "startTime" | "endTime">): number {
   const value = event.endTime ?? event.startTime
@@ -64,55 +64,14 @@ function normaliseEvent(raw: unknown): CalendarEvent {
   return event
 }
 
-function getEventsFilePath(baseDir: string) {
-  return `${baseDir}/events.json`
-}
-
 export function useEvents() {
-  const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: events, loading, error, save: saveEvents, refresh } = usePersistedData({
+    fileName: "events.json",
+    normalize: normaliseEvent,
+    onLoad: (normalised) => markPastEventsFinished(normalised),
+  })
 
-  // Ref always holds the latest events so mutation callbacks never operate on stale closures.
-  const eventsRef = useRef(events)
-  useEffect(() => { eventsRef.current = events })
-
-  const loadEvents = useCallback(async () => {
-    try {
-      setError(null)
-      const baseDir = await appDataDir()
-      const filePath = getEventsFilePath(baseDir)
-
-      if (await exists(filePath)) {
-        const content = await readTextFile(filePath)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const raw = JSON.parse(content)
-        const normalised: CalendarEvent[] = Array.isArray(raw) ? raw.map(normaliseEvent) : []
-        const updated = markPastEventsFinished(normalised)
-        if (updated !== normalised) {
-          await writeTextFile(filePath, JSON.stringify(updated, null, 2))
-        }
-        setEvents(updated)
-      }
-    } catch (e) {
-      const msg = `Failed to load events: ${String(e)}`
-      console.error(msg)
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const saveEvents = useCallback(async (updatedEvents: CalendarEvent[]) => {
-    const baseDir = await appDataDir()
-    const dirExists = await exists(baseDir)
-    if (!dirExists) {
-      await mkdir(baseDir, { recursive: true })
-    }
-    const filePath = getEventsFilePath(baseDir)
-    await writeTextFile(filePath, JSON.stringify(updatedEvents, null, 2))
-    setEvents(updatedEvents)
-  }, [])
+  const eventsRef = useLatestRef(events)
 
   const addEvent = useCallback(async (data: {
     title: string
@@ -141,7 +100,7 @@ export function useEvents() {
     const updated = [...eventsRef.current, event]
     await saveEvents(updated)
     return event
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const addEvents = useCallback(async (items: {
     title: string
@@ -171,7 +130,7 @@ export function useEvents() {
     const updated = [...eventsRef.current, ...newEvents]
     await saveEvents(updated)
     return newEvents
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const updateEvent = useCallback(async (
     id: string,
@@ -181,7 +140,7 @@ export function useEvents() {
       event.id === id ? { ...event, ...updates } : event
     ))
     await saveEvents(updated)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const updateEvents = useCallback(async (items: {
     id: string
@@ -193,25 +152,25 @@ export function useEvents() {
       return updates ? { ...event, ...updates } : event
     }))
     await saveEvents(updated)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const deleteEvent = useCallback(async (id: string) => {
     const updated = eventsRef.current.filter((event) => event.id !== id)
     await saveEvents(updated)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const restoreEvent = useCallback(async (event: CalendarEvent) => {
     const exists = eventsRef.current.some((e) => e.id === event.id)
     if (exists) return
     const updated = [...eventsRef.current, event]
     await saveEvents(updated)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const deleteEvents = useCallback(async (ids: string[]) => {
     const idSet = new Set(ids)
     const updated = eventsRef.current.filter((event) => !idSet.has(event.id))
     await saveEvents(updated)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const restoreEvents = useCallback(async (eventsToRestore: CalendarEvent[]) => {
     const existingIds = new Set(eventsRef.current.map((e) => e.id))
@@ -219,7 +178,7 @@ export function useEvents() {
     if (newEvents.length === 0) return
     const updated = [...eventsRef.current, ...newEvents]
     await saveEvents(updated)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const updateAndDeleteEvents = useCallback(async (
     items: {
@@ -237,7 +196,7 @@ export function useEvents() {
         return updates ? { ...event, ...updates } : event
       }))
     await saveEvents(updated)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   const syncEvents = useCallback(async (
     itemsToCreate: Omit<CalendarEvent, "id" | "created_at">[],
@@ -271,28 +230,20 @@ export function useEvents() {
     ])
     await saveEvents(updated)
     return newEvents
-  }, [saveEvents])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
-    loadEvents()
-  }, [loadEvents])
+  }, [eventsRef, saveEvents])
 
   useEffect(() => {
     const markFinished = () => {
-      setEvents((current) => {
-        const updated = markPastEventsFinished(current)
-        if (updated !== current) {
-          void saveEvents(updated)
-        }
-        return updated
-      })
+      const updated = markPastEventsFinished(eventsRef.current)
+      if (updated !== eventsRef.current) {
+        void saveEvents(updated)
+      }
     }
 
     markFinished()
     const interval = window.setInterval(markFinished, 60 * 1000)
     return () => window.clearInterval(interval)
-  }, [saveEvents])
+  }, [eventsRef, saveEvents])
 
   return {
     events,
@@ -308,6 +259,6 @@ export function useEvents() {
     restoreEvents,
     updateAndDeleteEvents,
     syncEvents,
-    refresh: loadEvents,
+    refresh,
   }
 }

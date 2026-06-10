@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from "react"
+import { useState, useEffect, useRef, useCallback, useReducer, useMemo, memo } from "react"
 import { createPortal } from "react-dom"
 import {
   ChevronDown,
@@ -302,7 +302,7 @@ function getTodayRange(now: Date) {
   return { startMs: start.getTime(), endMs: end.getTime() }
 }
 
-export function StudyTimer({
+const StudyTimerInner = memo(function StudyTimerInner({
   isCollapsed = false,
   onExpand,
   customSubjects = [],
@@ -1026,4 +1026,6 @@ const saveReflection = useCallback(async () => {
     </div>
   </>
   )
-}
+})
+
+export const StudyTimer = StudyTimerInner

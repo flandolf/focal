@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react"
-import { appDataDir } from "@tauri-apps/api/path"
-import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
+import { useCallback } from "react"
 import type { ConfidenceScore, StudySession } from "@/lib/types"
 import { generateId } from "@/lib/utils"
+import { usePersistedData } from "@/lib/hooks/usePersistedData"
+import { useLatestRef } from "@/lib/hooks/useLatestRef"
 
 function isConfidenceScore(value: unknown): value is ConfidenceScore {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
@@ -40,51 +40,13 @@ function normaliseSession(raw: unknown): StudySession {
   }
 }
 
-function getSessionsFilePath(baseDir: string) {
-  return `${baseDir}/sessions.json`
-}
-
 export function useStudySessions() {
-  const [sessions, setSessions] = useState<StudySession[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: sessions, loading, error, save: saveSessions, refresh } = usePersistedData({
+    fileName: "sessions.json",
+    normalize: normaliseSession,
+  })
 
-  // Ref always holds the latest sessions so mutation callbacks never operate on stale closures.
-  const sessionsRef = useRef(sessions)
-  useEffect(() => { sessionsRef.current = sessions })
-
-  const loadSessions = useCallback(async () => {
-    try {
-      setError(null)
-      const baseDir = await appDataDir()
-      const filePath = getSessionsFilePath(baseDir)
-
-      if (await exists(filePath)) {
-        const content = await readTextFile(filePath)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const raw = JSON.parse(content)
-        const normalised: StudySession[] = Array.isArray(raw) ? raw.map(normaliseSession) : []
-        setSessions(normalised)
-      }
-    } catch (e) {
-      const msg = `Failed to load study sessions: ${String(e)}`
-      console.error(msg)
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const saveSessions = useCallback(async (updatedSessions: StudySession[]) => {
-    const baseDir = await appDataDir()
-    const dirExists = await exists(baseDir)
-    if (!dirExists) {
-      await mkdir(baseDir, { recursive: true })
-    }
-    const filePath = getSessionsFilePath(baseDir)
-    await writeTextFile(filePath, JSON.stringify(updatedSessions, null, 2))
-    setSessions(updatedSessions)
-  }, [])
+  const sessionsRef = useLatestRef(sessions)
 
   const addSession = useCallback(async (
     projectId: string | undefined,
@@ -115,7 +77,7 @@ export function useStudySessions() {
     const updated = [...sessionsRef.current, session]
     await saveSessions(updated)
     return session
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const addSessions = useCallback(async (items: {
     projectId?: string
@@ -144,7 +106,7 @@ export function useStudySessions() {
     const updated = [...sessionsRef.current, ...newSessions]
     await saveSessions(updated)
     return newSessions
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const updateSession = useCallback(async (
     id: string,
@@ -154,7 +116,7 @@ export function useStudySessions() {
       s.id === id ? { ...s, ...updates } : s
     )
     await saveSessions(updated)
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const updateSessions = useCallback(async (
     items: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]
@@ -166,26 +128,26 @@ export function useStudySessions() {
       return updates ? { ...session, ...updates } : session
     })
     await saveSessions(updated)
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const deleteSession = useCallback(async (id: string) => {
     const updated = sessionsRef.current.filter((s) => s.id !== id)
     await saveSessions(updated)
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const restoreSession = useCallback(async (session: StudySession) => {
     const exists = sessionsRef.current.some((s) => s.id === session.id)
     if (exists) return
     const updated = [...sessionsRef.current, session]
     await saveSessions(updated)
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const deleteSessions = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return
     const idSet = new Set(ids)
     const updated = sessionsRef.current.filter((session) => !idSet.has(session.id))
     await saveSessions(updated)
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const restoreSessions = useCallback(async (sessionsToRestore: StudySession[]) => {
     const existingIds = new Set(sessionsRef.current.map((s) => s.id))
@@ -193,7 +155,7 @@ export function useStudySessions() {
     if (newSessions.length === 0) return
     const updated = [...sessionsRef.current, ...newSessions]
     await saveSessions(updated)
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const updateAndDeleteSessions = useCallback(async (
     items: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[],
@@ -209,7 +171,7 @@ export function useStudySessions() {
         return updates ? { ...session, ...updates } : session
       })
     await saveSessions(updated)
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const syncSessions = useCallback(async (
     itemsToCreate: Omit<StudySession, "id" | "created_at">[],
@@ -241,7 +203,7 @@ export function useStudySessions() {
     })
     await saveSessions([...updated, ...newSessions])
     return newSessions
-  }, [saveSessions])
+  }, [sessionsRef, saveSessions])
 
   const getSessionsByProject = useCallback((projectId: string) => {
     return sessions.filter((s) => s.projectId === projectId)
@@ -257,11 +219,6 @@ export function useStudySessions() {
       })
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
   }, [sessions])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
-    loadSessions()
-  }, [loadSessions])
 
   return {
     sessions,
@@ -279,6 +236,6 @@ export function useStudySessions() {
     syncSessions,
     getSessionsByProject,
     getUpcomingSessions,
-    refresh: loadSessions,
+    refresh,
   }
 }

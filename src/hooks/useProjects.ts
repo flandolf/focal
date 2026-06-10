@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react"
+import { useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { appDataDir } from "@tauri-apps/api/path"
-import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 import type { Project, DeadlineType, Unit } from "@/lib/types"
 import { sanitiseFolderName, generateId } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS } from "@/lib/types"
+import { usePersistedData } from "@/lib/hooks/usePersistedData"
+import { useLatestRef } from "@/lib/hooks/useLatestRef"
 
 function normaliseProject(raw: unknown): Project {
   const obj = raw as Record<string, unknown>
@@ -27,70 +27,33 @@ function normaliseProject(raw: unknown): Project {
   }
 }
 
-function getProjectsFilePath(baseDir: string) {
-  return `${baseDir}/projects.json`
-}
-
 export function useProjects() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: projects, loading, error, save: saveProjects, refresh } = usePersistedData({
+    fileName: "projects.json",
+    normalize: normaliseProject,
+    onLoad: (projects) => [...projects].reverse(),
+  })
 
-  const loadProjects = useCallback(async () => {
-    try {
-      setError(null)
-      const baseDir = await appDataDir()
-      const filePath = getProjectsFilePath(baseDir)
-
-      if (await exists(filePath)) {
-        const content = await readTextFile(filePath)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const raw = JSON.parse(content)
-        const normalised: Project[] = Array.isArray(raw) ? raw.map(normaliseProject) : []
-        setProjects(normalised)
-      }
-    } catch (e) {
-      const msg = `Failed to load projects: ${String(e)}`
-      console.error(msg)
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const saveProjects = useCallback(async (updatedProjects: Project[]) => {
-    const baseDir = await appDataDir()
-    const dirExists = await exists(baseDir)
-    if (!dirExists) {
-      await mkdir(baseDir, { recursive: true })
-    }
-    const filePath = getProjectsFilePath(baseDir)
-    await writeTextFile(filePath, JSON.stringify(updatedProjects, null, 2))
-    setProjects(updatedProjects)
-  }, [])
+  const projectsRef = useLatestRef(projects)
 
   const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, examDate?: string, customSubfolders?: string[]) => {
     const sanitised = sanitiseFolderName(name)
     if (!sanitised) {
       throw new Error("Project name cannot be empty after sanitisation")
     }
-    
-    // Get default folders
+
     let subfolders = DEFAULT_SUBFOLDERS
     if (subjectId) {
       try {
-        const templateFolders = await invoke<string[]>("get_subject_folder_template", { 
-          subjectId,
-        })
+        const templateFolders = await invoke<string[]>("get_subject_folder_template", { subjectId })
         subfolders = templateFolders
       } catch (e) {
         console.warn("Could not get subject folder template, using defaults:", e)
       }
     }
-    
-    // Combine default folders with custom subfolders
+
     const allSubfolders = customSubfolders ? [...subfolders, ...customSubfolders] : subfolders
-    
+
     const project: Project = {
       id: generateId(),
       name,
@@ -106,58 +69,56 @@ export function useProjects() {
       customSubfolders,
     }
     try {
-      await invoke("create_project_with_subfolders", { 
+      await invoke("create_project_with_subfolders", {
         projectName: sanitised,
         subfolders: allSubfolders,
       })
     } catch (e) {
       console.warn("Could not create project folder on disk:", e)
     }
-    const updated = [...projects, project]
+    const updated = [...projectsRef.current, project]
     await saveProjects(updated)
     return project
-  }, [projects, saveProjects])
+  }, [projectsRef, saveProjects])
 
   const updateProject = useCallback(async (
     id: string,
     updates: Partial<Omit<Project, "id" | "created_at" | "folder_path">>
   ) => {
-    const updated = projects.map((p) =>
+    const updated = projectsRef.current.map((p) =>
       p.id === id ? { ...p, ...updates } : p
     )
     await saveProjects(updated)
-  }, [projects, saveProjects])
+  }, [projectsRef, saveProjects])
 
   const deleteProject = useCallback(async (id: string) => {
-    const updated = projects.filter((p) => p.id !== id)
+    const updated = projectsRef.current.filter((p) => p.id !== id)
     await saveProjects(updated)
-  }, [projects, saveProjects])
+  }, [projectsRef, saveProjects])
 
   const restoreProject = useCallback(async (project: Project) => {
-    const exists = projects.some((p) => p.id === project.id)
+    const exists = projectsRef.current.some((p) => p.id === project.id)
     if (exists) return
-    const updated = [...projects, project]
+    const updated = [...projectsRef.current, project]
     await saveProjects(updated)
-  }, [projects, saveProjects])
+  }, [projectsRef, saveProjects])
 
   const addCustomSubfolder = useCallback(async (id: string, folderName: string) => {
     const sanitised = sanitiseFolderName(folderName)
     if (!sanitised) {
       throw new Error("Folder name cannot be empty after sanitisation")
     }
-    
-    const project = projects.find((p) => p.id === id)
+
+    const project = projectsRef.current.find((p) => p.id === id)
     if (!project) {
       throw new Error("Project not found")
     }
-    
-    // Check if folder already exists in defaults or custom
+
     const existingFolders = [...DEFAULT_SUBFOLDERS, ...(project.customSubfolders ?? [])]
     if (existingFolders.includes(sanitised)) {
       throw new Error("Folder already exists")
     }
-    
-    // Create the folder on disk
+
     try {
       await invoke("create_project_with_subfolders", {
         projectName: project.folder_path,
@@ -166,43 +127,33 @@ export function useProjects() {
     } catch (e) {
       console.warn("Could not create folder on disk:", e)
     }
-    
-    // Update project with new custom subfolder
-    const updated = projects.map((p) =>
+
+    const updated = projectsRef.current.map((p) =>
       p.id === id
         ? { ...p, customSubfolders: [...(p.customSubfolders ?? []), sanitised] }
         : p
     )
     await saveProjects(updated)
-  }, [projects, saveProjects])
+  }, [projectsRef, saveProjects])
 
   const removeCustomSubfolder = useCallback(async (id: string, folderName: string) => {
-    const project = projects.find((p) => p.id === id)
+    const project = projectsRef.current.find((p) => p.id === id)
     if (!project) {
       throw new Error("Project not found")
     }
-    
+
     const currentSubfolders = project.customSubfolders ?? []
     if (!currentSubfolders.includes(folderName)) {
       throw new Error("Folder not found in custom subfolders")
     }
-    
-    const updated = projects.map((p) =>
+
+    const updated = projectsRef.current.map((p) =>
       p.id === id
         ? { ...p, customSubfolders: currentSubfolders.filter((f) => f !== folderName) }
         : p
     )
     await saveProjects(updated)
-  }, [projects, saveProjects])
-
-  const getProjectById = useCallback((id: string) => {
-    return projects.find((p) => p.id === id) ?? null
-  }, [projects])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
-    loadProjects()
-  }, [loadProjects])
+  }, [projectsRef, saveProjects])
 
   return {
     projects,
@@ -212,9 +163,8 @@ export function useProjects() {
     updateProject,
     deleteProject,
     restoreProject,
-    getProjectById,
     addCustomSubfolder,
     removeCustomSubfolder,
-    refresh: loadProjects,
+    refresh,
   }
 }

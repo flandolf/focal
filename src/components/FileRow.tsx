@@ -1,7 +1,5 @@
 import { formatFileSize, formatDate } from "@/lib/utils"
-import { useState, useRef, useCallback, useMemo } from "react"
-import { motion, useReducedMotion } from "framer-motion"
-import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, hoverNudgeUp } from "@/lib/motion"
+import React, { useState, useRef, useCallback, useMemo } from "react"
 import type { FileInfo, FileTag } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -46,9 +44,10 @@ interface FileRowProps {
   isSelected?: boolean
   onSelectionChange?: (file: FileInfo, selected: boolean) => void
   subfolders?: string[]
+  selectionMode?: boolean
 }
 
-export function FileRow({
+function FileRowInner({
   file,
   onOpen,
   onRename,
@@ -61,6 +60,7 @@ export function FileRow({
   isSelected = false,
   onSelectionChange,
   subfolders = [],
+  selectionMode = false,
 }: FileRowProps) {
   const propFileTags = useMemo(
     () => file.tags ?? (file.tag ? [file.tag] : []),
@@ -106,17 +106,10 @@ export function FileRow({
     [fileTags],
   )
 
-  const reduceMotion = useReducedMotion() === true
-
   return (
-    <motion.div
-      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={reduceMotion ? REDUCED_TRANSITION : { duration: MOTION_DURATION.normal, ease: MOTION_EASE }}
-      whileHover={hoverNudgeUp(reduceMotion, 1)}
-      whileTap={reduceMotion ? undefined : { scale: 0.998 }}
+    <div
       className={cn(
-        "group grid min-h-16 cursor-default items-center gap-3 px-5 py-2.5 transition-colors hover:bg-accent/30 min-[1200px]:px-8",
+        "group grid min-h-16 cursor-default items-center gap-3 py-2.5 transition-colors hover:bg-accent/30 px-3",
         FILE_ROW_GRID,
         isSelected && "bg-accent/50",
       )}
@@ -128,7 +121,10 @@ export function FileRow({
           onSelectionChange?.(file, checked === true)
         }
         onClick={(e: { stopPropagation: () => void }) => e.stopPropagation()}
-        className="w-4 h-4 shrink-0"
+        className={cn(
+          "w-4 h-4 shrink-0 transition-opacity",
+          !isSelected && !selectionMode && "opacity-0 group-hover:opacity-100",
+        )}
       />
       <FileTypeIcon extension={file.extension} />
       <div className="flex-1 min-w-0">
@@ -362,6 +358,8 @@ export function FileRow({
           </Popover>
         )}
       </div>
-    </motion.div>
+    </div>
   )
 }
+
+export const FileRow = React.memo(FileRowInner)

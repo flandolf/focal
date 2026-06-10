@@ -134,7 +134,7 @@ export function ProjectHeader({
                 onCreateEvents={onCreateEvents}
               />
             )}
-            <Button size="sm" onClick={onAddFiles} className="h-8 gap-1.5 rounded-lg">
+            <Button size="sm" onClick={onAddFiles} className="h-8 gap-1.5 rounded-lg text-background">
               <Plus className="h-4 w-4" />
               <span>Add Files</span>
             </Button>
