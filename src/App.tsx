@@ -269,6 +269,7 @@ function App() {
     setHomeSelected(false)
     setSettingsView(false)
     setAnalyticsView(false)
+    setTimetableView(false)
   }, [])
 
   const handleSelectHome = useCallback(() => {
