@@ -4,9 +4,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window"
 import { downloadDir } from "@tauri-apps/api/path"
 import { open } from "@tauri-apps/plugin-dialog"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
-import { MOTION_DURATION, MOTION_EASE, pressable as pressableMotion, staggerContainer, staggerItem } from "@/lib/motion"
+import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, pressable as pressableMotion, staggerContainer, staggerItem } from "@/lib/motion"
 import { Toaster, toast } from "sonner"
 import { FolderOpen, Search, Settings } from "lucide-react"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { Sidebar } from "@/components/Sidebar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
@@ -29,10 +30,45 @@ const AnalyticsView = lazy(() =>
   import("@/components/analytics/AnalyticsView").then((m) => ({ default: m.AnalyticsView })),
 )
 
-function ViewFallback() {
+function ViewFallback({ label }: { label?: string }) {
+  const reduceMotion = useReducedMotion() === true
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground/70" />
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={label ? `Loading ${label}` : "Loading"}
+      className="flex h-full items-center justify-center px-6"
+    >
+      <motion.div
+        className="flex w-full max-w-xs flex-col items-center gap-4"
+        initial={{ opacity: 0, y: reduceMotion ? 0 : 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={reduceMotion ? REDUCED_TRANSITION : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
+      >
+        <div className="flex w-full flex-col gap-2.5">
+          <motion.div
+            className="h-3 w-2/5 rounded-md bg-muted/50"
+            animate={reduceMotion ? undefined : { opacity: [0.45, 0.85, 0.45] }}
+            transition={reduceMotion ? REDUCED_TRANSITION : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div
+            className="h-2.5 w-full rounded-md bg-muted/35"
+            animate={reduceMotion ? undefined : { opacity: [0.35, 0.7, 0.35] }}
+            transition={reduceMotion ? REDUCED_TRANSITION : { duration: 1.6, repeat: Infinity, ease: "easeInOut", delay: 0.12 }}
+          />
+          <motion.div
+            className="h-2.5 w-5/6 rounded-md bg-muted/30"
+            animate={reduceMotion ? undefined : { opacity: [0.3, 0.6, 0.3] }}
+            transition={reduceMotion ? REDUCED_TRANSITION : { duration: 1.6, repeat: Infinity, ease: "easeInOut", delay: 0.24 }}
+          />
+        </div>
+        {label && (
+          <span className="text-caption text-muted-foreground/60">
+            Loading {label}…
+          </span>
+        )}
+      </motion.div>
     </div>
   )
 }
@@ -1023,6 +1059,7 @@ function App() {
   return (
     <TooltipProvider>
       <MotionConfig reducedMotion="user">
+      <ErrorBoundary>
       <div className="focal-shell relative h-screen overflow-hidden px-2 pb-2 pt-(--app-titlebar-inset) text-foreground min-[1200px]:px-3 min-[1200px]:pb-3">
         <div
           data-tauri-drag-region
@@ -1118,8 +1155,8 @@ function App() {
                 exit={{ opacity: 0, y: reduceMotion ? 0 : -4 }}
                 transition={viewTransition}
               >
-                <Suspense fallback={<ViewFallback />}>
                 {settingsView ? (
+                  <Suspense fallback={<ViewFallback label="settings" />}>
                   <SettingsView
                     onBack={() => setSettingsView(false)}
                     theme={theme}
@@ -1136,16 +1173,21 @@ function App() {
                     onSyncNotionCalendar={handleSyncNotionCalendar}
                     lastSyncTime={lastSyncTime}
                   />
+                  </Suspense>
                 ) : timetableView ? (
+                  <Suspense fallback={<ViewFallback label="timetable" />}>
                   <TimetableView
                     customSubjects={customSubjects}
                   />
+                  </Suspense>
                 ) : analyticsView ? (
+                  <Suspense fallback={<ViewFallback label="analytics" />}>
                   <AnalyticsView
                     sessions={sessions}
                     projects={projects}
                     onNewSession={handleOpenNewSession}
                   />
+                  </Suspense>
                 ) : homeSelected ? (
                   <HomeView
                     projects={projects}
@@ -1219,7 +1261,6 @@ function App() {
                     </motion.div>
                   </motion.div>
                 )}
-                </Suspense>
               </motion.div>
             </AnimatePresence>
           </motion.main>
@@ -1302,6 +1343,7 @@ function App() {
           theme={resolvedDark ? "dark" : "light"}
         />
       </div>
+      </ErrorBoundary>
       </MotionConfig>
     </TooltipProvider>
   )

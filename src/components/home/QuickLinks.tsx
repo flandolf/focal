@@ -182,7 +182,7 @@ export function QuickLinks() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onContextMenu={(e) => handleContextMenu(e, link)}
-                    className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-border/60 p-3 text-center transition-all hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                    className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-border/60 p-3 text-center transition-all hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                     style={{ backgroundColor: link.color + "18" }}
                     aria-label={`Open ${link.label}: ${destination}`}
                   >
@@ -198,7 +198,7 @@ export function QuickLinks() {
                     type="button"
                     onClick={() => handleEditLink(link)}
                     onContextMenu={(e) => handleContextMenu(e, link)}
-                    className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-background/90 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border/80 backdrop-blur transition-all hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 group-hover:opacity-100"
+                    className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-background/90 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border/80 backdrop-blur transition-all hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 group-hover:opacity-100"
                     aria-label={`Edit ${link.label}`}
                   >
                     <Pencil className="h-3 w-3" />

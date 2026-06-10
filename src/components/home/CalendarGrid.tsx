@@ -433,7 +433,7 @@ export function CalendarGrid({
                 onClick={() => onSelectDate(dateKey)}
                 onKeyDown={(e) => handleMonthCellKeyDown(e, dateKey)}
                 className={cn(
-                  "relative flex h-28 w-full cursor-pointer flex-col items-start justify-start border-b border-border/15 p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+                  "relative flex h-28 w-full cursor-pointer flex-col items-start justify-start border-b border-border/15 p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                   selectedDate === dateKey
                     ? "bg-primary/8 shadow-[inset_0_0_0_1px_var(--primary)]"
                     : "bg-background/16 hover:bg-accent/24",

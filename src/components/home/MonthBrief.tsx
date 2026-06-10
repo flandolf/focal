@@ -70,7 +70,7 @@ export function MonthBrief({
               key={item.id}
               type="button"
               onClick={() => onSelectItem(item)}
-              className="flex min-w-0 items-center gap-3 rounded-xl border border-border/55 bg-background/24 px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+              className="flex min-w-0 items-center gap-3 rounded-xl border border-border/55 bg-background/24 px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <div className="flex h-9 w-10 shrink-0 flex-col items-center justify-center rounded-lg bg-muted/55 text-center">
                 <span className="text-micro font-medium uppercase leading-none text-muted-foreground">{format(item.date, "MMM")}</span>
