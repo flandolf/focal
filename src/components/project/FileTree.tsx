@@ -182,7 +182,7 @@ export function FileTree({
                         e.stopPropagation()
                         void handleRemoveCustomFolder(folder)
                       }}
-                      className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive/80 text-[10px] text-destructive-foreground opacity-0 transition-opacity hover:flex hover:opacity-100 group-hover/folder:opacity-60"
+                      className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive/80 text-caption text-destructive-foreground opacity-0 transition-opacity hover:flex hover:opacity-100 group-hover/folder:opacity-60"
                       aria-label={`Remove ${folder} folder`}
                     >
                       <X className="h-2.5 w-2.5" />

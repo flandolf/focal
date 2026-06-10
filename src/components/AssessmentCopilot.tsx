@@ -540,7 +540,7 @@ export function AssessmentCopilot({
                   </div>
                 </div>
               ) : (
-                <div className="flex min-h-60 flex-1 items-center justify-center p-6 text-center">
+                <div className="flex min-h-60 flex-1 items-center justify-center p-5 text-center">
                   <p className="max-w-sm text-sm text-muted-foreground">
                     Generate a copilot plan to create editable study-session drafts.
                   </p>

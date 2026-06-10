@@ -91,7 +91,7 @@ function ImageDropZone({
   return (
     <div
       className={cn(
-        "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-colors",
+        "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-5 transition-colors",
         dragging && "border-primary/50 bg-primary/8",
         imagePreview
           ? "border-primary/30 bg-primary/6"
@@ -716,7 +716,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium leading-none">Holidays</span>
-                  <Button variant="ghost" size="xs" onClick={addHoliday} className="h-5 gap-1 rounded-md text-[10px]">
+                  <Button variant="ghost" size="xs" onClick={addHoliday} className="h-5 gap-1 rounded-md text-caption">
                     <Plus className="h-2.5 w-2.5" />
                     Add
                   </Button>

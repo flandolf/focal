@@ -102,6 +102,19 @@ export function SubjectBreakdownChart({ data }: SubjectBreakdownChartProps) {
           })}
         </div>
       </div>
+      <p className="sr-only">
+        Subject breakdown: {data.length} subject{data.length === 1 ? "" : "s"},
+        total {totalHours} hours. {data
+          .map((d, i) => {
+            const name = getSubjectById(d.subjectId)?.name ?? "Unassigned"
+            const h = Math.floor(d.minutes / 60)
+            const m = d.minutes % 60
+            const time = h > 0 ? `${h}h ${m}m` : `${m}m`
+            return `${i > 0 ? "; " : ""}${name} ${time} (${d.percentage}%)`
+          })
+          .join("")}
+        .
+      </p>
     </Card>
   )
 }

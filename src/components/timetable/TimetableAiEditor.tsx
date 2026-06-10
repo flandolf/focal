@@ -57,7 +57,7 @@ function AiPeriodRow({
         value={period.period}
         onChange={(e) => onChange("period", e.target.value)}
         placeholder={index === 0 ? "Period 1" : `Period ${index + 1}`}
-        className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="h-6 w-full rounded border border-input bg-background px-1.5 text-caption outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         aria-label="Period name"
       />
       <input
@@ -65,7 +65,7 @@ function AiPeriodRow({
         value={period.subject}
         onChange={(e) => onChange("subject", e.target.value)}
         placeholder="Subject or label"
-        className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="h-6 w-full rounded border border-input bg-background px-1.5 text-caption outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         aria-label="Subject"
       />
       <input

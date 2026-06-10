@@ -95,6 +95,12 @@ export function TimeOfDayChart({ data }: TimeOfDayChartProps) {
           </span>
         </p>
       )}
+      <p className="sr-only">
+        Study time of day across 24 hours.{" "}
+        {peakHour >= 0
+          ? `Peak hour ${peakHour === 0 ? "12 AM" : peakHour < 12 ? `${peakHour} AM` : peakHour === 12 ? "12 PM" : `${peakHour - 12} PM`}.`
+          : "No study time recorded."}
+      </p>
     </Card>
   )
 }

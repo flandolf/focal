@@ -82,7 +82,7 @@ export function NotionConflictDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-background p-6 shadow-xl">
+      <div className="mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-background p-5 shadow-xl">
         <div className="mb-4 flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
             <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />

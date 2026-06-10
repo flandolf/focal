@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { motion, useReducedMotion } from "framer-motion"
+import { staggerContainer, staggerItem } from "@/lib/motion"
 import {
   Archive,
   Atom,
@@ -455,14 +456,22 @@ export function Sidebar({
           "px-1.5 min-[1200px]:px-2"
         )}>
           {subjectGroups.length > 0 ? (
-            <div className="flex w-full min-w-0 max-w-full flex-col gap-2">
+            <motion.div
+              className="flex w-full min-w-0 max-w-full flex-col gap-2"
+              variants={staggerContainer(0.04, 0.08)}
+              initial="initial"
+              animate="animate"
+            >
               {!isCollapsed && (
-                <div className="px-2 text-micro font-semibold uppercase text-muted-foreground/60">
+                <motion.div
+                  variants={staggerItem}
+                  className="px-2 text-micro font-semibold uppercase text-muted-foreground/60"
+                >
                   Subjects
-                </div>
+                </motion.div>
               )}
               {subjectGroups.map((group) => (
-                <div key={group.subjectId} className="min-w-0">
+                <motion.div key={group.subjectId} variants={staggerItem} className="min-w-0">
                   {!isCollapsed && (
                     <div className="mb-0.5 flex items-center gap-1.5 px-2">
                       <span
@@ -476,7 +485,7 @@ export function Sidebar({
                     </div>
                   )}
                     <div className="flex w-full min-w-0 max-w-full flex-col gap-0.5">
-              {group.assessments.map((project) => {
+                {group.assessments.map((project) => {
                 const ProjectIcon = getSidebarProjectIcon(project)
                 const subject = getSubjectById(project.subjectId)
                 const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
@@ -485,6 +494,8 @@ export function Sidebar({
                 return (
                   <motion.div
                     key={project.id}
+                    layout
+                    variants={staggerItem}
                     whileHover={reduceMotion ? undefined : { x: isCollapsed ? 0 : 2, scale: isCollapsed ? 1.04 : 1.01 }}
                     whileTap={tapPress}
                     transition={pressTransition}
@@ -619,9 +630,9 @@ export function Sidebar({
                 )
               })}
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           ) : null}
         </div>
       </ScrollArea>

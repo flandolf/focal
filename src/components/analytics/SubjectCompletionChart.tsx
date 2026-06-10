@@ -64,6 +64,15 @@ export function SubjectCompletionChart({ data }: SubjectCompletionChartProps) {
           )
         })}
       </div>
+      <p className="sr-only">
+        Completion rate by subject: {data
+          .map((d, i) => {
+            const name = getSubjectById(d.subjectId)?.name ?? "Unassigned"
+            return `${i > 0 ? "; " : ""}${name} ${d.completed} of ${d.total} (${d.rate}%)`
+          })
+          .join("")}
+        .
+      </p>
     </Card>
   )
 }

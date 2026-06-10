@@ -1,23 +1,54 @@
 import { BarChart3, Plus } from "lucide-react"
+import { motion, useReducedMotion } from "framer-motion"
 import { Button } from "@/components/ui/button"
+import { REDUCED_TRANSITION, pressable, staggerContainer, staggerItem } from "@/lib/motion"
 
 interface EmptyAnalyticsProps {
   onNewSession: () => void
 }
 
 export function EmptyAnalytics({ onNewSession }: EmptyAnalyticsProps) {
+  const reduceMotion = useReducedMotion() === true
+
   return (
-    <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30">
-        <BarChart3 className="h-8 w-8 text-muted-foreground/25" />
-      </div>
-      <p className="mb-2 max-w-64 text-sm leading-relaxed text-muted-foreground">
+    <motion.div
+      className="flex h-full flex-col items-center justify-center px-5 text-center"
+      variants={staggerContainer(0.08, 0.1)}
+      initial="initial"
+      animate="animate"
+    >
+      <motion.div
+        variants={staggerItem}
+        className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30"
+      >
+        <motion.div
+          animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
+          transition={
+            reduceMotion
+              ? REDUCED_TRANSITION
+              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
+          }
+        >
+          <BarChart3 className="h-8 w-8 text-muted-foreground/25" />
+        </motion.div>
+      </motion.div>
+      <motion.p
+        variants={staggerItem}
+        className="mb-2 max-w-64 text-sm leading-relaxed text-muted-foreground"
+      >
         Complete your first study session to see analytics about your study habits.
-      </p>
-      <Button onClick={onNewSession} size="sm" className="gap-1.5 mt-2">
-        <Plus className="h-4 w-4" />
-        New Study Session
-      </Button>
-    </div>
+      </motion.p>
+      <motion.div variants={staggerItem} className="mt-2">
+        <Button
+          onClick={onNewSession}
+          size="sm"
+          className="gap-1.5"
+          {...pressable(reduceMotion)}
+        >
+          <Plus className="h-4 w-4" />
+          New Study Session
+        </Button>
+      </motion.div>
+    </motion.div>
   )
 }

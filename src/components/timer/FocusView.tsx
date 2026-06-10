@@ -304,7 +304,7 @@ export function FocusView({
                       )}
                     />
                   </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center px-8">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center px-5">
                     <span className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">
                       {running ? "Timer running" : activeSessionId ? "Timer paused" : "Ready to start"}
                     </span>
