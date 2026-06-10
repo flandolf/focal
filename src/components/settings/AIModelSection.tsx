@@ -371,7 +371,7 @@ export function AIModelSection() {
   }, [])
 
   return (
-    <>
+    <div className="flex flex-col gap-3">
       <section className={SETTINGS_SECTION_CLASS}>
         <label className="text-sm font-medium" htmlFor="openrouter-api-key">OpenRouter API Key</label>
         <Input
@@ -543,6 +543,6 @@ export function AIModelSection() {
           </>
         )}
       </section>
-    </>
+    </div>
   )
 }

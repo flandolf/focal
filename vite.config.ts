@@ -9,7 +9,7 @@ import { readFileSync } from "fs";
 const host = process.env.TAURI_DEV_HOST;
 
 function getVersion(): string {
-  const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
+  const pkg = JSON.parse(readFileSync("package.json", "utf-8")) as { version: string };
   try {
     const hash = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
     return `v${pkg.version} (${hash})`;
