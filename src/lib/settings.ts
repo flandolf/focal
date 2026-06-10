@@ -162,6 +162,7 @@ export function getTimetableConfig(): TimetableConfig {
       day1Starts: typeof parsed.day1Starts === "string" ? parsed.day1Starts : "",
       holidays: Array.isArray(parsed.holidays) ? (parsed.holidays as TimetableConfig["holidays"]) : [],
       entries,
+      currentDayOverride: isValidDayLabel(parsed.currentDayOverride) ? parsed.currentDayOverride : null,
     }
   } catch {
     return DEFAULT_TIMETABLE_CONFIG
@@ -170,4 +171,10 @@ export function getTimetableConfig(): TimetableConfig {
 
 export function setTimetableConfig(config: TimetableConfig): void {
   localStorage.setItem("focal-timetable-config", JSON.stringify(config))
+}
+
+/** Set or clear the manual current-day override. Pass null to clear. */
+export function setTimetableCurrentDayOverride(override: TimetableDayLabel | null): void {
+  const config = getTimetableConfig()
+  setTimetableConfig({ ...config, currentDayOverride: override })
 }

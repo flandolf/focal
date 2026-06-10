@@ -153,6 +153,8 @@ export interface TimetableConfig {
   day1Starts: string // YYYY-MM-DD — the first day of the cycle
   holidays: SchoolHoliday[]
   entries: TimetableEntry[]
+  /** Manual override of the current day label (1–10). When set, takes precedence over the date-based calculation. */
+  currentDayOverride?: TimetableDayLabel | null
 }
 
 export type PriorityItemKind =
