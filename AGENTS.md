@@ -11,7 +11,8 @@ bun run tauri dev    # Full Tauri desktop app in dev mode
 bun run lint         # ESLint check
 bun run lint:fix     # ESLint auto-fix
 bun run typecheck    # tsc --noEmit
-./build.sh           # Full production build: lint, tauri build, install to /Applications
+make build           # Full production build: lint-fix, tauri build, install
+make check           # CI gate: lint + typecheck
 ```
 
 ## Architecture

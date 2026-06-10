@@ -37,8 +37,10 @@ bun run lint:fix     # ESLint auto-fix
 
 ```bash
 bun run build        # TypeScript check + Vite production build
-./build.sh           # Lint, build, Tauri compile, install to /Applications
+make build           # Lint-fix, Tauri compile, install to /Applications
 ```
+
+Available `make` targets: `dev`, `tauri-dev`, `build`, `build-only`, `install`, `lint`, `lint-fix`, `typecheck`, `check`, `clean`, `distclean`, `format`, `release`, `release-dry-run`.
 
 The built `.app` bundle lands in `src-tauri/target/release/bundle/macos/`.
 
