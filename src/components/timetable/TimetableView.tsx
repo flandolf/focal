@@ -25,7 +25,7 @@ import { getTimetableConfig, setTimetableConfig, setTimetableCurrentDayOverride 
 import { TimetableDialog } from "@/components/TimetableDialog"
 import { InlineEditDayDialog } from "@/components/timetable/InlineEditDayDialog"
 import { TimetableAiEditor } from "@/components/timetable/TimetableAiEditor"
-import { MOTION_DURATION, MOTION_EASE, hoverLift, staggerContainer, staggerItem } from "@/lib/motion"
+import { MOTION_DURATION, MOTION_EASE, staggerContainer, staggerItem } from "@/lib/motion"
 import type { TimetableDayLabel, Subject, TimetablePeriod } from "@/lib/types"
 
 // --- Helpers ---
@@ -70,7 +70,7 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="flex items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-card/30 px-4 py-3.5"
+        className="flex items-center gap-3 rounded-xl border border-dashed border-border/60 bg-card/30 px-3.5 py-2.5"
       >
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/40">
           <Sparkles className="h-4 w-4 text-muted-foreground/60" />
@@ -90,9 +90,9 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/40 px-4 py-3.5"
+        className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/40 px-3.5 py-2.5"
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/12">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/12">
           <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
         </div>
         <div className="min-w-0">
@@ -115,34 +115,34 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-primary/[0.04] to-transparent p-4 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]"
+        className="relative overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-primary/[0.04] to-transparent px-3.5 py-2.5 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
               </span>
-              <span className="text-caption font-bold uppercase tracking-[0.1em] text-primary">
+              <span className="text-micro font-bold uppercase tracking-[0.1em] text-primary">
                 Happening now
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {subject && (
                 <div
-                  className="h-5 w-[3px] rounded-full"
+                  className="h-4 w-[2px] rounded-full"
                   style={{ backgroundColor: subject.color }}
                 />
               )}
               <h3
-                className="truncate font-heading text-xl font-semibold"
+                className="truncate font-heading text-base font-semibold"
                 style={subject ? { color: subject.color } : undefined}
               >
                 {subject?.name ?? current.subject}
               </h3>
             </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
               <span className="tabular-nums">
                 {formatTime12(current.startTime)} – {formatTime12(current.endTime)}
               </span>
@@ -150,7 +150,7 @@ function LiveStatusCard({
                 <>
                   <span className="text-muted-foreground/30">·</span>
                   <span className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
+                    <MapPin className="h-2.5 w-2.5" />
                     {current.location}
                   </span>
                 </>
@@ -158,17 +158,17 @@ function LiveStatusCard({
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <div className="font-heading text-2xl font-semibold tabular-nums text-primary">
+            <div className="font-heading text-xl font-semibold tabular-nums text-primary">
               {remaining}
             </div>
-            <div className="text-caption font-medium uppercase tracking-wider text-muted-foreground/60">
+            <div className="text-micro font-medium uppercase tracking-wider text-muted-foreground/60">
               min left
             </div>
           </div>
         </div>
 
         {/* Progress bar */}
-        <div className="mt-3.5 h-1 w-full overflow-hidden rounded-full bg-primary/10">
+        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-primary/10">
           <motion.div
             className="h-full rounded-full bg-primary"
             initial={reduceMotion ? false : { width: 0 }}
@@ -194,36 +194,36 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/40 px-4 py-3.5"
+        className="flex items-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2"
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/40">
-          <Clock className="h-4 w-4 text-muted-foreground/60" />
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40">
+          <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-caption font-bold uppercase tracking-[0.1em] text-muted-foreground/70">
+          <p className="text-micro font-bold uppercase tracking-[0.1em] text-muted-foreground/70">
             Up next
           </p>
-          <div className="mt-0.5 flex items-center gap-1.5">
+          <div className="mt-px flex items-center gap-1">
             {subject && (
               <span
-                className="h-3 w-[3px] shrink-0 rounded-full"
+                className="h-2 w-[2px] shrink-0 rounded-full"
                 style={{ backgroundColor: subject.color }}
               />
             )}
             <p
-              className="truncate text-sm font-semibold"
+              className="truncate text-xs font-semibold"
               style={subject ? { color: subject.color } : undefined}
             >
               {subject?.name ?? next.subject}
             </p>
-            <span className="text-xs text-muted-foreground/70 tabular-nums">
+            <span className="text-micro text-muted-foreground/70 tabular-nums">
               at {formatTime12(next.startTime)}
             </span>
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <div className="font-heading text-lg font-semibold tabular-nums">{minutesUntil}</div>
-          <div className="text-caption font-medium uppercase tracking-wider text-muted-foreground/60">
+          <div className="font-heading text-base font-semibold tabular-nums">{minutesUntil}</div>
+          <div className="text-micro font-medium uppercase tracking-wider text-muted-foreground/60">
             min
           </div>
         </div>
@@ -241,26 +241,26 @@ function NextUpHint({ next, reduceMotion }: { next: TimetablePeriod; reduceMotio
       initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: MOTION_DURATION.normal, ease: MOTION_EASE, delay: 0.12 }}
-      className="mt-3 flex items-center gap-2 border-t border-primary/15 pt-2.5"
+      className="mt-2 flex items-center gap-1.5 border-t border-primary/15 pt-1.5"
     >
-      <span className="text-caption font-bold uppercase tracking-[0.1em] text-muted-foreground/60">
+      <span className="text-micro font-bold uppercase tracking-[0.1em] text-muted-foreground/60">
         Then
       </span>
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 items-center gap-1">
         {subject && (
           <span
-            className="h-3 w-[3px] shrink-0 rounded-full"
+            className="h-2 w-[2px] shrink-0 rounded-full"
             style={{ backgroundColor: subject.color }}
           />
         )}
-        <span className="truncate text-xs font-medium text-muted-foreground">
+        <span className="truncate text-micro font-medium text-muted-foreground">
           {subject?.name ?? next.subject}
         </span>
         {next.location && (
-          <span className="hidden text-xs text-muted-foreground/50 sm:inline">· {next.location}</span>
+          <span className="hidden text-micro text-muted-foreground/50 sm:inline">· {next.location}</span>
         )}
       </div>
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
+      <span className="shrink-0 text-micro tabular-nums text-muted-foreground/70">
         {formatTime12(next.startTime)}
       </span>
     </motion.div>
@@ -290,44 +290,42 @@ function PeriodRow({
   return (
     <motion.div
       className={cn(
-        "group/period relative flex items-start gap-2 rounded-lg pl-2.5 pr-2 py-1.5 transition-colors",
+        "group/period relative flex items-start gap-2 py-1 transition-colors",
         subject ? "hover:bg-accent/30" : "opacity-60",
-        isCurrentPeriod &&
-          "bg-primary/[0.07] ring-1 ring-primary/25 shadow-[0_0_14px_-4px_var(--primary)/0.25]",
+        isCurrentPeriod && "bg-primary/[0.07]",
       )}
     >
       {/* Subject color accent bar */}
       {subject && (
         <div
           className={cn(
-            "absolute left-0.5 top-1.5 bottom-1.5 w-[3px] rounded-full",
-            isCurrentPeriod && "top-1 bottom-1",
+            "absolute left-0 top-1 bottom-1 w-[2px] rounded-full",
           )}
           style={{ backgroundColor: subject.color }}
         />
       )}
 
       {/* Time stack (start above end) */}
-      <div className="flex shrink-0 flex-col items-start pl-0.5 pt-0.5 w-[3.4rem]">
+        <div className="flex shrink-0 flex-col items-start pl-2 w-[2.5rem]">
         <span
           className={cn(
-            "text-sm font-semibold leading-none tabular-nums",
+            "text-xs font-semibold leading-none tabular-nums",
             isCurrentPeriod ? "text-foreground" : "text-foreground/90",
           )}
         >
           {formatTime12(period.startTime)}
         </span>
-        <span className="mt-0.5 text-caption tabular-nums text-muted-foreground/55">
+        <span className="mt-px text-micro tabular-nums text-muted-foreground/55">
           {formatTime12(period.endTime)}
         </span>
       </div>
 
       {/* Content */}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5 pr-7">
-        <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex items-center gap-0.5">
           <span
             className={cn(
-              "truncate text-sm",
+              "truncate text-xs",
               isCurrentPeriod ? "font-semibold" : "font-medium",
             )}
             style={subject ? { color: subject.color } : undefined}
@@ -339,20 +337,20 @@ function PeriodRow({
               initial={reduceMotion ? false : { scale: 0.6, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: MOTION_DURATION.normal, ease: MOTION_EASE }}
-              className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-micro font-bold uppercase tracking-wider text-primary"
+              className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-0.5 py-px text-micro font-bold uppercase tracking-wider text-primary"
             >
-              <span className="h-1 w-1 rounded-full bg-primary animate-pulse" />
+              <span className="h-0.5 w-0.5 rounded-full bg-primary animate-pulse" />
               Now
             </motion.span>
           )}
           {isNextPeriod && !isCurrentPeriod && (
-            <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground/50">
-              Up next
+            <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground/40">
+              Next
             </span>
           )}
         </div>
         {period.location && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
+          <div className="flex items-center gap-1 text-micro text-muted-foreground/60">
             <MapPin className="h-2.5 w-2.5 shrink-0" />
             <span className="truncate">{period.location}</span>
           </div>
@@ -361,7 +359,7 @@ function PeriodRow({
 
       {/* Hover-revealed actions */}
       <div
-        className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-lg bg-background/85 p-0.5 opacity-0 shadow-sm ring-1 ring-border/40 backdrop-blur-sm transition-all duration-150 group-hover/period:pointer-events-auto group-hover/period:opacity-100 group-focus-within/period:pointer-events-auto group-focus-within/period:opacity-100"
+        className="pointer-events-none absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-px rounded-md bg-background/80 p-px opacity-0 ring-1 ring-border/30 transition-all duration-150 group-hover/period:pointer-events-auto group-hover/period:opacity-100 group-focus-within/period:pointer-events-auto group-focus-within/period:opacity-100"
       >
         <button
           type="button"
@@ -369,11 +367,11 @@ function PeriodRow({
             e.stopPropagation()
             onEdit()
           }}
-          className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
           aria-label={`Edit ${displayName}`}
           title="Edit period"
         >
-          <Pencil className="h-2.5 w-2.5" />
+          <Pencil className="h-2 w-2" />
         </button>
         <button
           type="button"
@@ -381,11 +379,11 @@ function PeriodRow({
             e.stopPropagation()
             onDelete()
           }}
-          className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-destructive/15 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-destructive/15 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring"
           aria-label={`Delete ${displayName}`}
           title="Delete period"
         >
-          <Trash2 className="h-2.5 w-2.5" />
+          <Trash2 className="h-2 w-2" />
         </button>
       </div>
     </motion.div>
@@ -406,11 +404,11 @@ function DayHeader({
   onEdit: () => void
 }) {
   return (
-    <div className="mb-2.5 flex items-center justify-between">
-      <div className="flex items-center gap-1.5">
+    <div className="mb-0.5 flex items-center justify-between">
+      <div className="flex items-center gap-1">
         <span
           className={cn(
-            "flex h-6 w-6 items-center justify-center rounded-md text-xs font-bold tabular-nums transition-colors",
+            "flex h-5 w-5 items-center justify-center rounded text-xs font-bold tabular-nums transition-colors",
             isToday
               ? "bg-primary text-primary-foreground"
               : "bg-muted/50 text-muted-foreground group-hover/day:bg-muted/80",
@@ -420,23 +418,23 @@ function DayHeader({
         </span>
         <span
           className={cn(
-            "text-sm font-semibold",
+            "text-xs font-semibold",
             isToday ? "text-primary" : "text-foreground/80",
           )}
         >
           Day {dayLabel}
         </span>
         {isToday && isDayOverridden && (
-          <Pin className="h-3 w-3 text-primary" aria-label="Pinned" />
+          <Pin className="h-2.5 w-2.5 text-primary" aria-label="Pinned" />
         )}
       </div>
       <button
         type="button"
         onClick={onEdit}
-        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/30 transition-all hover:bg-accent hover:text-foreground"
+        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 transition-all hover:bg-accent hover:text-foreground"
         aria-label={`Edit Day ${dayLabel}`}
       >
-        <Edit3 className="h-3 w-3" />
+        <Edit3 className="h-2.5 w-2.5" />
       </button>
     </div>
   )
@@ -544,22 +542,22 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
   return (
     <>
       <ScrollArea className="h-full">
-        <div className="px-4 py-5 min-[1200px]:px-8 min-[1200px]:py-6 space-y-5">
+        <div className="px-4 py-4 min-[1200px]:px-8 min-[1200px]:py-4 space-y-3">
           {/* Header */}
           <motion.div
             initial={reduceMotion ? false : { opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-            className="flex flex-wrap items-start justify-between gap-3"
+            className="flex flex-wrap items-start justify-between gap-2"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15">
-                <CalendarDays className="h-5 w-5 text-primary" />
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/15">
+                <CalendarDays className="h-4 w-4 text-primary" />
               </div>
               <div className="min-w-0">
-                <h2 className="font-heading text-lg font-semibold leading-tight">Timetable</h2>
+                <h2 className="font-heading text-sm font-semibold leading-tight">Timetable</h2>
                 {showDayPicker ? (
-                  <p className="mt-0.5 flex items-center text-caption text-muted-foreground">
+                  <p className="mt-px flex items-center text-micro text-muted-foreground">
                     <Popover open={dayPickerOpen} onOpenChange={setDayPickerOpen}>
                       <PopoverTrigger asChild>
                         <button
@@ -639,29 +637,29 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
                     )}
                   </p>
                 ) : (
-                  <p className="mt-0.5 text-caption text-muted-foreground">10-day cycle</p>
+                  <p className="mt-px text-micro text-muted-foreground">10-day cycle</p>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1.5 rounded-xl"
+                className="gap-1 rounded-lg h-7 px-2.5 text-xs"
                 onClick={() => setEditOpen(true)}
               >
-                <Pencil className="h-3.5 w-3.5" />
-                Edit Timetable
+                <Pencil className="h-3 w-3" />
+                Edit
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1.5 rounded-xl"
+                className="gap-1 rounded-lg h-7 px-2.5 text-xs"
                 onClick={() => setAiEditOpen(true)}
               >
-                <Wand2 className="h-3.5 w-3.5" />
-                AI Editor
+                <Wand2 className="h-3 w-3" />
+                AI
               </Button>
             </div>
           </motion.div>
@@ -672,24 +670,24 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
               initial={reduceMotion ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-              className="flex flex-col items-center justify-center py-16 text-center"
-            >
-              <motion.div
-                animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
-                transition={
-                  reduceMotion
-                    ? { duration: 0 }
-                    : { duration: 4, repeat: Infinity, ease: "easeInOut" }
-                }
-                className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/30"
+                className="flex flex-col items-center justify-center py-10 text-center"
               >
-                <Sun className="h-7 w-7 text-muted-foreground/35" />
-              </motion.div>
-              <p className="mb-1 text-sm font-medium">No timetable configured</p>
-              <p className="mb-4 max-w-xs text-caption text-muted-foreground">
-                Upload a photo of your school timetable and AI will parse it into a native 10-day cycle.
-              </p>
-              <Button size="sm" className="gap-1.5 rounded-xl" onClick={() => setEditOpen(true)}>
+                <motion.div
+                  animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
+                  transition={
+                    reduceMotion
+                      ? { duration: 0 }
+                      : { duration: 4, repeat: Infinity, ease: "easeInOut" }
+                  }
+                  className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-muted/30"
+                >
+                  <Sun className="h-5 w-5 text-muted-foreground/35" />
+                </motion.div>
+                <p className="mb-1 text-xs font-medium">No timetable configured</p>
+                <p className="mb-3 max-w-xs text-micro text-muted-foreground">
+                  Upload a photo of your school timetable and AI will parse it into a native 10-day cycle.
+                </p>
+                <Button size="sm" className="gap-1 rounded-lg h-7 px-2.5 text-xs" onClick={() => setEditOpen(true)}>
                 <Pencil className="h-4 w-4" />
                 Set up Timetable
               </Button>
@@ -717,7 +715,7 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
               {/* 10-day grid */}
               <motion.div
                 key="day-grid"
-                className="grid grid-cols-1 gap-2.5 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5"
+                className="grid grid-cols-1 gap-1 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5"
                 variants={staggerContainer(0.04, 0.08)}
                 initial="initial"
                 animate="animate"
@@ -728,17 +726,14 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
                     <motion.div
                       key={dayLabel}
                       variants={staggerItem}
-                      whileHover={hoverLift(reduceMotion)}
                       className={cn(
-                        "group/day relative rounded-2xl border p-3 transition-colors",
-                        isToday
-                          ? "border-primary/35 bg-primary/[0.04]"
-                          : "border-border/60 bg-card/30 hover:border-border/80 hover:bg-card/50",
+                        "group/day relative p-1",
+                        isToday ? "bg-primary/[0.04] rounded-md" : "",
                       )}
                     >
                       {/* Today left stripe */}
                       {isToday && (
-                        <div className="absolute left-0 top-3 bottom-3 w-[2px] rounded-full bg-primary" />
+                        <div className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-primary" />
                       )}
 
                       <DayHeader
@@ -753,7 +748,7 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
 
                       {/* Periods */}
                       {entries.length > 0 ? (
-                        <div className="space-y-0.5">
+                        <div className="space-y-px">
                           {entries.map((entry, entryIdx) =>
                             entry.periods.map((period, periodIdx) => {
                               const subject = getSubjectById(period.subject)
@@ -787,7 +782,7 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
                           )}
                         </div>
                       ) : (
-                        <p className="py-2 text-center text-xs text-muted-foreground/40">
+                        <p className="py-1 text-center text-micro text-muted-foreground/40">
                           No classes
                         </p>
                       )}
@@ -807,12 +802,12 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
                     ease: MOTION_EASE,
                     delay: reduceMotion ? 0 : 0.2,
                   }}
-                  className="flex items-center gap-3 rounded-xl border border-amber-200/40 bg-amber-50/40 px-3.5 py-2.5 dark:border-amber-900/40 dark:bg-amber-950/20"
+                  className="flex items-center gap-2 rounded-lg border border-amber-200/40 bg-amber-50/40 px-3 py-2 dark:border-amber-900/40 dark:bg-amber-950/20"
                 >
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/15">
-                    <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15">
+                    <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
                   </div>
-                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
                     {config.holidays.length} holiday period
                     {config.holidays.length !== 1 ? "s" : ""} active
                     <span className="text-amber-700/60 dark:text-amber-300/60">
