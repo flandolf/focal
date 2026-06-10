@@ -2,6 +2,8 @@ const fs = require("fs")
 
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"))
 const tauri = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"))
+const cargoTomlPath = "src-tauri/Cargo.toml"
+const cargoToml = fs.readFileSync(cargoTomlPath, "utf8")
 
 let [major, minor, patch] = pkg.version.split(".").map(Number)
 
@@ -22,5 +24,9 @@ tauri.version = newVersion
 
 fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n")
 fs.writeFileSync("src-tauri/tauri.conf.json", JSON.stringify(tauri, null, 2) + "\n")
+fs.writeFileSync(
+  cargoTomlPath,
+  cargoToml.replace(/^(version\s*=\s*")[^"]+("\s*)$/m, `$1${newVersion}$2`),
+)
 
 console.log(newVersion)
