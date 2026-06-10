@@ -1,9 +1,12 @@
-name: publish
+name: "publish"
 
 on:
   push:
     branches:
-      - main
+      - release
+
+# This is the example from the readme.
+# On each push to the `release` branch it will create or update a GitHub release, build your app, and upload the artifacts to the release.
 
 jobs:
   publish-tauri:
@@ -17,7 +20,7 @@ jobs:
             args: "--target aarch64-apple-darwin"
           - platform: "macos-latest" # for Intel based macs.
             args: "--target x86_64-apple-darwin"
-          - platform: "ubuntu-22.04"
+          - platform: "ubuntu-22.04" # for Tauri v1 you could replace this with ubuntu-20.04.
             args: ""
           - platform: "windows-latest"
             args: ""
@@ -31,19 +34,11 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: setup bun
-        uses: oven-sh/setup-bun@v2
-
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04' # This must match the platform value defined above.
@@ -54,7 +49,7 @@ jobs:
       - name: install frontend dependencies
         run: bun install
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -63,5 +58,4 @@ jobs:
           releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: false
-          tauriScript: bun tauri
           args: ${{ matrix.args }}
