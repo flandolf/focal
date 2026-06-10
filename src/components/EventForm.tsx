@@ -178,11 +178,25 @@ function EventForm({
     })
   }
 
-  const getDefaultEndTime = () => {
-    const [sh, sm] = (initialValues?.startTime ?? "09:00").split(":").map(Number)
-    const d = new Date()
-    d.setHours(sh, sm + 30, 0, 0)
+  /** Compute an end time from the current start time + duration, preserving the user's preference when toggling modes. */
+  const computeEndTimeFromCurrent = () => {
+    const [sh, sm] = startTime.split(":").map(Number)
+    const d = new Date(eventDate ?? new Date())
+    d.setHours(sh, sm, 0, 0)
+    const minutes = Number.parseInt(duration, 10)
+    d.setMinutes(d.getMinutes() + (Number.isFinite(minutes) && minutes > 0 ? minutes : 60))
     return format(d, "HH:mm")
+  }
+
+  /** Compute a duration (minutes) from the current start time + explicit end time. */
+  const computeDurationFromCurrent = () => {
+    if (!explicitEndTime) return
+    const [sh, sm] = startTime.split(":").map(Number)
+    const [eh, em] = explicitEndTime.split(":").map(Number)
+    const startMin = sh * 60 + sm
+    const endMin = eh * 60 + em
+    const delta = endMin - startMin
+    if (delta > 0) setDuration(String(delta))
   }
 
   const handleEndTimeChange = (value: string) => {
@@ -318,26 +332,28 @@ function EventForm({
             </FormField>
 
             <FormField
-              label="End time"
+              label={endTimeMode === "end" ? "End time" : "Duration"}
               labelClassName={fieldLabelClass}
               labelAccessory={!isMultiDay && (
                 <button
                   type="button"
                   onClick={() => {
                     if (endTimeMode === "end") {
+                      computeDurationFromCurrent()
                       setEndTimeMode("duration")
                     } else {
-                      setExplicitEndTime(getDefaultEndTime())
+                      setExplicitEndTime(computeEndTimeFromCurrent())
                       setEndTimeMode("end")
                     }
                   }}
                   className={cn(
-                    "cursor-pointer text-micro font-medium uppercase tracking-normal",
+                    "cursor-pointer text-micro font-medium uppercase tracking-normal transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded-sm px-0.5 -mx-0.5",
                     endTimeMode === "end"
-                      ? "text-primary underline underline-offset-2"
-                      : "text-muted-foreground/60 hover:text-muted-foreground"
+                      ? "text-muted-foreground/60 hover:text-foreground"
+                      : "text-muted-foreground/60 hover:text-foreground"
                   )}
                 >
+                  {endTimeMode === "end" ? "Use duration" : "Use end time"}
                 </button>
               )}
             >

@@ -48,7 +48,7 @@ export function PrepBalance({
                 key={item.subjectId}
                 type="button"
                 onClick={() => onSelectItem(item)}
-                className="min-w-0 rounded-xl border border-border/55 bg-background/24 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                className="min-w-0 rounded-xl border border-border/55 bg-background/24 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

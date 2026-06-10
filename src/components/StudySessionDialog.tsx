@@ -94,6 +94,15 @@ export function StudySessionDialog({
   const [startDate, setStartDate] = useState<Date | undefined>(() => initialDate ? new Date(initialDate) : new Date())
   const [startTime, setStartTime] = useState("14:00")
   const [duration, setDuration] = useState("60")
+  const [endTimeMode, setEndTimeMode] = useState<"duration" | "end">(() => {
+    // If a session is being edited with an end time, start in end-time mode (matches EventForm)
+    if (session?.endTime) return "end"
+    return "duration"
+  })
+  const [explicitEndTime, setExplicitEndTime] = useState<string>(() => {
+    if (session?.endTime) return format(parseISO(session.endTime), "HH:mm")
+    return ""
+  })
   const [isDeleting, setIsDeleting] = useState(false)
   const [segments, setSegments] = useState<{ start: string; end: string }[]>([])
   const hasSegments = segments.length > 0
@@ -120,7 +129,15 @@ export function StudySessionDialog({
     })
   const subjects = [...hiddenSelectedSubjects, ...baseSubjects]
   const selectedSubjects = subjects.filter((subject) => subjectIds.includes(subject.id))
-  const durationMinutes = hasSegments ? segmentTotalActive : Number.parseInt(duration, 10)
+  const durationMinutes = hasSegments
+    ? segmentTotalActive
+    : (endTimeMode === "end" && explicitEndTime
+      ? (() => {
+          const [sh, sm] = startTime.split(":").map(Number)
+          const [eh, em] = explicitEndTime.split(":").map(Number)
+          return (eh * 60 + em) - (sh * 60 + sm)
+        })()
+      : Number.parseInt(duration, 10))
   const canSave = title.trim().length > 0
     && subjectIds.length > 0
     && Boolean(startDate)
@@ -156,6 +173,8 @@ export function StudySessionDialog({
       const endMs = new Date(session.endTime).getTime()
       const durationMs = endMs - startMs
       setDuration(String(Math.round(durationMs / (1000 * 60))))
+      setExplicitEndTime(format(parseISO(session.endTime), "HH:mm"))
+      setEndTimeMode("end")
 
       // Initialize editable segments from activeDurations
       if (session.activeDurations && session.activeDurations.length > 0) {
@@ -201,7 +220,28 @@ export function StudySessionDialog({
       const startMs = new Date(session.startTime).getTime()
       const endMs = new Date(session.endTime).getTime()
       setDuration(String(Math.round((endMs - startMs) / (1000 * 60))))
+      setExplicitEndTime(format(parseISO(session.endTime), "HH:mm"))
+      setEndTimeMode("end")
     }
+  }
+
+  /** Compute an end time (HH:mm) from current start time + duration, preserving the user's preference when toggling modes. */
+  const computeEndTimeFromCurrent = () => {
+    const [sh, sm] = startTime.split(":").map(Number)
+    const d = new Date(startDate ?? new Date())
+    d.setHours(sh, sm, 0, 0)
+    const minutes = Number.parseInt(duration, 10)
+    d.setMinutes(d.getMinutes() + (Number.isFinite(minutes) && minutes > 0 ? minutes : 60))
+    return format(d, "HH:mm")
+  }
+
+  /** Compute a duration (minutes, as a string) from current start time + explicit end time. */
+  const computeDurationFromCurrent = () => {
+    if (!explicitEndTime) return
+    const [sh, sm] = startTime.split(":").map(Number)
+    const [eh, em] = explicitEndTime.split(":").map(Number)
+    const delta = (eh * 60 + em) - (sh * 60 + sm)
+    if (delta > 0) setDuration(String(delta))
   }
 
   const toggleSubject = (id: string) => {
@@ -262,13 +302,21 @@ export function StudySessionDialog({
       }
     }
 
-    const durationMinutes = Number.parseInt(duration, 10)
-    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null
-
     const [hours, minutes] = startTime.split(":").map(Number)
     const start = new Date(startDate)
     start.setHours(hours, minutes, 0, 0)
-    const end = addMinutes(start, durationMinutes)
+
+    let end: Date
+    if (endTimeMode === "end" && explicitEndTime) {
+      const [eh, em] = explicitEndTime.split(":").map(Number)
+      end = new Date(startDate)
+      end.setHours(eh, em, 0, 0)
+      if (end <= start) return null
+    } else {
+      const durationMinutes = Number.parseInt(duration, 10)
+      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null
+      end = addMinutes(start, durationMinutes)
+    }
 
     return {
       id: session?.id,
@@ -354,7 +402,11 @@ export function StudySessionDialog({
             </span>
             <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
               <Clock className="h-3 w-3" />
-              {hasSegments ? `${computedSegmentStart} – ${computedSegmentEnd}` : startTime}
+              {hasSegments
+                ? `${computedSegmentStart} – ${computedSegmentEnd}`
+                : endTimeMode === "end" && explicitEndTime
+                  ? `${startTime} – ${explicitEndTime}`
+                  : startTime}
             </span>
             <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
               <Timer className="h-3 w-3" />
@@ -438,21 +490,53 @@ export function StudySessionDialog({
                             />
                           </div>
                         </FormField>
-                        <FormField label="Duration" labelClassName={fieldLabelClass}>
-                          <Input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={duration}
-                            onChange={(event) => setDuration(event.target.value)}
-                            placeholder="60"
-                            className={inputClass}
-                          />
+                        <FormField
+                          label={endTimeMode === "end" ? "End time" : "Duration"}
+                          labelClassName={fieldLabelClass}
+                          labelAccessory={
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (endTimeMode === "end") {
+                                  computeDurationFromCurrent()
+                                  setEndTimeMode("duration")
+                                } else {
+                                  setExplicitEndTime(computeEndTimeFromCurrent())
+                                  setEndTimeMode("end")
+                                }
+                              }}
+                              className="cursor-pointer text-micro font-medium uppercase tracking-normal transition-colors text-muted-foreground/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded-sm px-0.5 -mx-0.5"
+                            >
+                              {endTimeMode === "end" ? "Use duration" : "Use end time"}
+                            </button>
+                          }
+                        >
+                          {endTimeMode === "end" ? (
+                            <div className={inputWithIconClass}>
+                              <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <input
+                                type="time"
+                                value={explicitEndTime}
+                                onChange={(e) => setExplicitEndTime(e.target.value)}
+                                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <Input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={duration}
+                              onChange={(event) => setDuration(event.target.value)}
+                              placeholder="60"
+                              className={inputClass}
+                            />
+                          )}
                         </FormField>
                       </>
                     )}
                   </div>
-                  {!hasSegments && (
+                  {!hasSegments && endTimeMode === "duration" && (
                     <div className="flex flex-wrap gap-1.5">
                       {DURATION_OPTIONS.map((option) => (
                         <button

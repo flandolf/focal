@@ -24,7 +24,7 @@ export function StudyPriorities({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+        className="flex w-full items-center justify-between gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
           <Target className="h-3.5 w-3.5 text-muted-foreground" />
@@ -74,7 +74,7 @@ export function StudyPriorities({
                         whileTap={reduceMotion ? undefined : { scale: 0.98 }}
                         type="button"
                         onClick={() => onSelectItem(item)}
-                        className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                        className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">

@@ -622,22 +622,22 @@ export function HomeView({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs text-destructive hover:text-destructive"
-              onClick={handleDeleteSelectedEvents}
-              disabled={eventBatchSaving}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
               className="h-8 gap-1.5 rounded-xl px-2.5 text-xs"
               onClick={handleMergeSelectedEvents}
               disabled={eventBatchSaving || !canMergeSelectedItems}
             >
               <Combine className="h-3.5 w-3.5" />
               Merge
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-8 gap-1.5 rounded-xl px-2.5 text-xs"
+              onClick={handleDeleteSelectedEvents}
+              disabled={eventBatchSaving}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
             </Button>
             <Button
               variant="default"
@@ -669,7 +669,7 @@ export function HomeView({
             <p className="mt-1 text-sm text-muted-foreground">
               {overdueProjects.length > 0 ? (
                 <span className="text-destructive font-medium">
-                  {overdueProjects.length} overdue{overdueProjects.length > 0 ? "" : ""}
+                  {overdueProjects.length} overdue{overdueProjects.length !== 1 ? "s" : ""}
                 </span>
               ) : null}
               {overdueProjects.length > 0 && dueThisWeek.length > 0 && (
@@ -726,7 +726,7 @@ export function HomeView({
                 <button
                   key={p.id}
                   onClick={() => onSelectProject(p.id)}
-                  className="rounded-md px-2.5 py-1 text-left text-xs font-medium transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/35"
+                  className="rounded-md px-2.5 py-1 text-left text-xs font-medium transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-destructive/40"
                 >
                   {p.name}
                   <span className="text-destructive/60 ml-1.5">{formatDeadline(p.deadline!)}</span>
@@ -941,7 +941,7 @@ export function HomeView({
                       <button
                         key={p.id}
                         onClick={() => onSelectProject(p.id)}
-                        className="group w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                        className="group w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
