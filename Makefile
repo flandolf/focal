@@ -1,4 +1,4 @@
-.PHONY: help dev tauri-dev build build-only lint lint-fix typecheck check install clean distclean format release release-dry-run
+.PHONY: help dev tauri-dev build build-only lint lint-fix typecheck check install clean distclean format bump-version release release-dry-run
 
 # ---------------------------------------------------------------------------
 # Help (default)
@@ -11,8 +11,8 @@ help:
 	@echo "  make tauri-dev      Full Tauri desktop app in dev mode"
 	@echo ""
 	@echo "Build:"
-	@echo "  make build          Lint-fix, Tauri build, install to /Applications"
-	@echo "  make build-only     Tauri production build (no lint, no install)"
+	@echo "  make build          Lint-fix, bump version, Tauri build, install to /Applications"
+	@echo "  make build-only     Tauri production build (no lint, no version bump, no install)"
 	@echo "  make install        Copy built .app to /Applications"
 	@echo ""
 	@echo "Quality:"
@@ -57,10 +57,16 @@ tauri-dev:
 # ---------------------------------------------------------------------------
 # Build
 # ---------------------------------------------------------------------------
-build: lint-fix
-	bun run tauri build
-	ditto "$(APP_SRC)" "$(APP_DST)"
-	@echo "✓ Installed to $(APP_DST)"
+bump-version:
+	@bun scripts/bump-version.js
+
+build: lint-fix bump-version
+	VERSION=$$(bun -e "const fs = require('fs'); console.log(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)") && \
+	git add package.json src-tauri/tauri.conf.json && \
+	git commit -m "chore: bump version to v$$VERSION" && \
+	bun run tauri build && \
+	ditto "$(APP_SRC)" "$(APP_DST)" && \
+	echo "✓ Installed to $(APP_DST) (v$$VERSION)"
 
 build-only:
 	bun run tauri build
