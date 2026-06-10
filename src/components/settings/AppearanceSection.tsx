@@ -16,6 +16,8 @@ const THEME_OPTIONS = [
   { id: "github" as ThemeId, name: "GitHub", lightBg: "bg-gray-100", accent: "bg-blue-600" },
   { id: "linear" as ThemeId, name: "Linear", lightBg: "bg-purple-50", accent: "bg-indigo-500" },
   { id: "notion" as ThemeId, name: "Notion", lightBg: "bg-stone-100", accent: "bg-stone-700" },
+  { id: "sprout" as ThemeId, name: "Sprout", lightBg: "bg-green-50", accent: "bg-emerald-500" },
+  { id: "ember" as ThemeId, name: "Ember", lightBg: "bg-orange-50", accent: "bg-orange-500" },
 ]
 
 export function AppearanceSection({ theme, mode, setTheme, setMode }: AppearanceSectionProps) {

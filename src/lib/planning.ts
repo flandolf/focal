@@ -25,7 +25,7 @@ export function getUrgencyLabel(urgency: PriorityUrgency) {
 export function getUrgencyClassName(urgency: PriorityUrgency) {
   switch (urgency) {
     case "critical": return "bg-destructive/12 text-destructive"
-    case "high": return "bg-amber-500/14 text-amber-700 dark:text-amber-300"
+    case "high": return "bg-warning/14 text-warning dark:text-warning"
     case "medium": return "bg-primary/12 text-primary"
     case "low": return "bg-muted text-muted-foreground"
   }
