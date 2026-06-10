@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
+import { lazy, Suspense, memo, useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { downloadDir } from "@tauri-apps/api/path"
@@ -130,7 +130,7 @@ function getStoredCustomSubjects() {
 }
 
 function App() {
-  const { projects, addProject, updateProject, deleteProject, addCustomSubfolder, removeCustomSubfolder, restoreProject } = useProjects()
+  const { projects, addProject, updateProject, deleteProject, restoreProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
   const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, restoreEvent, restoreEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -232,6 +232,10 @@ function App() {
   }, [eventsLoading, sessionsLoading, requestNotionSync])
 
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null
+  const selectedProjectSessions = useMemo(() =>
+    selectedProject ? sessions.filter((s) => s.projectId === selectedProject.id) : [],
+    [sessions, selectedProject]
+  )
 
   const refreshFileCounts = useCallback(async () => {
     const results = await Promise.allSettled(
@@ -260,50 +264,50 @@ function App() {
     void refreshFileCounts()
   }, [refreshFileCounts])
 
-  const handleSelectProject = (id: string) => {
+  const handleSelectProject = useCallback((id: string) => {
     setSelectedId(id)
     setHomeSelected(false)
     setSettingsView(false)
     setAnalyticsView(false)
-  }
+  }, [])
 
-  const handleSelectHome = () => {
+  const handleSelectHome = useCallback(() => {
     setSelectedId(null)
     setHomeSelected(true)
     setSettingsView(false)
     setTimetableView(false)
     setAnalyticsView(false)
-  }
+  }, [])
 
-  const handleSelectTimetable = () => {
+  const handleSelectTimetable = useCallback(() => {
     setSelectedId(null)
     setHomeSelected(false)
     setSettingsView(false)
     setAnalyticsView(false)
     setTimetableView(true)
-  }
+  }, [])
 
-  const handleSelectAnalytics = () => {
+  const handleSelectAnalytics = useCallback(() => {
     setSelectedId(null)
     setHomeSelected(false)
     setSettingsView(false)
     setTimetableView(false)
     setAnalyticsView(true)
-  }
+  }, [])
 
-  const handleOpenNewSession = (initialDate?: Date) => {
+  const handleOpenNewSession = useCallback((initialDate?: Date) => {
     setSelectedSession(null)
     setNewItemInitialDate(initialDate)
     setNewItemDialogKey((key) => key + 1)
     setSessionDialogOpen(true)
-  }
+  }, [])
 
-  const handleOpenNewEvent = (initialDate?: Date) => {
+  const handleOpenNewEvent = useCallback((initialDate?: Date) => {
     setSelectedEvent(null)
     setNewItemInitialDate(initialDate)
     setNewItemDialogKey((key) => key + 1)
     setEventDialogOpen(true)
-  }
+  }, [])
 
   useKeyboardShortcuts({
     onSearch: () => setSearchOpen(true),
@@ -348,7 +352,7 @@ function App() {
     setNotionConflicts([])
   }, [setNotionConflicts])
 
-  const handleCreateProject = async (data: {
+  const handleCreateProject = useCallback(async (data: {
     name: string
     description?: string
     icon?: string
@@ -370,9 +374,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to create assessment: ${String(e)}`)
     }
-  }
+  }, [addProject, setSelectedId, setHomeSelected])
 
-  const handleUpdateProject = async (
+  const handleUpdateProject = useCallback(async (
     id: string,
     data: {
       name: string
@@ -391,9 +395,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to update assessment: ${String(e)}`)
     }
-  }
+  }, [updateProject])
 
-  const handleDeleteProject = async (id: string) => {
+  const handleDeleteProject = useCallback(async (id: string) => {
     const project = projects.find((p) => p.id === id)
     if (!project) return
     const confirmed = await confirmDestructiveAction({
@@ -419,9 +423,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to delete assessment: ${String(e)}`)
     }
-  }
+  }, [projects, deleteProject, selectedId, restoreProject, requestNotionSync])
 
-  const handleCreateStudySession = async (data: {
+  const handleCreateStudySession = useCallback(async (data: {
     id?: string
     projectId?: string
     subjectIds: string[]
@@ -454,9 +458,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to create study session: ${String(e)}`)
     }
-  }
+  }, [addSession, pushSessionChange, setSessionDialogOpen])
 
-  const handleCreateStudySessions = async (items: {
+  const handleCreateStudySessions = useCallback(async (items: {
     projectId?: string
     subjectIds: string[]
     title: string
@@ -474,9 +478,9 @@ function App() {
       toast.error(`Failed to create study sessions: ${String(e)}`)
       throw e
     }
-  }
+  }, [addSessions, requestNotionSync])
 
-  const handleStartPomodoroSession = async (data: {
+  const handleStartPomodoroSession = useCallback(async (data: {
     subjectIds: string[]
     durationSeconds: number
     projectId?: string
@@ -536,9 +540,9 @@ function App() {
       toast.error(`Failed to start Pomodoro session: ${String(e)}`)
       throw e
     }
-  }
+  }, [sessions, projects, addSession, updateSession, pushSessionChange])
 
-  const handleUpdatePomodoroSession = async (
+  const handleUpdatePomodoroSession = useCallback(async (
     id: string,
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => {
@@ -561,9 +565,9 @@ function App() {
       toast.error(`Failed to update Pomodoro session: ${String(e)}`)
       throw e
     }
-  }
+  }, [sessions, projects, updateSession, pushSessionChange])
 
-  const handleEditStudySession = async (data: {
+  const handleEditStudySession = useCallback(async (data: {
     id?: string
     projectId?: string
     subjectIds: string[]
@@ -605,9 +609,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to update study session: ${String(e)}`)
     }
-  }
+  }, [sessions, updateSession, pushSessionChange, setSessionDialogOpen, setSelectedSession])
 
-  const handleDeleteStudySession = async (id: string) => {
+  const handleDeleteStudySession = useCallback(async (id: string) => {
     const session = sessions.find((s) => s.id === id)
     if (!session) return
     const confirmed = await confirmDestructiveAction({
@@ -640,9 +644,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to delete study session: ${String(e)}`)
     }
-  }
+  }, [sessions, deleteSession, restoreSession, setSessionDialogOpen, setSelectedSession, requestNotionSync])
 
-  const handleCreateEvent = async (data: {
+  const handleCreateEvent = useCallback(async (data: {
     title: string
     description?: string
     startTime: string
@@ -661,9 +665,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to add event: ${String(e)}`)
     }
-  }
+  }, [addEvent, pushEventChange, setEventDialogOpen])
 
-  const handleCreateEvents = async (items: Omit<CalendarEvent, "id" | "created_at">[]) => {
+  const handleCreateEvents = useCallback(async (items: Omit<CalendarEvent, "id" | "created_at">[]) => {
     try {
       await addEvents(items)
       toast.success(`${items.length} event${items.length !== 1 ? "s" : ""} added`)
@@ -672,9 +676,9 @@ function App() {
       toast.error(`Failed to add events: ${String(e)}`)
       throw e
     }
-  }
+  }, [addEvents, requestNotionSync])
 
-  const handleEditEvent = async (data: {
+  const handleEditEvent = useCallback(async (data: {
     id: string
     title: string
     description?: string
@@ -706,9 +710,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to update event: ${String(e)}`)
     }
-  }
+  }, [updateEvent, events, pushEventChange, setEventDialogOpen, setSelectedEvent])
 
-  const handleDeleteEvent = async (id: string) => {
+  const handleDeleteEvent = useCallback(async (id: string) => {
     const event = events.find((item) => item.id === id)
     if (!event) return
     const confirmed = await confirmDestructiveAction({
@@ -741,9 +745,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to delete event: ${String(e)}`)
     }
-  }
+  }, [events, deleteEvent, restoreEvent, setEventDialogOpen, setSelectedEvent, requestNotionSync])
 
-  const handleDeleteCalendarItems = async (itemIds: { eventIds: string[]; sessionIds: string[] }) => {
+  const handleDeleteCalendarItems = useCallback(async (itemIds: { eventIds: string[]; sessionIds: string[] }) => {
     const total = itemIds.eventIds.length + itemIds.sessionIds.length
     if (total === 0) return
     const confirmed = await confirmDestructiveAction({
@@ -802,9 +806,9 @@ function App() {
       toast.error(`Failed to delete calendar items: ${String(e)}`)
       throw e
     }
-  }
+  }, [events, sessions, deleteEvents, deleteSessions, restoreEvents, restoreSessions, requestNotionSync])
 
-  const handleSetCalendarItemsCompleted = async (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => {
+  const handleSetCalendarItemsCompleted = useCallback(async (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => {
     const total = itemIds.eventIds.length + itemIds.sessionIds.length
     if (total === 0) return
     const completedAt = isCompleted ? new Date().toISOString() : undefined
@@ -832,9 +836,9 @@ function App() {
       toast.error(`Failed to update calendar items: ${String(e)}`)
       throw e
     }
-  }
+  }, [updateEvents, updateSessions, requestNotionSync])
 
-  const handleMergeEvents = async (ids: string[]) => {
+  const handleMergeEvents = useCallback(async (ids: string[]) => {
     const selectedEvents = ids
       .map((id) => events.find((event) => event.id === id))
       .filter((event): event is CalendarEvent => Boolean(event))
@@ -899,9 +903,9 @@ function App() {
       toast.error(`Failed to merge events: ${String(e)}`)
       throw e
     }
-  }
+  }, [events, updateAndDeleteEvents, requestNotionSync])
 
-  const handleMergeStudySessions = async (ids: string[]) => {
+  const handleMergeStudySessions = useCallback(async (ids: string[]) => {
     const selectedSessions = ids
       .map((id) => sessions.find((session) => session.id === id))
       .filter((session): session is StudySession => Boolean(session))
@@ -981,9 +985,9 @@ function App() {
       toast.error(`Failed to merge study sessions: ${String(e)}`)
       throw e
     }
-  }
+  }, [sessions, updateAndDeleteSessions, requestNotionSync])
 
-  const handleToggleFavorite = async (id: string) => {
+  const handleToggleFavorite = useCallback(async (id: string) => {
     const project = projects.find((p) => p.id === id)
     if (!project) return
     try {
@@ -991,9 +995,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to update assessment: ${String(e)}`)
     }
-  }
+  }, [projects, updateProject])
 
-  const handleToggleArchive = async (id: string) => {
+  const handleToggleArchive = useCallback(async (id: string) => {
     const project = projects.find((p) => p.id === id)
     if (!project) return
     try {
@@ -1008,9 +1012,9 @@ function App() {
     } catch (e) {
       toast.error(`Failed to update assessment: ${String(e)}`)
     }
-  }
+  }, [projects, updateProject, setSelectedId, setHomeSelected])
 
-  const handleToggleFinished = async (id: string) => {
+  const handleToggleFinished = useCallback(async (id: string) => {
     const project = projects.find((p) => p.id === id)
     if (!project) return
     try {
@@ -1023,17 +1027,17 @@ function App() {
     } catch (e) {
       toast.error(`Failed to update assessment: ${String(e)}`)
     }
-  }
+  }, [projects, updateProject])
 
-  const handleSelectSession = (session: StudySession) => {
+  const handleSelectSession = useCallback((session: StudySession) => {
     setSelectedSession(session)
     setSessionDialogOpen(true)
-  }
+  }, [setSelectedSession, setSessionDialogOpen])
 
-  const handleSelectEvent = (event: CalendarEvent) => {
+  const handleSelectEvent = useCallback((event: CalendarEvent) => {
     setSelectedEvent(event)
     setEventDialogOpen(true)
-  }
+  }, [setSelectedEvent, setEventDialogOpen])
 
   const handleMoveEvent = useCallback((eventId: string, newStartTime: string, newEndTime?: string) => {
     const updates: Partial<Omit<CalendarEvent, "id" | "created_at">> = { startTime: newStartTime }
@@ -1043,14 +1047,26 @@ function App() {
     void updateEvent(eventId, updates)
   }, [updateEvent])
 
-  const handleSyncNotionCalendar = async (onProgress: (msg: string) => void) => {
+  const handleSyncNotionCalendar = useCallback(async (onProgress: (msg: string) => void) => {
     return performNotionSync(true, onProgress)
-  }
+  }, [performNotionSync])
 
-  const handleTitlebarDrag = (event: MouseEvent<HTMLDivElement>) => {
+  const handleNewProject = useCallback(() => {
+    setDialogOpen(true)
+  }, [])
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsOpen(true)
+  }, [])
+
+  const handleToggleCollapse = useCallback(() => {
+    setSidebarCollapsed((prev) => !prev)
+  }, [])
+
+  const handleTitlebarDrag = useCallback((event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0 || event.detail > 1) return
     void getCurrentWindow().startDragging().catch(() => undefined)
-  }
+  }, [])
 
   const contentKey = settingsView ? "settings" : analyticsView ? "analytics" : timetableView ? "timetable" : homeSelected ? "home" : selectedProject ? `project-${selectedProject.id}` : "empty"
   const layoutTransition = reduceMotion ? { duration: 0 } : SHELL_LAYOUT_TRANSITION
@@ -1123,12 +1139,12 @@ function App() {
               homeSelected={homeSelected}
               analyticsSelected={analyticsView}
               isCollapsed={sidebarCollapsed}
-              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+              onToggleCollapse={handleToggleCollapse}
               onSelect={handleSelectProject}
               onSelectHome={handleSelectHome}
               onSelectAnalytics={handleSelectAnalytics}
               onDelete={handleDeleteProject}
-              onNewProject={() => setDialogOpen(true)}
+              onNewProject={handleNewProject}
               onToggleFavorite={handleToggleFavorite}
               onToggleArchive={handleToggleArchive}
               onToggleFinished={handleToggleFinished}
@@ -1172,6 +1188,8 @@ function App() {
                     onOpenSubjects={() => setSubjectsOpen(true)}
                     onSyncNotionCalendar={handleSyncNotionCalendar}
                     lastSyncTime={lastSyncTime}
+                    projects={projects}
+                    onFilesChanged={refreshFileCounts}
                   />
                   </Suspense>
                 ) : timetableView ? (
@@ -1199,7 +1217,7 @@ function App() {
                     onMoveEvent={handleMoveEvent}
                     onNewSession={handleOpenNewSession}
                     onNewEvent={handleOpenNewEvent}
-                    onNewProject={() => setDialogOpen(true)}
+                    onNewProject={handleNewProject}
                     onCreateEvents={handleCreateEvents}
                     onCreateStudySessions={handleCreateStudySessions}
                     onDeleteCalendarItems={handleDeleteCalendarItems}
@@ -1212,15 +1230,13 @@ function App() {
                 ) : selectedProject ? (
                   <ProjectDetail
                     project={selectedProject}
-                    sessions={sessions.filter((s) => s.projectId === selectedProject.id)}
+                    sessions={selectedProjectSessions}
                     onFilesChanged={refreshFileCounts}
-                    onOpenSettings={() => setSettingsOpen(true)}
+                    onOpenSettings={handleOpenSettings}
                     onToggleFinished={handleToggleFinished}
                     onSelectSession={handleSelectSession}
-                    onNewSession={() => handleOpenNewSession()}
+                    onNewSession={handleOpenNewSession}
                     onCreateEvents={handleCreateEvents}
-                    onAddCustomSubfolder={addCustomSubfolder}
-                    onRemoveCustomSubfolder={removeCustomSubfolder}
                   />
                 ) : (
                   <motion.div
@@ -1250,7 +1266,7 @@ function App() {
                     </motion.p>
                     <motion.div variants={staggerItem} transition={EMPTY_STATE_TRANSITION}>
                       <Button
-                        onClick={() => setDialogOpen(true)}
+                        onClick={handleNewProject}
                         size="sm"
                         className="gap-1.5"
                         {...pressableMotion(reduceMotion)}
@@ -1349,4 +1365,4 @@ function App() {
   )
 }
 
-export default App
+export default memo(App)

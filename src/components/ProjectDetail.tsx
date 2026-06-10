@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo, memo } from "react"
 import { Plus, Loader2 } from "lucide-react"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { homeDir } from "@tauri-apps/api/path"
@@ -8,10 +8,11 @@ import { toast } from "sonner"
 import type { UnlistenFn } from "@tauri-apps/api/event"
 import { useProjectFiles } from "@/hooks/useProjectFiles"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
-import { DEFAULT_SUBFOLDERS, type FileTag } from "@/lib/types"
+import { type FileTag } from "@/lib/types"
 import type { CalendarEvent, Project, FileInfo, StudySession } from "@/lib/types"
 import { ProjectHeader } from "@/components/project/ProjectHeader"
 import { FileTree } from "@/components/project/FileTree"
+import type { ListItem } from "@/components/project/FileTree"
 import { SessionList } from "@/components/project/SessionList"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
 import { notifyProjectActionError, joinHomePath } from "@/components/project/shared"
@@ -25,32 +26,70 @@ interface ProjectDetailProps {
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
   onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
-  onAddCustomSubfolder?: (projectId: string, folderName: string) => Promise<void>
-  onRemoveCustomSubfolder?: (projectId: string, folderName: string) => Promise<void>
+
 }
 
-export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents, onAddCustomSubfolder, onRemoveCustomSubfolder }: ProjectDetailProps) {
+export const ProjectDetail = memo(function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents }: ProjectDetailProps) {
   const {
     files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
     addFileTags, removeFileTag, toggleFavorite,
     sortKey, sortAsc, setSortKey, setSortAsc,
+    firstLevelSubfolders, allSubfolders,
   } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
-  const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null)
+  const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>("__root__")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<FileTag[]>([])
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<"files" | "sessions">("files")
   const [showBulkTagMenu, setShowBulkTagMenu] = useState(false)
   const [showBulkMoveMenu, setShowBulkMoveMenu] = useState(false)
-  const [newFolderName, setNewFolderName] = useState("")
-  const [isAddingFolder, setIsAddingFolder] = useState(false)
 
-  const allSubfolders = [...DEFAULT_SUBFOLDERS, ...(project.customSubfolders ?? [])]
+  /** Breadcrumb segments derived from current subfolder path */
+  const breadcrumbSegments = useMemo(() => {
+    const segments: { label: string; path: string }[] = []
+    if (selectedSubfolder === null) {
+      segments.push({ label: "All Files", path: "__all__" })
+    } else {
+      segments.push({ label: "Project Files", path: "__root__" })
+      if (selectedSubfolder !== "__root__") {
+        const parts = selectedSubfolder.split("/")
+        let currentPath = ""
+        for (const part of parts) {
+          currentPath = currentPath ? `${currentPath}/${part}` : part
+          segments.push({ label: part, path: currentPath })
+        }
+      }
+    }
+    return segments
+  }, [selectedSubfolder])
+
+  const canGoBack = useMemo(() => {
+    if (selectedSubfolder === null) return false
+    return selectedSubfolder !== "__root__"
+  }, [selectedSubfolder])
+
+  const handleGoBack = useCallback(() => {
+    if (selectedSubfolder === null || selectedSubfolder === "__root__") return
+    const parts = selectedSubfolder.split("/")
+    if (parts.length === 1) {
+      setSelectedSubfolder("__root__")
+    } else {
+      setSelectedSubfolder(parts.slice(0, -1).join("/"))
+    }
+  }, [selectedSubfolder])
+
+  const handleBreadcrumbNavigate = useCallback((path: string) => {
+    if (path === "__all__") {
+      setSelectedSubfolder(null)
+    } else {
+      setSelectedSubfolder(path)
+    }
+  }, [])
 
   useEffect(() => {
-    void loadFiles(selectedSubfolder)
-  }, [project.id, selectedSubfolder, loadFiles])
+    void loadFiles()
+  }, [project.id, loadFiles])
 
   useEffect(() => {
     if (!loading) {
@@ -74,7 +113,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             case "drop":
               setIsDragging(false)
               if (payload.paths.length > 0) {
-                const targetFolder = selectedSubfolder
+                const targetFolder = selectedSubfolder && selectedSubfolder !== "__root__"
                   ? `${project.folder_path}/${selectedSubfolder}`
                   : project.folder_path
                 invoke("move_files_to_project", {
@@ -82,7 +121,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
                   projectName: targetFolder,
                 })
                   .then(() => {
-                    void loadFiles(selectedSubfolder)
+                    void loadFiles()
                     onFilesChanged()
                   })
                   .catch((e) => {
@@ -108,7 +147,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   }, [project.folder_path, selectedSubfolder, loadFiles, onFilesChanged])
 
   const handleAddFiles = async () => {
-    const count = await addFiles(selectedSubfolder)
+    const count = await addFiles(selectedSubfolder === "__root__" ? null : selectedSubfolder)
     if (count) {
       onFilesChanged()
     }
@@ -117,7 +156,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   const handleOpenFolder = async () => {
     try {
       const home = await homeDir()
-      const folderPath = selectedSubfolder
+      const folderPath = selectedSubfolder && selectedSubfolder !== "__root__"
         ? joinHomePath(home, "Documents", "Projects", project.folder_path, selectedSubfolder)
         : joinHomePath(home, "Documents", "Projects", project.folder_path)
       await openPath(folderPath)
@@ -251,16 +290,79 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
     [renameFile, onFilesChanged],
   )
 
-  const filteredFiles = files.filter((file) => {
-    if (searchQuery && !file.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false
+  const filteredFiles = useMemo(() => {
+    return files.filter((file) => {
+      if (searchQuery && !file.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+        return false
+      }
+      if (selectedTags.length > 0) {
+        const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
+        return selectedTags.some(tag => fileTags.includes(tag))
+      }
+      if (selectedSubfolder === "__root__") {
+        return !file.subfolder
+      }
+      if (selectedSubfolder) {
+        // Only show files directly in this folder (not descendants)
+        const fileSubfolder = file.subfolder ?? ""
+        if (fileSubfolder !== selectedSubfolder) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [files, searchQuery, selectedTags, selectedSubfolder])
+
+  const listItems = useMemo(() => {
+    const items: ListItem[] = []
+
+    const showFolders = !searchQuery && selectedTags.length === 0 && selectedSubfolder !== null
+
+    if (showFolders) {
+      // Recursive file count: each file contributes to every ancestor folder path
+      const fileCountsByFolder = new Map<string, number>()
+      for (const f of files) {
+        if (!f.subfolder) continue
+        const parts = f.subfolder.split("/")
+        let current = ""
+        for (const part of parts) {
+          current = current ? `${current}/${part}` : part
+          fileCountsByFolder.set(current, (fileCountsByFolder.get(current) ?? 0) + 1)
+        }
+      }
+
+      if (selectedSubfolder === "__root__") {
+        for (const folder of firstLevelSubfolders) {
+          items.push({ type: "folder", name: folder, path: folder, fileCount: fileCountsByFolder.get(folder) ?? 0 })
+        }
+      } else if (selectedSubfolder) {
+        const childFolders = new Set<string>()
+        for (const f of files) {
+          if (f.subfolder?.startsWith(`${selectedSubfolder}/`)) {
+            const relative = f.subfolder.slice(selectedSubfolder.length + 1)
+            const firstPart = relative.split("/")[0]
+            if (firstPart) childFolders.add(firstPart)
+          }
+        }
+        for (const folder of childFolders) {
+          const fullPath = `${selectedSubfolder}/${folder}`
+          items.push({ type: "folder", name: folder, path: fullPath, fileCount: fileCountsByFolder.get(fullPath) ?? 0 })
+        }
+      }
     }
-    if (selectedTags.length > 0) {
-      const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
-      return selectedTags.some(tag => fileTags.includes(tag))
+
+    for (const file of filteredFiles) {
+      items.push({ type: "file", data: file })
     }
-    return true
-  })
+
+    items.sort((a, b) => {
+      const nameA = a.type === "file" ? a.data.name : a.name
+      const nameB = b.type === "file" ? b.data.name : b.name
+      return nameA.localeCompare(nameB, undefined, { numeric: true })
+    })
+
+    return items
+  }, [filteredFiles, firstLevelSubfolders, selectedSubfolder, files, searchQuery, selectedTags])
 
   const handleFileSelectionChange = (file: FileInfo, selected: boolean) => {
     const newSelected = new Set(selectedFiles)
@@ -273,7 +375,7 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
   }
 
   const handleSelectAll = () => {
-    const allPaths = new Set(filteredFiles.map(f => f.path))
+    const allPaths = new Set(filteredFiles.map((f) => f.path))
     setSelectedFiles(allPaths)
   }
 
@@ -341,10 +443,9 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
           </div>
         ) : (
           <FileTree
-            project={project}
             files={files}
             loading={loading}
-            filteredFiles={filteredFiles}
+            listItems={listItems}
             selectedFiles={selectedFiles}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
@@ -357,17 +458,10 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             setSortKey={setSortKey}
             setSortAsc={setSortAsc}
             allSubfolders={allSubfolders}
-            customSubfolders={project.customSubfolders ?? []}
             showBulkTagMenu={showBulkTagMenu}
             setShowBulkTagMenu={setShowBulkTagMenu}
             showBulkMoveMenu={showBulkMoveMenu}
             setShowBulkMoveMenu={setShowBulkMoveMenu}
-            newFolderName={newFolderName}
-            setNewFolderName={setNewFolderName}
-            isAddingFolder={isAddingFolder}
-            setIsAddingFolder={setIsAddingFolder}
-            onAddCustomSubfolder={onAddCustomSubfolder}
-            onRemoveCustomSubfolder={onRemoveCustomSubfolder}
             onAddFiles={handleAddFiles}
             onOpenFile={handleOpenFile}
             onRenameFile={handleRenameFile}
@@ -383,6 +477,10 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
             onClearSelection={handleClearSelection}
             onDeleteSelected={handleDeleteSelected}
             onFileSelectionChange={handleFileSelectionChange}
+            breadcrumbSegments={breadcrumbSegments}
+            onBreadcrumbNavigate={handleBreadcrumbNavigate}
+            onGoBack={handleGoBack}
+            canGoBack={canGoBack}
           />
         )}
       </div>
@@ -395,4 +493,4 @@ export function ProjectDetail({ project, sessions, onFilesChanged, onOpenSetting
       )}
     </div>
   )
-}
+})

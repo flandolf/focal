@@ -174,9 +174,14 @@ export function CalendarGrid({
 
   const handleEventPointerDown = useCallback((e: React.PointerEvent, eventId: string, sourceDateKey: string, title: string, color: string) => {
     if (e.button !== 0) return
+    e.preventDefault()
     e.stopPropagation()
     isDragActiveRef.current = false
     pointerStartRef.current = { x: e.clientX, y: e.clientY, eventId, sourceDateKey, title, color }
+    // Suppress text selection from the very first pointerdown — browsers begin
+    // a selection immediately on press, so we can't wait for the drag threshold.
+    document.body.style.userSelect = "none"
+    document.body.style.webkitUserSelect = "none"
     // Show ghost immediately at the press point — no threshold wait, no fade-in
     ghostX.set(e.clientX)
     ghostY.set(e.clientY)
@@ -299,8 +304,10 @@ export function CalendarGrid({
   }, [onSelectDate])
 
   // ---- Drag ghost (portal) ----
-  // No initial/exit animations: the ghost appears at the press point instantly
-  // (set in handleEventPointerDown) and unmounts synchronously on release.
+  // Mirrors the actual on-calendar event chip: same height, same 3px color bar,
+  // same caption text and corner radius — with a subtle shadow + tiny scale to
+  // convey "lifted off the grid". Appears at the press point instantly, unmounts
+  // synchronously on release (no enter/exit animations).
   const dragGhost = dragState ? (
     <motion.div
       key="drag-ghost"
@@ -318,15 +325,15 @@ export function CalendarGrid({
       }}
     >
       <div
-        className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 backdrop-blur-xl"
+        className="flex h-5 max-w-[14rem] items-center gap-1 overflow-hidden rounded-[3px]"
         style={{
-          backgroundColor: dragState.color + "22",
+          backgroundColor: dragState.color + "14",
           borderLeft: `3px solid ${dragState.color}`,
-          boxShadow: `0 12px 32px -6px ${dragState.color}33, 0 2px 6px rgba(0,0,0,0.08)`,
+          boxShadow:
+            `0 10px 24px -6px ${dragState.color}40, 0 2px 6px rgba(0,0,0,0.10), 0 0 0 1px ${dragState.color}1f`,
         }}
       >
-        <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dragState.color }} />
-        <span className="text-xs font-semibold whitespace-nowrap text-foreground/90">
+        <span className="truncate px-1.5 text-caption font-medium leading-5 text-foreground/80">
           {dragState.title}
         </span>
       </div>

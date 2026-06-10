@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
+import { useState, useEffect, useRef, useCallback, memo, type ReactNode } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { staggerContainer, staggerItem } from "@/lib/motion"
 import {
@@ -195,7 +195,7 @@ interface SidebarProps {
   fileCounts: Record<string, number>
 }
 
-export function Sidebar({
+export const Sidebar = memo(function Sidebar({
   projects,
   sessions,
   customSubjects,
@@ -675,4 +675,4 @@ export function Sidebar({
       )}
     </aside>
   )
-}
+})

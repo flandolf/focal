@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, memo } from "react"
 import { createPortal } from "react-dom"
 import { format, isSameMonth, parseISO, differenceInDays } from "date-fns"
 import { Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, Trash2, X, CheckCircle2, Combine, Check, Brain, Wand2, ArrowRight } from "lucide-react"
@@ -67,7 +67,7 @@ interface HomeViewProps {
   onMoveEvent?: (eventId: string, newStartTime: string, newEndTime?: string) => void
 }
 
-export function HomeView({
+export const HomeView = memo(function HomeView({
   projects,
   sessions,
   events,
@@ -1142,4 +1142,4 @@ export function HomeView({
     {eventBatchToolbar}
     </>
   )
-}
+})

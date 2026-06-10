@@ -33,6 +33,16 @@ function getCustomSubjectsFromStorage(): Subject[] {
   return _customSubjectsCache
 }
 
+/** Cache for getSubjectById to avoid repeated lookups across the app. */
+const _subjectByIdCache = new Map<string, Subject | undefined>()
+
+/** Busts the subject ID cache when custom subjects may have changed. */
+export function bustSubjectCache() {
+  _subjectByIdCache.clear()
+  _customSubjectsCache = null
+  _customSubjectsCacheRaw = null
+}
+
 function isSubject(value: unknown): value is Subject {
   return (
     typeof value === "object" && value !== null &&
@@ -45,9 +55,16 @@ function isSubject(value: unknown): value is Subject {
 
 export function getSubjectById(id?: string): Subject | undefined {
   if (!id) return undefined
+  const cached = _subjectByIdCache.get(id)
+  if (cached !== undefined || _subjectByIdCache.has(id)) return cached
   const builtin = VCE_SUBJECTS.find((s) => s.id === id)
-  if (builtin) return builtin
-  return getCustomSubjectsFromStorage().find((s) => s.id === id)
+  if (builtin) {
+    _subjectByIdCache.set(id, builtin)
+    return builtin
+  }
+  const custom = getCustomSubjectsFromStorage().find((s) => s.id === id)
+  _subjectByIdCache.set(id, custom)
+  return custom
 }
 
 export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label: string; color: string } {

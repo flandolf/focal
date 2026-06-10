@@ -32,24 +32,19 @@ function updateFileTags(file: FileInfo, tags: FileTag[]): FileInfo {
 export function useProjectFiles(projectName: string | null) {
   const [files, setFiles] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
-  const [currentSubfolder, setCurrentSubfolder] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>("name")
   const [sortAsc, setSortAsc] = useState(true)
 
-  const loadFiles = useCallback(async (subfolder: string | null = null) => {
+  const loadFiles = useCallback(async () => {
     if (!projectName) {
       setFiles([])
       return
     }
     setLoading(true)
-    setCurrentSubfolder(subfolder)
     try {
-      const folderPath = subfolder
-        ? `${projectName}/${subfolder}`
-        : projectName
       const result = await invoke<FileInfo[]>("get_project_files", {
-        projectName: folderPath,
-        recursive: subfolder === null,
+        projectName,
+        recursive: true,
       })
       await mergeMetadata(result)
       setFiles(result)
@@ -66,6 +61,29 @@ export function useProjectFiles(projectName: string | null) {
     const sorted = [...files].sort(cmp)
     return sortAsc ? sorted : sorted.reverse()
   }, [files, sortKey, sortAsc])
+
+  /** Derive all unique subfolder paths from the loaded files. */
+  const allSubfolders = useMemo(() => {
+    const set = new Set<string>()
+    for (const f of files) {
+      if (f.subfolder) {
+        set.add(f.subfolder)
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  }, [files])
+
+  /** First-level subfolder names extracted from the file list. */
+  const firstLevelSubfolders = useMemo(() => {
+    const set = new Set<string>()
+    for (const f of files) {
+      if (f.subfolder) {
+        const first = f.subfolder.split("/")[0]
+        if (first) set.add(first)
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  }, [files])
 
   const addFiles = useCallback(async (subfolder: string | null = null) => {
     if (!projectName) return
@@ -86,7 +104,7 @@ export function useProjectFiles(projectName: string | null) {
         files: selected,
         projectName: targetFolder,
       })
-      await loadFiles(subfolder)
+      await loadFiles()
       return selected.length
     } catch (e) {
       console.error("Failed to move files:", e)
@@ -97,33 +115,33 @@ export function useProjectFiles(projectName: string | null) {
   const renameFile = useCallback(async (filePath: string, newName: string) => {
     try {
       await invoke<string>("rename_file", { filePath, newName })
-      await loadFiles(currentSubfolder)
+      await loadFiles()
     } catch (e) {
       console.error("Failed to rename file:", e)
       throw e
     }
-  }, [loadFiles, currentSubfolder])
+  }, [loadFiles])
 
   const moveFileToFolder = useCallback(async (filePath: string, destFolder: string) => {
     try {
       await invoke<string>("move_file_to_folder", { filePath, destFolder })
-      await loadFiles(currentSubfolder)
+      await loadFiles()
     } catch (e) {
       console.error("Failed to move file:", e)
       throw e
     }
-  }, [loadFiles, currentSubfolder])
+  }, [loadFiles])
 
   const deleteFiles = useCallback(async (filePaths: string[]) => {
     try {
       await invoke<number>("delete_files", { filePaths })
       await purgeMetadata(filePaths)
-      await loadFiles(currentSubfolder)
+      await loadFiles()
     } catch (e) {
       console.error("Failed to delete files:", e)
       throw e
     }
-  }, [loadFiles, currentSubfolder])
+  }, [loadFiles])
 
   const handleSetFileTags = useCallback(async (filePaths: string[], tags: FileTag[]) => {
     const filePathSet = new Set(filePaths)
@@ -179,6 +197,8 @@ export function useProjectFiles(projectName: string | null) {
 
   return {
     files: sortedFiles,
+    allSubfolders,
+    firstLevelSubfolders,
     loading,
     loadFiles,
     addFiles,
@@ -189,7 +209,6 @@ export function useProjectFiles(projectName: string | null) {
     addFileTags: handleAddFileTags,
     removeFileTag: handleRemoveFileTag,
     toggleFavorite: handleToggleFavorite,
-    currentSubfolder,
     sortKey,
     sortAsc,
     setSortKey,

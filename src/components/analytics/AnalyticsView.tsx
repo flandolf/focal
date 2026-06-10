@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, memo } from "react"
 import type { ReactNode } from "react"
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -51,7 +51,7 @@ function formatMinutesLong(m: number) {
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`
 }
 
-export function AnalyticsView({ sessions, projects, onNewSession }: AnalyticsViewProps) {
+const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects, onNewSession }: AnalyticsViewProps) {
   const reduceMotion = useReducedMotion() === true
   const [range, setRange] = useState<AnalyticsRange>(30)
   const [selectedSubjects, setSelectedSubjects] = useState<Set<string> | null>(null)
@@ -242,7 +242,9 @@ export function AnalyticsView({ sessions, projects, onNewSession }: AnalyticsVie
       </motion.div>
     </ScrollArea>
   )
-}
+})
+
+export const AnalyticsView = AnalyticsViewInner
 
 /* ----------------------------- Sub-components ----------------------------- */
 
