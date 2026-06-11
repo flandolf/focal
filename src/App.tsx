@@ -441,6 +441,7 @@ function App() {
     blockers?: string
     nextAction?: string
     completedAt?: string
+    activeDurations?: { start: string; end: string }[]
   }) => {
     try {
       const newSession = await addSession(
@@ -452,6 +453,8 @@ function App() {
         data.description,
         data.topics,
         data.notes,
+        data.status,
+        data.activeDurations,
       )
       toast.success(`Study session "${data.title}" created`)
       setSessionDialogOpen(false)
@@ -583,6 +586,7 @@ function App() {
     blockers?: string
     nextAction?: string
     completedAt?: string
+    activeDurations?: { start: string; end: string }[]
   }) => {
     if (!data.id) return
     try {
@@ -595,6 +599,7 @@ function App() {
         description: data.description,
         topics: data.topics,
         notes: data.notes,
+        activeDurations: data.activeDurations,
       }
       if (data.status) updates.status = data.status
       updates.confidence = data.confidence

@@ -272,6 +272,28 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
     }
   }
 
+  const handleFolderTagAll = useCallback(async (folderPath: string, tag: FileTag) => {
+    const pathsToTag = files
+      .filter((file) => {
+        if (!file.subfolder) return false
+        return file.subfolder === folderPath || file.subfolder.startsWith(`${folderPath}/`)
+      })
+      .map((file) => file.path)
+
+    if (pathsToTag.length === 0) {
+      toast.error(`No files found in "${folderPath}"`)
+      return
+    }
+
+    try {
+      await addFileTags(pathsToTag, [tag])
+      onFilesChanged()
+      toast.success(`Tagged ${pathsToTag.length} file${pathsToTag.length > 1 ? "s" : ""} as "${tag}"`)
+    } catch (e) {
+      notifyProjectActionError("Could not tag files in folder", e)
+    }
+  }, [files, addFileTags, onFilesChanged])
+
   const handleApplyAutoRenames = useCallback(
     async (renames: { filePath: string; newName: string }[]) => {
       let failed = 0
@@ -477,6 +499,7 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
             onClearSelection={handleClearSelection}
             onDeleteSelected={handleDeleteSelected}
             onFileSelectionChange={handleFileSelectionChange}
+            onFolderTagAll={handleFolderTagAll}
             breadcrumbSegments={breadcrumbSegments}
             onBreadcrumbNavigate={handleBreadcrumbNavigate}
             onGoBack={handleGoBack}

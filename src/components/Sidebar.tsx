@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo, type ReactNode } from "react"
+import { useState, memo, type ReactNode } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { staggerContainer, staggerItem } from "@/lib/motion"
 import {
@@ -44,6 +44,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem as CtxMenuItem,
+  ContextMenuSeparator as CtxMenuSep,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StudyTimer } from "@/components/StudyTimer"
 import { cn, formatDeadline, isOverdue, sortProjectsByDeadline, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
@@ -222,8 +229,6 @@ export const Sidebar = memo(function Sidebar({
   fileCounts,
 }: SidebarProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("active")
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; project: Project } | null>(null)
-  const contextMenuRef = useRef<HTMLDivElement>(null)
   const reduceMotion = useReducedMotion() === true
   const sorted = sortProjectsByDeadline(projects)
 
@@ -249,50 +254,6 @@ export const Sidebar = memo(function Sidebar({
   const pressTransition = reduceMotion ? { duration: 0 } : SIDEBAR_PRESS_TRANSITION
   const hoverLift = reduceMotion ? undefined : { scale: 1.025 }
   const tapPress = reduceMotion ? undefined : { scale: 0.96 }
-
-  const handleContextMenu = useCallback((e: React.MouseEvent, project: Project) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY, project })
-  }, [])
-
-  useEffect(() => {
-    if (!contextMenu) return
-    const handleClick = () => setContextMenu(null)
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setContextMenu(null)
-    }
-    document.addEventListener("click", handleClick)
-    document.addEventListener("keydown", handleKeyDown)
-    return () => {
-      document.removeEventListener("click", handleClick)
-      document.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [contextMenu])
-
-  const handleStartSessionFromContext = useCallback(async () => {
-    if (!contextMenu) return
-    const project = contextMenu.project
-    const subjectIds = project.subjectId ? [project.subjectId] : []
-    try {
-      await onStartPomodoroSession({
-        subjectIds,
-        durationSeconds: 25 * 60,
-        projectId: project.id,
-        cycleNumber: 0,
-      })
-    } catch (e) {
-      console.error("Failed to start session:", e)
-    } finally {
-      setContextMenu(null)
-    }
-  }, [contextMenu, onStartPomodoroSession])
-
-  const handleAddFileFromContext = useCallback(() => {
-    if (!contextMenu || !onAddFile) return
-    onAddFile(contextMenu.project.id)
-    setContextMenu(null)
-  }, [contextMenu, onAddFile])
 
   return (
     <aside
@@ -492,141 +453,217 @@ export const Sidebar = memo(function Sidebar({
                 const DeadlineIcon = getSidebarDeadlineIcon(project.deadlineType)
 
                 return (
-                  <motion.div
-                    key={project.id}
-                    layout
-                    variants={staggerItem}
-                    whileHover={reduceMotion ? undefined : { x: isCollapsed ? 0 : 2, scale: isCollapsed ? 1.04 : 1.01 }}
-                    whileTap={tapPress}
-                    transition={pressTransition}
-                    className={cn(
-                      "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
-                      isCollapsed ? "justify-center px-2 py-1.25" : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
-                      selectedId === project.id
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
-                      project.isArchived && "opacity-60",
-                      project.isFinished && "opacity-70"
-                    )}
-                    onClick={() => onSelect(project.id)}
-                    onContextMenu={(e) => handleContextMenu(e, project)}
-                  >
-                    <span
+                    <ContextMenu key={project.id}>
+                      <ContextMenuTrigger asChild>
+                    <motion.div
+                      key={project.id}
+                      layout
+                      variants={staggerItem}
+                      whileHover={reduceMotion ? undefined : { x: isCollapsed ? 0 : 2, scale: isCollapsed ? 1.04 : 1.01 }}
+                      whileTap={tapPress}
+                      transition={pressTransition}
                       className={cn(
-                        "flex shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
-                        isCollapsed ? "size-6.5 rounded-xl" : "size-5"
+                        "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
+                        isCollapsed ? "justify-center px-2 py-1.25" : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
+                        selectedId === project.id
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                        project.isArchived && "opacity-60",
+                        project.isFinished && "opacity-70"
                       )}
-                      style={subject ? {
-                        backgroundColor: subject.color + "14",
-                        color: subject.color,
-                      } : undefined}
+                      onClick={() => onSelect(project.id)}
                     >
-                      <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3")} aria-hidden="true" />
-                    </span>
-                    <CollapsibleBlock show={!isCollapsed} className="flex-1">
-                        <div className="flex w-full min-w-0 items-center gap-1">
-                          <p className="w-0 min-w-0 flex-1 truncate text-xs font-medium leading-4">{project.name}</p>
-                          {project.isFinished && (
-                            <span className="hidden text-micro font-medium text-green-600 dark:text-green-400 shrink-0 min-[1050px]:inline-flex">
-                              Done
-                            </span>
-                          )}
-                          {fileCounts[project.id] > 0 && (
-                            <span className="text-caption text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden">
-                              {fileCounts[project.id]}
-                            </span>
-                          )}
-                        </div>
-                        {project.deadline && !project.isFinished && (
-                          <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
-                            {project.deadline && !project.isFinished && (
-                              <>
-                                <span
-                                className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
-                                  style={{
-                                    color: deadlineInfo.color
-                                  }}
-                                >
-                                  <DeadlineIcon className="size-2.5" aria-hidden="true" />
-                                  {deadlineInfo.label}
-                                </span>
-                                <span className={cn(
-                                  "truncate text-micro font-medium select-none",
-                                  isOverdue(project.deadline)
-                                    ? "text-destructive"
-                                    : "text-muted-foreground"
-                                )}>
-                                  {formatDeadline(project.deadline)}
-                                </span>
-                              </>
+                      <span
+                        className={cn(
+                          "flex shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
+                          isCollapsed ? "size-6.5 rounded-xl" : "size-5"
+                        )}
+                        style={subject ? {
+                          backgroundColor: subject.color + "14",
+                          color: subject.color,
+                        } : undefined}
+                      >
+                        <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3")} aria-hidden="true" />
+                      </span>
+                      <CollapsibleBlock show={!isCollapsed} className="flex-1">
+                          <div className="flex w-full min-w-0 items-center gap-1">
+                            <p className="w-0 min-w-0 flex-1 truncate text-xs font-medium leading-4">{project.name}</p>
+                            {project.isFinished && (
+                              <span className="hidden text-micro font-medium text-green-600 dark:text-green-400 shrink-0 min-[1050px]:inline-flex">
+                                Done
+                              </span>
+                            )}
+                            {fileCounts[project.id] > 0 && (
+                              <span className="text-caption text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden">
+                                {fileCounts[project.id]}
+                              </span>
                             )}
                           </div>
-                        )}
-                    </CollapsibleBlock>
-                    {!isCollapsed && (
-                      <div
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0"
-                      >
-                        <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            aria-label={`Assessment actions for ${project.name}`}
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
-                          {onToggleFinished && (
+                          {project.deadline && !project.isFinished && (
+                            <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
+                              {project.deadline && !project.isFinished && (
+                                <>
+                                  <span
+                                  className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
+                                    style={{
+                                      color: deadlineInfo.color
+                                    }}
+                                  >
+                                    <DeadlineIcon className="size-2.5" aria-hidden="true" />
+                                    {deadlineInfo.label}
+                                  </span>
+                                  <span className={cn(
+                                    "truncate text-micro font-medium select-none",
+                                    isOverdue(project.deadline)
+                                      ? "text-destructive"
+                                      : "text-muted-foreground"
+                                  )}>
+                                    {formatDeadline(project.deadline)}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          )}
+                      </CollapsibleBlock>
+                      {!isCollapsed && (
+                        <div
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0"
+                        >
+                          <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              aria-label={`Assessment actions for ${project.name}`}
+                              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            {onToggleFinished && (
+                              <DropdownMenuItem
+                                onSelect={(event) => {
+                                  event.stopPropagation()
+                                  onToggleFinished(project.id)
+                                }}
+                              >
+                                <CheckCircle2 className={cn(project.isFinished && "text-green-500")} />
+                                {project.isFinished ? "Mark current" : "Mark complete"}
+                              </DropdownMenuItem>
+                            )}
+                            {onToggleFavorite && (
+                              <DropdownMenuItem
+                                onSelect={(event) => {
+                                  event.stopPropagation()
+                                  onToggleFavorite(project.id)
+                                }}
+                              >
+                                <Star className={cn(project.isFavorite && "fill-yellow-400 text-yellow-400")} />
+                                {project.isFavorite ? "Unstar" : "Star"}
+                              </DropdownMenuItem>
+                            )}
+                            {onToggleArchive && (
+                              <DropdownMenuItem
+                                onSelect={(event) => {
+                                  event.stopPropagation()
+                                  onToggleArchive(project.id)
+                                }}
+                              >
+                                <Archive />
+                                {project.isArchived ? "Restore" : "Archive"}
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
+                              variant="destructive"
                               onSelect={(event) => {
                                 event.stopPropagation()
-                                onToggleFinished(project.id)
+                                onDelete(project.id)
                               }}
                             >
-                              <CheckCircle2 className={cn(project.isFinished && "text-green-500")} />
-                              {project.isFinished ? "Mark current" : "Mark complete"}
+                              <Trash2 />
+                              Delete
                             </DropdownMenuItem>
-                          )}
-                          {onToggleFavorite && (
-                            <DropdownMenuItem
-                              onSelect={(event) => {
-                                event.stopPropagation()
-                                onToggleFavorite(project.id)
-                              }}
-                            >
-                              <Star className={cn(project.isFavorite && "fill-yellow-400 text-yellow-400")} />
-                              {project.isFavorite ? "Unstar" : "Star"}
-                            </DropdownMenuItem>
-                          )}
-                          {onToggleArchive && (
-                            <DropdownMenuItem
-                              onSelect={(event) => {
-                                event.stopPropagation()
-                                onToggleArchive(project.id)
-                              }}
-                            >
-                              <Archive />
-                              {project.isArchived ? "Restore" : "Archive"}
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        </div>
+                      )}
+                    </motion.div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-44">
+                        <CtxMenuItem
+                          onSelect={(event) => {
+                            event.stopPropagation()
+                            const subjectIds = project.subjectId ? [project.subjectId] : []
+                            void onStartPomodoroSession({
+                              subjectIds,
+                              durationSeconds: 25 * 60,
+                              projectId: project.id,
+                              cycleNumber: 0,
+                            })
+                          }}
+                        >
+                          <Timer />
+                          Start Session
+                        </CtxMenuItem>
+                        {onAddFile && (
+                          <CtxMenuItem
                             onSelect={(event) => {
                               event.stopPropagation()
-                              onDelete(project.id)
+                              onAddFile(project.id)
                             }}
                           >
-                            <Trash2 />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      </div>
-                    )}
-                  </motion.div>
+                            <Upload />
+                            Add File
+                          </CtxMenuItem>
+                        )}
+                        <CtxMenuSep />
+                        {onToggleFinished && (
+                          <CtxMenuItem
+                            onSelect={(event) => {
+                              event.stopPropagation()
+                              onToggleFinished(project.id)
+                            }}
+                          >
+                            <CheckCircle2 />
+                            {project.isFinished ? "Mark current" : "Mark complete"}
+                          </CtxMenuItem>
+                        )}
+                        {onToggleFavorite && (
+                          <CtxMenuItem
+                            onSelect={(event) => {
+                              event.stopPropagation()
+                              onToggleFavorite(project.id)
+                            }}
+                          >
+                            <Star />
+                            {project.isFavorite ? "Unstar" : "Star"}
+                          </CtxMenuItem>
+                        )}
+                        {onToggleArchive && (
+                          <CtxMenuItem
+                            onSelect={(event) => {
+                              event.stopPropagation()
+                              onToggleArchive(project.id)
+                            }}
+                          >
+                            <Archive />
+                            {project.isArchived ? "Restore" : "Archive"}
+                          </CtxMenuItem>
+                        )}
+                        <CtxMenuSep />
+                        <CtxMenuItem
+                          variant="destructive"
+                          onSelect={(event) => {
+                            event.stopPropagation()
+                            onDelete(project.id)
+                          }}
+                        >
+                          <Trash2 />
+                          Delete
+                        </CtxMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                 )
               })}
                   </div>
@@ -649,30 +686,6 @@ export const Sidebar = memo(function Sidebar({
         onDeleteSession={onDeletePomodoroSession}
       />
 
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="fixed z-50 min-w-45 rounded-xl border border-border bg-background p-1 shadow-xl"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-        >
-          <button
-            onClick={handleStartSessionFromContext}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground outline-none transition-colors hover:bg-muted"
-          >
-            <Timer className="h-4 w-4 text-muted-foreground" />
-            Start Session
-          </button>
-          {onAddFile && (
-            <button
-              onClick={handleAddFileFromContext}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground outline-none transition-colors hover:bg-muted"
-            >
-              <Upload className="h-4 w-4 text-muted-foreground" />
-              Add File
-            </button>
-          )}
-        </div>
-      )}
     </aside>
   )
 })

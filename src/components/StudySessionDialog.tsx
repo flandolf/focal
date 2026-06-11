@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { addMinutes, format, parseISO } from "date-fns"
 import {
   BookOpen,
@@ -35,6 +35,7 @@ import {
 } from "@/lib/types"
 
 const DURATION_OPTIONS = ["30", "45", "60", "90"]
+const REST_OPTIONS = ["5", "10", "15", "30"]
 const fieldLabelClass = "text-control font-medium text-muted-foreground"
 const sectionIconClass = "h-3.5 w-3.5 text-muted-foreground"
 const panelClass = "grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-4 dark:border-input/70 dark:bg-input/20"
@@ -104,6 +105,7 @@ export function StudySessionDialog({
     return ""
   })
   const [isDeleting, setIsDeleting] = useState(false)
+  const [restDuration, setRestDuration] = useState("5")
   const [segments, setSegments] = useState<{ start: string; end: string }[]>([])
   const hasSegments = segments.length > 0
   const computedSegmentStart = hasSegments ? segments[0].start : null
@@ -196,7 +198,8 @@ export function StudySessionDialog({
     setSegments((prev) => {
       const lastEnd = prev.length > 0 ? prev[prev.length - 1].end : "09:00"
       const [h, m] = lastEnd.split(":").map(Number)
-      const nextStart = new Date(0, 0, 0, h, m + 30)
+      const restMin = Number.parseInt(restDuration, 10) || 5
+      const nextStart = new Date(0, 0, 0, h, m + restMin)
       const nextEnd = new Date(nextStart.getTime() + 30 * 60000)
       const fmt = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
       return [...prev, { start: fmt(nextStart), end: fmt(nextEnd) }]
@@ -223,6 +226,21 @@ export function StudySessionDialog({
       setExplicitEndTime(format(parseISO(session.endTime), "HH:mm"))
       setEndTimeMode("end")
     }
+  }
+
+  const startSegmentMode = () => {
+    const [sh, sm] = startTime.split(":").map(Number)
+    const mins = endTimeMode === "end" && explicitEndTime
+      ? (() => {
+          const [eh, em] = explicitEndTime.split(":").map(Number)
+          return (eh * 60 + em) - (sh * 60 + sm)
+        })()
+      : Number.parseInt(duration, 10) || 60
+    if (mins <= 0) return
+    const start = new Date(0, 0, 0, sh, sm)
+    const end = new Date(start.getTime() + mins * 60000)
+    const fmt = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+    setSegments([{ start: fmt(start), end: fmt(end) }])
   }
 
   /** Compute an end time (HH:mm) from current start time + duration, preserving the user's preference when toggling modes. */
@@ -556,6 +574,16 @@ export function StudySessionDialog({
                       ))}
                     </div>
                   )}
+                  {!hasSegments && (
+                    <button
+                      type="button"
+                      onClick={startSegmentMode}
+                      className="flex items-center gap-1.5 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                    >
+                      <Timer className="h-3 w-3" />
+                      Use study blocks
+                    </button>
+                  )}
                 </FormSection>
 
                 <FormSection
@@ -700,7 +728,7 @@ export function StudySessionDialog({
                   )}
                 </FormSection>
 
-                {isEdit && hasSegments && (() => {
+                {hasSegments && (() => {
                   let totalRest = 0
                   const segDuration = (start: string, end: string) => Math.max(0, getMinutes(end) - getMinutes(start))
                   return (
@@ -710,79 +738,113 @@ export function StudySessionDialog({
                       className={panelClass}
                     >
                       <div className="space-y-2">
-                        {segments.map((seg, i) => {
-                          const activeMin = segDuration(seg.start, seg.end)
-                          // Compute rest before this segment
-                          let restMin = 0
-                          if (i > 0) {
-                            restMin = Math.max(0, getMinutes(seg.start) - getMinutes(segments[i - 1].end))
-                            totalRest += restMin
-                          }
-                          return (
-                            <div key={i}>
-                              {i > 0 && (
-                                <div className="flex items-center gap-2 py-1 px-1">
-                                  <div className="flex-1 border-t border-border/30" />
-                                  <span className="text-micro text-muted-foreground/50">
-                                    Rest {formatDurationStr(restMin)}
-                                  </span>
-                                  <div className="flex-1 border-t border-border/30" />
-                                </div>
-                              )}
-                              <div className="flex items-center gap-1.5 rounded-lg bg-primary/8 p-1.5">
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-caption font-bold bg-primary/12 text-primary">
-                                  A{i + 1}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    type="time"
-                                    value={seg.start}
-                                    onChange={(e) => updateSegment(i, "start", e.target.value)}
-                                    className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                  />
-                                  <span className="text-micro text-muted-foreground/60">to</span>
-                                  <input
-                                    type="time"
-                                    value={seg.end}
-                                    onChange={(e) => updateSegment(i, "end", e.target.value)}
-                                    className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                  />
-                                </div>
-                                <span className="ml-auto text-xs tabular-nums font-medium text-foreground/80">
-                                  {formatDurationStr(activeMin)}
-                                </span>
-                                {segments.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => removeSegment(i)}
-                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                    aria-label={`Remove block ${i + 1}`}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
+                        {segmentWallSpan > 0 && (
+                          <TimelineBar
+                            segments={segments}
+                            segmentWallSpan={segmentWallSpan}
+                            computedSegmentStart={computedSegmentStart!}
+                            computedSegmentEnd={computedSegmentEnd!}
+                            onUpdateSegment={updateSegment}
+                          />
+                        )}
+                        {(() => {
+                          const sorted = segments
+                            .map((seg, idx) => ({ seg, idx }))
+                            .sort((a, b) => getMinutes(a.seg.start) - getMinutes(b.seg.start))
+                          return sorted.map(({ seg, idx }, i) => {
+                            const activeMin = segDuration(seg.start, seg.end)
+                            let restMin = 0
+                            if (i > 0) {
+                              restMin = Math.max(0, getMinutes(seg.start) - getMinutes(sorted[i - 1].seg.end))
+                              totalRest += restMin
+                            }
+                            return (
+                              <div key={idx}>
+                                {i > 0 && (
+                                  <div className="flex items-center gap-2 py-1 px-1">
+                                    <div className="flex-1 border-t border-border/30" />
+                                    <span className="text-micro text-muted-foreground/50">
+                                      Rest {formatDurationStr(restMin)}
+                                    </span>
+                                    <div className="flex-1 border-t border-border/30" />
+                                  </div>
                                 )}
+                                <div className="flex items-center gap-1.5 rounded-lg bg-primary/8 p-1.5">
+                                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-caption font-bold bg-primary/12 text-primary">
+                                    A{idx + 1}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="time"
+                                      value={seg.start}
+                                      onChange={(e) => updateSegment(idx, "start", e.target.value)}
+                                      className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                    />
+                                    <span className="text-micro text-muted-foreground/60">to</span>
+                                    <input
+                                      type="time"
+                                      value={seg.end}
+                                      onChange={(e) => updateSegment(idx, "end", e.target.value)}
+                                      className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                    />
+                                  </div>
+                                  <span className="ml-auto text-xs tabular-nums font-medium text-foreground/80">
+                                    {formatDurationStr(activeMin)}
+                                  </span>
+                                  {segments.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSegment(idx)}
+                                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                      aria-label={`Remove block ${idx + 1}`}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          )
-                        })}
+                            )
+                          })
+                        })()}
                       </div>
 
-                      <div className="mt-1 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={addSegment}
-                          className="flex items-center gap-1 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Add block
-                        </button>
-                        <button
-                          type="button"
-                          onClick={clearSegments}
-                          className="rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                          Simplify
-                        </button>
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-micro font-medium text-muted-foreground/60">Rest:</span>
+                          {REST_OPTIONS.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setRestDuration(opt)}
+                              aria-pressed={restDuration === opt}
+                              className={cn(
+                                "h-6 rounded-md border px-2 text-micro font-medium transition-colors",
+                                restDuration === opt
+                                  ? "border-primary/35 bg-primary/10 text-primary"
+                                  : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                              )}
+                            >
+                              {opt}m
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={addSegment}
+                            className="flex items-center gap-1 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Add block
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearSegments}
+                            className="rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                          >
+                            Simplify
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-between border-t border-border/40 pt-2 text-xs text-muted-foreground">
@@ -904,5 +966,206 @@ export function StudySessionDialog({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+function TimelineBar({
+  segments,
+  segmentWallSpan,
+  computedSegmentStart,
+  computedSegmentEnd,
+  onUpdateSegment,
+}: {
+  segments: { start: string; end: string }[]
+  segmentWallSpan: number
+  computedSegmentStart: string
+  computedSegmentEnd: string
+  onUpdateSegment: (index: number, field: 'start' | 'end', value: string) => void
+}) {
+  const timelineRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{
+    mode: 'resize' | 'move'
+    startX: number
+    origSegments: { start: string; end: string }[]
+    barWidth: number
+    wallSpan: number
+    onUpdate: (index: number, field: 'start' | 'end', value: string) => void
+    origIdx: number
+    edge?: 'start' | 'end'
+    origValue?: string
+    origStart?: string
+    origEnd?: string
+  } | null>(null)
+  const getMinutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m }
+  const formatDurationStr = (totalMin: number) =>
+    totalMin >= 60 ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m` : `${totalMin}m`
+  // Sort segments by start time and track original indices
+  const sorted = useMemo(() => {
+    return segments
+      .map((seg, idx) => ({ seg, idx }))
+      .sort((a, b) => getMinutes(a.seg.start) - getMinutes(b.seg.start))
+  }, [segments])
+  const startDrag = (
+    e: React.MouseEvent,
+    mode: 'resize' | 'move',
+    origIdx: number,
+    edge?: 'start' | 'end',
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!timelineRef.current) return
+    const seg = segments[origIdx]
+    if (!seg) return
+    dragRef.current = {
+      mode,
+      startX: e.clientX,
+      origSegments: segments.map((s) => ({ ...s })),
+      barWidth: timelineRef.current.clientWidth,
+      wallSpan: segmentWallSpan,
+      onUpdate: onUpdateSegment,
+      origIdx,
+      ...(mode === 'resize' && edge
+        ? { edge, origValue: seg[edge] }
+        : { origStart: seg.start, origEnd: seg.end }),
+    }
+  }
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const d = dragRef.current
+      if (!d) return
+      e.preventDefault()
+      const deltaX = e.clientX - d.startX
+      const scale = d.barWidth > 0 && d.wallSpan > 0 ? d.wallSpan / d.barWidth : 0
+      const deltaMinutes = Math.round(deltaX * scale)
+      if (d.mode === 'resize') {
+        const [origH, origM] = d.origValue!.split(':').map(Number)
+        let newMin = origH * 60 + origM + deltaMinutes
+        if (d.edge === 'start') {
+          const endMin = getMinutes(d.origSegments[d.origIdx].end)
+          const minBound = d.origIdx > 0 ? getMinutes(d.origSegments[d.origIdx - 1].end) : 0
+          newMin = Math.max(minBound, Math.min(newMin, endMin - 1))
+        } else {
+          const startMin = getMinutes(d.origSegments[d.origIdx].start)
+          const maxBound = d.origIdx < d.origSegments.length - 1
+            ? getMinutes(d.origSegments[d.origIdx + 1].start)
+            : 24 * 60
+          newMin = Math.max(startMin + 1, Math.min(newMin, maxBound))
+        }
+        newMin = Math.max(0, newMin)
+        const h = Math.floor(newMin / 60) % 24
+        const m = newMin % 60
+        d.onUpdate(d.origIdx, d.edge!, `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+      } else {
+        const origStartMin = getMinutes(d.origStart!)
+        const origEndMin = getMinutes(d.origEnd!)
+        const dur = origEndMin - origStartMin
+        let newStart = origStartMin + deltaMinutes
+        if (d.origIdx > 0) {
+          newStart = Math.max(newStart, getMinutes(d.origSegments[d.origIdx - 1].end))
+        }
+        if (d.origIdx < d.origSegments.length - 1) {
+          newStart = Math.min(newStart, getMinutes(d.origSegments[d.origIdx + 1].start) - dur)
+        }
+        newStart = Math.max(0, newStart)
+        const newEnd = newStart + dur
+        const fmt = (min: number) => {
+          const hh = Math.floor(min / 60) % 24
+          const mm = min % 60
+          return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+        }
+        d.onUpdate(d.origIdx, 'start', fmt(newStart))
+        d.onUpdate(d.origIdx, 'end', fmt(newEnd))
+      }
+    }
+    const handleMouseUp = () => { dragRef.current = null }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+  const wallStartMin = getMinutes(computedSegmentStart)
+  const slices: { type: 'active' | 'rest'; leftPct: number; widthPct: number; minutes: number; sortedIdx: number; origIdx: number }[] = []
+  for (let i = 0; i < sorted.length; i++) {
+    const { seg, idx } = sorted[i]
+    const segStartMin = getMinutes(seg.start)
+    const segEndMin = getMinutes(seg.end)
+    if (i > 0) {
+      const prevEndMin = getMinutes(sorted[i - 1].seg.end)
+      const restMin = Math.max(0, segStartMin - prevEndMin)
+      if (restMin > 0) {
+        slices.push({
+          type: 'rest',
+          leftPct: ((prevEndMin - wallStartMin) / segmentWallSpan) * 100,
+          widthPct: (restMin / segmentWallSpan) * 100,
+          minutes: restMin,
+          sortedIdx: i,
+          origIdx: -1,
+        })
+      }
+    }
+    const activeMin = Math.max(0, segEndMin - segStartMin)
+    slices.push({
+      type: 'active',
+      leftPct: ((segStartMin - wallStartMin) / segmentWallSpan) * 100,
+      widthPct: (activeMin / segmentWallSpan) * 100,
+      minutes: activeMin,
+      sortedIdx: i,
+      origIdx: idx,
+    })
+  }
+  return (
+    <div className="space-y-0.5">
+      <div
+        ref={timelineRef}
+        className="relative h-7 rounded-md bg-muted/20 overflow-hidden border border-border/30 select-none"
+      >
+        {slices.map((slice, i) => (
+          <div
+            key={i}
+            className={cn(
+              "absolute top-0 h-full",
+              slice.type === 'active'
+                ? 'bg-primary/25'
+                : '',
+              slice.type === 'active' && 'cursor-grab active:cursor-grabbing',
+            )}
+            style={{
+              left: `${slice.leftPct}%`,
+              width: `${Math.max(slice.widthPct, 0.5)}%`,
+            }}
+            title={slice.type === 'active'
+              ? formatDurationStr(slice.minutes)
+              : `Rest ${formatDurationStr(slice.minutes)}`
+            }
+            onMouseDown={slice.type === 'active'
+              ? (e) => startDrag(e, 'move', slice.origIdx)
+              : undefined
+            }
+          >
+            {slice.type === 'active' && (
+              <>
+                <div
+                  className="absolute top-0 -left-1.5 w-3 h-full cursor-ew-resize flex items-center justify-center group/handle z-10"
+                  onMouseDown={(e) => startDrag(e, 'resize', slice.origIdx, 'start')}
+                >
+                  <div className="w-2 h-5 rounded-full bg-primary/60 opacity-0 group-hover/handle:opacity-100 transition-opacity shadow-sm" />
+                </div>
+                <div
+                  className="absolute top-0 -right-1.5 w-3 h-full cursor-ew-resize flex items-center justify-center group/handle z-10"
+                  onMouseDown={(e) => startDrag(e, 'resize', slice.origIdx, 'end')}
+                >
+                  <div className="w-2 h-5 rounded-full bg-primary/60 opacity-0 group-hover/handle:opacity-100 transition-opacity shadow-sm" />
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground/50 tabular-nums">
+        <span>{computedSegmentStart}</span>
+        <span>{computedSegmentEnd}</span>
+      </div>
+    </div>
   )
 }

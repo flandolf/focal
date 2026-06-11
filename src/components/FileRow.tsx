@@ -7,6 +7,17 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { FileTypeIcon } from "@/components/FileTypeIcon"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem as CtxMenuItem,
+  ContextMenuSeparator as CtxMenuSep,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
+
 import { Pencil, X, Check, Star, Plus, MoreHorizontal, Copy, FolderOpen } from "lucide-react"
 
 const ALL_TAGS: FileTag[] = ["sac", "notes", "past-paper", "exam", "resource", "other"]
@@ -107,6 +118,8 @@ function FileRowInner({
   )
 
   return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
     <div
       className={cn(
         "group grid min-h-16 cursor-default items-center gap-3 py-2.5 transition-colors hover:bg-accent/30 px-3",
@@ -359,6 +372,109 @@ function FileRowInner({
         )}
       </div>
     </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-40">
+        {onOpen && (
+          <CtxMenuItem onSelect={() => onOpen(file)}>
+            <FolderOpen className="h-4 w-4" />
+            Open
+          </CtxMenuItem>
+        )}
+        {onRename && (
+          <CtxMenuItem onSelect={startRename}>
+            <Pencil className="h-4 w-4" />
+            Rename
+          </CtxMenuItem>
+        )}
+        {onToggleFavorite && (
+          <CtxMenuItem
+            onSelect={() => onToggleFavorite(file)}
+          >
+            <Star
+              className="h-4 w-4"
+              fill={isFavorite ? "currentColor" : "none"}
+            />
+            {isFavorite ? "Unfavorite" : "Favorite"}
+          </CtxMenuItem>
+        )}
+        {(onAddTag ?? (fileTags.length > 0 && onRemoveTag)) && (
+          <>
+            <CtxMenuSep />
+            {onAddTag && availableTags.length > 0 && (
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <Plus className="h-4 w-4" />
+                  Add Tag
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent className="w-32">
+                  {ALL_TAGS.filter((t) => !fileTags.includes(t)).map((tag) => (
+                    <CtxMenuItem
+                      key={tag}
+                      onSelect={() => onAddTag(file, tag)}
+                    >
+                      {TAG_LABELS[tag]}
+                    </CtxMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            )}
+            {fileTags.length > 0 && onRemoveTag && (
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <X className="h-4 w-4" />
+                  Remove Tag
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent className="w-32">
+                  {fileTags.map((tag) => (
+                    <CtxMenuItem
+                      key={tag}
+                      onSelect={() => onRemoveTag(file, tag)}
+                    >
+                      {TAG_LABELS[tag]}
+                    </CtxMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            )}
+          </>
+        )}
+        {(onShowInFinder ?? onCopyPath ?? (onMoveFile && subfolders.length > 0)) && (
+          <>
+            <CtxMenuSep />
+            {onShowInFinder && (
+              <CtxMenuItem onSelect={() => onShowInFinder(file)}>
+                <FolderOpen className="h-4 w-4" />
+                Show in Finder
+              </CtxMenuItem>
+            )}
+            {onCopyPath && (
+              <CtxMenuItem onSelect={() => onCopyPath(file)}>
+                <Copy className="h-4 w-4" />
+                Copy Path
+              </CtxMenuItem>
+            )}
+            {onMoveFile && subfolders.length > 0 && (
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <FolderOpen className="h-4 w-4" />
+                  Move to…
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent className="w-40">
+                  {subfolders.map((folder) => (
+                    <CtxMenuItem
+                      key={folder}
+                      onSelect={() => onMoveFile(file, folder)}
+                    >
+                      {folder}
+                    </CtxMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            )}
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

@@ -3,8 +3,15 @@ import { createPortal } from "react-dom"
 import type { KeyboardEvent } from "react"
 import { format, isSameMonth, isToday, parseISO, differenceInDays } from "date-fns"
 import { motion, AnimatePresence, useReducedMotion, useMotionValue } from "framer-motion"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Pencil, CheckCircle2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem as CtxMenuItem,
+  ContextMenuSeparator as CtxMenuSep,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { getSubjectById, getEventTypeInfo, cn } from "@/lib/utils"
 import { getCalendarSessionIndicators } from "@/lib/groupSessions"
 import { hoverLift, staggerContainer, staggerItem } from "@/lib/motion"
@@ -43,6 +50,8 @@ interface CalendarGridProps {
   onSelectSession: (session: StudySession) => void
   onSelectEvent: (event: CalendarEvent) => void
   onMoveEvent?: (eventId: string, newStartTime: string, newEndTime?: string) => void
+  onDeleteCalendarItems?: (itemIds: { eventIds: string[]; sessionIds: string[] }) => void
+  onSetCalendarItemsCompleted?: (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => void
 }
 
 interface DragState {
@@ -70,6 +79,8 @@ export function CalendarGrid({
   onSelectSession: _onSelectSession,
   onSelectEvent,
   onMoveEvent,
+  onDeleteCalendarItems,
+  onSetCalendarItemsCompleted,
 }: CalendarGridProps) {
   const [hoveredDateKey, setHoveredDateKey] = useState<string | null>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
@@ -457,14 +468,14 @@ export function CalendarGrid({
                   {date.getDate()}
                 </div>
                 {dayMultiDayEvents.length > 0 && (
-                  <div className="mt-0.5 w-[calc(100%+0.75rem)] -mx-1.5 space-y-px">
-                    {dayMultiDayEvents.map((event) => {
+                  <div className="mt-0.5 w-[calc(100%+0.75rem)] -mx-1.5 space-y-px">                      {dayMultiDayEvents.map((event) => {
                       const position = getMultiDayPosition(event, dateKey)
                       const color = getEventTypeInfo(event.eventType).color
                       const isStart = position === "start" || position === "alone"
                       return (
+                        <ContextMenu key={event.id}>
+                          <ContextMenuTrigger asChild>
                         <div
-                          key={event.id}
                           role="button"
                           tabIndex={0}
                           onPointerDown={(e) => {
@@ -502,6 +513,28 @@ export function CalendarGrid({
                             ) : null
                           })()}
                         </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="w-40">
+                            <CtxMenuItem onSelect={() => onSelectEvent(event)}>
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </CtxMenuItem>
+                            {onSetCalendarItemsCompleted && (
+                              <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [event.id], sessionIds: [] }, !event.isFinished)}>
+                                <CheckCircle2 className="h-4 w-4" />
+                                {event.isFinished ? "Mark current" : "Mark complete"}
+                              </CtxMenuItem>
+                            )}
+                            <CtxMenuSep />
+                            <CtxMenuItem
+                              variant="destructive"
+                              onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </CtxMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
                       )
                     })}
                   </div>
@@ -522,8 +555,9 @@ export function CalendarGrid({
                       const ev = (item as { event: CalendarEvent }).event
                       const evColor = getEventTypeInfo(ev.eventType).color
                       return (
+                        <ContextMenu key={`${item.type}-${idx}`}>
+                          <ContextMenuTrigger asChild>
                         <div
-                          key={`${item.type}-${idx}`}
                           role="button"
                           tabIndex={0}
                           onPointerDown={(e) => {
@@ -546,6 +580,28 @@ export function CalendarGrid({
                         >
                           {content}
                         </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="w-40">
+                            <CtxMenuItem onSelect={() => onSelectEvent(ev)}>
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </CtxMenuItem>
+                            {onSetCalendarItemsCompleted && (
+                              <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [ev.id], sessionIds: [] }, !ev.isFinished)}>
+                                <CheckCircle2 className="h-4 w-4" />
+                                {ev.isFinished ? "Mark current" : "Mark complete"}
+                              </CtxMenuItem>
+                            )}
+                            <CtxMenuSep />
+                            <CtxMenuItem
+                              variant="destructive"
+                              onSelect={() => onDeleteCalendarItems?.({ eventIds: [ev.id], sessionIds: [] })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </CtxMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
                       )
                     }
                     return (
