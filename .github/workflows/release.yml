@@ -36,9 +36,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: "bun"
-          cache-dependency-path: bun.lock
-      - uses: oven-sh/setup-bun@v2
+          cache: "npm"
+          cache-dependency-path: package-lock.json
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,7 +57,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: install frontend dependencies
-        run: bun install --frozen-lockfile
+        run: npm ci
 
       - uses: tauri-apps/tauri-action@v0
         env:
