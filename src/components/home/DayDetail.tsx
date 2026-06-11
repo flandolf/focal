@@ -1,7 +1,14 @@
 import { useState, useMemo } from "react"
 import { format, parseISO, differenceInDays } from "date-fns"
-import { X, Check, ChevronDown } from "lucide-react"
+import { X, Check, ChevronDown, CheckCircle2, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem as CtxMenuItem,
+  ContextMenuSeparator as CtxMenuSep,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { formatDeadline, getSubjectById, getEventTypeInfo, getSessionSubjectIds, cn } from "@/lib/utils"
 import { groupSessionsBySubject } from "@/lib/groupSessions"
 import type { CalendarEvent, Project, StudySession } from "@/lib/types"
@@ -63,6 +70,8 @@ interface DayDetailProps {
   onSelectProject: (projectId: string) => void
   onSelectSession: (session: StudySession) => void
   onSelectEvent: (event: CalendarEvent) => void
+  onDeleteCalendarItems?: (itemIds: { eventIds: string[]; sessionIds: string[] }) => void
+  onSetCalendarItemsCompleted?: (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => void
 }
 
 export function DayDetail({
@@ -82,6 +91,8 @@ export function DayDetail({
   onSelectProject,
   onSelectSession,
   onSelectEvent,
+  onDeleteCalendarItems,
+  onSetCalendarItemsCompleted,
 }: DayDetailProps) {
   const dateKey = selectedDate
   const dayEvents = useMemo(() =>
@@ -238,6 +249,8 @@ export function DayDetail({
                           .join(", ")
                         const selected = selectedSessionIdSet.has(s.id)
                         return (
+                          <ContextMenu>
+                            <ContextMenuTrigger asChild>
                           <button
                             key={s.id}
                             onClick={() => {
@@ -287,6 +300,28 @@ export function DayDetail({
                               </div>
                             </div>
                           </button>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-40">
+                              <CtxMenuItem onSelect={() => onSelectSession(s)}>
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </CtxMenuItem>
+                              {onSetCalendarItemsCompleted && (
+                                <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [], sessionIds: [s.id] }, s.status !== "completed")}>
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  {s.status === "completed" ? "Mark current" : "Mark complete"}
+                                </CtxMenuItem>
+                              )}
+                              <CtxMenuSep />
+                              <CtxMenuItem
+                                variant="destructive"
+                                onSelect={() => onDeleteCalendarItems?.({ eventIds: [], sessionIds: [s.id] })}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </CtxMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         )
                       })}
                     </div>
@@ -306,8 +341,9 @@ export function DayDetail({
                   const selected = selectedEventIdSet.has(event.id)
                   const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
                   return (
+                    <ContextMenu key={event.id}>
+                      <ContextMenuTrigger asChild>
                     <button
-                      key={event.id}
                       onClick={() => {
                         if (calendarSelectionMode) {
                           onToggleEventSelection(event.id)
@@ -370,6 +406,28 @@ export function DayDetail({
                         </div>
                       </div>
                     </button>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-40">
+                        <CtxMenuItem onSelect={() => onSelectEvent(event)}>
+                          <Pencil className="h-4 w-4" />
+                          Edit
+                        </CtxMenuItem>
+                        {onSetCalendarItemsCompleted && (
+                          <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [event.id], sessionIds: [] }, !event.isFinished)}>
+                            <CheckCircle2 className="h-4 w-4" />
+                            {event.isFinished ? "Mark current" : "Mark complete"}
+                          </CtxMenuItem>
+                        )}
+                        <CtxMenuSep />
+                        <CtxMenuItem
+                          variant="destructive"
+                          onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </CtxMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   )
                 })}
                 {completedEvents.length > 0 && (
@@ -385,8 +443,9 @@ export function DayDetail({
                       const selected = selectedEventIdSet.has(event.id)
                       const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
                       return (
+                        <ContextMenu key={event.id}>
+                          <ContextMenuTrigger asChild>
                         <button
-                          key={event.id}
                           onClick={() => {
                             if (calendarSelectionMode) {
                               onToggleEventSelection(event.id)
@@ -452,6 +511,28 @@ export function DayDetail({
                             </div>
                           </div>
                         </button>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="w-40">
+                            <CtxMenuItem onSelect={() => onSelectEvent(event)}>
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </CtxMenuItem>
+                            {onSetCalendarItemsCompleted && (
+                              <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [event.id], sessionIds: [] }, !event.isFinished)}>
+                                <CheckCircle2 className="h-4 w-4" />
+                                {event.isFinished ? "Mark current" : "Mark complete"}
+                              </CtxMenuItem>
+                            )}
+                            <CtxMenuSep />
+                            <CtxMenuItem
+                              variant="destructive"
+                              onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </CtxMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
                       )
                     })}
                   </>

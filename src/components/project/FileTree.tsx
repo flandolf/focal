@@ -53,6 +53,7 @@ interface FileTreeProps {
   onClearSelection: () => void
   onDeleteSelected: () => void
   onFileSelectionChange: (file: FileInfo, selected: boolean) => void
+  onFolderTagAll?: (folderPath: string, tag: FileTag) => void
   /** Breadcrumb navigation */
   breadcrumbSegments: { label: string; path: string }[]
   onBreadcrumbNavigate: (path: string) => void
@@ -95,6 +96,7 @@ export function FileTree({
   onClearSelection,
   onDeleteSelected,
   onFileSelectionChange,
+  onFolderTagAll,
   breadcrumbSegments,
   onBreadcrumbNavigate,
   onGoBack,
@@ -354,6 +356,7 @@ export function FileTree({
         onFileSelectionChange={onFileSelectionChange}
         allSubfolders={allSubfolders}
         onFolderClick={setSelectedSubfolder}
+        onFolderTagAll={onFolderTagAll}
       />
 
     </>
@@ -374,6 +377,7 @@ interface VirtualFileListProps {
   onCopyPath: (file: FileInfo) => void
   onMoveFile: (file: FileInfo, destSubfolder: string) => void
   onFileSelectionChange: (file: FileInfo, selected: boolean) => void
+  onFolderTagAll?: (folderPath: string, tag: FileTag) => void
   allSubfolders: string[]
   onFolderClick: (folder: string) => void
 }
@@ -390,6 +394,7 @@ function VirtualFileList({
   onCopyPath,
   onMoveFile,
   onFileSelectionChange,
+  onFolderTagAll,
   allSubfolders,
   onFolderClick,
 }: VirtualFileListProps) {
@@ -468,12 +473,12 @@ function VirtualFileList({
                 ref={virtualizer.measureElement}
                 className="border-b border-border/60"
               >
-                {item.type === "folder" ? (
-                  <FolderRow
-                    name={item.name}
-                    fileCount={item.fileCount}
-                    onClick={() => onFolderClick(item.path)}
-                  />
+                {item.type === "folder" ? (                    <FolderRow
+                      name={item.name}
+                      fileCount={item.fileCount}
+                      onClick={() => onFolderClick(item.path)}
+                      onTagAll={onFolderTagAll ? (tag) => onFolderTagAll(item.path, tag) : undefined}
+                    />
                 ) : (
                   <FileRow
                     file={item.data}

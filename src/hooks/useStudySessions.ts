@@ -88,6 +88,7 @@ export function useStudySessions() {
     description?: string
     topics?: string[]
     notes?: string
+    activeDurations?: { start: string; end: string }[]
   }[]) => {
     const createdAt = new Date().toISOString()
     const newSessions: StudySession[] = items.map((item) => ({
@@ -101,6 +102,7 @@ export function useStudySessions() {
       status: "planned",
       topics: item.topics,
       notes: item.notes,
+      activeDurations: item.activeDurations,
       created_at: createdAt,
     }))
     const updated = [...sessionsRef.current, ...newSessions]
@@ -194,6 +196,7 @@ export function useStudySessions() {
       blockers: item.blockers,
       nextAction: item.nextAction,
       completedAt: item.completedAt,
+      activeDurations: item.activeDurations,
       source: item.source,
       created_at: createdAt,
     }))

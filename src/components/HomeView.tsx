@@ -757,6 +757,8 @@ export const HomeView = memo(function HomeView({
                 onSelectProject={onSelectProject}
                 onSelectSession={onSelectSession}
                 onSelectEvent={onSelectEvent}
+                onDeleteCalendarItems={onDeleteCalendarItems}
+                onSetCalendarItemsCompleted={onSetCalendarItemsCompleted}
               />
 
               {selectedDate && (
@@ -780,6 +782,8 @@ export const HomeView = memo(function HomeView({
                   onSelectProject={onSelectProject}
                   onSelectSession={onSelectSession}
                   onSelectEvent={onSelectEvent}
+                  onDeleteCalendarItems={onDeleteCalendarItems}
+                  onSetCalendarItemsCompleted={onSetCalendarItemsCompleted}
                 />
               )}
 
