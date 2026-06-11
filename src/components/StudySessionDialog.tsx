@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { addMinutes, format, parseISO } from "date-fns"
+import { format, parseISO } from "date-fns"
 import {
   BookOpen,
   CalendarDays,
@@ -34,7 +34,6 @@ import {
   type Subject,
 } from "@/lib/types"
 
-const DURATION_OPTIONS = ["30", "45", "60", "90"]
 const REST_OPTIONS = ["5", "10", "15", "30"]
 const fieldLabelClass = "text-control font-medium text-muted-foreground"
 const sectionIconClass = "h-3.5 w-3.5 text-muted-foreground"
@@ -93,20 +92,9 @@ export function StudySessionDialog({
   const [blockers, setBlockers] = useState("")
   const [nextAction, setNextAction] = useState("")
   const [startDate, setStartDate] = useState<Date | undefined>(() => initialDate ? new Date(initialDate) : new Date())
-  const [startTime, setStartTime] = useState("14:00")
-  const [duration, setDuration] = useState("60")
-  const [endTimeMode, setEndTimeMode] = useState<"duration" | "end">(() => {
-    // If a session is being edited with an end time, start in end-time mode (matches EventForm)
-    if (session?.endTime) return "end"
-    return "duration"
-  })
-  const [explicitEndTime, setExplicitEndTime] = useState<string>(() => {
-    if (session?.endTime) return format(parseISO(session.endTime), "HH:mm")
-    return ""
-  })
   const [isDeleting, setIsDeleting] = useState(false)
   const [restDuration, setRestDuration] = useState("5")
-  const [segments, setSegments] = useState<{ start: string; end: string }[]>([])
+  const [segments, setSegments] = useState<{ start: string; end: string }[]>(() => [{ start: "14:00", end: "15:00" }])
   const hasSegments = segments.length > 0
   const computedSegmentStart = hasSegments ? segments[0].start : null
   const computedSegmentEnd = hasSegments ? segments[segments.length - 1].end : null
@@ -119,6 +107,14 @@ export function StudySessionDialog({
   const segmentWallSpan = hasSegments
     ? getMinutes(computedSegmentEnd!) - getMinutes(computedSegmentStart!)
     : 0
+  const totalRest = useMemo(() => {
+    let rest = 0
+    const sorted = [...segments].sort((a, b) => getMinutes(a.start) - getMinutes(b.start))
+    for (let i = 1; i < sorted.length; i++) {
+      rest += Math.max(0, getMinutes(sorted[i].start) - getMinutes(sorted[i - 1].end))
+    }
+    return rest
+  }, [segments])
 
   const isEdit = Boolean(session)
   const activeProject = projects.find((project) => project.id === projectId)
@@ -131,21 +127,12 @@ export function StudySessionDialog({
     })
   const subjects = [...hiddenSelectedSubjects, ...baseSubjects]
   const selectedSubjects = subjects.filter((subject) => subjectIds.includes(subject.id))
-  const durationMinutes = hasSegments
-    ? segmentTotalActive
-    : (endTimeMode === "end" && explicitEndTime
-      ? (() => {
-          const [sh, sm] = startTime.split(":").map(Number)
-          const [eh, em] = explicitEndTime.split(":").map(Number)
-          return (eh * 60 + em) - (sh * 60 + sm)
-        })()
-      : Number.parseInt(duration, 10))
+  const durationMinutes = segmentTotalActive
   const canSave = title.trim().length > 0
     && subjectIds.length > 0
     && Boolean(startDate)
     && Number.isFinite(durationMinutes)
     && durationMinutes > 0
-    && (!hasSegments || (Number.isFinite(segmentTotalActive) && segmentTotalActive > 0))
   const selectedDateLabel = startDate ? format(startDate, "EEE d MMM") : "No date"
   const subjectSummary = selectedSubjects.length > 0
     ? selectedSubjects.map((subject) => subject.shortCode).join(", ")
@@ -169,15 +156,6 @@ export function StudySessionDialog({
 
       const start = parseISO(session.startTime)
       setStartDate(start)
-      setStartTime(format(start, "HH:mm"))
-
-      const startMs = new Date(session.startTime).getTime()
-      const endMs = new Date(session.endTime).getTime()
-      const durationMs = endMs - startMs
-      setDuration(String(Math.round(durationMs / (1000 * 60))))
-      setExplicitEndTime(format(parseISO(session.endTime), "HH:mm"))
-      setEndTimeMode("end")
-
       // Initialize editable segments from activeDurations
       if (session.activeDurations && session.activeDurations.length > 0) {
         setSegments(
@@ -189,7 +167,12 @@ export function StudySessionDialog({
             })),
         )
       } else {
-        setSegments([])
+        setSegments([
+          {
+            start: format(start, "HH:mm"),
+            end: format(parseISO(session.endTime), "HH:mm"),
+          },
+        ])
       }
     }
   }, [projects, session])
@@ -214,52 +197,23 @@ export function StudySessionDialog({
     setSegments((prev) => prev.map((seg, i) => (i === index ? { ...seg, [field]: value } : seg)))
   }
 
-  const clearSegments = () => {
-    setSegments([])
-    // Reset start/duration from overall session time
-    if (session) {
-      const start = parseISO(session.startTime)
-      setStartTime(format(start, "HH:mm"))
-      const startMs = new Date(session.startTime).getTime()
-      const endMs = new Date(session.endTime).getTime()
-      setDuration(String(Math.round((endMs - startMs) / (1000 * 60))))
-      setExplicitEndTime(format(parseISO(session.endTime), "HH:mm"))
-      setEndTimeMode("end")
-    }
-  }
-
-  const startSegmentMode = () => {
-    const [sh, sm] = startTime.split(":").map(Number)
-    const mins = endTimeMode === "end" && explicitEndTime
-      ? (() => {
-          const [eh, em] = explicitEndTime.split(":").map(Number)
-          return (eh * 60 + em) - (sh * 60 + sm)
-        })()
-      : Number.parseInt(duration, 10) || 60
-    if (mins <= 0) return
-    const start = new Date(0, 0, 0, sh, sm)
-    const end = new Date(start.getTime() + mins * 60000)
-    const fmt = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
-    setSegments([{ start: fmt(start), end: fmt(end) }])
-  }
-
-  /** Compute an end time (HH:mm) from current start time + duration, preserving the user's preference when toggling modes. */
-  const computeEndTimeFromCurrent = () => {
-    const [sh, sm] = startTime.split(":").map(Number)
-    const d = new Date(startDate ?? new Date())
-    d.setHours(sh, sm, 0, 0)
-    const minutes = Number.parseInt(duration, 10)
-    d.setMinutes(d.getMinutes() + (Number.isFinite(minutes) && minutes > 0 ? minutes : 60))
-    return format(d, "HH:mm")
-  }
-
-  /** Compute a duration (minutes, as a string) from current start time + explicit end time. */
-  const computeDurationFromCurrent = () => {
-    if (!explicitEndTime) return
-    const [sh, sm] = startTime.split(":").map(Number)
-    const [eh, em] = explicitEndTime.split(":").map(Number)
-    const delta = (eh * 60 + em) - (sh * 60 + sm)
-    if (delta > 0) setDuration(String(delta))
+  const handleStartTimeChange = (newStart: string) => {
+    setSegments((prev) => {
+      if (prev.length === 0) return prev
+      const oldStart = prev[0].start
+      const delta = getMinutes(newStart) - getMinutes(oldStart)
+      if (delta === 0) return prev
+      return prev.map((seg) => {
+        const startMin = getMinutes(seg.start) + delta
+        const endMin = getMinutes(seg.end) + delta
+        const fmt = (min: number) => {
+          const h = Math.floor(min / 60) % 24
+          const m = min % 60
+          return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+        }
+        return { start: fmt(startMin), end: fmt(endMin) }
+      })
+    })
   }
 
   const toggleSubject = (id: string) => {
@@ -284,67 +238,29 @@ export function StudySessionDialog({
       .map((topic) => topic.trim())
       .filter((topic) => topic.length > 0)
 
-    if (hasSegments) {
-      const toDate = (time: string) => {
-        const [h, m] = time.split(":").map(Number)
-        const d = new Date(startDate)
-        d.setHours(h, m, 0, 0)
-        return d
-      }
-      const segStart = toDate(segments[0].start)
-      const segEnd = toDate(segments[segments.length - 1].end)
-      if (segEnd.getTime() <= segStart.getTime()) return null
-      if (!Number.isFinite(segmentTotalActive) || segmentTotalActive <= 0) return null
-
-      const activeDurations = segments.map((seg) => ({
-        start: toDate(seg.start).toISOString(),
-        end: toDate(seg.end).toISOString(),
-      }))
-
-      return {
-        id: session?.id,
-        projectId: projectId || undefined,
-        subjectIds,
-        title: title.trim(),
-        description: description.trim() ? description : undefined,
-        startTime: segStart.toISOString(),
-        endTime: segEnd.toISOString(),
-        activeDurations,
-        topics: topics.length > 0 ? topics : undefined,
-        notes: notes.trim() ? notes : undefined,
-        status: nextStatus,
-        confidence,
-        blockers: blockers.trim() ? blockers : undefined,
-        nextAction: nextAction.trim() ? nextAction : undefined,
-        completedAt: nextStatus === "completed" ? (session?.completedAt ?? new Date().toISOString()) : undefined,
-      }
+    const toDate = (time: string) => {
+      const [h, m] = time.split(":").map(Number)
+      const d = new Date(startDate)
+      d.setHours(h, m, 0, 0)
+      return d
     }
-
-    const [hours, minutes] = startTime.split(":").map(Number)
-    const start = new Date(startDate)
-    start.setHours(hours, minutes, 0, 0)
-
-    let end: Date
-    if (endTimeMode === "end" && explicitEndTime) {
-      const [eh, em] = explicitEndTime.split(":").map(Number)
-      end = new Date(startDate)
-      end.setHours(eh, em, 0, 0)
-      if (end <= start) return null
-    } else {
-      const durationMinutes = Number.parseInt(duration, 10)
-      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null
-      end = addMinutes(start, durationMinutes)
-    }
-
+    const segStart = toDate(segments[0].start)
+    const segEnd = toDate(segments[segments.length - 1].end)
+    if (segEnd.getTime() <= segStart.getTime()) return null
+    if (!Number.isFinite(segmentTotalActive) || segmentTotalActive <= 0) return null
+    const activeDurations = segments.map((seg) => ({
+      start: toDate(seg.start).toISOString(),
+      end: toDate(seg.end).toISOString(),
+    }))
     return {
       id: session?.id,
       projectId: projectId || undefined,
       subjectIds,
       title: title.trim(),
       description: description.trim() ? description : undefined,
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
-      activeDurations: undefined,
+      startTime: segStart.toISOString(),
+      endTime: segEnd.toISOString(),
+      activeDurations,
       topics: topics.length > 0 ? topics : undefined,
       notes: notes.trim() ? notes : undefined,
       status: nextStatus,
@@ -420,17 +336,11 @@ export function StudySessionDialog({
             </span>
             <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
               <Clock className="h-3 w-3" />
-              {hasSegments
-                ? `${computedSegmentStart} – ${computedSegmentEnd}`
-                : endTimeMode === "end" && explicitEndTime
-                  ? `${startTime} – ${explicitEndTime}`
-                  : startTime}
+              {computedSegmentStart} – {computedSegmentEnd}
             </span>
             <span className="inline-flex items-center gap-1 rounded-md bg-muted/65 px-2 py-1 tabular-nums">
               <Timer className="h-3 w-3" />
-              {hasSegments
-                ? `${formatDurationStr(segmentTotalActive)} active`
-                : Number.isFinite(durationMinutes) && durationMinutes > 0 ? `${durationMinutes} min` : "Duration"}
+              {formatDurationStr(segmentTotalActive)} active
             </span>
           </div>
         </DialogHeader>
@@ -473,117 +383,29 @@ export function StudySessionDialog({
                       labelClassName={fieldLabelClass}
                     />
 
-                    {hasSegments ? (
-                      <>
-                        <FormField label="Span" labelClassName={fieldLabelClass}>
-                          <div className={cn(inputWithIconClass, "text-sm")}>
-                            <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span className="tabular-nums">
-                              {computedSegmentStart} – {computedSegmentEnd}
-                            </span>
-                          </div>
-                        </FormField>
-                        <FormField label="Active time" labelClassName={fieldLabelClass}>
-                          <div className={cn(inputWithIconClass, "text-sm")}>
-                            <Timer className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span className="tabular-nums font-medium">
-                              {formatDurationStr(segmentTotalActive)}
-                            </span>
-                            <span className="text-muted-foreground/60 ml-auto text-micro">
-                              {segmentWallSpan > segmentTotalActive ? formatDurationStr(segmentWallSpan) + " span" : ""}
-                            </span>
-                          </div>
-                        </FormField>
-                      </>
-                    ) : (
-                      <>
-                        <FormField label="Start" labelClassName={fieldLabelClass}>
-                          <div className={inputWithIconClass}>
-                            <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <input
-                              type="time"
-                              value={startTime}
-                              onChange={(event) => setStartTime(event.target.value)}
-                              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                            />
-                          </div>
-                        </FormField>
-                        <FormField
-                          label={endTimeMode === "end" ? "End time" : "Duration"}
-                          labelClassName={fieldLabelClass}
-                          labelAccessory={
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (endTimeMode === "end") {
-                                  computeDurationFromCurrent()
-                                  setEndTimeMode("duration")
-                                } else {
-                                  setExplicitEndTime(computeEndTimeFromCurrent())
-                                  setEndTimeMode("end")
-                                }
-                              }}
-                              className="cursor-pointer text-micro font-medium uppercase tracking-normal transition-colors text-muted-foreground/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded-sm px-0.5 -mx-0.5"
-                            >
-                              {endTimeMode === "end" ? "Use duration" : "Use end time"}
-                            </button>
-                          }
-                        >
-                          {endTimeMode === "end" ? (
-                            <div className={inputWithIconClass}>
-                              <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              <input
-                                type="time"
-                                value={explicitEndTime}
-                                onChange={(e) => setExplicitEndTime(e.target.value)}
-                                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                              />
-                            </div>
-                          ) : (
-                            <Input
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={duration}
-                              onChange={(event) => setDuration(event.target.value)}
-                              placeholder="60"
-                              className={inputClass}
-                            />
-                          )}
-                        </FormField>
-                      </>
-                    )}
+                    <FormField label="Start" labelClassName={fieldLabelClass}>
+                      <div className={inputWithIconClass}>
+                        <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <input
+                          type="time"
+                          value={computedSegmentStart ?? "14:00"}
+                          onChange={(e) => handleStartTimeChange(e.target.value)}
+                          className="min-w-0 flex-1 bg-transparent text-sm outline-none tabular-nums"
+                        />
+                      </div>
+                    </FormField>
+                    <FormField label="Active" labelClassName={fieldLabelClass}>
+                      <div className={cn(inputWithIconClass, "text-sm")}>
+                        <Timer className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="tabular-nums font-medium">
+                          {formatDurationStr(segmentTotalActive)}
+                        </span>
+                        <span className="text-muted-foreground/60 ml-auto text-micro">
+                          {segmentWallSpan > segmentTotalActive ? formatDurationStr(segmentWallSpan) + " span" : ""}
+                        </span>
+                      </div>
+                    </FormField>
                   </div>
-                  {!hasSegments && endTimeMode === "duration" && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {DURATION_OPTIONS.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setDuration(option)}
-                          aria-pressed={duration === option}
-                          className={cn(
-                            "h-7 rounded-md border px-2 text-micro font-medium transition-colors",
-                            duration === option
-                              ? "border-primary/35 bg-primary/10 text-primary"
-                              : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                          )}
-                        >
-                          {option}m
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {!hasSegments && (
-                    <button
-                      type="button"
-                      onClick={startSegmentMode}
-                      className="flex items-center gap-1.5 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                    >
-                      <Timer className="h-3 w-3" />
-                      Use study blocks
-                    </button>
-                  )}
                 </FormSection>
 
                 <FormSection
@@ -728,8 +550,7 @@ export function StudySessionDialog({
                   )}
                 </FormSection>
 
-                {hasSegments && (() => {
-                  let totalRest = 0
+                {(() => {
                   const segDuration = (start: string, end: string) => Math.max(0, getMinutes(end) - getMinutes(start))
                   return (
                     <FormSection
@@ -756,7 +577,6 @@ export function StudySessionDialog({
                             let restMin = 0
                             if (i > 0) {
                               restMin = Math.max(0, getMinutes(seg.start) - getMinutes(sorted[i - 1].seg.end))
-                              totalRest += restMin
                             }
                             return (
                               <div key={idx}>
@@ -836,13 +656,6 @@ export function StudySessionDialog({
                           >
                             <Plus className="h-3 w-3" />
                             Add block
-                          </button>
-                          <button
-                            type="button"
-                            onClick={clearSegments}
-                            className="rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                          >
-                            Simplify
                           </button>
                         </div>
                       </div>
