@@ -36,6 +36,11 @@ function normaliseSession(raw: unknown): StudySession {
           : undefined,
       }
       : undefined,
+    activeDurations: Array.isArray(obj.activeDurations)
+      ? (obj.activeDurations as { start: string; end: string }[]).filter(
+          (d) => typeof d.start === "string" && typeof d.end === "string",
+        )
+      : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
   }
 }
