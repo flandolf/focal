@@ -70,3 +70,4 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
           includeUpdaterJson: false
+          tauriScript: "npm tauri"
