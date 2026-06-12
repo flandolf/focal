@@ -8,6 +8,10 @@ const INITIAL_STATUS: SyncStatusSnapshot = {
   pendingCount: 0,
   error: null,
   lastSuccessfulSyncAt: null,
+  details: null,
+  tableStats: null,
+  failedItems: null,
+  isOnline: true,
 }
 
 export function useSupabaseSync(session: Session | null) {

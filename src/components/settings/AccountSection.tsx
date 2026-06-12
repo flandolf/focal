@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { LogOut, Mail, UserPlus } from "lucide-react"
+import { LogOut, Mail, UserPlus, RefreshCw, WifiOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SETTINGS_SECTION_CLASS } from "@/components/settings/constants"
@@ -14,6 +14,7 @@ interface AccountSectionProps {
   onSignIn: (email: string, password: string) => Promise<unknown>
   onSignUp: (email: string, password: string) => Promise<unknown>
   onSignOut: () => Promise<void>
+  onRetrySync?: () => void
 }
 
 export function AccountSection({
@@ -25,6 +26,7 @@ export function AccountSection({
   onSignIn,
   onSignUp,
   onSignOut,
+  onRetrySync,
 }: AccountSectionProps) {
   const [formEmail, setFormEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -63,12 +65,29 @@ export function AccountSection({
           <div className="rounded-lg border border-border/70 bg-background/35 px-3 py-2">
             <p className="text-sm font-medium">{email}</p>
             <p className="mt-1 text-caption text-muted-foreground">
-              {sync.status === "error"
+              {sync.isOnline === false ? (
+                <span className="inline-flex items-center gap-1 text-amber-500">
+                  <WifiOff className="h-3 w-3" />
+                  Offline
+                </span>
+              ) : sync.status === "error"
                 ? sync.error ?? "Sync error"
                 : sync.status === "pending"
                   ? `${sync.pendingCount} pending local change${sync.pendingCount === 1 ? "" : "s"}`
                   : sync.status}
             </p>
+            {sync.status === "error" && sync.isOnline && onRetrySync && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2 h-7 gap-1 text-caption"
+                onClick={() => void onRetrySync()}
+                disabled={loading}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Retry sync
+              </Button>
+            )}
           </div>
           <Button variant="outline" size="sm" className="gap-1.5" disabled={loading} onClick={() => void onSignOut()}>
             <LogOut className="h-4 w-4" />

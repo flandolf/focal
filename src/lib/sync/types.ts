@@ -28,7 +28,7 @@ export interface SyncQueueItem {
 export interface SyncMeta {
   deviceId: string
   lastPulledAt?: Partial<Record<SyncTable, string>>
-  lastSuccessfulSyncAt?: string
+  lastSuccessfulSyncAt: string | null
   migratedUuidIds?: boolean
 }
 
@@ -37,6 +37,10 @@ export interface SyncStatusSnapshot {
   pendingCount: number
   error: string | null
   lastSuccessfulSyncAt: string | null
+  details: string | null
+  tableStats: { table: SyncTable; pulled?: number; pushed?: number; failed?: number }[] | null
+  failedItems: { table: SyncTable; rowId: string; error: string }[] | null
+  isOnline: boolean
 }
 
 export interface SyncableMetadata {
