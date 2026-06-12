@@ -35,6 +35,7 @@ function normaliseSession(raw: unknown): StudySession {
         kind: (obj.source as Record<string, unknown>).kind === "event" || (obj.source as Record<string, unknown>).kind === "session"
           ? (obj.source as Record<string, unknown>).kind as "event" | "session"
           : undefined,
+        bodyHash: typeof (obj.source as Record<string, unknown>).bodyHash === "string" ? String((obj.source as Record<string, unknown>).bodyHash) : undefined,
       }
       : undefined,
     activeDurations: Array.isArray(obj.activeDurations)
