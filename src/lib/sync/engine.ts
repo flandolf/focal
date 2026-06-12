@@ -50,10 +50,12 @@ const FILES: Partial<Record<SyncTable, string>> = {
 }
 const CUSTOM_SUBJECTS_KEY = "focal-custom-subjects"
 const HIDDEN_SUBJECTS_KEY = "focal-hidden-subjects"
+const MISSING_SYNC_SCHEMA_MESSAGE = "Supabase sync tables are missing. Run supabase/migrations/0001_initial_sync.sql, then reload Focal."
 
 let currentSession: Session | null = null
 let currentDeviceId: string | null = null
 let unsubscribeRealtime: (() => void) | null = null
+let syncDisabledReason: string | null = null
 let flushPromise: Promise<void> | null = null
 let snapshot: SyncStatusSnapshot = {
   status: "signed-out",
@@ -76,6 +78,7 @@ export function subscribeSyncStatus(listener: (status: SyncStatusSnapshot) => vo
 
 export async function setSyncSession(session: Session | null): Promise<void> {
   currentSession = session
+  syncDisabledReason = null
   unsubscribeRealtime?.()
   unsubscribeRealtime = null
 
@@ -88,6 +91,7 @@ export async function setSyncSession(session: Session | null): Promise<void> {
   emitStatus({ status: "syncing", error: null })
 
   await runInitialSync()
+  if (syncDisabledReason) return
 
   unsubscribeRealtime = subscribeToSyncTables({
     client: supabase,
@@ -102,7 +106,7 @@ export async function setSyncSession(session: Session | null): Promise<void> {
 }
 
 export async function recordLocalUpsert(table: SyncTable, payload: LocalRecord): Promise<void> {
-  if (!currentSession || !currentDeviceId) return
+  if (!currentSession || !currentDeviceId || syncDisabledReason) return
   const row = localToRemoteRow(table, payload, currentSession.user.id, currentDeviceId)
   if (!row) return
   const queue = await enqueueSyncItem({
@@ -116,7 +120,7 @@ export async function recordLocalUpsert(table: SyncTable, payload: LocalRecord):
 }
 
 export async function recordLocalSoftDelete(table: SyncTable, rowId: string): Promise<void> {
-  if (!currentSession || !currentDeviceId) return
+  if (!currentSession || !currentDeviceId || syncDisabledReason) return
   const now = new Date().toISOString()
   const payload = table === "custom_subjects" || table === "hidden_subjects"
     ? {
@@ -153,11 +157,17 @@ async function runInitialSync(): Promise<void> {
     await enqueueAllLocalRows()
     await flushQueue()
   } catch (e) {
-    emitStatus({ status: "error", error: String(e) })
+    if (isMissingSyncSchemaError(e)) {
+      syncDisabledReason = MISSING_SYNC_SCHEMA_MESSAGE
+      emitStatus({ status: "error", pendingCount: 0, error: syncDisabledReason })
+      return
+    }
+    emitStatus({ status: "error", error: getErrorMessage(e) })
   }
 }
 
 async function flushQueue(): Promise<void> {
+  if (syncDisabledReason) return
   if (flushPromise) return flushPromise
   flushPromise = flushQueueInternal().finally(() => {
     flushPromise = null
@@ -233,16 +243,14 @@ async function pushQueueItem(client: SupabaseClient, item: SyncQueueItem): Promi
 }
 
 async function pullRemoteChanges(): Promise<void> {
-  if (!currentSession || !supabase) return
+  if (!currentSession || !supabase || syncDisabledReason) return
   emitStatus({ status: "syncing", error: null })
-  await Promise.all([
-    pullTable<ProjectRow>("projects"),
-    pullTable<EventRow>("events"),
-    pullTable<StudySessionRow>("study_sessions"),
-    pullCustomSubjects(),
-    pullHiddenSubjects(),
-    pullTimetableConfig(),
-  ])
+  await pullTable<ProjectRow>("projects")
+  await pullTable<EventRow>("events")
+  await pullTable<StudySessionRow>("study_sessions")
+  await pullCustomSubjects()
+  await pullHiddenSubjects()
+  await pullTimetableConfig()
   const queue = await readSyncQueue()
   emitStatus({
     status: queue.length > 0 ? "pending" : "synced",
@@ -250,6 +258,28 @@ async function pullRemoteChanges(): Promise<void> {
     error: null,
     lastSuccessfulSyncAt: new Date().toISOString(),
   })
+}
+
+function isMissingSyncSchemaError(error: unknown): boolean {
+  const code = getErrorCode(error)
+  if (code === "PGRST205" || code === "42P01") return true
+
+  const message = getErrorMessage(error).toLowerCase()
+  return message.includes("could not find the table") || message.includes("schema cache")
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message
+  }
+  return String(error)
 }
 
 async function pullTable<Row extends RemoteRow>(table: SyncTable): Promise<void> {
