@@ -4,6 +4,9 @@ import type { Project, DeadlineType, EventType, StudySession, Subject } from "@/
 import { VCE_SUBJECTS } from "@/lib/types"
 
 export function generateId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID()
+  }
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 

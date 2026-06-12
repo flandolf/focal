@@ -18,6 +18,7 @@ A desktop study organiser for VCE students. Manage coursework files, track study
 - **Frontend**: React 19, TypeScript, Tailwind CSS v4, shadcn/ui (Radix primitives)
 - **Desktop shell**: Tauri v2 (Rust backend)
 - **Data**: JSON files on disk via Tauri FS plugin, localStorage for UI preferences
+- **Cloud sync**: Optional Supabase Auth/Postgres/Realtime custom sync engine. Notion remains a separate optional calendar integration.
 
 ## Development
 
@@ -32,6 +33,24 @@ bun run typecheck    # TypeScript check
 bun run lint         # ESLint
 bun run lint:fix     # ESLint auto-fix
 ```
+
+## Supabase sync setup
+
+Focal works locally without signing in. To enable multi-device sync:
+
+1. Create a Supabase project.
+2. Run `supabase/migrations/0001_initial_sync.sql` in the Supabase SQL editor or through the Supabase CLI.
+3. Copy `.env.example` to `.env` and set:
+
+```bash
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
+```
+
+4. Confirm the sync tables are in the `supabase_realtime` publication. The migration includes the `alter publication supabase_realtime add table ...` statements.
+5. Run the app with `bun run dev` or `bun run tauri dev`, then sign in from Settings -> Account.
+
+Do not put a Supabase service-role or secret key in `.env`; the desktop client only uses the publishable key. Supabase is the app-owned sync layer. Notion sync remains optional and mirrors local Focal events/sessions only when configured.
 
 ## Production build
 
@@ -57,4 +76,4 @@ src-tauri/
 
 ## Data storage
 
-Application data lives at the Tauri app data directory as JSON files (`projects.json`, `sessions.json`, `grades.json`). Project files are stored in `~/Documents/Projects/<project-folder>/`.
+Application data lives at the Tauri app data directory as JSON files (`projects.json`, `sessions.json`, `events.json`). Project files are stored in `~/Documents/Projects/<project-folder>/`. When signed in, these JSON files remain the local cache and Supabase sync uses a persisted `sync-queue.json` for offline changes.

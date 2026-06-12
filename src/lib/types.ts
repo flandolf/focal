@@ -35,6 +35,9 @@ export interface StudySession {
     bodyHash?: string;
   };
   created_at: string;
+  updated_at?: string;
+  deleted_at?: string | null;
+  last_modified_device_id?: string | null;
 }
 
 export interface CalendarEvent {
@@ -57,6 +60,9 @@ export interface CalendarEvent {
     bodyHash?: string;
   };
   created_at: string;
+  updated_at?: string;
+  deleted_at?: string | null;
+  last_modified_device_id?: string | null;
 }
 
 export interface Subject {
@@ -105,6 +111,9 @@ export interface Project {
   isArchived?: boolean;
   isFinished?: boolean;
   customSubfolders?: string[];
+  updated_at?: string;
+  deleted_at?: string | null;
+  last_modified_device_id?: string | null;
 }
 
 export interface FileInfo {

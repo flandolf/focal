@@ -19,6 +19,7 @@ import { DataExport } from "@/components/DataExport"
 import { CustomSubjects } from "@/components/CustomSubjects"
 import { NotionConflictDialog } from "@/components/NotionConflictDialog"
 import { NotionSyncIndicator } from "@/components/NotionSyncIndicator"
+import { SupabaseSyncIndicator } from "@/components/SupabaseSyncIndicator"
 
 const TimetableView = lazy(() =>
   import("@/components/timetable/TimetableView").then((m) => ({ default: m.TimetableView })),
@@ -78,12 +79,15 @@ import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 import { useNotionSync } from "@/hooks/useNotionSync"
+import { useSupabaseAuth } from "@/hooks/useSupabaseAuth"
+import { useSupabaseSync } from "@/hooks/useSupabaseSync"
 import { useTheme } from "@/lib/themes"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { showUndoToast } from "@/lib/undoToast"
 import { getNotionCalendarSettings, getTimetableConfig } from "@/lib/settings"
 import { isPomodoroSession, getPomodoroDescription, getPomodoroNotes, getPomodoroTitle, POMODORO_DESCRIPTION_PREFIX, getAdjacentPomodoroSession, getUniqueStrings, getUniqueArrayItems } from "@/lib/pomodoro"
 import { deleteNotionPage } from "@/lib/notion/api"
+import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
@@ -163,6 +167,8 @@ function App() {
   const [customSubjects, setCustomSubjects] = useState<Subject[]>(getStoredCustomSubjects)
   const [hiddenSubjectIds, setHiddenSubjectIds] = useState<string[]>(getStoredHiddenSubjectIds)
   const { theme, mode, resolvedDark, setTheme, setMode } = useTheme()
+  const supabaseAuth = useSupabaseAuth()
+  const supabaseSync = useSupabaseSync(supabaseAuth.session)
   const syncSessions = rawSyncSessions
   const allSubjects = useMemo(() => [...VCE_SUBJECTS, ...customSubjects], [customSubjects])
   const availableSubjects = useMemo(
@@ -190,6 +196,58 @@ function App() {
   useEffect(() => {
     localStorage.setItem(HIDDEN_SUBJECTS_STORAGE_KEY, JSON.stringify(hiddenSubjectIds))
   }, [hiddenSubjectIds])
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const table = (event as CustomEvent<{ table?: string }>).detail?.table
+      if (table === "custom_subjects") {
+        setCustomSubjects(getStoredCustomSubjects())
+      }
+      if (table === "hidden_subjects") {
+        setHiddenSubjectIds(getStoredHiddenSubjectIds())
+      }
+      if (table === "timetable_config") {
+        setTimetableConfig(getTimetableConfig())
+      }
+    }
+    window.addEventListener("focal-sync-data-changed", handler)
+    return () => window.removeEventListener("focal-sync-data-changed", handler)
+  }, [])
+
+  const previousCustomSubjectIdsRef = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const previous = previousCustomSubjectIdsRef.current
+    const currentIds = new Set(customSubjects.map((subject) => subject.id))
+    if (previous) {
+      customSubjects.forEach((subject) => void recordLocalUpsert("custom_subjects", subject))
+      previous.forEach((subjectId) => {
+        if (!currentIds.has(subjectId)) void recordLocalSoftDelete("custom_subjects", subjectId)
+      })
+    }
+    previousCustomSubjectIdsRef.current = currentIds
+  }, [customSubjects])
+
+  const previousHiddenSubjectIdsRef = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const previous = previousHiddenSubjectIdsRef.current
+    const currentIds = new Set(hiddenSubjectIds)
+    if (previous) {
+      hiddenSubjectIds.forEach((subjectId) => void recordLocalUpsert("hidden_subjects", subjectId))
+      previous.forEach((subjectId) => {
+        if (!currentIds.has(subjectId)) void recordLocalSoftDelete("hidden_subjects", subjectId)
+      })
+    }
+    previousHiddenSubjectIdsRef.current = currentIds
+  }, [hiddenSubjectIds])
+
+  const timetableSyncReadyRef = useRef(false)
+  useEffect(() => {
+    if (!timetableSyncReadyRef.current) {
+      timetableSyncReadyRef.current = true
+      return
+    }
+    void recordLocalUpsert("timetable_config", timetableConfig)
+  }, [timetableConfig])
 
   const handleToggleSubjectVisibility = useCallback((subjectId: string) => {
     setHiddenSubjectIds((current) => (
@@ -1125,6 +1183,10 @@ function App() {
             onClick={() => requestNotionSync(true)}
             disabled={syncStatus === "syncing"}
           />
+          <SupabaseSyncIndicator
+            sync={supabaseSync}
+            signedIn={Boolean(supabaseAuth.user)}
+          />
         </div>
         <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
         <div
@@ -1196,6 +1258,14 @@ function App() {
                     lastSyncTime={lastSyncTime}
                     projects={projects}
                     onFilesChanged={refreshFileCounts}
+                    supabaseConfigured={supabaseAuth.configured}
+                    supabaseEmail={supabaseAuth.user?.email}
+                    supabaseLoading={supabaseAuth.loading}
+                    supabaseError={supabaseAuth.error}
+                    supabaseSync={supabaseSync}
+                    onSupabaseSignIn={supabaseAuth.signIn}
+                    onSupabaseSignUp={supabaseAuth.signUp}
+                    onSupabaseSignOut={supabaseAuth.signOut}
                   />
                   </Suspense>
                 ) : timetableView ? (

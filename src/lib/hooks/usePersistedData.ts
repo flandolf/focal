@@ -75,5 +75,16 @@ export function usePersistedData<T>({
     refresh()
   }, [refresh])
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ fileName?: string }>).detail
+      if (detail?.fileName === fileName) {
+        void refresh()
+      }
+    }
+    window.addEventListener("focal-sync-data-changed", handler)
+    return () => window.removeEventListener("focal-sync-data-changed", handler)
+  }, [fileName, refresh])
+
   return { data, loading, error, save, refresh }
 }

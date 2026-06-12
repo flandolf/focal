@@ -5,6 +5,7 @@ import { sanitiseFolderName, generateId } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS } from "@/lib/types"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
+import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
 
 function normaliseProject(raw: unknown): Project {
   const obj = raw as Record<string, unknown>
@@ -15,6 +16,9 @@ function normaliseProject(raw: unknown): Project {
     icon: typeof obj.icon === "string" ? obj.icon : undefined,
     deadline: typeof obj.deadline === "string" ? obj.deadline : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
+    updated_at: typeof obj.updated_at === "string" ? obj.updated_at : typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
+    deleted_at: typeof obj.deleted_at === "string" ? obj.deleted_at : null,
+    last_modified_device_id: typeof obj.last_modified_device_id === "string" ? obj.last_modified_device_id : null,
     folder_path: typeof obj.folder_path === "string" ? obj.folder_path : "unknown",
     subjectId: typeof obj.subjectId === "string" ? obj.subjectId : undefined,
     unit: (obj.unit === "1" || obj.unit === "2" || obj.unit === "3" || obj.unit === "4") ? obj.unit : undefined,
@@ -31,7 +35,7 @@ export function useProjects() {
   const { data: projects, loading, error, save: saveProjects, refresh } = usePersistedData({
     fileName: "projects.json",
     normalize: normaliseProject,
-    onLoad: (projects) => [...projects].reverse(),
+    onLoad: (projects) => [...projects].filter((project) => !project.deleted_at).reverse(),
   })
 
   const projectsRef = useLatestRef(projects)
@@ -54,13 +58,15 @@ export function useProjects() {
 
     const allSubfolders = customSubfolders ? [...subfolders, ...customSubfolders] : subfolders
 
+    const now = new Date().toISOString()
     const project: Project = {
       id: generateId(),
       name,
       description,
       icon,
       deadline,
-      created_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
       folder_path: sanitised,
       subjectId,
       unit,
@@ -78,6 +84,7 @@ export function useProjects() {
     }
     const updated = [...projectsRef.current, project]
     await saveProjects(updated)
+    void recordLocalUpsert("projects", project)
     return project
   }, [projectsRef, saveProjects])
 
@@ -86,21 +93,26 @@ export function useProjects() {
     updates: Partial<Omit<Project, "id" | "created_at" | "folder_path">>
   ) => {
     const updated = projectsRef.current.map((p) =>
-      p.id === id ? { ...p, ...updates } : p
+      p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
     )
     await saveProjects(updated)
+    const project = updated.find((p) => p.id === id)
+    if (project) void recordLocalUpsert("projects", project)
   }, [projectsRef, saveProjects])
 
   const deleteProject = useCallback(async (id: string) => {
     const updated = projectsRef.current.filter((p) => p.id !== id)
     await saveProjects(updated)
+    void recordLocalSoftDelete("projects", id)
   }, [projectsRef, saveProjects])
 
   const restoreProject = useCallback(async (project: Project) => {
     const exists = projectsRef.current.some((p) => p.id === project.id)
     if (exists) return
-    const updated = [...projectsRef.current, project]
+    const restored = { ...project, deleted_at: null, updated_at: new Date().toISOString() }
+    const updated = [...projectsRef.current, restored]
     await saveProjects(updated)
+    void recordLocalUpsert("projects", restored)
   }, [projectsRef, saveProjects])
 
   const addCustomSubfolder = useCallback(async (id: string, folderName: string) => {
@@ -130,10 +142,12 @@ export function useProjects() {
 
     const updated = projectsRef.current.map((p) =>
       p.id === id
-        ? { ...p, customSubfolders: [...(p.customSubfolders ?? []), sanitised] }
+        ? { ...p, customSubfolders: [...(p.customSubfolders ?? []), sanitised], updated_at: new Date().toISOString() }
         : p
     )
     await saveProjects(updated)
+    const updatedProject = updated.find((p) => p.id === id)
+    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const removeCustomSubfolder = useCallback(async (id: string, folderName: string) => {
@@ -149,10 +163,12 @@ export function useProjects() {
 
     const updated = projectsRef.current.map((p) =>
       p.id === id
-        ? { ...p, customSubfolders: currentSubfolders.filter((f) => f !== folderName) }
+        ? { ...p, customSubfolders: currentSubfolders.filter((f) => f !== folderName), updated_at: new Date().toISOString() }
         : p
     )
     await saveProjects(updated)
+    const updatedProject = updated.find((p) => p.id === id)
+    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   return {

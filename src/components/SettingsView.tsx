@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowLeft, Palette as PaletteIcon, EyeOff, Cloud, Brain, Cog, FolderDown } from "lucide-react"
+import { ArrowLeft, Palette as PaletteIcon, EyeOff, Cloud, Brain, Cog, FolderDown, UserCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -11,8 +11,10 @@ import { AIModelSection } from "@/components/settings/AIModelSection"
 import { NotionSection } from "@/components/settings/NotionSection"
 import { AutoRenameSection } from "@/components/settings/AutoRenameSection"
 import { DataSection } from "@/components/settings/DataSection"
+import { AccountSection } from "@/components/settings/AccountSection"
+import type { SyncStatusSnapshot } from "@/lib/sync/types"
 
-type SettingsSection = "appearance" | "subjects" | "notion" | "ai" | "auto-rename" | "data"
+type SettingsSection = "account" | "appearance" | "subjects" | "notion" | "ai" | "auto-rename" | "data"
 
 interface SettingsViewProps {
   onBack: () => void
@@ -31,9 +33,18 @@ interface SettingsViewProps {
   lastSyncTime?: number
   projects?: Project[]
   onFilesChanged?: () => void
+  supabaseConfigured: boolean
+  supabaseEmail?: string
+  supabaseLoading: boolean
+  supabaseError: string | null
+  supabaseSync: SyncStatusSnapshot
+  onSupabaseSignIn: (email: string, password: string) => Promise<unknown>
+  onSupabaseSignUp: (email: string, password: string) => Promise<unknown>
+  onSupabaseSignOut: () => Promise<void>
 }
 
 const SECTION_ITEMS: { id: SettingsSection; label: string; icon: typeof PaletteIcon }[] = [
+  { id: "account", label: "Account", icon: UserCircle },
   { id: "appearance", label: "Appearance", icon: PaletteIcon },
   { id: "subjects", label: "Subjects", icon: EyeOff },
   { id: "notion", label: "Notion Sync", icon: Cloud },
@@ -58,8 +69,16 @@ export function SettingsView({
   lastSyncTime,
   projects,
   onFilesChanged,
+  supabaseConfigured,
+  supabaseEmail,
+  supabaseLoading,
+  supabaseError,
+  supabaseSync,
+  onSupabaseSignIn,
+  onSupabaseSignUp,
+  onSupabaseSignOut,
 }: SettingsViewProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>("appearance")
+  const [activeSection, setActiveSection] = useState<SettingsSection>("account")
 
   return (
     <div className="flex h-full flex-col">
@@ -114,6 +133,19 @@ export function SettingsView({
                 mode={mode}
                 setTheme={setTheme}
                 setMode={setMode}
+              />
+            )}
+
+            {activeSection === "account" && (
+              <AccountSection
+                configured={supabaseConfigured}
+                email={supabaseEmail}
+                loading={supabaseLoading}
+                error={supabaseError}
+                sync={supabaseSync}
+                onSignIn={onSupabaseSignIn}
+                onSignUp={onSupabaseSignUp}
+                onSignOut={onSupabaseSignOut}
               />
             )}
 
