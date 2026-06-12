@@ -58,6 +58,7 @@ function normaliseEvent(raw: unknown): CalendarEvent {
         url: typeof source.url === "string" ? source.url : undefined,
         lastEditedTime: typeof source.lastEditedTime === "string" ? source.lastEditedTime : undefined,
         kind: source.kind === "event" || source.kind === "session" ? source.kind : undefined,
+        bodyHash: typeof source.bodyHash === "string" ? source.bodyHash : undefined,
       }
       : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),

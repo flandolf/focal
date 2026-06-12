@@ -12,6 +12,7 @@ import { NotionSection } from "@/components/settings/NotionSection"
 import { AutoRenameSection } from "@/components/settings/AutoRenameSection"
 import { DataSection } from "@/components/settings/DataSection"
 import { AccountSection } from "@/components/settings/AccountSection"
+import { retrySync } from "@/lib/sync/engine"
 import type { SyncStatusSnapshot } from "@/lib/sync/types"
 
 type SettingsSection = "account" | "appearance" | "subjects" | "notion" | "ai" | "auto-rename" | "data"
@@ -146,6 +147,7 @@ export function SettingsView({
                 onSignIn={onSupabaseSignIn}
                 onSignUp={onSupabaseSignUp}
                 onSignOut={onSupabaseSignOut}
+                onRetrySync={() => void retrySync()}
               />
             )}
 

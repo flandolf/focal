@@ -63,39 +63,79 @@ function StatusDot({ status }: { status: DotStatus }) {
   )
 }
 
+function formatTableStats(stats: NonNullable<SyncStatusSnapshot["tableStats"]>) {
+  if (stats.length === 0) return null
+  return stats
+    .map((s) => {
+      const parts: string[] = []
+      if (s.pulled) parts.push(`${s.pulled} pulled`)
+      if (s.pushed) parts.push(`${s.pushed} pushed`)
+      if (s.failed) parts.push(`${s.failed} failed`)
+      return `${s.table}${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`
+    })
+    .join("\n")
+}
+
+function formatFailedItems(items: NonNullable<SyncStatusSnapshot["failedItems"]>) {
+  return items.map((item) => `${item.table} ${item.rowId.slice(0, 8)}: ${item.error}`).join("\n")
+}
+
 export function SupabaseSyncIndicator({ sync, signedIn }: SupabaseSyncIndicatorProps) {
+  const isOffline = signedIn && !sync.isOnline
   const dotStatus: DotStatus = !signedIn
     ? "idle"
-    : sync.status === "syncing"
-      ? "syncing"
-      : sync.status === "error"
-        ? "error"
-        : sync.status === "pending"
-          ? "pending"
-          : "success"
+    : isOffline
+      ? "error"
+      : sync.status === "syncing"
+        ? "syncing"
+        : sync.status === "error"
+          ? "error"
+          : sync.status === "pending"
+            ? "pending"
+            : "success"
 
   const label = !signedIn
     ? "Supabase signed out"
-    : sync.status === "syncing"
-      ? "Supabase syncing"
-      : sync.status === "error"
-        ? "Supabase sync error"
-        : sync.status === "pending"
-          ? `${sync.pendingCount} pending sync change${sync.pendingCount === 1 ? "" : "s"}`
-          : "Supabase synced"
+    : isOffline
+      ? "Offline — sync paused"
+      : sync.status === "syncing"
+        ? sync.details ?? "Supabase syncing"
+        : sync.status === "error"
+          ? sync.error ?? "Supabase sync error"
+          : sync.status === "pending"
+            ? `${sync.pendingCount} pending sync change${sync.pendingCount === 1 ? "" : "s"}`
+            : "Supabase synced"
+
+  const tooltipLines = [label]
+  if (sync.lastSuccessfulSyncAt) {
+    const date = new Date(sync.lastSuccessfulSyncAt)
+    tooltipLines.push(`Last sync: ${date.toLocaleString()}`)
+  }
+  if (sync.tableStats && sync.tableStats.length > 0) {
+    const stats = formatTableStats(sync.tableStats)
+    if (stats) tooltipLines.push("", stats)
+  }
+  if (sync.failedItems && sync.failedItems.length > 0) {
+    tooltipLines.push("", "Failed items:", formatFailedItems(sync.failedItems))
+  }
+  if (sync.details && sync.details !== label) {
+    tooltipLines.push("", sync.details)
+  }
+
+  const tooltip = tooltipLines.join("\n")
 
   return (
     <div
       className={cn(
         "relative flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-all duration-200",
         signedIn ? "hover:bg-background/65" : "opacity-55",
-        sync.status === "syncing" && signedIn && "text-primary",
-        sync.status === "error" && signedIn && "hover:bg-destructive/10",
+        sync.status === "syncing" && signedIn && !isOffline && "text-primary",
+        (sync.status === "error" || isOffline) && signedIn && "hover:bg-destructive/10",
       )}
       aria-label={label}
-      title={sync.error ?? label}
+      title={tooltip}
     >
-      <SupabaseLogo className={cn("h-4 w-4", sync.status === "syncing" && signedIn && "animate-pulse")} />
+      <SupabaseLogo className={cn("h-4 w-4", sync.status === "syncing" && signedIn && !isOffline && "animate-pulse")} />
       <StatusDot status={dotStatus} />
     </div>
   )
