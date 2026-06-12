@@ -3,6 +3,7 @@ import type { ConfidenceScore, StudySession } from "@/lib/types"
 import { generateId } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
+import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
 
 function isConfidenceScore(value: unknown): value is ConfidenceScore {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
@@ -42,6 +43,9 @@ function normaliseSession(raw: unknown): StudySession {
         )
       : undefined,
     created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
+    updated_at: typeof obj.updated_at === "string" ? obj.updated_at : typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
+    deleted_at: typeof obj.deleted_at === "string" ? obj.deleted_at : null,
+    last_modified_device_id: typeof obj.last_modified_device_id === "string" ? obj.last_modified_device_id : null,
   }
 }
 
@@ -49,6 +53,7 @@ export function useStudySessions() {
   const { data: sessions, loading, error, save: saveSessions, refresh } = usePersistedData({
     fileName: "sessions.json",
     normalize: normaliseSession,
+    onLoad: (normalised) => normalised.filter((session) => !session.deleted_at),
   })
 
   const sessionsRef = useLatestRef(sessions)
@@ -65,6 +70,7 @@ export function useStudySessions() {
     status: StudySession["status"] = "planned",
     activeDurations?: { start: string; end: string }[],
   ) => {
+    const now = new Date().toISOString()
     const session: StudySession = {
       id: generateId(),
       projectId,
@@ -77,10 +83,12 @@ export function useStudySessions() {
       status,
       topics,
       notes,
-      created_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
     }
     const updated = [...sessionsRef.current, session]
     await saveSessions(updated)
+    void recordLocalUpsert("study_sessions", session)
     return session
   }, [sessionsRef, saveSessions])
 
@@ -109,9 +117,11 @@ export function useStudySessions() {
       notes: item.notes,
       activeDurations: item.activeDurations,
       created_at: createdAt,
+      updated_at: createdAt,
     }))
     const updated = [...sessionsRef.current, ...newSessions]
     await saveSessions(updated)
+    newSessions.forEach((session) => void recordLocalUpsert("study_sessions", session))
     return newSessions
   }, [sessionsRef, saveSessions])
 
@@ -120,9 +130,11 @@ export function useStudySessions() {
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => {
     const updated = sessionsRef.current.map((s) =>
-      s.id === id ? { ...s, ...updates } : s
+      s.id === id ? { ...s, ...updates, updated_at: new Date().toISOString() } : s
     )
     await saveSessions(updated)
+    const session = updated.find((item) => item.id === id)
+    if (session) void recordLocalUpsert("study_sessions", session)
   }, [sessionsRef, saveSessions])
 
   const updateSessions = useCallback(async (
@@ -132,21 +144,28 @@ export function useStudySessions() {
     const updateMap = new Map(items.map((item) => [item.id, item.updates]))
     const updated = sessionsRef.current.map((session) => {
       const updates = updateMap.get(session.id)
-      return updates ? { ...session, ...updates } : session
+      return updates ? { ...session, ...updates, updated_at: new Date().toISOString() } : session
     })
     await saveSessions(updated)
+    items.forEach((item) => {
+      const session = updated.find((candidate) => candidate.id === item.id)
+      if (session) void recordLocalUpsert("study_sessions", session)
+    })
   }, [sessionsRef, saveSessions])
 
   const deleteSession = useCallback(async (id: string) => {
     const updated = sessionsRef.current.filter((s) => s.id !== id)
     await saveSessions(updated)
+    void recordLocalSoftDelete("study_sessions", id)
   }, [sessionsRef, saveSessions])
 
   const restoreSession = useCallback(async (session: StudySession) => {
     const exists = sessionsRef.current.some((s) => s.id === session.id)
     if (exists) return
-    const updated = [...sessionsRef.current, session]
+    const restored = { ...session, deleted_at: null, updated_at: new Date().toISOString() }
+    const updated = [...sessionsRef.current, restored]
     await saveSessions(updated)
+    void recordLocalUpsert("study_sessions", restored)
   }, [sessionsRef, saveSessions])
 
   const deleteSessions = useCallback(async (ids: string[]) => {
@@ -154,14 +173,17 @@ export function useStudySessions() {
     const idSet = new Set(ids)
     const updated = sessionsRef.current.filter((session) => !idSet.has(session.id))
     await saveSessions(updated)
+    ids.forEach((id) => void recordLocalSoftDelete("study_sessions", id))
   }, [sessionsRef, saveSessions])
 
   const restoreSessions = useCallback(async (sessionsToRestore: StudySession[]) => {
     const existingIds = new Set(sessionsRef.current.map((s) => s.id))
     const newSessions = sessionsToRestore.filter((s) => !existingIds.has(s.id))
     if (newSessions.length === 0) return
-    const updated = [...sessionsRef.current, ...newSessions]
+    const restoredSessions = newSessions.map((session) => ({ ...session, deleted_at: null, updated_at: new Date().toISOString() }))
+    const updated = [...sessionsRef.current, ...restoredSessions]
     await saveSessions(updated)
+    restoredSessions.forEach((session) => void recordLocalUpsert("study_sessions", session))
   }, [sessionsRef, saveSessions])
 
   const updateAndDeleteSessions = useCallback(async (
@@ -175,9 +197,14 @@ export function useStudySessions() {
       .filter((session) => !deleteSet.has(session.id))
       .map((session) => {
         const updates = updateMap.get(session.id)
-        return updates ? { ...session, ...updates } : session
+        return updates ? { ...session, ...updates, updated_at: new Date().toISOString() } : session
       })
     await saveSessions(updated)
+    items.forEach((item) => {
+      const session = updated.find((candidate) => candidate.id === item.id)
+      if (session) void recordLocalUpsert("study_sessions", session)
+    })
+    ids.forEach((id) => void recordLocalSoftDelete("study_sessions", id))
   }, [sessionsRef, saveSessions])
 
   const syncSessions = useCallback(async (
@@ -204,12 +231,18 @@ export function useStudySessions() {
       activeDurations: item.activeDurations,
       source: item.source,
       created_at: createdAt,
+      updated_at: createdAt,
     }))
     const updated = sessionsRef.current.map((session) => {
       const updates = updateMap.get(session.id)
-      return updates ? { ...session, ...updates } : session
+      return updates ? { ...session, ...updates, updated_at: createdAt } : session
     })
     await saveSessions([...updated, ...newSessions])
+    itemsToUpdate.forEach((item) => {
+      const session = updated.find((candidate) => candidate.id === item.id)
+      if (session) void recordLocalUpsert("study_sessions", session)
+    })
+    newSessions.forEach((session) => void recordLocalUpsert("study_sessions", session))
     return newSessions
   }, [sessionsRef, saveSessions])
 
