@@ -1,4 +1,4 @@
-import type { CalendarEvent, ConfidenceScore, EventType, Project, StudySession, StudySessionStatus, Subject, TimetableConfig, TimetableDayLabel, Unit } from "@/lib/types"
+import type { CalendarEvent, ConfidenceScore, EventType, Project, StudySession, StudySessionStatus, Subject, TimetableConfig, TimetableDayLabel, Unit, UserSettings } from "@/lib/types"
 import type {
   CustomSubjectRow,
   EventRow,
@@ -9,6 +9,7 @@ import type {
   ProjectRow,
   StudySessionRow,
   TimetableConfigRow,
+  UserSettingsRow,
 } from "@/lib/sync/types"
 
 export function isUuid(value: string): boolean {
@@ -225,6 +226,36 @@ export function rowToTimetableConfig(row: TimetableConfigRow): TimetableConfig {
     holidays: Array.isArray(row.config.holidays) ? row.config.holidays : [],
     entries: Array.isArray(row.config.entries) ? row.config.entries : [],
     currentDayOverride: isDayLabel(row.config.currentDayOverride) ? row.config.currentDayOverride : null,
+  }
+}
+
+export function userSettingsToRow(settings: UserSettings, userId: string, deviceId: string): UserSettingsRow {
+  const now = new Date().toISOString()
+  return {
+    id: userId,
+    user_id: userId,
+    settings,
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+    last_modified_device_id: deviceId,
+  }
+}
+
+export function rowToUserSettings(row: UserSettingsRow): UserSettings {
+  return {
+    openrouter_api_key: row.settings.openrouter_api_key ?? "",
+    openrouter_model: row.settings.openrouter_model ?? "openai/gpt-4o-mini",
+    reasoning_effort: row.settings.reasoning_effort ?? "medium",
+    reasoning_max_tokens: row.settings.reasoning_max_tokens ?? 8000,
+    reasoning_exclude: row.settings.reasoning_exclude ?? false,
+    notion_token: row.settings.notion_token ?? "",
+    notion_data_source_id: row.settings.notion_data_source_id ?? "",
+    notion_title_property: row.settings.notion_title_property ?? "Name",
+    notion_date_property: row.settings.notion_date_property ?? "Date",
+    notion_type_property: row.settings.notion_type_property ?? "Type",
+    notion_completed_property: row.settings.notion_completed_property ?? "Complete",
+    notion_subject_property: row.settings.notion_subject_property ?? "Subject",
   }
 }
 

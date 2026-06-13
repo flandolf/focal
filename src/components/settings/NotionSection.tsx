@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, RefreshCw, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getNotionCalendarSettings, setNotionCalendarSettings } from "@/lib/settings"
+import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { NotionCalendarSettings } from "@/lib/settings"
 import { SETTINGS_SECTION_CLASS, SETTINGS_LINK_CLASS, formatTimeAgo } from "./constants"
 
@@ -41,6 +42,7 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
     setNotionSaved(true)
     setNotionSyncResult(null)
     setTimeout(() => setNotionSaved(false), 2000)
+    notifyUserSettingsChanged()
   }, [])
 
   const handleSyncNotionCalendar = useCallback(() => {

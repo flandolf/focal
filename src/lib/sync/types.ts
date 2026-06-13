@@ -1,4 +1,4 @@
-import type { CalendarEvent, Project, StudySession, Subject, TimetableConfig } from "@/lib/types"
+import type { CalendarEvent, Project, StudySession, Subject, TimetableConfig, UserSettings } from "@/lib/types"
 
 export type SyncTable =
   | "projects"
@@ -7,6 +7,7 @@ export type SyncTable =
   | "custom_subjects"
   | "hidden_subjects"
   | "timetable_config"
+  | "user_settings"
 
 export type SyncOperation = "upsert" | "soft_delete"
 
@@ -157,6 +158,16 @@ export interface TimetableConfigRow {
   last_modified_device_id: string | null
 }
 
+export interface UserSettingsRow {
+  id: string
+  user_id: string
+  settings: UserSettings
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+  last_modified_device_id: string | null
+}
+
 export type RemoteRow =
   | ProjectRow
   | EventRow
@@ -164,5 +175,6 @@ export type RemoteRow =
   | CustomSubjectRow
   | HiddenSubjectRow
   | TimetableConfigRow
+  | UserSettingsRow
 
-export type LocalRecord = LocalProject | LocalEvent | LocalStudySession | Subject | string | TimetableConfig
+export type LocalRecord = LocalProject | LocalEvent | LocalStudySession | Subject | string | TimetableConfig | UserSettings

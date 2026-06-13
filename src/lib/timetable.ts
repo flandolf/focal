@@ -167,7 +167,8 @@ export async function parseTimetableFromImage(
 TASK: Analyse the uploaded school timetable image and return a structured JSON representation.
 
 KEY CONCEPTS:
-- Day numbers run on a 10-day cycle: Day 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+- Day numbers run on a 10-day cycle over 2 school weeks: Day 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+- The cycle counts only weekdays (Mon–Fri) — weekends are skipped, so Day 1 = Monday, Day 6 = Monday of week 2
 - "day_label" must be one of: ${dayLabelOptions}
 - "period" is the period name/label shown on the timetable (e.g. "Period 1", "P1", "1", "Lunch", "Recess", "Homeroom")
 - "subject" must be a VCE subject ID from the allowed list below when possible
@@ -323,7 +324,32 @@ export function isDateInHoliday(date: Date, holidays: SchoolHoliday[]): boolean 
 }
 
 /**
+ * Count weekdays (Mon–Fri) between two local-midnight dates, excluding the start date
+ * and including the end date. Counts only school days, skipping weekends.
+ */
+function countWeekdaysBetween(start: Date, end: Date): number {
+  const msPerDay = 24 * 60 * 60 * 1000
+  const totalDays = Math.round((end.getTime() - start.getTime()) / msPerDay)
+  if (totalDays <= 0) return 0
+
+  const fullWeeks = Math.floor(totalDays / 7)
+  let count = fullWeeks * 5
+
+  const remaining = totalDays % 7
+  for (let i = 1; i <= remaining; i++) {
+    const d = new Date(start)
+    d.setDate(d.getDate() + i)
+    const dayOfWeek = d.getDay()
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) count++
+  }
+
+  return count
+}
+
+/**
  * Compute the day label (1–10) for a given date based on the configured day-1 start date.
+ * Counts only weekdays (Mon–Fri) — weekends are skipped so day 6 naturally falls on
+ * Monday of the following week.
  * Returns null if the date falls within a holiday period, or before day-1 starts.
  *
  * Uses local-date arithmetic so behaviour is consistent across timezones — VCE schools
@@ -346,7 +372,9 @@ export function getDayLabelForDate(
   const diffDays = Math.round((dateLocal.getTime() - startLocal.getTime()) / msPerDay)
   if (diffDays < 0) return null
 
-  return ((diffDays % 10) + 1) as TimetableDayLabel
+  // Count only weekdays so weekends are skipped
+  const weekdayCount = countWeekdaysBetween(startLocal, dateLocal)
+  return ((weekdayCount % 10) + 1) as TimetableDayLabel
 }
 
 /**
@@ -470,7 +498,8 @@ AVAILABLE SUBJECT IDs:
 ${subjectLines}
 
 KEY RULES:
-- Day numbers run on a 10-day cycle: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+- Day numbers run on a 10-day cycle over 2 school weeks: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+- The cycle counts only weekdays (Mon–Fri) — weekends are skipped, so Day 1 = Monday, Day 6 = Monday of week 2
 - "period" is the period slot name (e.g. "Period 1", "Recess", "Lunch", "Homeroom", "Assembly", "Form")
 - "subject" must be a subject ID from the list when a real subject applies, OR a custom label like "Roll Call", "Assembly", "Form" for non-subject events
 - Keep custom labels rather than forcing them to a subject ID
