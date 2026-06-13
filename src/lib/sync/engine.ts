@@ -297,6 +297,7 @@ async function flushQueueInternal(): Promise<void> {
   await writeSyncQueue(remaining)
   const now = new Date().toISOString()
   const tableStats: SyncStatusSnapshot["tableStats"] = Object.entries(stats).map(([table, count]) => ({ table: table as SyncTable, pushed: count, failed: 0 }))
+  console.log(`[sync] flushQueue summary: pushed=${JSON.stringify(stats)}, remaining=${remaining.length}, failed=${failed.length}${failed.length > 0 ? ", failed items: " + JSON.stringify(failed) : ""}`)
   if (remaining.length === 0 && failed.length === 0) {
     const meta = await readMeta()
     await writeMeta({ ...meta, lastSuccessfulSyncAt: now })
@@ -346,7 +347,11 @@ async function pushQueueItem(client: SupabaseClient, item: SyncQueueItem): Promi
         ? "user_id"
         : "id"
   const { error } = await client.from(item.table).upsert(payload, { onConflict })
-  if (error) throw error
+  if (error) {
+    console.error(`[sync] upsert error for ${item.table} (rowId=${item.rowId}, onConflict=${onConflict}):`, error, "payload keys:", Object.keys(payload), "payload:"
+      , JSON.stringify(payload, null, 2))
+    throw error
+  }
 }
 
 async function pullRemoteChanges(): Promise<void> {
@@ -363,6 +368,13 @@ async function pullRemoteChanges(): Promise<void> {
   await pullHiddenSubjects()
   emitStatus({ status: "syncing", error: null, details: "Pulling timetable config..." })
   await pullTimetableConfig()
+
+  // Note: we intentionally do NOT update lastSuccessfulSyncAt here.
+  // enqueueAllLocalRows reads it to decide what to push; setting it to "now"
+  // would cause local-only items (with older updated_at) to be skipped.
+  // The meta timestamp is only updated by flushQueueInternal after a
+  // successful push.
+
   const queue = await readSyncQueue()
   const tableStats: SyncStatusSnapshot["tableStats"] = [
     { table: "projects", pulled: projectCount, pushed: 0, failed: 0 },
@@ -401,18 +413,30 @@ function getErrorMessage(error: unknown): string {
   return String(error)
 }
 
+const PAGE_SIZE = 1000
+
 async function pullTable<Row extends RemoteRow>(table: SyncTable): Promise<number> {
   if (!supabase) return 0
   const fileName = FILES[table]
   if (!fileName) return 0
-  const { data, error } = await supabase.from(table).select("*")
-  if (error) throw error
+
+  // Fetch all rows with pagination to avoid the default 1000-row limit.
+  const allRows: Row[] = []
+  let from = 0
+  for (;;) {
+    const { data, error } = await supabase.from(table).select("*").range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    const batch = (data ?? []) as Row[]
+    allRows.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+
   const local = await readJsonArray<Record<string, unknown>>(fileName)
-  const remote = (data ?? []) as Row[]
-  const merged = mergeRemoteRows(table, local, remote)
+  const merged = mergeRemoteRows(table, local, allRows)
   await writeJsonArray(fileName, merged)
   emitLocalDataChanged(table)
-  return remote.length
+  return allRows.length
 }
 
 function mergeRemoteRows(table: SyncTable, local: Record<string, unknown>[], remote: RemoteRow[]): Record<string, unknown>[] {
@@ -512,21 +536,28 @@ async function enqueueAllLocalRows(force = false): Promise<void> {
   // Only enqueue rows that have been modified since the last successful sync
   // to avoid redundant push traffic and overwriting remote data with identical local copies.
   // In force mode, lastSyncAt is null so every row is enqueued.
+  let projectEnqueued = 0
   for (const project of projects) {
     if (!lastSyncAt || compareIso(project.updated_at, lastSyncAt) > 0) {
       await recordLocalUpsert("projects", project)
+      projectEnqueued++
     }
   }
+  let eventEnqueued = 0
   for (const event of events) {
     if (!lastSyncAt || compareIso(event.updated_at, lastSyncAt) > 0) {
       await recordLocalUpsert("events", event)
+      eventEnqueued++
     }
   }
+  let sessionEnqueued = 0
   for (const session of sessions) {
     if (!lastSyncAt || compareIso(session.updated_at, lastSyncAt) > 0) {
       await recordLocalUpsert("study_sessions", session)
+      sessionEnqueued++
     }
   }
+  console.log(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}`)
   for (const subject of readLocalStorageArray<Subject>(CUSTOM_SUBJECTS_KEY)) {
     await recordLocalUpsert("custom_subjects", subject)
   }
