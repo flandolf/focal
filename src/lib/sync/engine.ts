@@ -4,6 +4,7 @@ import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-f
 import { supabase } from "@/lib/supabase/client"
 import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
 import { bustSubjectCache } from "@/lib/utils"
+import { addChangedRowId, addDeletedRowId, removeDeletedRowId, shouldEnqueueFileRow, shouldEnqueueLocalTable, shouldKeepLocalRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
 import { enqueueSyncItem, finishSyncQueueFlush, readSyncQueue, writeSyncQueue } from "@/lib/sync/queue"
 import {
@@ -50,7 +51,6 @@ const FILES: Partial<Record<SyncTable, string>> = {
 }
 const CUSTOM_SUBJECTS_KEY = "focal-custom-subjects"
 const HIDDEN_SUBJECTS_KEY = "focal-hidden-subjects"
-const LOCAL_STORAGE_SYNC_META_KEY = "focal-local-storage-sync-meta"
 const MISSING_SYNC_SCHEMA_MESSAGE = "Supabase sync tables are missing. Run supabase/migrations/0001_initial_sync.sql, then reload Focal."
 const MAX_SYNC_RETRIES = 5
 const FLUSH_INTERVAL_MS = 30_000
@@ -60,6 +60,7 @@ let currentDeviceId: string | null = null
 let unsubscribeRealtime: (() => void) | null = null
 let syncDisabledReason: string | null = null
 let flushPromise: Promise<void> | null = null
+let pullPromise: Promise<void> | null = null
 let flushInterval: ReturnType<typeof setInterval> | null = null
 let snapshot: SyncStatusSnapshot = {
   status: "signed-out",
@@ -124,26 +125,40 @@ export async function setSyncSession(session: Session | null): Promise<void> {
 
 export async function recordLocalUpsert(table: SyncTable, payload: LocalRecord): Promise<void> {
   if (!currentSession || !currentDeviceId || syncDisabledReason) {
-    markLocalStorageTableChanged(table)
+    await markLocalUpsert(table, payload)
     return
   }
+  const queue = await enqueueRemoteUpsert(table, payload)
+  if (!queue) return
+  emitStatus({ status: "pending", pendingCount: queue.length, error: null, details: `Queued ${table} for sync`, isOnline: snapshot.isOnline })
+  void flushQueue()
+}
+
+async function enqueueRemoteUpsert(table: SyncTable, payload: LocalRecord): Promise<SyncQueueItem[] | null> {
+  if (!currentSession || !currentDeviceId) return null
   const row = localToRemoteRow(table, payload, currentSession.user.id, currentDeviceId)
-  if (!row) return
-  const queue = await enqueueSyncItem({
+  if (!row) return null
+  return enqueueSyncItem({
     table,
     operation: "upsert",
     rowId: getQueueRowId(table, payload, row),
     payload: row,
   })
-  emitStatus({ status: "pending", pendingCount: queue.length, error: null, details: `Queued ${table} for sync`, isOnline: snapshot.isOnline })
-  void flushQueue()
 }
 
 export async function recordLocalSoftDelete(table: SyncTable, rowId: string): Promise<void> {
   if (!currentSession || !currentDeviceId || syncDisabledReason) {
-    markLocalStorageTableChanged(table)
+    await markLocalDelete(table, rowId)
     return
   }
+  const queue = await enqueueRemoteSoftDelete(table, rowId)
+  if (!queue) return
+  emitStatus({ status: "pending", pendingCount: queue.length, error: null, details: `Queued ${table} delete for sync`, isOnline: snapshot.isOnline })
+  void flushQueue()
+}
+
+async function enqueueRemoteSoftDelete(table: SyncTable, rowId: string): Promise<SyncQueueItem[] | null> {
+  if (!currentSession || !currentDeviceId) return null
   const now = new Date().toISOString()
   const payload = table === "custom_subjects" || table === "hidden_subjects"
     ? {
@@ -159,14 +174,12 @@ export async function recordLocalSoftDelete(table: SyncTable, rowId: string): Pr
       updated_at: now,
       last_modified_device_id: currentDeviceId,
     }
-  const queue = await enqueueSyncItem({
+  return enqueueSyncItem({
     table,
     operation: "soft_delete",
     rowId,
     payload,
   })
-  emitStatus({ status: "pending", pendingCount: queue.length, error: null, details: `Queued ${table} delete for sync`, isOnline: snapshot.isOnline })
-  void flushQueue()
 }
 
 export function getSyncSnapshot(): SyncStatusSnapshot {
@@ -177,12 +190,12 @@ async function runInitialSync(): Promise<void> {
   try {
     emitStatus({ status: "syncing", error: null, details: "Migrating local IDs..." })
     await migrateLocalIdsToUuids()
-    emitStatus({ status: "syncing", error: null, details: "Pulling remote changes..." })
-    await pullRemoteChanges()
     emitStatus({ status: "syncing", error: null, details: "Queueing local changes..." })
     await enqueueAllLocalRows()
     emitStatus({ status: "syncing", error: null, details: "Pushing queued changes..." })
     await flushQueue()
+    emitStatus({ status: "syncing", error: null, details: "Pulling remote changes..." })
+    await pullRemoteChanges()
   } catch (e) {
     if (isMissingSyncSchemaError(e)) {
       syncDisabledReason = MISSING_SYNC_SCHEMA_MESSAGE
@@ -322,7 +335,7 @@ async function flushQueueInternal(): Promise<void> {
   console.warn(`[sync] flushQueue summary: pushed=${JSON.stringify(stats)}, remaining=${pendingCount}, failed=${failed.length}${failed.length > 0 ? ", failed items: " + JSON.stringify(failed) : ""}`)
   if (pendingCount === 0 && failed.length === 0) {
     const meta = await readMeta()
-    await writeMeta({ ...meta, lastSuccessfulSyncAt: now })
+    await writeMeta({ ...meta, lastSuccessfulSyncAt: now, localChangedAt: {}, localChangedRowIds: {}, deletedRowIds: {} })
     emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: now, details: `Synced ${queue.length} change${queue.length === 1 ? "" : "s"}`, tableStats, failedItems: null, isOnline: true })
   } else if (pendingCount === 0 && failed.length > 0) {
     const meta = await readMeta()
@@ -380,6 +393,14 @@ async function pushQueueItem(client: SupabaseClient, item: SyncQueueItem): Promi
 }
 
 async function pullRemoteChanges(): Promise<void> {
+  if (pullPromise) return pullPromise
+  pullPromise = pullRemoteChangesInternal().finally(() => {
+    pullPromise = null
+  })
+  return pullPromise
+}
+
+async function pullRemoteChangesInternal(): Promise<void> {
   if (!currentSession || !supabase || syncDisabledReason) return
   emitStatus({ status: "syncing", error: null, details: "Pulling projects..." })
   const projectCount = await pullTable<ProjectRow>("projects")
@@ -469,13 +490,25 @@ async function pullTable<Row extends RemoteRow>(table: SyncTable): Promise<numbe
   }
 
   const local = await readJsonArray<Record<string, unknown>>(fileName)
-  const merged = mergeRemoteRows(table, local, allRows)
+  const meta = await readMeta()
+  const merged = mergeRemoteRows(table, local, allRows, {
+    changedRowIds: meta.localChangedRowIds ?? {},
+    deletedRowIds: meta.deletedRowIds ?? {},
+  })
   await writeJsonArray(fileName, merged)
   emitLocalDataChanged(table)
   return allRows.length
 }
 
-function mergeRemoteRows(table: SyncTable, local: Record<string, unknown>[], remote: RemoteRow[]): Record<string, unknown>[] {
+function mergeRemoteRows(
+  table: SyncTable,
+  local: Record<string, unknown>[],
+  remote: RemoteRow[],
+  protectedRows: {
+    changedRowIds: Partial<Record<SyncTable, string[]>>
+    deletedRowIds: Partial<Record<SyncTable, string[]>>
+  } = { changedRowIds: {}, deletedRowIds: {} },
+): Record<string, unknown>[] {
   const byId = new Map<string, Record<string, unknown>>()
   local.forEach((item) => {
     if (typeof item.id === "string") byId.set(item.id, item)
@@ -484,6 +517,9 @@ function mergeRemoteRows(table: SyncTable, local: Record<string, unknown>[], rem
   remote.forEach((row) => {
     const localItem = byId.get(row.id)
     if (row.deleted_at) {
+      if (localItem && shouldKeepLocalRow(table, row.id, protectedRows.changedRowIds, protectedRows.deletedRowIds)) {
+        return
+      }
       byId.delete(row.id)
       return
     }
@@ -562,6 +598,9 @@ async function pullTimetableConfig(): Promise<void> {
 async function enqueueAllLocalRows(force = false): Promise<void> {
   const meta = await readMeta()
   const lastSyncAt = force ? null : meta.lastSuccessfulSyncAt
+  const changedTables = force ? {} : (meta.localChangedAt ?? {})
+  const changedRowIds = force ? {} : (meta.localChangedRowIds ?? {})
+  const deletedRowIds = force ? {} : (meta.deletedRowIds ?? {})
 
   const [projects, events, sessions] = await Promise.all([
     readJsonArray<Project>("projects.json"),
@@ -574,39 +613,53 @@ async function enqueueAllLocalRows(force = false): Promise<void> {
   // In force mode, lastSyncAt is null so every row is enqueued.
   let projectEnqueued = 0
   for (const project of projects) {
-    if (!lastSyncAt || compareIso(project.updated_at, lastSyncAt) > 0) {
-      await recordLocalUpsert("projects", project)
+    if (shouldEnqueueFileRow("projects", project, changedTables, changedRowIds, lastSyncAt)) {
+      await enqueueRemoteUpsert("projects", project)
       projectEnqueued++
     }
   }
   let eventEnqueued = 0
   for (const event of events) {
-    if (!lastSyncAt || compareIso(event.updated_at, lastSyncAt) > 0) {
-      await recordLocalUpsert("events", event)
+    if (shouldEnqueueFileRow("events", event, changedTables, changedRowIds, lastSyncAt)) {
+      await enqueueRemoteUpsert("events", event)
       eventEnqueued++
     }
   }
   let sessionEnqueued = 0
   for (const session of sessions) {
-    if (!lastSyncAt || compareIso(session.updated_at, lastSyncAt) > 0) {
-      await recordLocalUpsert("study_sessions", session)
+    if (shouldEnqueueFileRow("study_sessions", session, changedTables, changedRowIds, lastSyncAt)) {
+      await enqueueRemoteUpsert("study_sessions", session)
       sessionEnqueued++
     }
   }
+  for (const id of deletedRowIds.projects ?? []) {
+    await enqueueRemoteSoftDelete("projects", id)
+  }
+  for (const id of deletedRowIds.events ?? []) {
+    await enqueueRemoteSoftDelete("events", id)
+  }
+  for (const id of deletedRowIds.study_sessions ?? []) {
+    await enqueueRemoteSoftDelete("study_sessions", id)
+  }
   console.warn(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}`)
-  const localStorageMeta = readLocalStorageSyncMeta()
-  if (force || shouldEnqueueLocalStorageTable("custom_subjects", localStorageMeta, lastSyncAt)) {
+  if (force || shouldEnqueueLocalTable("custom_subjects", changedTables, lastSyncAt)) {
     for (const subject of readLocalStorageArray<Subject>(CUSTOM_SUBJECTS_KEY)) {
-      await recordLocalUpsert("custom_subjects", subject)
+      await enqueueRemoteUpsert("custom_subjects", subject)
     }
   }
-  if (force || shouldEnqueueLocalStorageTable("hidden_subjects", localStorageMeta, lastSyncAt)) {
+  for (const id of deletedRowIds.custom_subjects ?? []) {
+    await enqueueRemoteSoftDelete("custom_subjects", id)
+  }
+  if (force || shouldEnqueueLocalTable("hidden_subjects", changedTables, lastSyncAt)) {
     for (const subjectId of readLocalStorageArray<string>(HIDDEN_SUBJECTS_KEY)) {
-      await recordLocalUpsert("hidden_subjects", subjectId)
+      await enqueueRemoteUpsert("hidden_subjects", subjectId)
     }
   }
-  if (force || shouldEnqueueLocalStorageTable("timetable_config", localStorageMeta, lastSyncAt)) {
-    await recordLocalUpsert("timetable_config", getTimetableConfig())
+  for (const id of deletedRowIds.hidden_subjects ?? []) {
+    await enqueueRemoteSoftDelete("hidden_subjects", id)
+  }
+  if (force || shouldEnqueueLocalTable("timetable_config", changedTables, lastSyncAt)) {
+    await enqueueRemoteUpsert("timetable_config", getTimetableConfig())
   }
 }
 
@@ -652,7 +705,11 @@ async function applyRemoteRow(table: SyncTable, row: RemoteRow): Promise<void> {
   const fileName = FILES[table]
   if (!fileName) return
   const local = await readJsonArray<Record<string, unknown>>(fileName)
-  const merged = mergeRemoteRows(table, local, [row])
+  const meta = await readMeta()
+  const merged = mergeRemoteRows(table, local, [row], {
+    changedRowIds: meta.localChangedRowIds ?? {},
+    deletedRowIds: meta.deletedRowIds ?? {},
+  })
   await writeJsonArray(fileName, merged)
   emitLocalDataChanged(table)
 }
@@ -768,7 +825,22 @@ async function migrateLocalIdsToUuids(): Promise<void> {
     emitLocalDataChanged("study_sessions")
   }
   if (!meta.migratedUuidIds || changed) {
-    await writeMeta({ ...meta, migratedUuidIds: true })
+    const now = new Date().toISOString()
+    await writeMeta({
+      ...meta,
+      migratedUuidIds: true,
+      localChangedAt: changed
+        ? { ...(meta.localChangedAt ?? {}), projects: now, events: now, study_sessions: now }
+        : meta.localChangedAt,
+      localChangedRowIds: changed
+        ? {
+          ...(meta.localChangedRowIds ?? {}),
+          projects: migratedProjects.map((project) => project.id),
+          events: migratedEvents.map((event) => event.id),
+          study_sessions: migratedSessions.map((session) => session.id),
+        }
+        : meta.localChangedRowIds,
+    })
   }
 }
 
@@ -783,6 +855,9 @@ async function readMeta(): Promise<SyncMeta> {
       lastPulledAt: parsed.lastPulledAt,
       lastSuccessfulSyncAt: parsed.lastSuccessfulSyncAt ?? null,
       migratedUuidIds: parsed.migratedUuidIds,
+      localChangedAt: parseTableStringRecord(parsed.localChangedAt),
+      localChangedRowIds: parseRowIdsByTable(parsed.localChangedRowIds),
+      deletedRowIds: parseDeletedRowIds(parsed.deletedRowIds),
     }
   } catch {
     return { deviceId, lastSuccessfulSyncAt: null }
@@ -827,42 +902,59 @@ function readLocalStorageArray<T>(key: string): T[] {
   }
 }
 
-type LocalStorageSyncTable = Extract<SyncTable, "custom_subjects" | "hidden_subjects" | "timetable_config">
-
-function isLocalStorageSyncTable(table: SyncTable): table is LocalStorageSyncTable {
-  return table === "custom_subjects" || table === "hidden_subjects" || table === "timetable_config"
+async function markLocalUpsert(table: SyncTable, payload: LocalRecord): Promise<void> {
+  const meta = await readMeta()
+  const rowId = getLocalRecordId(table, payload)
+  await writeMeta({
+    ...meta,
+    localChangedAt: { ...(meta.localChangedAt ?? {}), [table]: new Date().toISOString() },
+    localChangedRowIds: rowId ? addChangedRowId(meta.localChangedRowIds ?? {}, table, rowId) : meta.localChangedRowIds,
+    deletedRowIds: rowId ? removeDeletedRowId(meta.deletedRowIds ?? {}, table, rowId) : meta.deletedRowIds,
+  })
 }
 
-function readLocalStorageSyncMeta(): Partial<Record<LocalStorageSyncTable, string>> {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(LOCAL_STORAGE_SYNC_META_KEY) ?? "{}")
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
-    const record = parsed as Partial<Record<LocalStorageSyncTable, unknown>>
-    return {
-      custom_subjects: typeof record.custom_subjects === "string" ? record.custom_subjects : undefined,
-      hidden_subjects: typeof record.hidden_subjects === "string" ? record.hidden_subjects : undefined,
-      timetable_config: typeof record.timetable_config === "string" ? record.timetable_config : undefined,
-    }
-  } catch {
-    return {}
+async function markLocalDelete(table: SyncTable, rowId: string): Promise<void> {
+  const meta = await readMeta()
+  const deletedRowIds = addDeletedRowId(meta.deletedRowIds ?? {}, table, rowId)
+  await writeMeta({
+    ...meta,
+    localChangedAt: { ...(meta.localChangedAt ?? {}), [table]: new Date().toISOString() },
+    localChangedRowIds: addChangedRowId(meta.localChangedRowIds ?? {}, table, rowId),
+    deletedRowIds,
+  })
+}
+
+function parseTableStringRecord(value: unknown): Partial<Record<SyncTable, string>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+  const record = value as Partial<Record<SyncTable, unknown>>
+  const parsed: Partial<Record<SyncTable, string>> = {}
+  for (const table of SYNC_TABLES) {
+    if (typeof record[table] === "string") parsed[table] = record[table]
   }
+  return parsed
 }
 
-function writeLocalStorageSyncMeta(meta: Partial<Record<LocalStorageSyncTable, string>>): void {
-  localStorage.setItem(LOCAL_STORAGE_SYNC_META_KEY, JSON.stringify(meta))
+function parseRowIdsByTable(value: unknown): Partial<Record<SyncTable, string[]>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+  const record = value as Partial<Record<SyncTable, unknown>>
+  const parsed: Partial<Record<SyncTable, string[]>> = {}
+  for (const table of SYNC_TABLES) {
+    const ids = record[table]
+    if (Array.isArray(ids)) parsed[table] = ids.filter((id): id is string => typeof id === "string")
+  }
+  return parsed
 }
 
-function markLocalStorageTableChanged(table: SyncTable): void {
-  if (!isLocalStorageSyncTable(table)) return
-  writeLocalStorageSyncMeta({ ...readLocalStorageSyncMeta(), [table]: new Date().toISOString() })
+function parseDeletedRowIds(value: unknown): Partial<Record<SyncTable, string[]>> {
+  return parseRowIdsByTable(value)
 }
 
-function shouldEnqueueLocalStorageTable(
-  table: LocalStorageSyncTable,
-  meta: Partial<Record<LocalStorageSyncTable, string>>,
-  lastSyncAt: string | null,
-): boolean {
-  return !lastSyncAt || compareIso(meta[table], lastSyncAt) > 0
+function getLocalRecordId(table: SyncTable, payload: LocalRecord): string | null {
+  if (table === "custom_subjects") return (payload as Subject).id
+  if (table === "hidden_subjects") return payload as string
+  if (table === "timetable_config") return "timetable_config"
+  const id = (payload as { id?: unknown }).id
+  return typeof id === "string" ? id : null
 }
 
 function emitLocalDataChanged(table: SyncTable): void {
