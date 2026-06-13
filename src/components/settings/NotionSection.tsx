@@ -20,6 +20,17 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
   const [notionSyncing, setNotionSyncing] = useState(false)
   const [notionSyncResult, setNotionSyncResult] = useState<string | null>(null)
   const [notionSyncPhase, setNotionSyncPhase] = useState<string | null>(null)
+  const [notionSyncBreakdown, setNotionSyncBreakdown] = useState<{
+    created: number
+    updated: number
+    createdSessions: number
+    updatedSessions: number
+    pushedCreated: number
+    pushedUpdated: number
+    deleted: number
+    skipped: number
+    pushErrors: number
+  } | null>(null)
 
   const handleNotionSettingChange = useCallback((field: keyof NotionCalendarSettings, value: string) => {
     setNotionSettings((current) => {
@@ -36,10 +47,22 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
     if (!onSyncNotionCalendar) return
     setNotionSyncing(true)
     setNotionSyncResult(null)
+    setNotionSyncBreakdown(null)
     setNotionSyncPhase("Connecting to Notion...")
     onSyncNotionCalendar((msg) => setNotionSyncPhase(msg))
       .then((result) => {
         if (!result) { setNotionSyncResult("Sync skipped"); return }
+        setNotionSyncBreakdown({
+          created: result.created.length,
+          updated: result.updated.length,
+          createdSessions: result.createdSessions?.length ?? 0,
+          updatedSessions: result.updatedSessions?.length ?? 0,
+          pushedCreated: result.pushedCreated ?? 0,
+          pushedUpdated: result.pushedUpdated ?? 0,
+          deleted: result.deleted ?? 0,
+          skipped: result.skipped,
+          pushErrors: result.pushErrors?.length ?? 0,
+        })
         const parts: string[] = []
         if (result.created.length > 0) parts.push(`${result.created.length} created`)
         if (result.updated.length > 0) parts.push(`${result.updated.length} updated`)
@@ -136,14 +159,63 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
               <p className="text-caption text-muted-foreground truncate">{notionSyncPhase}</p>
             </div>
           ) : notionSyncResult ? (
-            <p className={cn(
-              "text-caption rounded-lg border px-3 py-2",
+            <div className={cn(
+              "rounded-lg border px-3 py-2 space-y-2",
               notionSyncResult.includes("error") || notionSyncResult.includes("failed")
                 ? "border-destructive/30 bg-destructive/5 text-destructive"
                 : "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
             )}>
-              {notionSyncResult}
-            </p>
+              <p className="text-caption">{notionSyncResult}</p>
+              {notionSyncBreakdown && (
+                <div className="flex flex-wrap gap-2">
+                  {notionSyncBreakdown.created > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                      {notionSyncBreakdown.created} created
+                    </span>
+                  )}
+                  {notionSyncBreakdown.updated > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                      {notionSyncBreakdown.updated} updated
+                    </span>
+                  )}
+                  {notionSyncBreakdown.createdSessions > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 dark:text-blue-400">
+                      {notionSyncBreakdown.createdSessions} sessions created
+                    </span>
+                  )}
+                  {notionSyncBreakdown.updatedSessions > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 dark:text-blue-400">
+                      {notionSyncBreakdown.updatedSessions} sessions updated
+                    </span>
+                  )}
+                  {notionSyncBreakdown.pushedCreated > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                      {notionSyncBreakdown.pushedCreated} pushed
+                    </span>
+                  )}
+                  {notionSyncBreakdown.pushedUpdated > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                      {notionSyncBreakdown.pushedUpdated} pushed updates
+                    </span>
+                  )}
+                  {notionSyncBreakdown.deleted > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {notionSyncBreakdown.deleted} deleted
+                    </span>
+                  )}
+                  {notionSyncBreakdown.skipped > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                      {notionSyncBreakdown.skipped} skipped
+                    </span>
+                  )}
+                  {notionSyncBreakdown.pushErrors > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
+                      {notionSyncBreakdown.pushErrors} push errors
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           ) : lastSyncTime && lastSyncTime > 0 ? (
             <p className="text-caption text-muted-foreground/60">
               Last synced {formatTimeAgo(lastSyncTime)}

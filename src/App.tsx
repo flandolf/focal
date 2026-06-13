@@ -87,7 +87,7 @@ import { showUndoToast } from "@/lib/undoToast"
 import { getNotionCalendarSettings, getTimetableConfig } from "@/lib/settings"
 import { isPomodoroSession, getPomodoroDescription, getPomodoroNotes, getPomodoroTitle, POMODORO_DESCRIPTION_PREFIX, getAdjacentPomodoroSession, getUniqueStrings, getUniqueArrayItems } from "@/lib/pomodoro"
 import { deleteNotionPage } from "@/lib/notion/api"
-import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
+import { recordLocalSoftDelete, recordLocalUpsert, forcePushAndMerge, forcePushAndOverwrite } from "@/lib/sync/engine"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
@@ -1266,6 +1266,8 @@ function App() {
                     onSupabaseSignIn={supabaseAuth.signIn}
                     onSupabaseSignUp={supabaseAuth.signUp}
                     onSupabaseSignOut={supabaseAuth.signOut}
+                    onForcePushAndMerge={() => void forcePushAndMerge()}
+                    onForcePushAndOverwrite={() => void forcePushAndOverwrite()}
                   />
                   </Suspense>
                 ) : timetableView ? (

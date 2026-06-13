@@ -12,7 +12,7 @@ import { NotionSection } from "@/components/settings/NotionSection"
 import { AutoRenameSection } from "@/components/settings/AutoRenameSection"
 import { DataSection } from "@/components/settings/DataSection"
 import { AccountSection } from "@/components/settings/AccountSection"
-import { retrySync } from "@/lib/sync/engine"
+import { retrySync, forcePushAndMerge, forcePushAndOverwrite } from "@/lib/sync/engine"
 import type { SyncStatusSnapshot } from "@/lib/sync/types"
 
 type SettingsSection = "account" | "appearance" | "subjects" | "notion" | "ai" | "auto-rename" | "data"
@@ -42,6 +42,8 @@ interface SettingsViewProps {
   onSupabaseSignIn: (email: string, password: string) => Promise<unknown>
   onSupabaseSignUp: (email: string, password: string) => Promise<unknown>
   onSupabaseSignOut: () => Promise<void>
+  onForcePushAndMerge?: () => void
+  onForcePushAndOverwrite?: () => void
 }
 
 const SECTION_ITEMS: { id: SettingsSection; label: string; icon: typeof PaletteIcon }[] = [
@@ -78,6 +80,8 @@ export function SettingsView({
   onSupabaseSignIn,
   onSupabaseSignUp,
   onSupabaseSignOut,
+  onForcePushAndMerge,
+  onForcePushAndOverwrite,
 }: SettingsViewProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("account")
 
@@ -148,6 +152,8 @@ export function SettingsView({
                 onSignUp={onSupabaseSignUp}
                 onSignOut={onSupabaseSignOut}
                 onRetrySync={() => void retrySync()}
+                onForcePushAndMerge={onForcePushAndMerge}
+                onForcePushAndOverwrite={onForcePushAndOverwrite}
               />
             )}
 
