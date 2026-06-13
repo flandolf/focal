@@ -9,6 +9,8 @@ export interface NotionConflict {
   id: string
   type: "event" | "session"
   title: string
+  localId: string
+  notionPageId: string
   localVersion: {
     title: string
     startTime?: string

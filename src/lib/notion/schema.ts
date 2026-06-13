@@ -11,6 +11,18 @@ export interface NotionPage {
   properties?: Record<string, NotionProperty>
 }
 
+/** Structured conflict data for resolution. */
+export interface ConflictItem {
+  localId: string
+  kind: "event" | "session"
+  title: string
+  startTime?: string
+  endTime?: string
+  notionPageId: string
+  notionLastEditedTime?: string
+  notionUrl?: string
+}
+
 interface NotionQueryError {
   code: string
   message: string
@@ -43,6 +55,7 @@ export interface NotionCalendarSyncResult {
   pushedUpdated: number
   conflicts: number
   conflictDetails: string[]
+  conflictItems: ConflictItem[]
   pushErrors: string[]
   deleted: number
 }
@@ -501,6 +514,7 @@ export interface SyncCtx {
   deleted: number
   conflicts: number
   conflictDetails: string[]
+  conflictItems: ConflictItem[]
   pushErrors: string[]
   newNotionIds: Set<string>
 }
@@ -522,6 +536,7 @@ export function createSyncCtx(): SyncCtx {
     deleted: 0,
     conflicts: 0,
     conflictDetails: [],
+    conflictItems: [],
     pushErrors: [],
     newNotionIds: new Set(),
   }

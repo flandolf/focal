@@ -296,6 +296,16 @@ export function collectEventPushTasks(
         ctx.conflictDetails.push(
           `Event "${event.title}" was modified both locally and in Notion — local changes preserved, Notion changes pending next pull`,
         )
+        ctx.conflictItems.push({
+          localId: event.id,
+          kind: "event",
+          title: event.title,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          notionPageId: event.source.id,
+          notionLastEditedTime: remotePage.last_edited_time,
+          notionUrl: remotePage.url,
+        })
         continue
       }
       if (remotePage) {
@@ -408,6 +418,16 @@ export function collectSessionPushTasks(
         ctx.conflictDetails.push(
           `Session "${session.title}" was modified both locally and in Notion — local changes preserved, Notion changes pending next pull`,
         )
+        ctx.conflictItems.push({
+          localId: session.id,
+          kind: "session",
+          title: session.title,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          notionPageId: session.source.id,
+          notionLastEditedTime: remotePage.last_edited_time,
+          notionUrl: remotePage.url,
+        })
         continue
       }
       if (remotePage) {

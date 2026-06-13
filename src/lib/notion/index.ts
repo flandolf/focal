@@ -67,6 +67,7 @@ export async function syncNotionCalendar(
     deleted: ctx.deleted,
     conflicts: ctx.conflicts,
     conflictDetails: ctx.conflictDetails,
+    conflictItems: ctx.conflictItems,
     pushErrors: ctx.pushErrors,
   }
 }

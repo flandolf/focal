@@ -44,6 +44,15 @@ interface SettingsViewProps {
   onSupabaseSignOut: () => Promise<void>
   onForcePushAndMerge?: () => void
   onForcePushAndOverwrite?: () => void
+  onPullNow?: () => void
+  onPushNow?: () => void
+  onClearFailedItems?: () => void
+  onRetryFailedItem?: (table: string, rowId: string) => void
+  onDropFailedItem?: (table: string, rowId: string) => void
+  onAcceptRemote?: (table: string, rowId: string) => void
+  onKeepLocal?: (table: string, rowId: string) => void
+  onDismissConflict?: (table: string, rowId: string) => void
+  onClearConflicts?: () => void
 }
 
 const SECTION_ITEMS: { id: SettingsSection; label: string; icon: typeof PaletteIcon }[] = [
@@ -82,6 +91,15 @@ export function SettingsView({
   onSupabaseSignOut,
   onForcePushAndMerge,
   onForcePushAndOverwrite,
+  onPullNow,
+  onPushNow,
+  onClearFailedItems,
+  onRetryFailedItem,
+  onDropFailedItem,
+  onAcceptRemote,
+  onKeepLocal,
+  onDismissConflict,
+  onClearConflicts,
 }: SettingsViewProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("account")
 
@@ -152,8 +170,17 @@ export function SettingsView({
                 onSignUp={onSupabaseSignUp}
                 onSignOut={onSupabaseSignOut}
                 onRetrySync={() => void retrySync()}
+                onPullNow={onPullNow}
+                onPushNow={onPushNow}
+                onClearFailedItems={onClearFailedItems}
+                onRetryFailedItem={onRetryFailedItem}
+                onDropFailedItem={onDropFailedItem}
                 onForcePushAndMerge={onForcePushAndMerge}
                 onForcePushAndOverwrite={onForcePushAndOverwrite}
+                onAcceptRemote={onAcceptRemote}
+                onKeepLocal={onKeepLocal}
+                onDismissConflict={onDismissConflict}
+                onClearConflicts={onClearConflicts}
               />
             )}
 
