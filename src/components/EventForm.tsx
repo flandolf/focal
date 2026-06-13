@@ -8,6 +8,23 @@ import { DatePickerField, FormField, FormSection, SelectField } from "@/componen
 import { VCE_SUBJECTS, type EventType, type Subject } from "@/lib/types"
 import { cn, getSubjectById } from "@/lib/utils"
 
+const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "exam", label: "Exam" },
+  { value: "sac", label: "SAC" },
+  { value: "practice-sac", label: "Practice SAC" },
+  { value: "homework", label: "Homework" },
+  { value: "assignment", label: "Assignment" },
+  { value: "other", label: "Other" },
+  { value: "event", label: "Event" },
+]
+
+const RECURRENCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "No repeat" },
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Every 2 weeks" },
+  { value: "monthly", label: "Monthly" },
+]
+
 const fieldLabelClass = "text-control font-medium text-muted-foreground"
 const inputWithIconClass = "flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background/65 px-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
 const sectionIconClass = "h-3.5 w-3.5 text-muted-foreground"
@@ -243,29 +260,20 @@ function EventForm({
               label="Type"
               labelClassName={fieldLabelClass}
               value={eventType}
-              onChange={(event) => setEventType(event.target.value as EventType)}
-            >
-              <option value="exam">Exam</option>
-              <option value="sac">SAC</option>
-              <option value="practice-sac">Practice SAC</option>
-              <option value="homework">Homework</option>
-              <option value="assignment">Assignment</option>
-              <option value="other">Other</option>
-              <option value="event">Event</option>
-            </SelectField>
+              onValueChange={(value) => setEventType(value as EventType)}
+              options={EVENT_TYPE_OPTIONS}
+            />
             <SelectField
               label="Subject"
               labelClassName={fieldLabelClass}
-              value={subjectId}
-              onChange={(event) => setSubjectId(event.target.value)}
-            >
-              <option value="">No subject</option>
-              {subjects.map((subject) => (
-                <option key={subject.id} value={subject.id}>
-                  {subject.shortCode} {subject.name}
-                </option>
-              ))}
-            </SelectField>
+              value={subjectId || "_none"}
+              onValueChange={(value) => setSubjectId(value === "_none" ? "" : value)}
+              placeholder="No subject"
+              options={[
+                { value: "_none", label: "No subject" },
+                ...subjects.map((subject) => ({ value: subject.id, label: `${subject.shortCode} ${subject.name}` })),
+              ]}
+            />
           </div>
           {showFinishedControl && (
             <button
@@ -418,13 +426,9 @@ function EventForm({
                 label="Frequency"
                 labelClassName={fieldLabelClass}
                 value={recurrencePattern}
-                onChange={(event) => setRecurrencePattern(event.target.value as RecurrencePattern)}
-              >
-                <option value="none">No repeat</option>
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Every 2 weeks</option>
-                <option value="monthly">Monthly</option>
-              </SelectField>
+                onValueChange={(value) => setRecurrencePattern(value as RecurrencePattern)}
+                options={RECURRENCE_OPTIONS}
+              />
               {recurrencePattern !== "none" && (
                 <DatePickerField
                   label="End date (optional)"

@@ -10,17 +10,18 @@
         "@radix-ui/react-dialog": "^1.1.16",
         "@radix-ui/react-popover": "^1.1.16",
         "@radix-ui/react-scroll-area": "^1.2.11",
+        "@radix-ui/react-select": "^2.3.0",
         "@radix-ui/react-separator": "^1.1.9",
         "@radix-ui/react-slot": "^1.2.5",
         "@radix-ui/react-tooltip": "^1.2.9",
         "@supabase/supabase-js": "^2.108.1",
         "@tailwindcss/vite": "^4.3.0",
         "@tanstack/react-virtual": "^3.14.2",
-        "@tauri-apps/api": "^2",
         "@tauri-apps/plugin-dialog": "^2",
         "@tauri-apps/plugin-fs": "^2",
         "@tauri-apps/plugin-notification": "~2",
         "@tauri-apps/plugin-opener": "^2",
+        "@tauri-apps/plugin-os": "^2.3.2",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "date-fns": "^4.4.0",
@@ -435,6 +436,8 @@
     "@tauri-apps/plugin-notification": ["@tauri-apps/plugin-notification@2.3.3", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-Zw+ZH18RJb41G4NrfHgIuofJiymusqN+q8fGUIIV7vyCH+5sSn5coqRv/MWB9qETsUs97vmU045q7OyseCV3Qg=="],
 
     "@tauri-apps/plugin-opener": ["@tauri-apps/plugin-opener@2.5.4", "", { "dependencies": { "@tauri-apps/api": "^2.11.0" } }, "sha512-1HnPkb+AmgO29HBazm4uPLKB+r7zzcTBW1d0fyYp1uP+jwtpoiNDGKMMzz58SFp49nOIrxdE3aUJtT57lfO9CQ=="],
+
+    "@tauri-apps/plugin-os": ["@tauri-apps/plugin-os@2.3.2", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-n+nXWeuSeF9wcEsSPmRnBEGrRgOy6jjkSU+UVCOV8YUGKb2erhDOxis7IqRXiRVHhY8XMKks00BJ0OAdkpf6+A=="],
 
     "@ts-morph/common": ["@ts-morph/common@0.27.0", "", { "dependencies": { "fast-glob": "^3.3.3", "minimatch": "^10.0.1", "path-browserify": "^1.0.1" } }, "sha512-Wf29UqxWDpc+i61k3oIOzcUfQt79PIT9y/MWfAGlrkjg6lBC1hwDECLXPVJAhWjiGbfBCxZd65F/LIZF3+jeJQ=="],
 

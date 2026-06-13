@@ -1,6 +1,7 @@
 import { lazy, Suspense, memo, useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
+import { platform } from "@tauri-apps/plugin-os"
 import { downloadDir } from "@tauri-apps/api/path"
 import { open } from "@tauri-apps/plugin-dialog"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
@@ -133,7 +134,14 @@ function getStoredCustomSubjects() {
   }
 }
 
+try {
+  if (platform() !== "macos") document.documentElement.classList.add("non-macos")
+} catch {
+  /* Tauri runtime not available (dev/browser) */
+}
+
 function App() {
+
   const { projects, addProject, updateProject, deleteProject, restoreProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
   const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, restoreEvent, restoreEvents, updateAndDeleteEvents, syncEvents } = useEvents()

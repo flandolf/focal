@@ -39,6 +39,7 @@
         }
       ]
     },
-    "notification:default"
+    "notification:default",
+    "os:default"
   ]
 }
