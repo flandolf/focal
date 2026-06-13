@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase/client"
 import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
 import { bustSubjectCache } from "@/lib/utils"
 import { getDeviceId } from "@/lib/sync/device"
-import { enqueueSyncItem, readSyncQueue, writeSyncQueue } from "@/lib/sync/queue"
+import { enqueueSyncItem, finishSyncQueueFlush, readSyncQueue, writeSyncQueue } from "@/lib/sync/queue"
 import {
   compareIso,
   ensureUpdatedAt,
@@ -50,6 +50,7 @@ const FILES: Partial<Record<SyncTable, string>> = {
 }
 const CUSTOM_SUBJECTS_KEY = "focal-custom-subjects"
 const HIDDEN_SUBJECTS_KEY = "focal-hidden-subjects"
+const LOCAL_STORAGE_SYNC_META_KEY = "focal-local-storage-sync-meta"
 const MISSING_SYNC_SCHEMA_MESSAGE = "Supabase sync tables are missing. Run supabase/migrations/0001_initial_sync.sql, then reload Focal."
 const MAX_SYNC_RETRIES = 5
 const FLUSH_INTERVAL_MS = 30_000
@@ -122,7 +123,10 @@ export async function setSyncSession(session: Session | null): Promise<void> {
 }
 
 export async function recordLocalUpsert(table: SyncTable, payload: LocalRecord): Promise<void> {
-  if (!currentSession || !currentDeviceId || syncDisabledReason) return
+  if (!currentSession || !currentDeviceId || syncDisabledReason) {
+    markLocalStorageTableChanged(table)
+    return
+  }
   const row = localToRemoteRow(table, payload, currentSession.user.id, currentDeviceId)
   if (!row) return
   const queue = await enqueueSyncItem({
@@ -136,7 +140,10 @@ export async function recordLocalUpsert(table: SyncTable, payload: LocalRecord):
 }
 
 export async function recordLocalSoftDelete(table: SyncTable, rowId: string): Promise<void> {
-  if (!currentSession || !currentDeviceId || syncDisabledReason) return
+  if (!currentSession || !currentDeviceId || syncDisabledReason) {
+    markLocalStorageTableChanged(table)
+    return
+  }
   const now = new Date().toISOString()
   const payload = table === "custom_subjects" || table === "hidden_subjects"
     ? {
@@ -274,17 +281,31 @@ async function flushQueueInternal(): Promise<void> {
   const remaining: SyncQueueItem[] = []
   const failed: { table: string; rowId: string; error: string }[] = []
   const stats: Record<string, number> = {}
+  const processedIds: string[] = []
+  let pausedForNetworkError = false
   for (const item of queue) {
     if (item.retryCount >= MAX_SYNC_RETRIES) {
       failed.push({ table: item.table, rowId: item.rowId, error: item.lastError ?? "Max retries exceeded" })
+      processedIds.push(item.id)
       continue
     }
     try {
       await pushQueueItem(supabase, item)
       stats[item.table] = (stats[item.table] ?? 0) + 1
+      processedIds.push(item.id)
     } catch (e) {
       const errMsg = getErrorMessage(e)
       console.error(`[sync] pushQueueItem failed for ${item.table} ${item.rowId}:`, errMsg, item.payload)
+      processedIds.push(item.id)
+      if (isTransientSyncError(e)) {
+        remaining.push({
+          ...item,
+          lastError: errMsg,
+        })
+        failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+        pausedForNetworkError = true
+        break
+      }
       remaining.push({
         ...item,
         retryCount: item.retryCount + 1,
@@ -294,26 +315,30 @@ async function flushQueueInternal(): Promise<void> {
     }
   }
 
-  await writeSyncQueue(remaining)
+  const nextQueue = await finishSyncQueueFlush(processedIds, remaining)
+  const pendingCount = nextQueue.length
   const now = new Date().toISOString()
   const tableStats: SyncStatusSnapshot["tableStats"] = Object.entries(stats).map(([table, count]) => ({ table: table as SyncTable, pushed: count, failed: 0 }))
-  console.log(`[sync] flushQueue summary: pushed=${JSON.stringify(stats)}, remaining=${remaining.length}, failed=${failed.length}${failed.length > 0 ? ", failed items: " + JSON.stringify(failed) : ""}`)
-  if (remaining.length === 0 && failed.length === 0) {
+  console.warn(`[sync] flushQueue summary: pushed=${JSON.stringify(stats)}, remaining=${pendingCount}, failed=${failed.length}${failed.length > 0 ? ", failed items: " + JSON.stringify(failed) : ""}`)
+  if (pendingCount === 0 && failed.length === 0) {
     const meta = await readMeta()
     await writeMeta({ ...meta, lastSuccessfulSyncAt: now })
     emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: now, details: `Synced ${queue.length} change${queue.length === 1 ? "" : "s"}`, tableStats, failedItems: null, isOnline: true })
-  } else if (remaining.length === 0 && failed.length > 0) {
+  } else if (pendingCount === 0 && failed.length > 0) {
     const meta = await readMeta()
     await writeMeta({ ...meta, lastSuccessfulSyncAt: now })
     const failedItems = failed.map((f) => ({ table: f.table as SyncTable, rowId: f.rowId, error: f.error }))
     emitStatus({ status: "synced", pendingCount: 0, error: `${failed.length} item${failed.length === 1 ? "" : "s"} dropped after ${MAX_SYNC_RETRIES} retries`, details: `${failed.length} item${failed.length === 1 ? "" : "s"} dropped after max retries`, tableStats, failedItems, isOnline: true })
   } else {
     const failedItems = failed.map((f) => ({ table: f.table as SyncTable, rowId: f.rowId, error: f.error }))
+    const firstError = remaining[0]?.lastError ?? failed[0]?.error ?? "Some sync changes failed"
     emitStatus({
-      status: "error",
-      pendingCount: remaining.length,
-      error: remaining[0]?.lastError ?? "Some sync changes failed",
-      details: `${remaining.length} change${remaining.length === 1 ? "" : "s"} pending, ${failed.length} failed`,
+      status: pausedForNetworkError ? "pending" : "error",
+      pendingCount,
+      error: pausedForNetworkError ? null : firstError,
+      details: pausedForNetworkError
+        ? `${pendingCount} change${pendingCount === 1 ? "" : "s"} waiting for network`
+        : `${pendingCount} change${pendingCount === 1 ? "" : "s"} pending, ${failed.length} failed`,
       tableStats,
       failedItems,
       isOnline: snapshot.isOnline,
@@ -411,6 +436,17 @@ function getErrorMessage(error: unknown): string {
     return error.message
   }
   return String(error)
+}
+
+function isTransientSyncError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase()
+  return (
+    error instanceof TypeError ||
+    message.includes("load failed") ||
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("network error")
+  )
 }
 
 const PAGE_SIZE = 1000
@@ -557,17 +593,21 @@ async function enqueueAllLocalRows(force = false): Promise<void> {
       sessionEnqueued++
     }
   }
-  console.log(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}`)
-  for (const subject of readLocalStorageArray<Subject>(CUSTOM_SUBJECTS_KEY)) {
-    await recordLocalUpsert("custom_subjects", subject)
+  console.warn(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}`)
+  const localStorageMeta = readLocalStorageSyncMeta()
+  if (force || shouldEnqueueLocalStorageTable("custom_subjects", localStorageMeta, lastSyncAt)) {
+    for (const subject of readLocalStorageArray<Subject>(CUSTOM_SUBJECTS_KEY)) {
+      await recordLocalUpsert("custom_subjects", subject)
+    }
   }
-  for (const subjectId of readLocalStorageArray<string>(HIDDEN_SUBJECTS_KEY)) {
-    await recordLocalUpsert("hidden_subjects", subjectId)
+  if (force || shouldEnqueueLocalStorageTable("hidden_subjects", localStorageMeta, lastSyncAt)) {
+    for (const subjectId of readLocalStorageArray<string>(HIDDEN_SUBJECTS_KEY)) {
+      await recordLocalUpsert("hidden_subjects", subjectId)
+    }
   }
-  // timetable_config is a single-row table; always enqueue to ensure the remote
-  // copy matches the current local state. A full comparison would be as expensive
-  // as the upsert itself.
-  await recordLocalUpsert("timetable_config", getTimetableConfig())
+  if (force || shouldEnqueueLocalStorageTable("timetable_config", localStorageMeta, lastSyncAt)) {
+    await recordLocalUpsert("timetable_config", getTimetableConfig())
+  }
 }
 
 async function applyRealtimeChange(change: RealtimeChange): Promise<void> {
@@ -586,8 +626,8 @@ async function applyRealtimeChange(change: RealtimeChange): Promise<void> {
       return
     }
     const id = change.old?.id ?? (change.new ? ((change.new as unknown) as Record<string, unknown>).id : undefined)
-    if (id) {
-      await removeLocalRow(change.table, String(id))
+    if (typeof id === "string") {
+      await removeLocalRow(change.table, id)
     }
     return
   }
@@ -785,6 +825,44 @@ function readLocalStorageArray<T>(key: string): T[] {
   } catch {
     return []
   }
+}
+
+type LocalStorageSyncTable = Extract<SyncTable, "custom_subjects" | "hidden_subjects" | "timetable_config">
+
+function isLocalStorageSyncTable(table: SyncTable): table is LocalStorageSyncTable {
+  return table === "custom_subjects" || table === "hidden_subjects" || table === "timetable_config"
+}
+
+function readLocalStorageSyncMeta(): Partial<Record<LocalStorageSyncTable, string>> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(LOCAL_STORAGE_SYNC_META_KEY) ?? "{}")
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+    const record = parsed as Partial<Record<LocalStorageSyncTable, unknown>>
+    return {
+      custom_subjects: typeof record.custom_subjects === "string" ? record.custom_subjects : undefined,
+      hidden_subjects: typeof record.hidden_subjects === "string" ? record.hidden_subjects : undefined,
+      timetable_config: typeof record.timetable_config === "string" ? record.timetable_config : undefined,
+    }
+  } catch {
+    return {}
+  }
+}
+
+function writeLocalStorageSyncMeta(meta: Partial<Record<LocalStorageSyncTable, string>>): void {
+  localStorage.setItem(LOCAL_STORAGE_SYNC_META_KEY, JSON.stringify(meta))
+}
+
+function markLocalStorageTableChanged(table: SyncTable): void {
+  if (!isLocalStorageSyncTable(table)) return
+  writeLocalStorageSyncMeta({ ...readLocalStorageSyncMeta(), [table]: new Date().toISOString() })
+}
+
+function shouldEnqueueLocalStorageTable(
+  table: LocalStorageSyncTable,
+  meta: Partial<Record<LocalStorageSyncTable, string>>,
+  lastSyncAt: string | null,
+): boolean {
+  return !lastSyncAt || compareIso(meta[table], lastSyncAt) > 0
 }
 
 function emitLocalDataChanged(table: SyncTable): void {

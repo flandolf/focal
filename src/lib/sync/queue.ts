@@ -4,8 +4,9 @@ import type { SyncQueueItem } from "@/lib/sync/types"
 
 const QUEUE_FILE = "sync-queue.json"
 
-// Serialize all queue writes to prevent concurrent corruption.
-let writeLock: Promise<void> = Promise.resolve()
+// Serialize queue writes so concurrent flush/enqueue paths cannot overwrite
+// each other's changes.
+let writeLock: Promise<unknown> = Promise.resolve()
 
 async function getQueuePath(): Promise<string> {
   const baseDir = await appDataDir()
@@ -15,7 +16,7 @@ async function getQueuePath(): Promise<string> {
   return `${baseDir}/${QUEUE_FILE}`
 }
 
-export async function readSyncQueue(): Promise<SyncQueueItem[]> {
+async function readSyncQueueUnlocked(): Promise<SyncQueueItem[]> {
   try {
     const path = await getQueuePath()
     if (!(await exists(path))) return []
@@ -47,45 +48,64 @@ export async function readSyncQueue(): Promise<SyncQueueItem[]> {
   }
 }
 
-export async function writeSyncQueue(items: SyncQueueItem[]): Promise<void> {
+async function writeSyncQueueUnlocked(items: SyncQueueItem[]): Promise<void> {
   const path = await getQueuePath()
   await writeTextFile(path, JSON.stringify(items, null, 2))
 }
 
-export async function enqueueSyncItem(item: Omit<SyncQueueItem, "id" | "createdAt" | "retryCount">): Promise<SyncQueueItem[]> {
-  // Serialize through the write lock so concurrent enqueueSyncItem calls
-  // cannot read stale data and overwrite each other's writes.
-  const result = new Promise<SyncQueueItem[]>((resolve, reject) => {
-    writeLock = writeLock.catch(() => {}).then(async () => {
-      try {
-        const queue = await readSyncQueue()
-        const existingIndex = queue.findIndex((queued) => queued.table === item.table && queued.rowId === item.rowId)
-        const nextItem: SyncQueueItem = {
-          ...item,
-          id: crypto.randomUUID(),
-          createdAt: new Date().toISOString(),
-          retryCount: 0,
-        }
-
-        const updated = [...queue]
-        if (existingIndex >= 0) {
-          updated[existingIndex] = {
-            ...updated[existingIndex],
-            ...nextItem,
-            id: updated[existingIndex].id,
-            createdAt: updated[existingIndex].createdAt,
-            retryCount: updated[existingIndex].retryCount,
-          }
-        } else {
-          updated.push(nextItem)
-        }
-
-        await writeSyncQueue(updated)
-        resolve(updated)
-      } catch (e) {
-        reject(e)
-      }
-    })
+async function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
+  const result = writeLock.then(operation, operation)
+  writeLock = result.catch((e: unknown) => {
+    console.error("Failed to write sync queue:", e)
   })
   return result
+}
+
+export async function readSyncQueue(): Promise<SyncQueueItem[]> {
+  return readSyncQueueUnlocked()
+}
+
+export async function writeSyncQueue(items: SyncQueueItem[]): Promise<void> {
+  await withQueueLock(async () => {
+    await writeSyncQueueUnlocked(items)
+  })
+}
+
+export async function enqueueSyncItem(item: Omit<SyncQueueItem, "id" | "createdAt" | "retryCount">): Promise<SyncQueueItem[]> {
+  return withQueueLock(async () => {
+    const queue = await readSyncQueueUnlocked()
+    const existingIndex = queue.findIndex((queued) => queued.table === item.table && queued.rowId === item.rowId)
+    const nextItem: SyncQueueItem = {
+      ...item,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+    }
+
+    const updated = [...queue]
+    if (existingIndex >= 0) {
+      updated[existingIndex] = nextItem
+    } else {
+      updated.push(nextItem)
+    }
+
+    await writeSyncQueueUnlocked(updated)
+    return updated
+  })
+}
+
+export async function finishSyncQueueFlush(processedIds: string[], remainingProcessedItems: SyncQueueItem[]): Promise<SyncQueueItem[]> {
+  return withQueueLock(async () => {
+    const processed = new Set(processedIds)
+    const latest = await readSyncQueueUnlocked()
+    const next = latest.filter((item) => !processed.has(item.id))
+
+    for (const item of remainingProcessedItems) {
+      const newerSameRow = next.some((queued) => queued.table === item.table && queued.rowId === item.rowId)
+      if (!newerSameRow) next.push(item)
+    }
+
+    await writeSyncQueueUnlocked(next)
+    return next
+  })
 }
