@@ -199,6 +199,7 @@ function App() {
 
   const suppressCustomSubjectSyncRef = useRef(false)
   const suppressHiddenSubjectSyncRef = useRef(false)
+  const suppressTimetableSyncRef = useRef(false)
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -212,6 +213,7 @@ function App() {
         setHiddenSubjectIds(getStoredHiddenSubjectIds())
       }
       if (table === "timetable_config") {
+        suppressTimetableSyncRef.current = true
         setTimetableConfig(getTimetableConfig())
       }
     }
@@ -259,6 +261,10 @@ function App() {
   useEffect(() => {
     if (!timetableSyncReadyRef.current) {
       timetableSyncReadyRef.current = true
+      return
+    }
+    if (suppressTimetableSyncRef.current) {
+      suppressTimetableSyncRef.current = false
       return
     }
     void recordLocalUpsert("timetable_config", timetableConfig)

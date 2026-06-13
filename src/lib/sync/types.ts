@@ -30,6 +30,9 @@ export interface SyncMeta {
   lastPulledAt?: Partial<Record<SyncTable, string>>
   lastSuccessfulSyncAt: string | null
   migratedUuidIds?: boolean
+  localChangedAt?: Partial<Record<SyncTable, string>>
+  localChangedRowIds?: Partial<Record<SyncTable, string[]>>
+  deletedRowIds?: Partial<Record<SyncTable, string[]>>
 }
 
 export interface SyncStatusSnapshot {
