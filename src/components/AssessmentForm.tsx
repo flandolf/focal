@@ -108,29 +108,25 @@ function AssessmentForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectField
             label="Subject"
-            value={subjectId}
-            onChange={(event) => setSubjectId(event.target.value)}
-          >
-            <option value="">No subject</option>
-            {subjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.icon} {subject.name}{customSubjects.some((item) => item.id === subject.id) ? " (custom)" : ""}
-              </option>
-            ))}
-          </SelectField>
+            value={subjectId || "_none"}
+            onValueChange={(value) => setSubjectId(value === "_none" ? "" : value)}
+            placeholder="No subject"
+            options={[
+              { value: "_none", label: "No subject" },
+              ...subjects.map((subject) => ({ value: subject.id, label: `${subject.icon} ${subject.name}${customSubjects.some((item) => item.id === subject.id) ? " (custom)" : ""}` })),
+            ]}
+          />
 
           <SelectField
             label="Unit"
-            value={unit}
-            onChange={(event) => setUnit(event.target.value as Unit | "")}
-          >
-            <option value="">None</option>
-            {VCE_UNITS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </SelectField>
+            value={unit || "_none"}
+            onValueChange={(value) => setUnit(value === "_none" ? "" : value as Unit | "")}
+            placeholder="None"
+            options={[
+              { value: "_none", label: "None" },
+              ...VCE_UNITS.map((item) => ({ value: item.value, label: item.label })),
+            ]}
+          />
         </div>
 
         <EmojiPicker

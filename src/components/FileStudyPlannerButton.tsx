@@ -392,7 +392,8 @@ export function FileStudyPlannerButton({
             </DialogHeader>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="flex flex-col gap-4 px-5 py-5">
             {apiKeyMissing && (
               <p className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -511,7 +512,8 @@ export function FileStudyPlannerButton({
                 </div>
               </ScrollArea>
             )}
-          </div>
+            </div>
+          </ScrollArea>
 
           <DialogFooter className="m-0 shrink-0 rounded-none px-5 py-3">
             <Button variant="outline" size="sm" onClick={() => setOpen(false)}>

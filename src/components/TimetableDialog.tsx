@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { getTimetableConfig, setTimetableConfig, type TimetableConfig } from "@/lib/settings"
 import { VCE_SUBJECTS, type TimetableEntry, type TimetableDayLabel } from "@/lib/types"
@@ -144,17 +145,16 @@ function ImageDropZone({
 
 function DaySelect({ value, onChange }: { value: number; onChange: (day: number) => void }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="h-7 rounded-md border border-input bg-background px-2 text-xs font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-        <option key={d} value={d}>
-          Day {d}
-        </option>
-      ))}
-    </select>
+    <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
+      <SelectTrigger className="h-7 w-[5.5rem] rounded-md px-2 text-xs font-medium">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
+          <SelectItem key={d} value={String(d)}>Day {d}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -227,19 +227,19 @@ function PeriodEditRow({
         className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         aria-label="Period name"
       />
-      <select
-        value={period.subject}
-        onChange={(e) => onChange("subject", e.target.value)}
-        className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        aria-label="Subject"
-      >
-        <option value="">No subject</option>
-        {allSubjects.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.shortCode || s.name}
-          </option>
-        ))}
-      </select>
+      <Select value={period.subject || "_none"} onValueChange={(value) => onChange("subject", value === "_none" ? "" : value)}>
+        <SelectTrigger className="h-6 w-full rounded px-1.5 text-xs" aria-label="Subject">
+          <SelectValue placeholder="No subject" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="_none">No subject</SelectItem>
+          {allSubjects.map((s) => (
+            <SelectItem key={s.id} value={s.id}>
+              {s.shortCode || s.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <input
         type="time"
         value={period.startTime}

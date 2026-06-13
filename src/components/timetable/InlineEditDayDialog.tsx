@@ -3,6 +3,7 @@ import { Plus, Trash2, Copy, ChevronUp, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
 import { type TimetableEntry, type TimetableDayLabel, VCE_SUBJECTS } from "@/lib/types"
 import { getTimetableEntriesForDay } from "@/lib/timetable"
@@ -366,7 +367,8 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
           className="mb-1.5 h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           autoFocus
         />
-        <div className="max-h-36 space-y-0.5 overflow-y-auto">
+        <ScrollArea className="max-h-36">
+        <div className="space-y-0.5">
           <button
             type="button"
             onClick={() => { onChange(""); setOpen(false) }}
@@ -399,6 +401,7 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
             <p className="py-2 text-center text-xs text-muted-foreground">No subjects found</p>
           )}
         </div>
+        </ScrollArea>
 
         {/* Custom label */}
         <div className="mt-1.5 border-t pt-1.5">

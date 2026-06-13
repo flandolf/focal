@@ -3,6 +3,7 @@ import { Loader2, Wand2, Check, ArrowLeft, AlertCircle, Plus, ChevronUp, Chevron
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
 import { aiEditTimetable, type TimetableAiEditDraft, type TimetableAiEditResult } from "@/lib/timetable"
 import { cn } from "@/lib/utils"
@@ -154,15 +155,16 @@ function AiEntryCard({
           {draft.approved && <Check className="h-3 w-3" />}
         </button>
 
-        <select
-          value={draft.dayLabel}
-          onChange={(e) => { onChangeDay(Number(e.currentTarget.value)) }}
-          className="h-7 rounded-md border border-input bg-background px-2 text-xs font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-            <option key={d} value={d}>Day {d}</option>
-          ))}
-        </select>
+        <Select value={String(draft.dayLabel)} onValueChange={(v) => { onChangeDay(Number(v)) }}>
+          <SelectTrigger className="h-7 w-[5.5rem] rounded-md px-2 text-xs font-medium">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
+              <SelectItem key={d} value={String(d)}>Day {d}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <span className="ml-auto text-micro tabular-nums text-muted-foreground/60">
           {draft.periods.length} {draft.periods.length === 1 ? "period" : "periods"}

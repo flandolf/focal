@@ -5,6 +5,7 @@ import { Plus, Calendar, Clock, AlertCircle, CalendarPlus, MapPin, Trash2, X, Ch
 import { getDayLabelForDate, getTimetableEntriesForDay, getCurrentPeriodInfo } from "@/lib/timetable"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDeadline, isOverdue, getSubjectById, getEventTypeInfo, getSessionSubjectIds, getSessionEffectiveMinutes, cn, getLocalDateValue, formatTime12 } from "@/lib/utils"
 import { AssessmentCopilot } from "@/components/AssessmentCopilot"
 import { TextEventPlanner } from "@/components/TextEventPlanner"
@@ -658,7 +659,7 @@ export const HomeView = memo(function HomeView({
 
   return (
     <>
-    <div className="h-full overflow-auto">
+    <ScrollArea className="h-full">
       <div className={cn(
         "px-5 pt-5 min-[1200px]:px-8 min-[1200px]:pt-7",
         selectedBatchCount > 0 ? "pb-24 min-[1200px]:pb-24" : "pb-8 min-[1200px]:pb-10",
@@ -1115,7 +1116,7 @@ export const HomeView = memo(function HomeView({
           </div>
         </div>
       </div>
-    </div>
+    </ScrollArea>
 
     <AssessmentCopilot
       open={copilotOpen}
