@@ -156,6 +156,21 @@ export interface SchoolHoliday {
   endDate: string   // YYYY-MM-DD
 }
 
+export interface UserSettings {
+  openrouter_api_key: string
+  openrouter_model: string
+  reasoning_effort: string
+  reasoning_max_tokens: number
+  reasoning_exclude: boolean
+  notion_token: string
+  notion_data_source_id: string
+  notion_title_property: string
+  notion_date_property: string
+  notion_type_property: string
+  notion_completed_property: string
+  notion_subject_property: string
+}
+
 /** Relaxed timetable config for localStorage persistence. Use TimetableEntry from types.ts for runtime access. */
 export interface TimetableConfig {
   enabled: boolean

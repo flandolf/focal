@@ -8,6 +8,7 @@ const TABLES: SyncTable[] = [
   "custom_subjects",
   "hidden_subjects",
   "timetable_config",
+  "user_settings",
 ]
 
 export interface RealtimeChange {

@@ -1,7 +1,7 @@
 import { compareIso } from "@/lib/sync/mappers"
 import type { SyncMeta, SyncOperation, SyncQueueItem, SyncTable } from "@/lib/sync/types"
 
-export const SYNC_TABLES: SyncTable[] = ["projects", "events", "study_sessions", "custom_subjects", "hidden_subjects", "timetable_config"]
+export const SYNC_TABLES: SyncTable[] = ["projects", "events", "study_sessions", "custom_subjects", "hidden_subjects", "timetable_config", "user_settings"]
 
 export function isSyncTable(value: unknown): value is SyncTable {
   return typeof value === "string" && (SYNC_TABLES as string[]).includes(value)

@@ -112,6 +112,17 @@ create table if not exists public.timetable_config (
   unique (user_id)
 );
 
+create table if not exists public.user_settings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  settings jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  last_modified_device_id text,
+  unique (user_id)
+);
+
 create table if not exists public.sync_state (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -132,6 +143,7 @@ create index if not exists study_sessions_user_updated_idx on public.study_sessi
 create index if not exists custom_subjects_user_updated_idx on public.custom_subjects (user_id, updated_at);
 create index if not exists hidden_subjects_user_updated_idx on public.hidden_subjects (user_id, updated_at);
 create index if not exists timetable_config_user_updated_idx on public.timetable_config (user_id, updated_at);
+create index if not exists user_settings_user_updated_idx on public.user_settings (user_id, updated_at);
 create index if not exists sync_state_user_updated_idx on public.sync_state (user_id, updated_at);
 
 drop trigger if exists set_projects_updated_at on public.projects;
@@ -158,6 +170,10 @@ drop trigger if exists set_timetable_config_updated_at on public.timetable_confi
 create trigger set_timetable_config_updated_at before update on public.timetable_config
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_user_settings_updated_at on public.user_settings;
+create trigger set_user_settings_updated_at before update on public.user_settings
+for each row execute function public.set_updated_at();
+
 drop trigger if exists set_sync_state_updated_at on public.sync_state;
 create trigger set_sync_state_updated_at before update on public.sync_state
 for each row execute function public.set_updated_at();
@@ -168,6 +184,7 @@ alter table public.study_sessions enable row level security;
 alter table public.custom_subjects enable row level security;
 alter table public.hidden_subjects enable row level security;
 alter table public.timetable_config enable row level security;
+alter table public.user_settings enable row level security;
 alter table public.sync_state enable row level security;
 
 create policy "projects select own rows" on public.projects for select to authenticated using ((select auth.uid()) = user_id);
@@ -200,6 +217,11 @@ create policy "timetable_config insert own rows" on public.timetable_config for 
 create policy "timetable_config update own rows" on public.timetable_config for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy "timetable_config delete own rows" on public.timetable_config for delete to authenticated using ((select auth.uid()) = user_id);
 
+create policy "user_settings select own rows" on public.user_settings for select to authenticated using ((select auth.uid()) = user_id);
+create policy "user_settings insert own rows" on public.user_settings for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "user_settings update own rows" on public.user_settings for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "user_settings delete own rows" on public.user_settings for delete to authenticated using ((select auth.uid()) = user_id);
+
 create policy "sync_state select own rows" on public.sync_state for select to authenticated using ((select auth.uid()) = user_id);
 create policy "sync_state insert own rows" on public.sync_state for insert to authenticated with check ((select auth.uid()) = user_id);
 create policy "sync_state update own rows" on public.sync_state for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
@@ -211,3 +233,4 @@ alter publication supabase_realtime add table public.study_sessions;
 alter publication supabase_realtime add table public.custom_subjects;
 alter publication supabase_realtime add table public.hidden_subjects;
 alter publication supabase_realtime add table public.timetable_config;
+alter publication supabase_realtime add table public.user_settings;
