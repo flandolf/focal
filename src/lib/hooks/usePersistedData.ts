@@ -49,6 +49,10 @@ export function usePersistedData<T>({
           normalised = onLoadRef.current(normalised)
         }
         setData(normalised)
+      } else {
+        // File doesn't exist yet (e.g. new device before first sync writes).
+        // Clear data and stop loading so the UI isn't stuck in a loading state.
+        setData([])
       }
     } catch (e) {
       const msg = `Failed to load ${fileName}: ${String(e)}`
