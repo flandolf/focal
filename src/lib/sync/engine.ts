@@ -335,10 +335,10 @@ async function flushQueueInternal(): Promise<void> {
   const tableStats: SyncStatusSnapshot["tableStats"] = Object.entries(stats).map(([table, count]) => ({ table: table as SyncTable, pushed: count, failed: 0 }))
   console.warn(`[sync] flushQueue summary: pushed=${JSON.stringify(stats)}, remaining=${pendingCount}, failed=${failed.length}${failed.length > 0 ? ", failed items: " + JSON.stringify(failed) : ""}`)
   if (pendingCount === 0 && failed.length === 0) {
-    await updateMeta((meta) => ({ ...meta, lastSuccessfulSyncAt: now, calendarBackfillCompletedAt: meta.calendarBackfillCompletedAt ?? now, localChangedAt: {}, localChangedRowIds: {}, deletedRowIds: {} }))
+    await updateMeta((meta) => ({ ...meta, lastSuccessfulSyncAt: now, eventsBackfillCompletedAt: stats.events ? (meta.eventsBackfillCompletedAt ?? now) : meta.eventsBackfillCompletedAt, sessionsBackfillCompletedAt: stats.study_sessions ? (meta.sessionsBackfillCompletedAt ?? now) : meta.sessionsBackfillCompletedAt, localChangedAt: {}, localChangedRowIds: {}, deletedRowIds: {} }))
     emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: now, details: `Synced ${queue.length} change${queue.length === 1 ? "" : "s"}`, tableStats, failedItems: null, isOnline: true })
   } else if (pendingCount === 0 && failed.length > 0) {
-    await updateMeta((meta) => ({ ...clearQueueItemsFromMeta(meta, droppedItems), lastSuccessfulSyncAt: now }))
+    await updateMeta((meta) => ({ ...clearQueueItemsFromMeta(meta, droppedItems), lastSuccessfulSyncAt: now, eventsBackfillCompletedAt: stats.events ? (meta.eventsBackfillCompletedAt ?? now) : meta.eventsBackfillCompletedAt, sessionsBackfillCompletedAt: stats.study_sessions ? (meta.sessionsBackfillCompletedAt ?? now) : meta.sessionsBackfillCompletedAt }))
     const failedItems = failed.map((f) => ({ table: f.table as SyncTable, rowId: f.rowId, error: f.error }))
     emitStatus({ status: "synced", pendingCount: 0, error: `${failed.length} item${failed.length === 1 ? "" : "s"} dropped after ${MAX_SYNC_RETRIES} retries`, details: `${failed.length} item${failed.length === 1 ? "" : "s"} dropped after max retries`, tableStats, failedItems, isOnline: true })
   } else {
@@ -569,8 +569,8 @@ async function enqueueAllLocalRows(force = false): Promise<void> {
   const changedTables = force ? {} : (meta.localChangedAt ?? {})
   const changedRowIds = force ? {} : (meta.localChangedRowIds ?? {})
   const deletedRowIds = force ? {} : (meta.deletedRowIds ?? {})
-  const needsEventBackfill = !force && shouldBackfillCalendarTable("events", meta.calendarBackfillCompletedAt)
-  const needsSessionBackfill = !force && shouldBackfillCalendarTable("study_sessions", meta.calendarBackfillCompletedAt)
+  const needsEventBackfill = !force && shouldBackfillCalendarTable("events", meta.eventsBackfillCompletedAt)
+  const needsSessionBackfill = !force && shouldBackfillCalendarTable("study_sessions", meta.sessionsBackfillCompletedAt)
 
   const [projects, events, sessions] = await Promise.all([
     readJsonArray<Project>("projects.json"),
@@ -819,13 +819,14 @@ async function readMeta(): Promise<SyncMeta> {
   try {
     const path = await appDataPath(META_FILE)
     if (!(await exists(path))) return { deviceId, lastSuccessfulSyncAt: null }
-    const parsed = JSON.parse(await readTextFile(path)) as Partial<SyncMeta>
+    const parsed = JSON.parse(await readTextFile(path)) as Partial<SyncMeta> & { calendarBackfillCompletedAt?: string | null }
     return {
       deviceId,
       lastPulledAt: parsed.lastPulledAt,
       lastSuccessfulSyncAt: parsed.lastSuccessfulSyncAt ?? null,
       migratedUuidIds: parsed.migratedUuidIds,
-      calendarBackfillCompletedAt: parsed.calendarBackfillCompletedAt ?? null,
+      eventsBackfillCompletedAt: parsed.eventsBackfillCompletedAt ?? parsed.calendarBackfillCompletedAt ?? null,
+      sessionsBackfillCompletedAt: parsed.sessionsBackfillCompletedAt ?? parsed.calendarBackfillCompletedAt ?? null,
       localChangedAt: parseTableStringRecord(parsed.localChangedAt),
       localChangedRowIds: parseRowIdsByTable(parsed.localChangedRowIds),
       deletedRowIds: parseDeletedRowIds(parsed.deletedRowIds),
