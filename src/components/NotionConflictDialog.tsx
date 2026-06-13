@@ -84,7 +84,7 @@ export function NotionConflictDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-background p-5 shadow-xl">
+      <div className="glass-dialog mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl p-5">
         <div className="mb-4 flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
             <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -183,7 +183,7 @@ export function NotionConflictDialog({
                       size="sm"
                       variant={resolution === "local" ? "default" : "outline"}
                       onClick={() => handleResolve(conflict.id, "local")}
-                      className="flex-1"
+                      className={cn("flex-1", resolution === "local" && "btn-glow-primary")}
                     >
                       <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
                       Keep Focal
@@ -192,7 +192,7 @@ export function NotionConflictDialog({
                       size="sm"
                       variant={resolution === "notion" ? "default" : "outline"}
                       onClick={() => handleResolve(conflict.id, "notion")}
-                      className="flex-1"
+                      className={cn("flex-1", resolution === "notion" && "btn-glow-primary")}
                     >
                       <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
                       Keep Notion
@@ -201,6 +201,7 @@ export function NotionConflictDialog({
                       size="sm"
                       variant={resolution === "skip" ? "default" : "outline"}
                       onClick={() => handleResolve(conflict.id, "skip")}
+                      className={cn(resolution === "skip" && "btn-glow-primary")}
                     >
                       Skip
                     </Button>
@@ -219,7 +220,7 @@ export function NotionConflictDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleResolveAll} disabled={!allResolved}>
+            <Button onClick={handleResolveAll} disabled={!allResolved} className="btn-glow-primary">
               Resolve All ({Object.keys(resolutions).length}/{conflicts.length})
             </Button>
           </div>

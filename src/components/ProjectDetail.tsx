@@ -426,12 +426,12 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
   return (
     <div className="relative flex h-full flex-col">
       {isDragging && (
-        <div className="absolute inset-4 z-modal-backdrop flex items-center justify-center rounded-[1.25rem] border border-primary/20 bg-background/80 backdrop-blur-md pointer-events-none">
+        <div className="absolute inset-4 z-modal-backdrop flex items-center justify-center rounded-[1.25rem] border border-primary/25 bg-background/70 backdrop-blur-xl pointer-events-none active-glow">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Plus className="h-7 w-7 text-primary/60" />
+            <div className="w-14 h-14 rounded-2xl bg-primary/12 flex items-center justify-center shadow-[0_0_40px_-12px_color-mix(in_oklch,var(--primary)_30%,transparent)]">
+              <Plus className="h-7 w-7 text-primary/70" />
             </div>
-            <p className="text-sm font-medium text-primary/70">Drop files here</p>
+            <p className="text-sm font-medium text-primary/80">Drop files here</p>
           </div>
         </div>
       )}

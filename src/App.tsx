@@ -1177,6 +1177,7 @@ function App() {
           />
         </TitleBar>
         <div className="hairline-grid pointer-events-none absolute inset-0 z-0 opacity-80" />
+        <div className="ambient-shell pointer-events-none absolute inset-0 z-0 opacity-60" />
         <div className="relative z-10 flex min-h-0 flex-1 gap-2 px-2 pb-2 min-[1200px]:gap-3 min-[1200px]:px-3 min-[1200px]:pb-3">
           <motion.div
             layout

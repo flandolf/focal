@@ -64,6 +64,12 @@ function timeStringToMinutes(t: string): number {
   return h * 60 + m;
 }
 
+function minutesToTimeString(minutes: number): string {
+  const h = Math.min(24, Math.floor(minutes / 60));
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function getCurrentPeriodProgress(period: TimetablePeriod, now: Date): number {
   const start = timeStringToMinutes(period.startTime);
   const end = timeStringToMinutes(period.endTime);
@@ -270,7 +276,7 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="flex items-center gap-3 rounded-xl border border-dashed border-border/60 bg-card/30 px-3.5 py-2.5"
+        className="glass-panel flex items-center gap-3 rounded-2xl px-3.5 py-2.5"
       >
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/40">
           <Sparkles className="h-4 w-4 text-muted-foreground/60" />
@@ -292,7 +298,7 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/40 px-3.5 py-2.5"
+        className="glass-panel flex items-center gap-3 rounded-2xl px-3.5 py-2.5"
       >
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/12">
           <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
@@ -323,7 +329,7 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="relative overflow-hidden rounded-xl border border-primary/25 bg-linear-to-br from-primary/8 via-primary/4 to-transparent px-3.5 py-2.5 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]"
+        className="glass-panel active-glow relative overflow-hidden rounded-2xl px-3.5 py-2.5"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1">
@@ -409,7 +415,7 @@ function LiveStatusCard({
         initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
-        className="flex items-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2"
+        className="glass-panel flex items-center gap-2 rounded-2xl px-3 py-2"
       >
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40">
           <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
@@ -498,114 +504,223 @@ function NextUpHint({
   );
 }
 
-// --- Period row ---
+// --- Timeline helpers ---
 
-function PeriodRow({
+function getTimelineRange(
+  days: { dayLabel: TimetableDayLabel; entries: { periods: TimetablePeriod[] }[] }[],
+  bufferMinutes = 0,
+): { start: number; end: number } {
+  let minStart = 24 * 60;
+  let maxEnd = 0;
+  let hasPeriods = false;
+
+  days.forEach(({ entries }) => {
+    entries.forEach((entry) => {
+      entry.periods.forEach((period) => {
+        hasPeriods = true;
+        const s = timeStringToMinutes(period.startTime);
+        const e = timeStringToMinutes(period.endTime);
+        minStart = Math.min(minStart, s);
+        maxEnd = Math.max(maxEnd, e);
+      });
+    });
+  });
+
+  if (!hasPeriods) return { start: 8 * 60, end: 15 * 60 };
+
+  const start = Math.max(0, Math.floor(minStart / 60) * 60 - bufferMinutes);
+  const end = Math.min(24 * 60, Math.ceil(maxEnd / 60) * 60 + bufferMinutes);
+  return { start, end };
+}
+
+function getHourMarkers(start: number, end: number): number[] {
+  const markers: number[] = [];
+  const firstHour = Math.ceil(start / 60);
+  const lastHour = Math.floor(end / 60);
+  for (let h = firstHour; h <= lastHour; h++) {
+    markers.push(h);
+  }
+  return markers;
+}
+
+/* ponytail: absolute-positioned school periods need collision math more
+   than a full interval-layout engine. Tiny breaks collapse into readable
+   markers; normal classes keep their true time scale. If overlapping
+   custom periods become common, upgrade this to lane packing. */
+const PERIOD_MIN_HEIGHT_PERCENT = 8;
+const PERIOD_BLOCK_GAP_PERCENT = 0.7;
+
+function getPeriodLayouts(
+  periods: { period: TimetablePeriod; entryIdx: number; periodIdx: number }[],
+  timelineStart: number,
+  timelineEnd: number,
+): Map<string, { top: number; height: number }> {
+  const result = new Map<string, { top: number; height: number }>();
+  const total = timelineEnd - timelineStart;
+  if (total <= 0 || periods.length === 0) return result;
+
+  const sorted = [...periods].sort((a, b) =>
+    a.period.startTime.localeCompare(b.period.startTime),
+  );
+
+  for (let i = 0; i < sorted.length; i++) {
+    const item = sorted[i];
+    const key = `${item.entryIdx}-${item.periodIdx}`;
+    const startMin = timeStringToMinutes(item.period.startTime);
+    const endMin = timeStringToMinutes(item.period.endTime);
+    const rawTop = ((startMin - timelineStart) / total) * 100;
+    const rawHeight = ((endMin - startMin) / total) * 100;
+    const prev = sorted[i - 1];
+    const prevLayout = prev
+      ? result.get(`${prev.entryIdx}-${prev.periodIdx}`)
+      : undefined;
+    const top = prevLayout
+      ? Math.max(rawTop, prevLayout.top + prevLayout.height + PERIOD_BLOCK_GAP_PERCENT)
+      : rawTop;
+    const available = 100 - top;
+    const height = Math.max(
+      1,
+      Math.min(Math.max(PERIOD_MIN_HEIGHT_PERCENT, rawHeight), available),
+    );
+
+    result.set(key, { top, height });
+  }
+
+  return result;
+}
+
+// --- Timeline block ---
+
+function TimelineBlock({
+  layout,
   period,
   subject,
   isCurrentPeriod,
   isNextPeriod,
-  reduceMotion,
+  now,
+  use24Hour,
+  showLocation,
   onEdit,
   onDelete,
-  use24Hour = false,
-  showLocation = true,
 }: {
+  layout: { top: number; height: number };
   period: TimetablePeriod;
   subject: ReturnType<typeof getSubjectById>;
   isCurrentPeriod: boolean;
   isNextPeriod: boolean;
-  reduceMotion: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
+  now: Date;
   use24Hour?: boolean;
   showLocation?: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
-  const displayName = subject ? subject.name : period.subject || period.period;
+  const isBreak = isBreakLabel(period.period);
+  const compact = layout.height <= 4.5;
+  const markerOnly = layout.height <= 2.5;
+  const periodLabel = (subject?.name ?? period.subject) || period.period;
+  const timeLabel = `${formatTime(period.startTime, use24Hour ?? false)}-${formatTime(period.endTime, use24Hour ?? false)}`;
+
   return (
-    <motion.div
+    <div
       className={cn(
-        "group/period relative flex items-start gap-2 py-1 transition-colors",
-        subject ? "hover:bg-accent/30" : "opacity-60",
-        isCurrentPeriod && "bg-primary/[0.07]",
+        "group/block absolute left-9 right-2 overflow-hidden rounded-lg border transition-[background-color,border-color,box-shadow,transform] duration-200",
+        isBreak
+          ? "border-dashed border-border/45 bg-muted/28"
+          : "border-border/55 bg-background/62 shadow-[inset_0_1px_0_oklch(1_0_0_/_0.08)] backdrop-blur-sm",
+        isCurrentPeriod &&
+          "border-primary/45 bg-primary/10 shadow-[0_0_22px_-10px_var(--primary),inset_0_1px_0_oklch(1_0_0_/_0.12)]",
+        isNextPeriod && !isCurrentPeriod && "border-primary/25 bg-primary/5",
+        !isBreak && "hover:border-primary/35 hover:bg-primary/8",
+        markerOnly && "rounded-md",
       )}
+      style={{
+        top: `${layout.top}%`,
+        height: `${layout.height}%`,
+        backgroundColor:
+          subject && !isBreak
+            ? `color-mix(in oklch, ${subject.color} ${isCurrentPeriod ? 16 : 10}%, transparent)`
+            : undefined,
+      }}
+      aria-label={`${periodLabel}, ${timeLabel}`}
+      title={`${periodLabel} · ${timeLabel}`}
     >
-      {/* Subject color accent bar */}
-      {subject && (
-        <div
-          className={cn("absolute left-0 top-1 bottom-1 w-0.5 rounded-full")}
-          style={{ backgroundColor: subject.color }}
-        />
-      )}
-
-      {/* Time stack (start above end) */}
-      <div className="flex shrink-0 flex-col items-start pl-2 w-10">
-        <span
-          className={cn(
-            "text-xs font-semibold leading-none tabular-nums",
-            isCurrentPeriod ? "text-foreground" : "text-foreground/90",
-          )}
-        >
-          {formatTime(period.startTime, use24Hour)}
-        </span>
-        <span className="mt-px text-micro tabular-nums text-muted-foreground/55">
-          {formatTime(period.endTime, use24Hour)}
-        </span>
-      </div>
-
-      {/* Content */}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex items-center gap-0.5">
+      {/* Subject content */}
+      <div
+        className={cn(
+          "flex h-full min-w-0 flex-col justify-center px-2 py-1",
+          compact && "px-2.5 py-1",
+          markerOnly && "px-1.5 py-0.5",
+        )}
+      >
+        {markerOnly ? (
           <span
-            className={cn(
-              "truncate text-xs",
-              isCurrentPeriod ? "font-semibold" : "font-medium",
+            className="block h-full w-full rounded-sm"
+            style={{
+              backgroundColor: subject?.color ?? "var(--muted-foreground)",
+              opacity: isBreak ? 0.45 : 0.72,
+            }}
+            aria-hidden
+          />
+        ) : (
+          <div className="flex min-w-0 items-center gap-1.5 pr-10">
+            {subject && (
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: subject.color }}
+                aria-hidden
+              />
             )}
-            style={subject ? { color: subject.color } : undefined}
-          >
-            {displayName}
-          </span>
-          {isCurrentPeriod && (
-            <motion.span
-              initial={reduceMotion ? false : { scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{
-                duration: MOTION_DURATION.normal,
-                ease: MOTION_EASE,
-              }}
-              className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-0.5 py-px text-micro font-bold uppercase tracking-wider text-primary"
+            <span
+              className={cn(
+                "truncate text-xs leading-tight",
+                isCurrentPeriod ? "font-semibold" : "font-medium",
+              )}
+              style={subject ? { color: subject.color } : undefined}
             >
-              <span className="h-0.5 w-0.5 rounded-full bg-primary animate-pulse" />
-              Now
-            </motion.span>
-          )}
-          {isNextPeriod && !isCurrentPeriod && (
-            <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground/40">
-              Next
+              {periodLabel}
             </span>
-          )}
-        </div>
-        {showLocation && period.location && (
-          <div className="flex items-center gap-1 text-micro text-muted-foreground/60">
-            <MapPin className="h-2.5 w-2.5 shrink-0" />
-            <span className="truncate">{period.location}</span>
+            {isCurrentPeriod && (
+              <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-pulse" />
+            )}
+            {isNextPeriod && !isCurrentPeriod && (
+              <span className="shrink-0 text-micro font-bold uppercase tracking-wider text-primary/70">
+                Next
+              </span>
+            )}
+          </div>
+        )}
+
+        {!compact && !markerOnly && (
+          <div className="mt-0.5 flex min-w-0 items-center gap-1 pr-10 text-caption leading-tight text-muted-foreground/75">
+            <span className="tabular-nums">
+              {timeLabel}
+            </span>
+            {showLocation && period.location && (
+              <>
+                <span className="text-muted-foreground/30">·</span>
+                <span className="flex items-center gap-0.5 truncate">
+                  <MapPin className="h-2 w-2 shrink-0" />
+                  {period.location}
+                </span>
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {/* Hover-revealed actions */}
-      <div className="pointer-events-none absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-px rounded-md bg-background/80 p-px opacity-0 ring-1 ring-border/30 transition-all duration-150 group-hover/period:pointer-events-auto group-hover/period:opacity-100 group-focus-within/period:pointer-events-auto group-focus-within/period:opacity-100">
+      {/* Hover actions */}
+      <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 rounded-md bg-background/88 p-0.5 opacity-0 ring-1 ring-border/30 backdrop-blur-md transition-all duration-150 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onEdit();
           }}
-          className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-          aria-label={`Edit ${displayName}`}
+          className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          aria-label="Edit period"
           title="Edit period"
         >
-          <Pencil className="h-2 w-2" />
+          <Pencil className="h-3 w-3" />
         </button>
         <button
           type="button"
@@ -613,18 +728,62 @@ function PeriodRow({
             e.stopPropagation();
             onDelete();
           }}
-          className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-destructive/15 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring"
-          aria-label={`Delete ${displayName}`}
+          className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-destructive/15 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring"
+          aria-label="Delete period"
           title="Delete period"
         >
-          <Trash2 className="h-2 w-2" />
+          <Trash2 className="h-3 w-3" />
         </button>
       </div>
-    </motion.div>
+
+      {/* Current period progress */}
+      {isCurrentPeriod && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/20">
+          <div
+            className="h-full bg-primary transition-all duration-1000"
+            style={{ width: `${getCurrentPeriodProgress(period, now)}%` }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
-// --- Day card header ---
+// --- Current time indicator ---
+
+function CurrentTimeIndicator({
+  now,
+  timelineStart,
+  timelineEnd,
+  use24Hour,
+}: {
+  now: Date;
+  timelineStart: number;
+  timelineEnd: number;
+  use24Hour?: boolean;
+}) {
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+  if (currentMin < timelineStart || currentMin > timelineEnd) return null;
+  const top = ((currentMin - timelineStart) / (timelineEnd - timelineStart)) * 100;
+  const stamp24 = `${String(Math.floor(currentMin / 60)).padStart(2, "0")}:${String(currentMin % 60).padStart(2, "0")}`;
+
+  return (
+    <div
+      className="absolute left-0 right-0 z-10 pointer-events-none"
+      style={{ top: `${top}%` }}
+    >
+      <div className="flex items-center gap-1">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-primary ring-2 ring-background/80 shadow-[0_0_10px] shadow-primary/50" />
+        <div className="h-px flex-1 bg-primary/60" />
+        <span className="rounded-md bg-primary/95 px-1.5 py-0.5 text-caption font-semibold tabular-nums text-primary-foreground shadow-sm">
+          {formatTime(stamp24, use24Hour ?? false)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// --- Day timeline card ---
 
 function DayHeader({
   dayLabel,
@@ -644,7 +803,7 @@ function DayHeader({
   onCopyTo: (day: TimetableDayLabel) => void;
 }) {
   return (
-    <div className="mb-0.5 flex items-center justify-between">
+    <div className="mb-1.5 flex items-center justify-between px-2.5 pt-2.5">
       <div className="flex items-center gap-1">
         <span
           className={cn(
@@ -670,7 +829,7 @@ function DayHeader({
           <Pin className="h-2.5 w-2.5 text-primary" aria-label="Pinned" />
         )}
       </div>
-      <div className="flex items-center gap-0.5 opacity-0 group-hover/day:opacity-100 transition-opacity">
+      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/day:opacity-100 group-focus-within/day:opacity-100 [@media(hover:none)]:opacity-100">
         <button
           type="button"
           onClick={onToggleHide}
@@ -732,6 +891,172 @@ function DayHeader({
         </button>
       </div>
     </div>
+  );
+}
+
+function DayTimelineCard({
+  dayLabel,
+  entries,
+  isToday,
+  isDayOverridden,
+  isHidden,
+  timelineStart,
+  timelineEnd,
+  todayPeriodInfo,
+  now,
+  use24Hour,
+  showLocation,
+  showBreaks,
+  onEditDay,
+  onToggleHide,
+  onCopyTo,
+  onDeletePeriod,
+}: {
+  dayLabel: TimetableDayLabel;
+  entries: { periods: TimetablePeriod[] }[];
+  isToday: boolean;
+  isDayOverridden: boolean;
+  isHidden: boolean;
+  timelineStart: number;
+  timelineEnd: number;
+  todayPeriodInfo: { current: TimetablePeriod | null; next: TimetablePeriod | null };
+  now: Date;
+  use24Hour?: boolean;
+  showLocation?: boolean;
+  showBreaks?: boolean;
+  onEditDay: () => void;
+  onToggleHide: () => void;
+  onCopyTo: (day: TimetableDayLabel) => void;
+  onDeletePeriod: (entryIdx: number, periodIdx: number) => void;
+}) {
+  const hourMarkers = useMemo(
+    () => getHourMarkers(timelineStart, timelineEnd),
+    [timelineStart, timelineEnd],
+  );
+
+  const filteredPeriods = useMemo(() => {
+    let periods =
+      entries.length > 0
+        ? entries.flatMap((entry, entryIdx) =>
+            entry.periods.map((period, periodIdx) => ({
+              period,
+              periodIdx,
+              entryIdx,
+            })),
+          )
+        : [];
+    if (!showBreaks) {
+      periods = periods.filter(({ period }) => !isBreakLabel(period.period));
+    }
+    return periods;
+  }, [entries, showBreaks]);
+
+  const periodLayouts = useMemo(
+    () => getPeriodLayouts(filteredPeriods, timelineStart, timelineEnd),
+    [filteredPeriods, timelineStart, timelineEnd],
+  );
+
+  return (
+    <motion.div
+      variants={staggerItem}
+      className={cn(
+        "group/day glass-panel card-glow relative flex flex-col overflow-hidden rounded-2xl",
+        isToday && "active-glow",
+        isHidden && "opacity-40",
+      )}
+    >
+      <DayHeader
+        dayLabel={dayLabel}
+        isToday={isToday}
+        isDayOverridden={isDayOverridden}
+        isHidden={isHidden}
+        onEdit={onEditDay}
+        onToggleHide={onToggleHide}
+        onCopyTo={onCopyTo}
+      />
+
+      {/* Timeline area */}
+      <div className="relative min-h-[460px] flex-1 overflow-hidden border-t border-border/35 bg-background/22 px-1.5 pb-2.5 pt-2">
+        {/* Hour markers and grid lines */}
+        {hourMarkers.map((hour) => {
+          const minutes = hour * 60;
+          const top =
+            ((minutes - timelineStart) / (timelineEnd - timelineStart)) * 100;
+          return (
+            <div
+              key={hour}
+              className="pointer-events-none absolute left-0 right-0 flex items-center gap-1"
+              style={{ top: `${top}%` }}
+            >
+              <span className="w-8 text-right text-caption tabular-nums text-muted-foreground/58">
+                {formatTime(minutesToTimeString(minutes), use24Hour ?? false)}
+              </span>
+              <div className="h-px flex-1 bg-border/32" />
+            </div>
+          );
+        })}
+
+        {/* Period blocks */}
+        {filteredPeriods.length > 0 ? (
+          <>
+            {filteredPeriods.map(({ period, periodIdx, entryIdx }) => {
+              const subject = getSubjectById(period.subject);
+              const isCurrentPeriod =
+                isToday &&
+                todayPeriodInfo.current?.startTime === period.startTime &&
+                todayPeriodInfo.current?.subject === period.subject;
+              const isNextPeriod =
+                isToday &&
+                !isCurrentPeriod &&
+                todayPeriodInfo.next?.startTime === period.startTime &&
+                todayPeriodInfo.next?.subject === period.subject;
+
+              return (
+                <TimelineBlock
+                  key={`${entryIdx}-${periodIdx}`}
+                  layout={
+                    periodLayouts.get(`${entryIdx}-${periodIdx}`) ?? {
+                      top: 0,
+                      height: PERIOD_MIN_HEIGHT_PERCENT,
+                    }
+                  }
+                  period={period}
+                  subject={subject}
+                  isCurrentPeriod={isCurrentPeriod}
+                  isNextPeriod={isNextPeriod}
+                  now={now}
+                  use24Hour={use24Hour}
+                  showLocation={showLocation}
+                  onEdit={onEditDay}
+                  onDelete={() => onDeletePeriod(entryIdx, periodIdx)}
+                />
+              );
+            })}
+
+            {/* Current time indicator */}
+            {isToday && (
+              <CurrentTimeIndicator
+                now={now}
+                timelineStart={timelineStart}
+                timelineEnd={timelineEnd}
+                use24Hour={use24Hour}
+              />
+            )}
+          </>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-4 text-center">
+            {isHidden ? (
+              <EyeOff className="h-3.5 w-3.5 text-muted-foreground/30" />
+            ) : (
+              <Sun className="h-3.5 w-3.5 text-muted-foreground/30" />
+            )}
+            <p className="text-caption font-medium text-muted-foreground/55">
+              {isHidden ? "Hidden from view" : "No classes"}
+            </p>
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }
 
@@ -819,6 +1144,9 @@ export const TimetableView = memo(function TimetableView({
   );
 
   const isDayOverridden = config.currentDayOverride != null;
+
+  // Global timeline range for all shown days
+  const timelineRange = useMemo(() => getTimelineRange(days), [days]);
 
   const handleSetDay = useCallback((day: TimetableDayLabel) => {
     setTimetableCurrentDayOverride(day);
@@ -1093,7 +1421,7 @@ export const TimetableView = memo(function TimetableView({
                 duration: MOTION_DURATION.medium,
                 ease: MOTION_EASE,
               }}
-              className="flex flex-col items-center justify-center py-10 text-center"
+              className="glass-panel flex flex-col items-center justify-center py-10 text-center"
             >
               <motion.div
                 animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
@@ -1115,7 +1443,7 @@ export const TimetableView = memo(function TimetableView({
               </p>
               <Button
                 size="sm"
-                className="gap-1 rounded-lg h-7 px-2.5 text-xs"
+                className="gap-1 rounded-lg h-7 px-2.5 text-xs btn-glow-primary"
                 onClick={() => setEditOpen(true)}
               >
                 <Pencil className="h-4 w-4" />
@@ -1150,124 +1478,45 @@ export const TimetableView = memo(function TimetableView({
                 </motion.div>
               )}
 
-              {/* Day grid */}
+              {/* Day timeline grid */}
               <motion.div
-                key={`day-grid-${viewSettings.showAllDays ? "all" : effectiveBlock}`}
+                key={`timeline-grid-${viewSettings.showAllDays ? "all" : effectiveBlock}`}
                 className={cn(
-                  "grid grid-cols-1 gap-1 min-[700px]:grid-cols-2",
+                  "grid grid-cols-1 gap-2",
                   viewSettings.showAllDays
-                    ? "min-[1100px]:grid-cols-5"
-                    : "min-[1100px]:grid-cols-5",
+                    ? "min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5"
+                    : "min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5",
                 )}
                 variants={staggerContainer(0.04, 0.08)}
                 initial="initial"
                 animate="animate"
               >
-                {days.map(({ dayLabel, entries }) => {
-                  const isToday = currentDayLabel === dayLabel;
-                  const isHidden = viewSettings.hiddenDays.includes(dayLabel);
-
-                  // Filter periods based on view settings
-                  let filteredPeriods =
-                    entries.length > 0
-                      ? entries.flatMap((entry, entryIdx) =>
-                          entry.periods.map((period, periodIdx) => ({
-                            period,
-                            periodIdx,
-                            entryIdx,
-                            entry,
-                          })),
-                        )
-                      : [];
-
-                  if (!viewSettings.showBreaks) {
-                    filteredPeriods = filteredPeriods.filter(
-                      ({ period }) => !isBreakLabel(period.period),
-                    );
-                  }
-
-                  return (
-                    <motion.div
-                      key={dayLabel}
-                      variants={staggerItem}
-                      className={cn(
-                        "group/day relative p-1 transition-colors",
-                        isToday ? "bg-primary/4 rounded-md" : "",
-                        isHidden && "opacity-40",
-                      )}
-                    >
-                      {/* Today left stripe */}
-                      {isToday && (
-                        <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-primary" />
-                      )}
-
-                      <DayHeader
-                        dayLabel={dayLabel}
-                        isToday={isToday}
-                        isDayOverridden={isDayOverridden}
-                        isHidden={isHidden}
-                        onEdit={() => {
-                          setEditDayLabel(dayLabel);
-                          setEditDayOpen(true);
-                        }}
-                        onToggleHide={() => handleToggleHideDay(dayLabel)}
-                        onCopyTo={(toDay) => handleCopyDay(dayLabel, toDay)}
-                      />
-
-                      {/* Periods */}
-                      {filteredPeriods.length > 0 ? (
-                        <div className="space-y-px">
-                          {filteredPeriods.map(
-                            ({ period, periodIdx, entryIdx }) => {
-                              const subject = getSubjectById(period.subject);
-                              const isCurrentPeriod =
-                                isToday &&
-                                todayPeriodInfo.current?.startTime ===
-                                  period.startTime &&
-                                todayPeriodInfo.current?.subject ===
-                                  period.subject;
-                              const isNextPeriod =
-                                isToday &&
-                                !isCurrentPeriod &&
-                                todayPeriodInfo.next?.startTime ===
-                                  period.startTime &&
-                                todayPeriodInfo.next?.subject ===
-                                  period.subject;
-                              return (
-                                <PeriodRow
-                                  key={`${entryIdx}-${periodIdx}`}
-                                  period={period}
-                                  subject={subject}
-                                  isCurrentPeriod={isCurrentPeriod}
-                                  isNextPeriod={isNextPeriod}
-                                  reduceMotion={reduceMotion}
-                                  use24Hour={viewSettings.use24Hour}
-                                  showLocation={viewSettings.showLocations}
-
-                                  onEdit={() => {
-                                    setEditDayLabel(dayLabel);
-                                    setEditDayOpen(true);
-                                  }}
-                                  onDelete={() =>
-                                    handleDeletePeriod(
-                                      dayLabel,
-                                      entryIdx,
-                                      periodIdx,
-                                    )
-                                  }
-                                />
-                              );
-                            },
-                          )}
-                        </div>
-                      ) : (
-                        <p className="py-1 text-center text-micro text-muted-foreground/40">
-                          {isHidden ? "Hidden" : "No classes"}
-                        </p>
-                      )}
-                    </motion.div>
-                  );
-                })}
+                {days.map(({ dayLabel, entries }) => (
+                  <DayTimelineCard
+                    key={dayLabel}
+                    dayLabel={dayLabel}
+                    entries={entries}
+                    isToday={currentDayLabel === dayLabel}
+                    isDayOverridden={isDayOverridden}
+                    isHidden={viewSettings.hiddenDays.includes(dayLabel)}
+                    timelineStart={timelineRange.start}
+                    timelineEnd={timelineRange.end}
+                    todayPeriodInfo={todayPeriodInfo}
+                    now={now}
+                    use24Hour={viewSettings.use24Hour}
+                    showLocation={viewSettings.showLocations}
+                    showBreaks={viewSettings.showBreaks}
+                    onEditDay={() => {
+                      setEditDayLabel(dayLabel);
+                      setEditDayOpen(true);
+                    }}
+                    onToggleHide={() => handleToggleHideDay(dayLabel)}
+                    onCopyTo={(toDay) => handleCopyDay(dayLabel, toDay)}
+                    onDeletePeriod={(entryIdx, periodIdx) =>
+                      handleDeletePeriod(dayLabel, entryIdx, periodIdx)
+                    }
+                  />
+                ))}
               </motion.div>
 
               {/* Holiday notice */}
@@ -1281,7 +1530,7 @@ export const TimetableView = memo(function TimetableView({
                     ease: MOTION_EASE,
                     delay: reduceMotion ? 0 : 0.2,
                   }}
-                  className="flex items-center gap-2 rounded-lg border border-amber-200/40 bg-amber-50/40 px-3 py-2 dark:border-amber-900/40 dark:bg-amber-950/20"
+                  className="glass-panel flex items-center gap-2 rounded-2xl px-3 py-2"
                 >
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15">
                     <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400" />

@@ -962,12 +962,11 @@ export const HomeView = memo(function HomeView({
               >
                 <CalendarPlus className="h-3.5 w-3.5" />
                 Event
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => onNewSession(selectedCalendarDate)}
-                className="h-8 gap-1.5 rounded-xl text-background bg-primary"
-              >
+              </Button>                <Button
+                  size="sm"
+                  onClick={() => onNewSession(selectedCalendarDate)}
+                  className="h-8 gap-1.5 rounded-xl text-background bg-primary btn-glow-primary"
+                >
                 <Calendar className="h-3.5 w-3.5" />
                 Plan Session
               </Button>
@@ -1001,7 +1000,7 @@ export const HomeView = memo(function HomeView({
           )}
 
           <div className="grid grid-cols-1 gap-4 min-[1200px]:gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
-            <Card className="rounded-2xl border border-border/70 bg-background/48 p-4 shadow-sm backdrop-blur min-[1200px]:rounded-[1.25rem] min-[1200px]:p-5">
+            <Card className="rounded-2xl border border-border/70 bg-background/48 p-4 shadow-sm backdrop-blur card-glow min-[1200px]:rounded-[1.25rem] min-[1200px]:p-5">
               <div className="flex h-full flex-col gap-4 min-[1200px]:gap-5">
                 <CalendarGrid
                   currentMonth={currentMonth}
@@ -1227,7 +1226,7 @@ export const HomeView = memo(function HomeView({
               />
 
               {dueThisWeek.length > 0 && (
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
                   <h3 className="mb-2.5 font-heading text-sm font-semibold">
                     Due This Week
                   </h3>
@@ -1269,7 +1268,7 @@ export const HomeView = memo(function HomeView({
               )}
 
               {upcomingSessions.length > 0 && (
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
                   <h3 className="mb-2.5 flex items-center gap-2 font-heading text-sm font-semibold">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                     Upcoming Sessions
@@ -1311,7 +1310,7 @@ export const HomeView = memo(function HomeView({
               )}
 
               {upcomingEvents.length > 0 && (
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
                   <h3 className="mb-2.5 flex items-center gap-2 font-heading text-sm font-semibold">
                     <CalendarPlus className="h-3.5 w-3.5 text-muted-foreground" />
                     Events
@@ -1388,7 +1387,7 @@ export const HomeView = memo(function HomeView({
                   </div>
                 )}
 
-              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
                 <h3 className="mb-2.5 font-heading text-sm font-semibold">
                   Summary
                 </h3>

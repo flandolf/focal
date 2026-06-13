@@ -771,7 +771,7 @@ export function StudySessionDialog({
                   Complete & Review
                 </Button>
               )}
-              <Button type="submit" disabled={!canSave}>
+              <Button type="submit" disabled={!canSave} className="btn-glow-primary">
                 {isEdit ? "Save Changes" : "Create Session"}
               </Button>
             </div>

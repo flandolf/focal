@@ -308,7 +308,7 @@ export function GlobalSearch({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 outline-none animate-in zoom-in-95 duration-100"
+        className="glass-dialog w-full max-w-2xl overflow-hidden rounded-2xl text-popover-foreground shadow-lg outline-none animate-in zoom-in-95 duration-100"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >

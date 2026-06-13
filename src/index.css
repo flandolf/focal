@@ -104,11 +104,11 @@
   --app-titlebar-inset: 2.5rem;
   --background: oklch(0.978 0.005 250);
   --foreground: oklch(0.170 0.018 255);
-  --card: oklch(0.990 0.003 250 / 0.82);
+  --card: oklch(0.990 0.003 250 / 0.70);
   --card-foreground: oklch(0.170 0.018 255);
-  --popover: oklch(0.990 0.003 250 / 0.96);
+  --popover: oklch(0.990 0.003 250 / 0.94);
   --popover-foreground: oklch(0.170 0.018 255);
-  --primary: oklch(0.480 0.085 242);
+  --primary: oklch(0.470 0.095 242);
   --primary-foreground: oklch(0.978 0.005 250);
   --secondary: oklch(0.930 0.008 250);
   --secondary-foreground: oklch(0.200 0.015 255);
@@ -118,9 +118,9 @@
   --accent-foreground: oklch(0.200 0.015 255);
   --destructive: oklch(0.540 0.145 25);
   --destructive-foreground: oklch(0.978 0.005 250);
-  --border: oklch(0.860 0.010 250 / 0.72);
-  --input: oklch(0.870 0.008 250 / 0.72);
-  --ring: oklch(0.480 0.085 242);
+  --border: oklch(0.860 0.010 250 / 0.68);
+  --input: oklch(0.870 0.008 250 / 0.68);
+  --ring: oklch(0.470 0.095 242);
   --chart-1: oklch(0.540 0.145 25);
   --chart-2: oklch(0.480 0.085 242);
   --chart-3: oklch(0.620 0.060 200);
@@ -145,11 +145,11 @@
 .dark {
   --background: oklch(0.155 0.016 258);
   --foreground: oklch(0.920 0.008 245);
-  --card: oklch(0.200 0.016 258 / 0.70);
+  --card: oklch(0.200 0.016 258 / 0.62);
   --card-foreground: oklch(0.920 0.008 245);
-  --popover: oklch(0.185 0.016 258 / 0.94);
+  --popover: oklch(0.185 0.016 258 / 0.90);
   --popover-foreground: oklch(0.920 0.008 245);
-  --primary: oklch(0.700 0.075 238);
+  --primary: oklch(0.690 0.090 238);
   --primary-foreground: oklch(0.155 0.016 258);
   --secondary: oklch(0.245 0.016 258);
   --secondary-foreground: oklch(0.920 0.008 245);
@@ -159,9 +159,9 @@
   --accent-foreground: oklch(0.920 0.008 245);
   --destructive: oklch(0.580 0.140 22);
   --destructive-foreground: oklch(0.940 0.006 250);
-  --border: oklch(0.320 0.016 258 / 0.62);
-  --input: oklch(0.320 0.016 258 / 0.70);
-  --ring: oklch(0.700 0.075 238);
+  --border: oklch(0.320 0.016 258 / 0.58);
+  --input: oklch(0.320 0.016 258 / 0.65);
+  --ring: oklch(0.690 0.090 238);
   --chart-1: oklch(0.580 0.140 22);
   --chart-2: oklch(0.700 0.075 238);
   --chart-3: oklch(0.720 0.060 195);
@@ -922,14 +922,18 @@ html.non-macos {
   }
 
   .glass-panel {
-    background: color-mix(in oklch, var(--card) 82%, transparent);
-    border: 1px solid var(--border);
-    box-shadow: 0 18px 48px oklch(0.12 0.015 250 / 0.10);
-    backdrop-filter: blur(22px) saturate(1.2);
+    background: color-mix(in oklch, var(--card) 72%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+    box-shadow:
+      0 18px 48px oklch(0.12 0.015 250 / 0.10),
+      0 0 0 1px oklch(1 0 0 / 0.04) inset;
+    backdrop-filter: blur(28px) saturate(1.35);
   }
 
   .dark .glass-panel {
-    box-shadow: 0 22px 64px oklch(0.07 0.012 258 / 0.38);
+    box-shadow:
+      0 22px 64px oklch(0.07 0.012 258 / 0.38),
+      0 0 0 1px oklch(1 0 0 / 0.03) inset;
   }
 
   .codex.dark .glass-panel {
@@ -985,14 +989,18 @@ html.non-macos {
   }
 
   .glass-sidebar {
-    background: var(--sidebar);
-    border: 1px solid var(--sidebar-border);
-    box-shadow: 0 18px 48px oklch(0.12 0.015 250 / 0.12);
-    backdrop-filter: blur(24px) saturate(1.25);
+    background: color-mix(in oklch, var(--sidebar) 85%, transparent);
+    border: 1px solid color-mix(in oklch, var(--sidebar-border) 75%, transparent);
+    box-shadow:
+      0 18px 48px oklch(0.12 0.015 250 / 0.12),
+      0 0 0 1px oklch(1 0 0 / 0.04) inset;
+    backdrop-filter: blur(28px) saturate(1.35);
   }
 
   .dark .glass-sidebar {
-    box-shadow: 0 22px 64px oklch(0.07 0.012 258 / 0.42);
+    box-shadow:
+      0 22px 64px oklch(0.07 0.012 258 / 0.42),
+      0 0 0 1px oklch(1 0 0 / 0.03) inset;
   }
 
   .codex.dark .glass-sidebar {
@@ -1044,6 +1052,72 @@ html.non-macos {
   }
 
   .ember.dark .glass-sidebar {
+    box-shadow: 0 22px 64px oklch(0.08 0.014 45 / 0.42);
+  }
+
+  /* Glass dialog — frosted popover surfaces without extra backdrop-filter */
+  .glass-dialog {
+    background: color-mix(in oklch, var(--popover) 78%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+    box-shadow:
+      0 22px 64px oklch(0.12 0.015 250 / 0.14),
+      0 0 0 1px oklch(1 0 0 / 0.04) inset;
+  }
+
+  .dark .glass-dialog {
+    background: color-mix(in oklch, var(--popover) 68%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+    box-shadow:
+      0 22px 64px oklch(0.07 0.012 258 / 0.42),
+      0 0 0 1px oklch(1 0 0 / 0.03) inset;
+  }
+
+  .codex .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.10 0.025 300 / 0.14);
+  }
+  .codex.dark .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.10 0.025 300 / 0.42);
+  }
+
+  .claude .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.18 0.015 60 / 0.14);
+  }
+  .claude.dark .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.08 0.012 60 / 0.42);
+  }
+
+  .github .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.15 0.010 250 / 0.14);
+  }
+  .github.dark .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.08 0.012 250 / 0.42);
+  }
+
+  .linear .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.15 0.015 270 / 0.14);
+  }
+  .linear.dark .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.08 0.020 270 / 0.42);
+  }
+
+  .notion .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.16 0.010 60 / 0.14);
+  }
+  .notion.dark .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.08 0.008 55 / 0.42);
+  }
+
+  .sprout .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.14 0.012 140 / 0.14);
+  }
+  .sprout.dark .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.07 0.014 155 / 0.42);
+  }
+
+  .ember .glass-dialog {
+    box-shadow: 0 22px 64px oklch(0.17 0.014 55 / 0.14);
+  }
+  .ember.dark .glass-dialog {
     box-shadow: 0 22px 64px oklch(0.08 0.014 45 / 0.42);
   }
 
@@ -1149,43 +1223,43 @@ html.non-macos {
   }
 
   .timer-floating-bar {
-    backdrop-filter: blur(24px) saturate(1.4);
-    -webkit-backdrop-filter: blur(24px) saturate(1.4);
-    background: color-mix(in oklch, var(--background) 52%, transparent);
-    border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+    backdrop-filter: blur(28px) saturate(1.5);
+    -webkit-backdrop-filter: blur(28px) saturate(1.5);
+    background: color-mix(in oklch, var(--background) 48%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
     box-shadow:
       0 8px 32px oklch(0 0 0 / 0.08),
-      0 0 80px -24px color-mix(in oklch, var(--primary) 28%, transparent),
-      inset 0 1px 1px 0 oklch(1 0 0 / 0.08);
+      0 0 100px -24px color-mix(in oklch, var(--primary) 32%, transparent),
+      inset 0 1px 1px 0 oklch(1 0 0 / 0.10);
     border-radius: 1rem;
   }
 
   .dark .timer-floating-bar {
-    background: color-mix(in oklch, var(--background) 58%, transparent);
-    border-color: color-mix(in oklch, var(--border) 50%, transparent);
+    background: color-mix(in oklch, var(--background) 52%, transparent);
+    border-color: color-mix(in oklch, var(--border) 45%, transparent);
     box-shadow:
       0 8px 32px oklch(0 0 0 / 0.25),
-      0 0 80px -24px color-mix(in oklch, var(--primary) 22%, transparent),
-      inset 0 1px 1px 0 oklch(1 0 0 / 0.04);
+      0 0 100px -24px color-mix(in oklch, var(--primary) 26%, transparent),
+      inset 0 1px 1px 0 oklch(1 0 0 / 0.06);
   }
 
   .focus-metric-glass {
-    backdrop-filter: blur(12px) saturate(1.2);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
-    background: color-mix(in oklch, var(--background) 22%, transparent);
-    border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    background: color-mix(in oklch, var(--background) 18%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
     box-shadow:
-      0 0 20px -4px color-mix(in oklch, var(--primary) 18%, transparent),
-      inset 0 1px 1px 0 oklch(1 0 0 / 0.06);
+      0 0 28px -4px color-mix(in oklch, var(--primary) 24%, transparent),
+      inset 0 1px 1px 0 oklch(1 0 0 / 0.08);
     border-radius: 0.5rem;
   }
 
   .dark .focus-metric-glass {
-    background: color-mix(in oklch, var(--background) 28%, transparent);
-    border-color: color-mix(in oklch, var(--border) 55%, transparent);
+    background: color-mix(in oklch, var(--background) 22%, transparent);
+    border-color: color-mix(in oklch, var(--border) 50%, transparent);
     box-shadow:
-      0 0 20px -4px color-mix(in oklch, var(--primary) 15%, transparent),
-      inset 0 1px 1px 0 oklch(1 0 0 / 0.04);
+      0 0 28px -4px color-mix(in oklch, var(--primary) 20%, transparent),
+      inset 0 1px 1px 0 oklch(1 0 0 / 0.06);
   }
 
   .timer-floating-bar-glow {
@@ -1228,10 +1302,84 @@ html.non-macos {
 
   .focus-field {
     background:
-      radial-gradient(circle at 28% 24%, color-mix(in oklch, var(--primary) 18%, transparent) 0, transparent 26rem),
-      radial-gradient(circle at 82% 18%, color-mix(in oklch, var(--success) 13%, transparent) 0, transparent 22rem),
-      radial-gradient(circle at 50% 88%, color-mix(in oklch, var(--foreground) 7%, transparent) 0, transparent 30rem);
+      radial-gradient(circle at 28% 24%, color-mix(in oklch, var(--primary) 22%, transparent) 0, transparent 26rem),
+      radial-gradient(circle at 82% 18%, color-mix(in oklch, var(--success) 16%, transparent) 0, transparent 22rem),
+      radial-gradient(circle at 50% 88%, color-mix(in oklch, var(--foreground) 9%, transparent) 0, transparent 30rem);
     opacity: 0.78;
+  }
+
+  /* Ambient background glow for main app shell */
+  .ambient-shell {
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 20%, color-mix(in oklch, var(--primary) 10%, transparent) 0, transparent 50%),
+      radial-gradient(ellipse 50% 60% at 80% 80%, color-mix(in oklch, var(--success) 8%, transparent) 0, transparent 50%);
+  }
+
+  .dark .ambient-shell {
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 20%, color-mix(in oklch, var(--primary) 14%, transparent) 0, transparent 50%),
+      radial-gradient(ellipse 50% 60% at 80% 80%, color-mix(in oklch, var(--success) 10%, transparent) 0, transparent 50%);
+  }
+
+  /* Card glow on hover / active */
+  .card-glow {
+    transition: box-shadow 0.35s ease-out;
+  }
+  .card-glow:hover {
+    box-shadow:
+      0 18px 48px oklch(0.12 0.015 250 / 0.12),
+      0 0 60px -16px color-mix(in oklch, var(--primary) 18%, transparent),
+      0 0 0 1px oklch(1 0 0 / 0.04) inset;
+  }
+  .dark .card-glow:hover {
+    box-shadow:
+      0 22px 64px oklch(0.07 0.012 258 / 0.42),
+      0 0 60px -16px color-mix(in oklch, var(--primary) 14%, transparent),
+      0 0 0 1px oklch(1 0 0 / 0.03) inset;
+  }
+
+  /* Button shine overlay via pseudo-element */
+  .btn-glow {
+    position: relative;
+  }
+  .btn-glow::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(180deg, oklch(1 0 0 / 0.12) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* Primary button glow — uses ::after so it never overrides Tailwind focus rings */
+  .btn-glow-primary {
+    position: relative;
+  }
+  .btn-glow-primary::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    box-shadow:
+      0 0 20px -4px color-mix(in oklch, var(--primary) 35%, transparent);
+    pointer-events: none;
+    transition: box-shadow 0.25s ease-out;
+  }
+  .btn-glow-primary:hover::after {
+    box-shadow:
+      0 0 32px -4px color-mix(in oklch, var(--primary) 50%, transparent);
+  }
+
+  /* Active item glow */
+  .active-glow {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--primary) 30%, transparent),
+      0 0 24px -6px color-mix(in oklch, var(--primary) 22%, transparent);
+  }
+  .dark .active-glow {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--primary) 25%, transparent),
+      0 0 24px -6px color-mix(in oklch, var(--primary) 18%, transparent);
   }
 
   .focus-field::before,

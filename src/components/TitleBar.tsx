@@ -152,7 +152,7 @@ export function TitleBar({ onSearch, onSettings, children }: TitleBarProps) {
   return (
     <div
       data-tauri-drag-region
-      className="app-titlebar flex h-(--app-titlebar-inset) shrink-0 items-center select-none"
+      className="app-titlebar flex h-(--app-titlebar-inset) shrink-0 items-center select-none bg-background/60 backdrop-blur-md"
     >
       {/* Left section: traffic lights on macOS, actions on other platforms */}
       {IS_MACOS ? (

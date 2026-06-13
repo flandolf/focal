@@ -560,7 +560,7 @@ function EventForm({
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!title.trim()}>
+          <Button type="submit" disabled={!title.trim()} className="btn-glow-primary">
             {submitLabel}
           </Button>
         </div>

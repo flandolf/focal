@@ -152,7 +152,7 @@ export function AssessmentForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!canSave}>
+        <Button type="submit" disabled={!canSave} className="btn-glow-primary">
           {submitLabel}
         </Button>
       </DialogFooter>

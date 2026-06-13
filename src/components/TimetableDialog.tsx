@@ -736,7 +736,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
 
         <DialogFooter className="m-0 shrink-0 items-center justify-between gap-3 rounded-none border-t px-5 py-3">
           {saved ? (
-            <Button size="sm" onClick={handleClose} className="ml-auto gap-1.5 text-background">
+            <Button size="sm" onClick={handleClose} className="ml-auto gap-1.5 text-background btn-glow-primary">
               <Check className="h-4 w-4" />
               Done
             </Button>
@@ -762,7 +762,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                   size="sm"
                   onClick={handleParse}
                   disabled={loading || !imagePreview || !day1Starts}
-                  className="gap-1.5 text-background"
+                  className="gap-1.5 text-background btn-glow-primary"
                 >
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                   {loading ? "Analysing…" : "Parse with AI"}
@@ -774,7 +774,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
               <Button variant="outline" size="sm" onClick={() => setStep("upload")}>
                 Back
               </Button>
-              <Button size="sm" onClick={handleSave} disabled={approvedCount === 0} className="gap-1.5 text-background">
+              <Button size="sm" onClick={handleSave} disabled={approvedCount === 0} className="gap-1.5 text-background btn-glow-primary">
                 <Check className="h-4 w-4" />
                 Save {approvedCount} day{approvedCount !== 1 ? "s" : ""}
               </Button>

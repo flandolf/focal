@@ -200,11 +200,10 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <Button
+          <div className="flex gap-2">              <Button
               onClick={handleExport}
               disabled={exporting}
-              className="flex-1 gap-2"
+              className="flex-1 gap-2 btn-glow-primary"
             >
               {exporting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

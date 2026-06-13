@@ -299,7 +299,7 @@ export function SettingsView({
                     "group/nav relative flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none transition-colors",
                     "focus-visible:ring-3 focus-visible:ring-ring/50",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium active-glow"
                       : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
                   )}
                 >
