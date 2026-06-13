@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, ExternalLink, Search } from "lucide-react"
 import { cn, isRecord } from "@/lib/utils"
-import { getApiKey, setApiKey, getModel, setModel, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude } from "@/lib/settings"
+import { getApiKey, setApiKey, getModel, setModel, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude, getSyncOpenrouterKey, setSyncOpenrouterKey } from "@/lib/settings"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { ReasoningEffort } from "@/lib/settings"
 import { SETTINGS_SECTION_CLASS, SETTINGS_CHECKBOX_CLASS, SETTINGS_LINK_CLASS, getSettingsOptionClassName } from "./constants"
@@ -254,6 +254,7 @@ export function AIModelSection() {
   const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => getReasoningEffort())
   const [reasoningMaxTokens, setReasoningMaxTokensState] = useState(() => getReasoningMaxTokens())
   const [reasoningExclude, setReasoningExcludeState] = useState(() => getReasoningExclude())
+  const [syncOpenrouterKey, setSyncOpenrouterKeyState] = useState(() => getSyncOpenrouterKey())
 
   const [saved, setSaved] = useState(false)
   const [credits, setCredits] = useState<OpenRouterCredits | null>(null)
@@ -339,6 +340,12 @@ export function AIModelSection() {
     notifyUserSettingsChanged()
   }, [])
 
+  const handleSyncOpenrouterKeyChange = useCallback((checked: boolean) => {
+    setSyncOpenrouterKeyState(checked)
+    setSyncOpenrouterKey(checked)
+    notifyUserSettingsChanged()
+  }, [])
+
   const handleModelChange = useCallback((value: string) => {
     setModelState(value)
     setModel(value)
@@ -388,6 +395,20 @@ export function AIModelSection() {
           placeholder="sk-or-..."
           className="mt-2 font-mono text-xs"
         />
+        <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-border/70 bg-background/30 p-2.5 transition-colors hover:border-muted-foreground/30">
+          <input
+            type="checkbox"
+            checked={syncOpenrouterKey}
+            onChange={(e) => handleSyncOpenrouterKeyChange(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-primary mt-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+          <div className="min-w-0">
+            <p className="text-xs font-medium leading-tight">Sync key to account</p>
+            <p className="mt-0.5 text-caption text-muted-foreground/70">
+              When enabled, the API key is stored in your Supabase account and synced across devices.
+            </p>
+          </div>
+        </label>
         <div className="mt-1.5 flex items-start justify-between gap-2">
           <p className="min-w-0 text-caption text-muted-foreground/60">
             Stored locally. Used for AI file renaming.

@@ -2,7 +2,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getApiKey, getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setApiKey, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
+import { getApiKey, getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getSyncNotionToken, getSyncOpenrouterKey, getTimetableConfig, setApiKey, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
@@ -582,13 +582,13 @@ async function pullUserSettings(): Promise<void> {
   if (error) throw error
   if (data) {
     const settings = rowToUserSettings(data as UserSettingsRow)
-    if (settings.openrouter_api_key) setApiKey(settings.openrouter_api_key)
+    if (getSyncOpenrouterKey() && settings.openrouter_api_key) setApiKey(settings.openrouter_api_key)
     if (settings.openrouter_model) setModel(settings.openrouter_model)
     if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
     setReasoningMaxTokens(settings.reasoning_max_tokens)
     setReasoningExclude(settings.reasoning_exclude)
     setNotionCalendarSettings({
-      token: settings.notion_token,
+      token: getSyncNotionToken() ? settings.notion_token : getNotionCalendarSettings().token,
       dataSourceId: settings.notion_data_source_id,
       titleProperty: settings.notion_title_property,
       dateProperty: settings.notion_date_property,
@@ -1005,12 +1005,12 @@ function getLocalRecordId(table: SyncTable, payload: LocalRecord): string | null
 function collectUserSettingsForSync(): UserSettings {
   const notionSettings = getNotionCalendarSettings()
   return {
-    openrouter_api_key: getApiKey() ?? "",
+    openrouter_api_key: getSyncOpenrouterKey() ? (getApiKey() ?? "") : "",
     openrouter_model: getModel(),
     reasoning_effort: getReasoningEffort(),
     reasoning_max_tokens: getReasoningMaxTokens(),
     reasoning_exclude: getReasoningExclude(),
-    notion_token: notionSettings.token,
+    notion_token: getSyncNotionToken() ? notionSettings.token : "",
     notion_data_source_id: notionSettings.dataSourceId,
     notion_title_property: notionSettings.titleProperty,
     notion_date_property: notionSettings.dateProperty,
