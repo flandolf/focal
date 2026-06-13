@@ -57,6 +57,7 @@ const MISSING_SYNC_SCHEMA_MESSAGE = "Supabase sync tables are missing. Run supab
 const MAX_SYNC_RETRIES = 5
 const MAX_SYNC_RETRIES_TRANSIENT = 8
 const FLUSH_INTERVAL_MS = 30_000
+const PULL_INTERVAL_MS = 120_000
 let currentSession: Session | null = null
 let currentDeviceId: string | null = null
 let unsubscribeRealtime: (() => void) | null = null
@@ -65,6 +66,7 @@ let flushPromise: Promise<void> | null = null
 let pullPromise: Promise<void> | null = null
 let metaLock: Promise<unknown> = Promise.resolve()
 let flushInterval: ReturnType<typeof setInterval> | null = null
+let pullInterval: ReturnType<typeof setInterval> | null = null
 let snapshot: SyncStatusSnapshot = {
   status: "signed-out",
   pendingCount: 0,
@@ -116,6 +118,10 @@ export async function setSyncSession(session: Session | null): Promise<void> {
     clearInterval(flushInterval)
     flushInterval = null
   }
+  if (pullInterval) {
+    clearInterval(pullInterval)
+    pullInterval = null
+  }
 
   if (!session || !supabase) {
     persistedFailedItems = []
@@ -145,6 +151,12 @@ export async function setSyncSession(session: Session | null): Promise<void> {
   flushInterval = setInterval(() => {
     void flushQueue()
   }, FLUSH_INTERVAL_MS)
+
+  // Periodic pull as a safety net — catches remote changes missed by realtime
+  // subscriptions (e.g. during reconnection gaps).
+  pullInterval = setInterval(() => {
+    void pullRemoteChanges()
+  }, PULL_INTERVAL_MS)
 }
 
 export async function recordLocalUpsert(table: SyncTable, payload: LocalRecord): Promise<void> {
@@ -418,6 +430,12 @@ async function runForcePush(mode: "merge" | "overwrite"): Promise<void> {
 
 async function flushQueue(): Promise<void> {
   if (syncDisabledReason) return
+  // Wait for any in-progress flush to finish so newly-enqueued items
+  // (added during that flush) get pushed promptly.
+  if (flushPromise) {
+    try { await flushPromise } catch { /* ignore; we'll retry below */ }
+  }
+  // If another caller already started a new flush while we awaited, piggyback.
   if (flushPromise) return flushPromise
   flushPromise = flushQueueInternal().finally(() => {
     flushPromise = null
@@ -1211,6 +1229,7 @@ function emitLocalDataChanged(table: SyncTable): void {
 function handleOnline() {
   emitStatus({ isOnline: true })
   void flushQueue()
+  void pullRemoteChanges()
 }
 
 function handleOffline() {

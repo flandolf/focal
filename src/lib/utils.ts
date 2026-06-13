@@ -235,3 +235,11 @@ export function formatTime12(time24: string): string {
   const displayH = h % 12 === 0 ? 12 : h % 12
   return `${displayH}:${String(m).padStart(2, "0")} ${period}`
 }
+
+/**
+ * Format a 24h time string ("HH:mm") using either 12h or 24h display.
+ */
+export function formatTime(time24: string, use24Hour: boolean): string {
+  if (use24Hour) return time24
+  return formatTime12(time24)
+}

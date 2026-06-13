@@ -171,6 +171,21 @@ export interface UserSettings {
   notion_subject_property: string
 }
 
+export interface TimetableViewSettings {
+  /** Show all 10 days at once instead of 5-day blocks. */
+  showAllDays: boolean
+  /** Show location badges on period rows. */
+  showLocations: boolean
+  /** Show break entries (Recess, Lunch, etc.). */
+  showBreaks: boolean
+  /** Use 24-hour time format instead of 12-hour. */
+  use24Hour: boolean
+  /** Manual week block override (null = auto-detect from current day). */
+  manualBlock: 1 | 2 | null
+  /** Day labels to hide from the view display. */
+  hiddenDays: number[]
+}
+
 /** Relaxed timetable config for localStorage persistence. Use TimetableEntry from types.ts for runtime access. */
 export interface TimetableConfig {
   enabled: boolean
@@ -179,6 +194,8 @@ export interface TimetableConfig {
   entries: TimetableEntry[]
   /** Manual override of the current day label (1–10). When set, takes precedence over the date-based calculation. */
   currentDayOverride?: TimetableDayLabel | null
+  /** View-level display preferences. */
+  viewSettings?: TimetableViewSettings
 }
 
 export type PriorityItemKind =

@@ -153,11 +153,23 @@ export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; 
 import type { TimetableConfig, TimetableDayLabel } from "@/lib/types"
 export type { TimetableConfig } from "@/lib/types"
 
+import type { TimetableViewSettings } from "@/lib/types"
+
+export const DEFAULT_VIEW_SETTINGS: TimetableViewSettings = {
+  showAllDays: false,
+  showLocations: true,
+  showBreaks: true,
+  use24Hour: false,
+  manualBlock: null,
+  hiddenDays: [],
+}
+
 export const DEFAULT_TIMETABLE_CONFIG: TimetableConfig = {
   enabled: false,
   day1Starts: "",
   holidays: [],
   entries: [],
+  viewSettings: { ...DEFAULT_VIEW_SETTINGS },
 }
 
 function isValidDayLabel(value: unknown): value is TimetableDayLabel {
@@ -177,12 +189,23 @@ export function getTimetableConfig(): TimetableConfig {
         dayLabel: e.dayLabel as TimetableDayLabel,
         periods: Array.isArray(e.periods) ? e.periods : [],
       }))
+    const rawViewSettings = parsed.viewSettings as Partial<TimetableViewSettings> | undefined
     return {
       enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : false,
       day1Starts: typeof parsed.day1Starts === "string" ? parsed.day1Starts : "",
       holidays: Array.isArray(parsed.holidays) ? (parsed.holidays as TimetableConfig["holidays"]) : [],
       entries,
       currentDayOverride: isValidDayLabel(parsed.currentDayOverride) ? parsed.currentDayOverride : null,
+      viewSettings: rawViewSettings
+        ? {
+            showAllDays: typeof rawViewSettings.showAllDays === "boolean" ? rawViewSettings.showAllDays : DEFAULT_VIEW_SETTINGS.showAllDays,
+            showLocations: typeof rawViewSettings.showLocations === "boolean" ? rawViewSettings.showLocations : DEFAULT_VIEW_SETTINGS.showLocations,
+            showBreaks: typeof rawViewSettings.showBreaks === "boolean" ? rawViewSettings.showBreaks : DEFAULT_VIEW_SETTINGS.showBreaks,
+            use24Hour: typeof rawViewSettings.use24Hour === "boolean" ? rawViewSettings.use24Hour : DEFAULT_VIEW_SETTINGS.use24Hour,
+            manualBlock: rawViewSettings.manualBlock === 1 || rawViewSettings.manualBlock === 2 ? rawViewSettings.manualBlock : DEFAULT_VIEW_SETTINGS.manualBlock,
+            hiddenDays: Array.isArray(rawViewSettings.hiddenDays) ? rawViewSettings.hiddenDays : DEFAULT_VIEW_SETTINGS.hiddenDays,
+          }
+        : { ...DEFAULT_VIEW_SETTINGS },
     }
   } catch {
     return DEFAULT_TIMETABLE_CONFIG
