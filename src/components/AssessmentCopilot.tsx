@@ -438,7 +438,7 @@ export function AssessmentCopilot({
                             </div>
                             <div className="space-y-2">
                               <label className="text-xs font-medium text-muted-foreground">Assessment</label>
-                              <Select value={draft.projectId || "_none"} onValueChange={(value) => handleProjectChange(draft, value === "_none" ? "" : value)}>
+                              <Select value={draft.projectId ?? "_none"} onValueChange={(value) => handleProjectChange(draft, value === "_none" ? "" : value)}>
                                 <SelectTrigger className="h-10 w-full">
                                   <SelectValue placeholder="No assessment" />
                                 </SelectTrigger>
