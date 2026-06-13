@@ -2,7 +2,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getApiKey, getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setApiKey, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig } from "@/lib/settings"
+import { getApiKey, getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setApiKey, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
@@ -577,13 +577,14 @@ async function pullTimetableConfig(): Promise<void> {
 
 async function pullUserSettings(): Promise<void> {
   if (!supabase || !currentSession) return
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const { data, error } = await supabase.from("user_settings").select("*").eq("user_id", currentSession.user.id).maybeSingle()
   if (error) throw error
   if (data) {
     const settings = rowToUserSettings(data as UserSettingsRow)
     if (settings.openrouter_api_key) setApiKey(settings.openrouter_api_key)
     if (settings.openrouter_model) setModel(settings.openrouter_model)
-    if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as any)
+    if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
     setReasoningMaxTokens(settings.reasoning_max_tokens)
     setReasoningExclude(settings.reasoning_exclude)
     setNotionCalendarSettings({
