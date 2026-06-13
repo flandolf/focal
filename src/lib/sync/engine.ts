@@ -225,6 +225,10 @@ async function runForcePush(mode: "merge" | "overwrite"): Promise<void> {
       emitStatus({ status: "error", error: snapshot.error ?? "Some items failed to push", details: `${label} halted — ${snapshot.pendingCount} item${snapshot.pendingCount === 1 ? "" : "s"} still pending after push` })
       return
     }
+    if (snapshot.failedItems && snapshot.failedItems.length > 0) {
+      emitStatus({ status: "error", error: snapshot.error ?? "Some items failed to push", details: `${label} complete — ${snapshot.failedItems.length} item${snapshot.failedItems.length === 1 ? "" : "s"} dropped after max retries` })
+      return
+    }
     if (mode === "merge") {
       emitStatus({ status: "syncing", error: null, details: `${label} — pulling remote changes...` })
       await pullRemoteChanges()
@@ -280,6 +284,7 @@ async function flushQueueInternal(): Promise<void> {
       stats[item.table] = (stats[item.table] ?? 0) + 1
     } catch (e) {
       const errMsg = getErrorMessage(e)
+      console.error(`[sync] pushQueueItem failed for ${item.table} ${item.rowId}:`, errMsg, item.payload)
       remaining.push({
         ...item,
         retryCount: item.retryCount + 1,
@@ -651,38 +656,49 @@ function getQueueRowId(table: SyncTable, payload: LocalRecord, row: RemoteRow): 
 
 async function migrateLocalIdsToUuids(): Promise<void> {
   const meta = await readMeta()
-  if (meta.migratedUuidIds) return
 
   const projects = await readJsonArray<Project>("projects.json")
   const projectIdMap = new Map<string, string>()
+  let changed = false
   const migratedProjects = projects.map((project) => {
     const id = isUuid(project.id) ? project.id : crypto.randomUUID()
-    if (id !== project.id) projectIdMap.set(project.id, id)
+    if (id !== project.id) {
+      projectIdMap.set(project.id, id)
+      changed = true
+    }
     return ensureUpdatedAt({ ...project, id })
   })
 
   const events = await readJsonArray<CalendarEvent>("events.json")
-  const migratedEvents = events.map((event) => ensureUpdatedAt({
-    ...event,
-    id: isUuid(event.id) ? event.id : crypto.randomUUID(),
-  }))
+  const migratedEvents = events.map((event) => {
+    const id = isUuid(event.id) ? event.id : crypto.randomUUID()
+    if (id !== event.id) changed = true
+    return ensureUpdatedAt({ ...event, id })
+  })
 
   const sessions = await readJsonArray<StudySession>("sessions.json")
-  const migratedSessions = sessions.map((session) => ensureUpdatedAt({
-    ...session,
-    id: isUuid(session.id) ? session.id : crypto.randomUUID(),
-    projectId: session.projectId ? (projectIdMap.get(session.projectId) ?? session.projectId) : undefined,
-  }))
+  const migratedSessions = sessions.map((session) => {
+    const id = isUuid(session.id) ? session.id : crypto.randomUUID()
+    const projectId = session.projectId
+      ? (projectIdMap.get(session.projectId) ?? (isUuid(session.projectId) ? session.projectId : undefined))
+      : undefined
+    if (id !== session.id || projectId !== session.projectId) changed = true
+    return ensureUpdatedAt({ ...session, id, projectId })
+  })
 
-  await Promise.all([
-    writeJsonArray("projects.json", migratedProjects),
-    writeJsonArray("events.json", migratedEvents),
-    writeJsonArray("sessions.json", migratedSessions),
-    writeMeta({ ...meta, migratedUuidIds: true }),
-  ])
-  emitLocalDataChanged("projects")
-  emitLocalDataChanged("events")
-  emitLocalDataChanged("study_sessions")
+  if (changed) {
+    await Promise.all([
+      writeJsonArray("projects.json", migratedProjects),
+      writeJsonArray("events.json", migratedEvents),
+      writeJsonArray("sessions.json", migratedSessions),
+    ])
+    emitLocalDataChanged("projects")
+    emitLocalDataChanged("events")
+    emitLocalDataChanged("study_sessions")
+  }
+  if (!meta.migratedUuidIds || changed) {
+    await writeMeta({ ...meta, migratedUuidIds: true })
+  }
 }
 
 async function readMeta(): Promise<SyncMeta> {
