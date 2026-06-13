@@ -30,7 +30,8 @@ export interface SyncMeta {
   lastPulledAt?: Partial<Record<SyncTable, string>>
   lastSuccessfulSyncAt: string | null
   migratedUuidIds?: boolean
-  calendarBackfillCompletedAt?: string | null
+  eventsBackfillCompletedAt?: string | null
+  sessionsBackfillCompletedAt?: string | null
   localChangedAt?: Partial<Record<SyncTable, string>>
   localChangedRowIds?: Partial<Record<SyncTable, string[]>>
   deletedRowIds?: Partial<Record<SyncTable, string[]>>

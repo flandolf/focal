@@ -25,8 +25,8 @@ export function shouldEnqueueFileRow(
   return isChangedRow(changedRowIds, table, row.id) || shouldEnqueueLocalTable(table, changedTables, lastSyncAt) || !lastSyncAt || compareIso(row.updated_at, lastSyncAt) > 0
 }
 
-export function shouldBackfillCalendarTable(table: SyncTable, calendarBackfillCompletedAt?: string | null): boolean {
-  return !calendarBackfillCompletedAt && (table === "events" || table === "study_sessions")
+export function shouldBackfillCalendarTable(table: SyncTable, backfillCompletedAt?: string | null): boolean {
+  return !backfillCompletedAt && (table === "events" || table === "study_sessions")
 }
 
 export function isChangedRow(
