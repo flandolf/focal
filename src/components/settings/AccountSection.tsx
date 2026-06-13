@@ -20,6 +20,32 @@ interface AccountSectionProps {
   onForcePushAndOverwrite?: () => void
 }
 
+function SyncStatusBadge({ status }: { status: SyncStatusSnapshot["status"] }) {
+  const config = {
+    synced: { color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: CheckCircle2, label: "Synced" },
+    syncing: { color: "text-primary bg-primary/10 border-primary/20", icon: RefreshCw, label: "Syncing..." },
+    pending: { color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20", icon: Clock, label: "Pending" },
+    error: { color: "text-destructive bg-destructive/10 border-destructive/20", icon: AlertTriangle, label: "Error" },
+    "signed-out": { color: "text-muted-foreground bg-muted/25 border-border", icon: Clock, label: "Signed out" },
+  }[status]
+  const Icon = config.icon
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-caption font-medium ${config.color}`}>
+      <Icon className="h-3 w-3" />
+      {config.label}
+    </span>
+  )
+}
+
+function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+  } catch {
+    return iso
+  }
+}
+
 export function AccountSection({
   configured,
   email,
@@ -52,32 +78,6 @@ export function AccountSection({
       setFormError(String(e))
     }
   }
-
-function SyncStatusBadge({ status }: { status: SyncStatusSnapshot["status"] }) {
-  const config = {
-    synced: { color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: CheckCircle2, label: "Synced" },
-    syncing: { color: "text-primary bg-primary/10 border-primary/20", icon: RefreshCw, label: "Syncing..." },
-    pending: { color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20", icon: Clock, label: "Pending" },
-    error: { color: "text-destructive bg-destructive/10 border-destructive/20", icon: AlertTriangle, label: "Error" },
-    "signed-out": { color: "text-muted-foreground bg-muted/25 border-border", icon: Clock, label: "Signed out" },
-  }[status]
-  const Icon = config.icon
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-caption font-medium ${config.color}`}>
-      <Icon className="h-3 w-3" />
-      {config.label}
-    </span>
-  )
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
-  } catch {
-    return iso
-  }
-}
 
   return (
     <section className={SETTINGS_SECTION_CLASS}>

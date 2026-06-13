@@ -197,13 +197,18 @@ function App() {
     localStorage.setItem(HIDDEN_SUBJECTS_STORAGE_KEY, JSON.stringify(hiddenSubjectIds))
   }, [hiddenSubjectIds])
 
+  const suppressCustomSubjectSyncRef = useRef(false)
+  const suppressHiddenSubjectSyncRef = useRef(false)
+
   useEffect(() => {
     const handler = (event: Event) => {
       const table = (event as CustomEvent<{ table?: string }>).detail?.table
       if (table === "custom_subjects") {
+        suppressCustomSubjectSyncRef.current = true
         setCustomSubjects(getStoredCustomSubjects())
       }
       if (table === "hidden_subjects") {
+        suppressHiddenSubjectSyncRef.current = true
         setHiddenSubjectIds(getStoredHiddenSubjectIds())
       }
       if (table === "timetable_config") {
@@ -218,6 +223,11 @@ function App() {
   useEffect(() => {
     const previous = previousCustomSubjectIdsRef.current
     const currentIds = new Set(customSubjects.map((subject) => subject.id))
+    if (suppressCustomSubjectSyncRef.current) {
+      suppressCustomSubjectSyncRef.current = false
+      previousCustomSubjectIdsRef.current = currentIds
+      return
+    }
     if (previous) {
       customSubjects.forEach((subject) => void recordLocalUpsert("custom_subjects", subject))
       previous.forEach((subjectId) => {
@@ -231,6 +241,11 @@ function App() {
   useEffect(() => {
     const previous = previousHiddenSubjectIdsRef.current
     const currentIds = new Set(hiddenSubjectIds)
+    if (suppressHiddenSubjectSyncRef.current) {
+      suppressHiddenSubjectSyncRef.current = false
+      previousHiddenSubjectIdsRef.current = currentIds
+      return
+    }
     if (previous) {
       hiddenSubjectIds.forEach((subjectId) => void recordLocalUpsert("hidden_subjects", subjectId))
       previous.forEach((subjectId) => {
