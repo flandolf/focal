@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { LogOut, Mail, UserPlus, RefreshCw, WifiOff, Clock, AlertTriangle, CheckCircle2, UploadCloud, CloudCog, Flame } from "lucide-react"
+import { LogOut, Mail, UserPlus, RefreshCw, WifiOff, Clock, AlertTriangle, CheckCircle2, UploadCloud, CloudCog, Flame, Download, Trash2, RotateCw, GitMerge, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SETTINGS_SECTION_CLASS } from "@/components/settings/constants"
@@ -16,18 +16,28 @@ interface AccountSectionProps {
   onSignUp: (email: string, password: string) => Promise<unknown>
   onSignOut: () => Promise<void>
   onRetrySync?: () => void
+  onPullNow?: () => void
+  onPushNow?: () => void
+  onClearFailedItems?: () => void
+  onRetryFailedItem?: (table: string, rowId: string) => void
+  onDropFailedItem?: (table: string, rowId: string) => void
   onForcePushAndMerge?: () => void
   onForcePushAndOverwrite?: () => void
+  onAcceptRemote?: (table: string, rowId: string) => void
+  onKeepLocal?: (table: string, rowId: string) => void
+  onDismissConflict?: (table: string, rowId: string) => void
+  onClearConflicts?: () => void
 }
 
-function SyncStatusBadge({ status }: { status: SyncStatusSnapshot["status"] }) {
-  const config = {
+function SyncStatusBadge({ status }: { status: string }) {
+  const configs: Record<string, { color: string; icon: typeof CheckCircle2; label: string }> = {
     synced: { color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: CheckCircle2, label: "Synced" },
     syncing: { color: "text-primary bg-primary/10 border-primary/20", icon: RefreshCw, label: "Syncing..." },
     pending: { color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20", icon: Clock, label: "Pending" },
     error: { color: "text-destructive bg-destructive/10 border-destructive/20", icon: AlertTriangle, label: "Error" },
     "signed-out": { color: "text-muted-foreground bg-muted/25 border-border", icon: Clock, label: "Signed out" },
-  }[status]
+  }
+  const config = configs[status] ?? configs["signed-out"]
   const Icon = config.icon
   return (
     <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-caption font-medium ${config.color}`}>
@@ -56,8 +66,17 @@ export function AccountSection({
   onSignUp,
   onSignOut,
   onRetrySync,
+  onPullNow,
+  onPushNow,
+  onClearFailedItems,
+  onRetryFailedItem,
+  onDropFailedItem,
   onForcePushAndMerge,
   onForcePushAndOverwrite,
+  onAcceptRemote,
+  onKeepLocal,
+  onDismissConflict,
+  onClearConflicts,
 }: AccountSectionProps) {
   const [formEmail, setFormEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -157,39 +176,180 @@ export function AccountSection({
             </div>
           )}
 
-          {/* Failed items */}
+          {/* Failed items with actions */}
           {sync.failedItems && sync.failedItems.length > 0 && (
             <div className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 px-2 py-2">
-              <p className="text-caption text-destructive font-medium inline-flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                {sync.failedItems.length} failed item{sync.failedItems.length === 1 ? "" : "s"}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-caption text-destructive font-medium inline-flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {sync.failedItems.length} failed item{sync.failedItems.length === 1 ? "" : "s"}
+                </p>
+                {onClearFailedItems && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 text-caption text-destructive/70 hover:text-destructive"
+                    onClick={() => onClearFailedItems()}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Clear all
+                  </Button>
+                )}
+              </div>
               <ul className="mt-1 space-y-1">
                 {sync.failedItems.map((item, i) => (
-                  <li key={i} className="text-caption text-destructive/80">
-                    <span className="font-medium capitalize">{item.table.replace("_", " ")}</span>{" "}
-                    <code className="rounded bg-background/60 px-1 font-mono text-[10px]">{item.rowId.slice(0, 8)}</code>
-                    {item.error && ` — ${item.error}`}
+                  <li key={i} className="flex items-center justify-between gap-2 rounded bg-background/40 px-2 py-1">
+                    <span className="text-caption text-destructive/80 min-w-0 truncate">
+                      <span className="font-medium capitalize">{item.table.replace("_", " ")}</span>{" "}
+                      <code className="rounded bg-background/60 px-1 font-mono text-[10px]">{item.rowId.slice(0, 8)}</code>
+                      {item.error && ` — ${item.error}`}
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {onRetryFailedItem && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          title="Retry this item"
+                          onClick={() => onRetryFailedItem(item.table, item.rowId)}
+                        >
+                          <RotateCw className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {onDropFailedItem && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-destructive/50 hover:text-destructive"
+                          title="Drop this item"
+                          onClick={async () => {
+                            const confirmed = await confirmDestructiveAction({
+                              title: "Drop this sync item?",
+                              description: `This permanently removes the failed ${item.table.replace("_", " ")} item from the sync queue. Local data is not affected.`,
+                              actionLabel: "Drop",
+                            })
+                            if (confirmed) onDropFailedItem(item.table, item.rowId)
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {sync.status === "error" && sync.isOnline && onRetrySync && (
-            <div className="mt-2">
+
+          {/* Sync conflicts */}
+          {sync.conflicts && sync.conflicts.length > 0 && (
+            <div className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-caption text-amber-700 dark:text-amber-400 font-medium inline-flex items-center gap-1">
+                  <GitMerge className="h-3 w-3" />
+                  {sync.conflicts.length} conflict{sync.conflicts.length === 1 ? "" : "s"} detected
+                </p>
+                {onClearConflicts && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 text-caption text-amber-700/70 dark:text-amber-400/70 hover:text-amber-700"
+                    onClick={() => onClearConflicts()}
+                  >
+                    <X className="h-3 w-3" />
+                    Dismiss all
+                  </Button>
+                )}
+              </div>
+              <p className="mt-1 text-caption text-amber-700/70 dark:text-amber-400/70">
+                Items were modified on both this device and another. Choose which version to keep.
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {sync.conflicts.map((conflict, i) => (
+                  <li key={i} className="rounded bg-background/40 px-2 py-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-caption font-medium truncate">{conflict.label}</span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {onKeepLocal && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 gap-1 text-caption border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
+                          onClick={() => onKeepLocal(conflict.table, conflict.rowId)}
+                        >
+                          <UploadCloud className="h-3 w-3" />
+                          Keep local
+                        </Button>
+                      )}
+                      {onAcceptRemote && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 gap-1 text-caption border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-700"
+                          onClick={() => onAcceptRemote(conflict.table, conflict.rowId)}
+                        >
+                          <Download className="h-3 w-3" />
+                          Accept remote
+                        </Button>
+                      )}
+                      {onDismissConflict && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 gap-1 text-caption text-muted-foreground hover:text-foreground"
+                          onClick={() => onDismissConflict(conflict.table, conflict.rowId)}
+                        >
+                          <X className="h-3 w-3" />
+                          Dismiss
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* Manual sync actions */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {onPullNow && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 text-caption"
+                onClick={() => void onPullNow()}
+                disabled={loading || sync.status === "syncing"}
+              >
+                <Download className="h-3 w-3" />
+                Pull now
+              </Button>
+            )}
+            {onPushNow && sync.pendingCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 text-caption"
+                onClick={() => void onPushNow()}
+                disabled={loading || sync.status === "syncing"}
+              >
+                <UploadCloud className="h-3 w-3" />
+                Push {sync.pendingCount} pending
+              </Button>
+            )}
+            {sync.status === "error" && sync.isOnline && onRetrySync && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1 text-caption"
                 onClick={() => void onRetrySync()}
-                disabled={loading}
+                disabled={loading || (sync.status as string) === "syncing"}
               >
                 <RefreshCw className="h-3 w-3" />
                 Retry sync
               </Button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Force push controls */}
           <div className="mt-4 border-t border-border/40 pt-3">

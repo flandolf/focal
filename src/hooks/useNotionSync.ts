@@ -83,18 +83,23 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
             description: result.skippedReasons[0],
           })
         }
-        if (result.conflicts > 0) {
-          const conflicts: NotionConflict[] = result.conflictDetails.map((detail, i) => ({
+        if (result.conflicts > 0 && result.conflictItems.length > 0) {
+          const conflicts: NotionConflict[] = result.conflictItems.map((item, i) => ({
             id: `conflict-${i}`,
-            type: detail.toLowerCase().includes("session") ? "session" : "event",
-            title: detail.split('"')[1] ?? `Item ${i + 1}`,
+            type: item.kind,
+            title: item.title,
+            localId: item.localId,
+            notionPageId: item.notionPageId,
             localVersion: {
-              title: detail.split('"')[1] ?? "Local version",
-              startTime: undefined,
+              title: item.title,
+              startTime: item.startTime,
+              endTime: item.endTime,
             },
             notionVersion: {
-              title: "Notion version",
-              startTime: undefined,
+              title: `Notion version (last edited ${item.notionLastEditedTime ? new Date(item.notionLastEditedTime).toLocaleString() : "unknown"})`,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              url: item.notionUrl,
             },
           }))
           setNotionConflicts(conflicts)
@@ -211,6 +216,72 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     }
   }, [syncSessions, performNotionSync])
 
+  const resolveConflicts = useCallback(async (resolutions: Record<string, "local" | "notion" | "skip">) => {
+    const settings = getNotionCalendarSettings()
+    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
+
+    const localResolutions: string[] = []
+    const notionResolutions: string[] = []
+    const skipped: string[] = []
+
+    for (const conflict of notionConflicts) {
+      const resolution = resolutions[conflict.id]
+      if (!resolution || resolution === "skip") {
+        skipped.push(conflict.title)
+        continue
+      }
+
+      if (resolution === "local") {
+        // Force-push local version to Notion
+        localResolutions.push(conflict.title)
+        if (conflict.type === "event") {
+          const event = eventsRef.current.find((e) => e.id === conflict.localId)
+          if (event) {
+            try {
+              await pushEventToNotion(settings, event, allSubjectsRef.current)
+            } catch (e) {
+              console.error(`Failed to force-push event "${conflict.title}":`, e)
+            }
+          }
+        } else {
+          const session = sessionsRef.current.find((s) => s.id === conflict.localId)
+          if (session) {
+            try {
+              await pushSessionToNotion(settings, session, allSubjectsRef.current)
+            } catch (e) {
+              console.error(`Failed to force-push session "${conflict.title}":`, e)
+            }
+          }
+        }
+      } else if (resolution === "notion") {
+        // Will be resolved on next full sync (pull will overwrite local)
+        notionResolutions.push(conflict.title)
+      }
+    }
+
+    // For "notion" resolutions, trigger a full re-sync to pull Notion changes
+    if (notionResolutions.length > 0) {
+      setSyncStatus("syncing")
+      try {
+        await performNotionSync(true)
+      } catch (e) {
+        console.error("Failed to pull Notion changes for resolution:", e)
+      }
+    }
+
+    const parts: string[] = []
+    if (localResolutions.length > 0) parts.push(`${localResolutions.length} kept local`)
+    if (notionResolutions.length > 0) parts.push(`${notionResolutions.length} accepted from Notion`)
+    if (skipped.length > 0) parts.push(`${skipped.length} skipped`)
+
+    if (parts.length > 0) {
+      toast.success(`Conflicts resolved: ${parts.join(", ")}`)
+    }
+
+    setNotionConflicts([])
+  }, [notionConflicts, performNotionSync, eventsRef, sessionsRef, allSubjectsRef, setNotionConflicts])
+
+
   return {
     syncStatus,
     lastSyncTime,
@@ -222,5 +293,6 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     requestNotionSync,
     pushEventChange,
     pushSessionChange,
+    resolveConflicts,
   }
 }

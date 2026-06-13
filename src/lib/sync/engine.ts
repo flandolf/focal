@@ -36,6 +36,7 @@ import type {
   ProjectRow,
   RemoteRow,
   StudySessionRow,
+  SyncConflictItem,
   SyncMeta,
   SyncQueueItem,
   SyncStatusSnapshot,
@@ -44,7 +45,6 @@ import type {
   UserSettingsRow,
 } from "@/lib/sync/types"
 import type { CalendarEvent, Project, StudySession, Subject, UserSettings } from "@/lib/types"
-
 const META_FILE = "sync-meta.json"
 const FILES: Partial<Record<SyncTable, string>> = {
   projects: "projects.json",
@@ -55,8 +55,8 @@ const CUSTOM_SUBJECTS_KEY = "focal-custom-subjects"
 const HIDDEN_SUBJECTS_KEY = "focal-hidden-subjects"
 const MISSING_SYNC_SCHEMA_MESSAGE = "Supabase sync tables are missing. Run supabase/migrations/0001_initial_sync.sql, then reload Focal."
 const MAX_SYNC_RETRIES = 5
+const MAX_SYNC_RETRIES_TRANSIENT = 8
 const FLUSH_INTERVAL_MS = 30_000
-
 let currentSession: Session | null = null
 let currentDeviceId: string | null = null
 let unsubscribeRealtime: (() => void) | null = null
@@ -73,12 +73,31 @@ let snapshot: SyncStatusSnapshot = {
   details: null,
   tableStats: null,
   failedItems: null,
+  conflicts: null,
   isOnline: true,
 }
 const listeners = new Set<(status: SyncStatusSnapshot) => void>()
 
+// Accumulated failed items that persist across status updates until explicitly cleared
+let persistedFailedItems: SyncStatusSnapshot["failedItems"] = []
+let persistedConflicts: SyncStatusSnapshot["conflicts"] = []
+
 function emitStatus(update: Partial<SyncStatusSnapshot>) {
-  snapshot = { ...snapshot, ...update }
+  // Merge new failed items with persisted ones; keep old failures not in the new set.
+  const newFailedItems = update.failedItems
+  if (newFailedItems !== undefined) {
+    const newIds = new Set(newFailedItems?.map((f) => `${f.table}:${f.rowId}`) ?? [])
+    const kept = (persistedFailedItems ?? []).filter((f) => !newIds.has(`${f.table}:${f.rowId}`))
+    persistedFailedItems = [...kept, ...(newFailedItems ?? [])]
+  }
+  // Merge new conflicts with persisted ones; keep old conflicts not in the new set.
+  const newConflicts = update.conflicts
+  if (newConflicts !== undefined) {
+    const newIds = new Set(newConflicts?.map((c) => `${c.table}:${c.rowId}`) ?? [])
+    const kept = (persistedConflicts ?? []).filter((c) => !newIds.has(`${c.table}:${c.rowId}`))
+    persistedConflicts = [...kept, ...(newConflicts ?? [])]
+  }
+  snapshot = { ...snapshot, ...update, failedItems: persistedFailedItems, conflicts: persistedConflicts }
   listeners.forEach((listener) => listener(snapshot))
 }
 
@@ -99,7 +118,9 @@ export async function setSyncSession(session: Session | null): Promise<void> {
   }
 
   if (!session || !supabase) {
-    emitStatus({ status: "signed-out", pendingCount: 0, error: null, details: null, tableStats: null, failedItems: null, isOnline: true })
+    persistedFailedItems = []
+    persistedConflicts = []
+    emitStatus({ status: "signed-out", pendingCount: 0, error: null, details: null, tableStats: null, failedItems: [], conflicts: [], isOnline: true })
     return
   }
 
@@ -222,6 +243,123 @@ export async function retrySync(): Promise<void> {
   await runInitialSync()
 }
 
+/** Manually pull remote changes without pushing local changes first. */
+export async function pullNow(): Promise<void> {
+  if (!currentSession) {
+    emitStatus({ status: "error", error: "Not signed in", details: "Sign in to pull remote changes" })
+    return
+  }
+  if (syncDisabledReason) {
+    emitStatus({ status: "error", error: syncDisabledReason, details: syncDisabledReason })
+    return
+  }
+  emitStatus({ status: "syncing", error: null, details: "Pulling remote changes..." })
+  await pullRemoteChanges()
+}
+
+/** Manually push queued local changes without pulling remote first. */
+export async function pushNow(): Promise<void> {
+  if (!currentSession) {
+    emitStatus({ status: "error", error: "Not signed in", details: "Sign in to push local changes" })
+    return
+  }
+  if (syncDisabledReason) {
+    emitStatus({ status: "error", error: syncDisabledReason, details: syncDisabledReason })
+    return
+  }
+  emitStatus({ status: "syncing", error: null, details: "Pushing local changes..." })
+  await flushQueue()
+}
+
+/** Clear all persisted failed items from the status snapshot. */
+export function clearFailedItems(): void {
+  persistedFailedItems = []
+  emitStatus({ failedItems: [] })
+}
+
+/** Re-queue a single failed item for retry. */
+export async function retryFailedItem(table: SyncTable, rowId: string): Promise<void> {
+  // Remove from persisted failed items
+  persistedFailedItems = (persistedFailedItems ?? []).filter(
+    (f) => !(f.table === table && f.rowId === rowId),
+  )
+  emitStatus({ failedItems: persistedFailedItems })
+  // The item is still in the sync meta changedRowIds, so enqueueAllLocalRows will pick it up
+  await enqueueAllLocalRows(true)
+  await flushQueue()
+}
+
+/** Drop a specific failed item from both the failed list and the queue. */
+export async function dropQueueItem(table: SyncTable, rowId: string): Promise<void> {
+  persistedFailedItems = (persistedFailedItems ?? []).filter(
+    (f) => !(f.table === table && f.rowId === rowId),
+  )
+  emitStatus({ failedItems: persistedFailedItems })
+  // Remove from sync meta so it won't be re-enqueued
+  await updateMeta((meta) => {
+    const changedRowIds = { ...meta.localChangedRowIds }
+    const arr = changedRowIds[table] ?? []
+    changedRowIds[table] = arr.filter((id) => id !== rowId)
+    const deletedRowIds = { ...meta.deletedRowIds }
+    const delArr = deletedRowIds[table] ?? []
+    deletedRowIds[table] = delArr.filter((id) => id !== rowId)
+    return { ...meta, localChangedRowIds: changedRowIds, deletedRowIds }
+  })
+  // Remove from queue file too
+  const queue = await readSyncQueue()
+  const remaining = queue.filter((item) => !(item.table === table && item.rowId === rowId))
+  await writeSyncQueue(remaining)
+}
+
+/** Get the current sync queue for inspection. */
+export async function getSyncQueue(): Promise<SyncQueueItem[]> {
+  return readSyncQueue()
+}
+
+/** Resolve a sync conflict by accepting the remote version. */
+export async function resolveConflictAcceptRemote(table: SyncTable, rowId: string): Promise<void> {
+  // Remove from conflicts list
+  persistedConflicts = (persistedConflicts ?? []).filter(
+    (c) => !(c.table === table && c.rowId === rowId),
+  )
+  emitStatus({ conflicts: persistedConflicts })
+  // Remove from changedRowIds so the next pull will accept the remote version
+  await updateMeta((meta) => {
+    const changedRowIds = { ...meta.localChangedRowIds }
+    const arr = changedRowIds[table] ?? []
+    changedRowIds[table] = arr.filter((id) => id !== rowId)
+    return { ...meta, localChangedRowIds: changedRowIds }
+  })
+  // Pull to get the remote version
+  await pullRemoteChanges()
+}
+
+/** Resolve a sync conflict by keeping the local version (and pushing it). */
+export async function resolveConflictKeepLocal(table: SyncTable, rowId: string): Promise<void> {
+  // Remove from conflicts list
+  persistedConflicts = (persistedConflicts ?? []).filter(
+    (c) => !(c.table === table && c.rowId === rowId),
+  )
+  emitStatus({ conflicts: persistedConflicts })
+  // Push the local version to overwrite remote
+  await enqueueAllLocalRows(true)
+  await flushQueue()
+}
+
+/** Dismiss a conflict without any action (keeps local, will re-appear on next pull). */
+export function dismissConflict(table: SyncTable, rowId: string): void {
+  persistedConflicts = (persistedConflicts ?? []).filter(
+    (c) => !(c.table === table && c.rowId === rowId),
+  )
+  emitStatus({ conflicts: persistedConflicts })
+}
+
+/** Clear all persisted conflicts. */
+export function clearConflicts(): void {
+  persistedConflicts = []
+  emitStatus({ conflicts: [] })
+}
+
 export async function forcePushAndMerge(): Promise<void> {
   await runForcePush("merge")
 }
@@ -296,7 +434,11 @@ async function flushQueueInternal(): Promise<void> {
     return
   }
 
-  emitStatus({ status: "syncing", pendingCount: queue.length, error: null, details: `Pushing ${queue.length} change${queue.length === 1 ? "" : "s"}...`, isOnline: snapshot.isOnline })
+  // Report per-table breakdown in details
+  const byTable = new Map<SyncTable, number>()
+  for (const item of queue) byTable.set(item.table, (byTable.get(item.table) ?? 0) + 1)
+  const breakdown = [...byTable.entries()].map(([t, c]) => `${t.replace(/_/g, " ")}: ${c}`).join(", ")
+  emitStatus({ status: "syncing", pendingCount: queue.length, error: null, details: `Pushing ${queue.length} change${queue.length === 1 ? "" : "s"} (${breakdown})`, isOnline: snapshot.isOnline })
 
   const remaining: SyncQueueItem[] = []
   const failed: { table: string; rowId: string; error: string }[] = []
@@ -304,12 +446,24 @@ async function flushQueueInternal(): Promise<void> {
   const processedIds: string[] = []
   const droppedItems: SyncQueueItem[] = []
   let pausedForNetworkError = false
-  for (const item of queue) {
+  const maxRetries = MAX_SYNC_RETRIES_TRANSIENT
+  for (let i = 0; i < queue.length; i++) {
+    const item = queue[i]
     if (item.retryCount >= MAX_SYNC_RETRIES) {
       failed.push({ table: item.table, rowId: item.rowId, error: item.lastError ?? "Max retries exceeded" })
       processedIds.push(item.id)
       droppedItems.push(item)
       continue
+    }
+    // Emit per-item progress every 10 items or on table change
+    if (i > 0 && (i % 10 === 0 || item.table !== queue[i - 1]?.table)) {
+      emitStatus({
+        status: "syncing",
+        pendingCount: queue.length - i,
+        error: null,
+        details: `Pushing ${item.table.replace(/_/g, " ")} (${i + 1}/${queue.length})...`,
+        isOnline: snapshot.isOnline,
+      })
     }
     try {
       await pushQueueItem(supabase, item)
@@ -320,37 +474,52 @@ async function flushQueueInternal(): Promise<void> {
       console.error(`[sync] pushQueueItem failed for ${item.table} ${item.rowId}:`, errMsg, item.payload)
       processedIds.push(item.id)
       if (isTransientSyncError(e)) {
-        remaining.push({
-          ...item,
-          lastError: errMsg,
-        })
-        failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+        // Exponential backoff: items with network errors get up to MAX_SYNC_RETRIES_TRANSIENT retries
+        if (item.retryCount >= maxRetries) {
+          failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+          droppedItems.push(item)
+        } else {
+          remaining.push({ ...item, lastError: errMsg })
+          failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+        }
         pausedForNetworkError = true
         break
       }
-      remaining.push({
-        ...item,
-        retryCount: item.retryCount + 1,
-        lastError: errMsg,
-      })
-      failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+      // Non-transient errors (e.g., schema mismatch, constraint violations)
+      if (item.retryCount + 1 >= MAX_SYNC_RETRIES) {
+        failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+        droppedItems.push(item)
+      } else {
+        remaining.push({ ...item, retryCount: item.retryCount + 1, lastError: errMsg })
+        failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+      }
     }
   }
 
   const nextQueue = await finishSyncQueueFlush(processedIds, remaining)
   const pendingCount = nextQueue.length
   const now = new Date().toISOString()
-  const tableStats: SyncStatusSnapshot["tableStats"] = Object.entries(stats).map(([table, count]) => ({ table: table as SyncTable, pushed: count, failed: 0 }))
+  const tableStats: SyncStatusSnapshot["tableStats"] = Object.entries(stats).map(([table, count]) => ({
+    table: table as SyncTable,
+    pushed: count,
+    failed: failed.filter((f) => f.table === table).length,
+  }))
+  // Add tables with pushed=0 but have failed items
+  for (const f of failed) {
+    if (!stats[f.table]) {
+      tableStats.push({ table: f.table as SyncTable, pushed: 0, failed: 1 })
+    }
+  }
   console.warn(`[sync] flushQueue summary: pushed=${JSON.stringify(stats)}, remaining=${pendingCount}, failed=${failed.length}${failed.length > 0 ? ", failed items: " + JSON.stringify(failed) : ""}`)
+  const failedItems = failed.map((f) => ({ table: f.table as SyncTable, rowId: f.rowId, error: f.error }))
   if (pendingCount === 0 && failed.length === 0) {
     await updateMeta((meta) => ({ ...meta, lastSuccessfulSyncAt: now, eventsBackfillCompletedAt: stats.events ? (meta.eventsBackfillCompletedAt ?? now) : meta.eventsBackfillCompletedAt, sessionsBackfillCompletedAt: stats.study_sessions ? (meta.sessionsBackfillCompletedAt ?? now) : meta.sessionsBackfillCompletedAt, localChangedAt: {}, localChangedRowIds: {}, deletedRowIds: {} }))
-    emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: now, details: `Synced ${queue.length} change${queue.length === 1 ? "" : "s"}`, tableStats, failedItems: null, isOnline: true })
+    emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: now, details: `Synced ${queue.length} change${queue.length === 1 ? "" : "s"}`, tableStats, failedItems: [], isOnline: true })
   } else if (pendingCount === 0 && failed.length > 0) {
     await updateMeta((meta) => ({ ...clearQueueItemsFromMeta(meta, droppedItems), lastSuccessfulSyncAt: now, eventsBackfillCompletedAt: stats.events ? (meta.eventsBackfillCompletedAt ?? now) : meta.eventsBackfillCompletedAt, sessionsBackfillCompletedAt: stats.study_sessions ? (meta.sessionsBackfillCompletedAt ?? now) : meta.sessionsBackfillCompletedAt }))
-    const failedItems = failed.map((f) => ({ table: f.table as SyncTable, rowId: f.rowId, error: f.error }))
-    emitStatus({ status: "synced", pendingCount: 0, error: `${failed.length} item${failed.length === 1 ? "" : "s"} dropped after ${MAX_SYNC_RETRIES} retries`, details: `${failed.length} item${failed.length === 1 ? "" : "s"} dropped after max retries`, tableStats, failedItems, isOnline: true })
+    const errSummary = failed.length === 1 ? failed[0].error : `${failed.length} items dropped after retries`
+    emitStatus({ status: "error", pendingCount: 0, error: errSummary, details: `${failed.length} item${failed.length === 1 ? "" : "s"} failed after max retries — review below`, tableStats, failedItems, isOnline: true })
   } else {
-    const failedItems = failed.map((f) => ({ table: f.table as SyncTable, rowId: f.rowId, error: f.error }))
     const firstError = remaining[0]?.lastError ?? failed[0]?.error ?? "Some sync changes failed"
     emitStatus({
       status: pausedForNetworkError ? "pending" : "error",
@@ -358,7 +527,7 @@ async function flushQueueInternal(): Promise<void> {
       error: pausedForNetworkError ? null : firstError,
       details: pausedForNetworkError
         ? `${pendingCount} change${pendingCount === 1 ? "" : "s"} waiting for network`
-        : `${pendingCount} change${pendingCount === 1 ? "" : "s"} pending, ${failed.length} failed`,
+        : `${pendingCount} change${pendingCount === 1 ? "" : "s"} pending, ${failed.length} failed — tap to retry or review`,
       tableStats,
       failedItems,
       isOnline: snapshot.isOnline,
@@ -411,19 +580,24 @@ async function pullRemoteChanges(): Promise<void> {
 
 async function pullRemoteChangesInternal(): Promise<void> {
   if (!currentSession || !supabase || syncDisabledReason) return
-  emitStatus({ status: "syncing", error: null, details: "Pulling projects..." })
+  emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling projects..." })
   const projectCount = await pullTable<ProjectRow>("projects")
-  emitStatus({ status: "syncing", error: null, details: "Pulling events..." })
+  emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: projectCount > 0 ? `Pulling events... (${projectCount} projects received)` : "Pulling events..." })
   const eventCount = await pullTable<EventRow>("events")
-  emitStatus({ status: "syncing", error: null, details: "Pulling study sessions..." })
+  emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: eventCount > 0 ? `Pulling sessions... (${eventCount} events received)` : "Pulling sessions..." })
   const sessionCount = await pullTable<StudySessionRow>("study_sessions")
-  emitStatus({ status: "syncing", error: null, details: "Pulling custom subjects..." })
+  const detailPrefix = [
+    projectCount > 0 ? `${projectCount} projects` : null,
+    eventCount > 0 ? `${eventCount} events` : null,
+    sessionCount > 0 ? `${sessionCount} sessions` : null,
+  ].filter(Boolean).join(", ")
+  emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: detailPrefix ? `Pulling subjects... (received ${detailPrefix})` : "Pulling subjects..." })
   await pullCustomSubjects()
-  emitStatus({ status: "syncing", error: null, details: "Pulling hidden subjects..." })
+  emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling hidden subjects..." })
   await pullHiddenSubjects()
-  emitStatus({ status: "syncing", error: null, details: "Pulling timetable config..." })
+  emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling timetable config..." })
   await pullTimetableConfig()
-  emitStatus({ status: "syncing", error: null, details: "Pulling user settings..." })
+  emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling user settings..." })
   await pullUserSettings()
 
   // Note: we intentionally do NOT update lastSuccessfulSyncAt here.
@@ -502,12 +676,16 @@ async function pullTable<Row extends RemoteRow>(table: SyncTable): Promise<numbe
 
   const local = await readJsonArray<Record<string, unknown>>(fileName)
   const meta = await readMeta()
+  const allConflicts: SyncConflictItem[] = []
   const merged = mergeRemoteRows(table, local, allRows, {
     changedRowIds: meta.localChangedRowIds ?? {},
     deletedRowIds: meta.deletedRowIds ?? {},
-  })
+  }, allConflicts)
   await writeJsonArray(fileName, merged)
   emitLocalDataChanged(table)
+  if (allConflicts.length > 0) {
+    emitStatus({ conflicts: allConflicts })
+  }
   return allRows.length
 }
 
@@ -519,6 +697,7 @@ function mergeRemoteRows(
     changedRowIds: Partial<Record<SyncTable, string[]>>
     deletedRowIds: Partial<Record<SyncTable, string[]>>
   } = { changedRowIds: {}, deletedRowIds: {} },
+  conflicts?: SyncConflictItem[],
 ): Record<string, unknown>[] {
   return mergeRemoteRecords({
     table,
@@ -533,6 +712,7 @@ function mergeRemoteRows(
     currentDeviceId,
     changedRowIds: protectedRows.changedRowIds,
     deletedRowIds: protectedRows.deletedRowIds,
+    conflicts,
   })
 }
 

@@ -88,7 +88,8 @@ import { showUndoToast } from "@/lib/undoToast"
 import { getNotionCalendarSettings, getTimetableConfig } from "@/lib/settings"
 import { isPomodoroSession, getPomodoroDescription, getPomodoroNotes, getPomodoroTitle, POMODORO_DESCRIPTION_PREFIX, getAdjacentPomodoroSession, getUniqueStrings, getUniqueArrayItems } from "@/lib/pomodoro"
 import { deleteNotionPage } from "@/lib/notion/api"
-import { recordLocalSoftDelete, recordLocalUpsert, forcePushAndMerge, forcePushAndOverwrite } from "@/lib/sync/engine"
+import { recordLocalSoftDelete, recordLocalUpsert, forcePushAndMerge, forcePushAndOverwrite, pullNow, pushNow, clearFailedItems, retryFailedItem, dropQueueItem, resolveConflictAcceptRemote, resolveConflictKeepLocal, dismissConflict, clearConflicts } from "@/lib/sync/engine"
+import type { SyncTable } from "@/lib/sync/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
@@ -190,11 +191,11 @@ function App() {
     notionConflicts,
     notionConflictDialogOpen,
     setNotionConflictDialogOpen,
-    setNotionConflicts,
     performNotionSync,
     requestNotionSync,
     pushEventChange,
     pushSessionChange,
+    resolveConflicts,
   } = useNotionSync({ events, sessions, allSubjects, syncEvents, syncSessions })
 
   useEffect(() => {
@@ -431,14 +432,9 @@ function App() {
       toast.error("Failed to add files")
     }
   }, [projects, refreshFileCounts])
-
   const handleResolveConflicts = useCallback((resolutions: Record<string, "local" | "notion" | "skip">) => {
-    const resolved = Object.entries(resolutions).map(([id, resolution]) => `${id}: ${resolution}`)
-    toast.success(`Resolved ${Object.keys(resolutions).length} conflict${Object.keys(resolutions).length === 1 ? "" : "s"}`, {
-      description: resolved.join(", "),
-    })
-    setNotionConflicts([])
-  }, [setNotionConflicts])
+    void resolveConflicts(resolutions)
+  }, [resolveConflicts])
 
   const handleCreateProject = useCallback(async (data: {
     name: string
@@ -1297,6 +1293,15 @@ function App() {
                     onSupabaseSignOut={supabaseAuth.signOut}
                     onForcePushAndMerge={() => void forcePushAndMerge()}
                     onForcePushAndOverwrite={() => void forcePushAndOverwrite()}
+                    onPullNow={() => void pullNow()}
+                    onPushNow={() => void pushNow()}
+                    onClearFailedItems={() => clearFailedItems()}
+                    onRetryFailedItem={(table, rowId) => { void retryFailedItem(table as SyncTable, rowId) }}
+                    onDropFailedItem={(table, rowId) => { void dropQueueItem(table as SyncTable, rowId) }}
+                    onAcceptRemote={(table, rowId) => { void resolveConflictAcceptRemote(table as SyncTable, rowId) }}
+                    onKeepLocal={(table, rowId) => { void resolveConflictKeepLocal(table as SyncTable, rowId) }}
+                    onDismissConflict={(table, rowId) => { dismissConflict(table as SyncTable, rowId) }}
+                    onClearConflicts={() => clearConflicts()}
                   />
                   </Suspense>
                 ) : timetableView ? (

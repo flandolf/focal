@@ -13,6 +13,16 @@ export type SyncOperation = "upsert" | "soft_delete"
 
 export type SyncStatus = "signed-out" | "syncing" | "synced" | "pending" | "error"
 
+
+export interface SyncConflictItem {
+  table: SyncTable
+  rowId: string
+  localUpdatedAt: string | null
+  remoteUpdatedAt: string | null
+  remoteDeviceId: string | null
+  /** Human-readable label like "Event: Math SAC" or "Project: Research Essay" */
+  label: string
+}
 export type JsonValue = null | string | number | boolean | JsonValue[] | { [key: string]: JsonValue }
 
 export interface SyncQueueItem {
@@ -46,6 +56,7 @@ export interface SyncStatusSnapshot {
   details: string | null
   tableStats: { table: SyncTable; pulled?: number; pushed?: number; failed?: number }[] | null
   failedItems: { table: SyncTable; rowId: string; error: string }[] | null
+  conflicts: SyncConflictItem[] | null
   isOnline: boolean
 }
 

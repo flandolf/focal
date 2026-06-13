@@ -11,6 +11,7 @@ const INITIAL_STATUS: SyncStatusSnapshot = {
   details: null,
   tableStats: null,
   failedItems: null,
+  conflicts: null,
   isOnline: true,
 }
 

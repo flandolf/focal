@@ -1,5 +1,5 @@
 import { compareIso } from "@/lib/sync/mappers"
-import type { SyncMeta, SyncOperation, SyncQueueItem, SyncTable } from "@/lib/sync/types"
+import type { SyncConflictItem, SyncMeta, SyncOperation, SyncQueueItem, SyncTable } from "@/lib/sync/types"
 
 export const SYNC_TABLES: SyncTable[] = ["projects", "events", "study_sessions", "custom_subjects", "hidden_subjects", "timetable_config", "user_settings"]
 
@@ -125,6 +125,7 @@ export function mergeRemoteRecords<TLocal extends { id: string; updated_at?: str
   currentDeviceId,
   changedRowIds,
   deletedRowIds,
+  conflicts,
 }: {
   table: SyncTable
   local: TLocal[]
@@ -133,16 +134,43 @@ export function mergeRemoteRecords<TLocal extends { id: string; updated_at?: str
   currentDeviceId: string | null
   changedRowIds?: Partial<Record<SyncTable, string[]>>
   deletedRowIds?: Partial<Record<SyncTable, string[]>>
+  conflicts?: SyncConflictItem[]
 }): TLocal[] {
   const byId = new Map(local.map((item) => [item.id, item]))
 
   for (const row of remote) {
     const localItem = byId.get(row.id)
-    if (localItem && shouldKeepLocalRow(table, row.id, changedRowIds ?? {}, deletedRowIds ?? {})) {
+    if (row.deleted_at) {
+      if (localItem && shouldKeepLocalRow(table, row.id, changedRowIds ?? {}, deletedRowIds ?? {})) {
+        // Conflict: local was modified, remote was deleted by another device
+        conflicts?.push({
+          table,
+          rowId: row.id,
+          localUpdatedAt: localItem.updated_at ?? null,
+          remoteUpdatedAt: row.deleted_at,
+          remoteDeviceId: row.last_modified_device_id ?? null,
+          label: buildConflictLabel(table, localItem),
+        })
+      } else {
+        byId.delete(row.id)
+      }
       continue
     }
-    if (row.deleted_at) {
-      byId.delete(row.id)
+
+    if (localItem && shouldKeepLocalRow(table, row.id, changedRowIds ?? {}, deletedRowIds ?? {})) {
+      // Both local and remote were modified; if by different devices, it's a conflict
+      const localDevice = localItem.last_modified_device_id ?? null
+      const remoteDevice = row.last_modified_device_id ?? null
+      if (remoteDevice && localDevice !== remoteDevice) {
+        conflicts?.push({
+          table,
+          rowId: row.id,
+          localUpdatedAt: localItem.updated_at ?? null,
+          remoteUpdatedAt: ((row as unknown as Record<string, unknown>).updated_at as string) ?? null,
+          remoteDeviceId: remoteDevice,
+          label: buildConflictLabel(table, localItem),
+        })
+      }
       continue
     }
 
@@ -162,6 +190,14 @@ export function mergeRemoteRecords<TLocal extends { id: string; updated_at?: str
   }
 
   return Array.from(byId.values())
+}
+
+/** Build a human-readable label for a conflict item. */
+/** Build a human-readable label for a conflict item. */
+function buildConflictLabel(table: SyncTable, item: Record<string, unknown> | { id: string; name?: unknown; title?: unknown }): string {
+  const name = typeof item.name === "string" ? item.name : typeof item.title === "string" ? item.title : null
+  if (name) return `${table.replace(/_/g, " ")}: ${name}`
+  return `${table.replace(/_/g, " ")} ${typeof item.id === "string" ? item.id.slice(0, 8) : typeof item.id === "number" ? String(item.id).slice(0, 8) : "?"}`
 }
 
 function addUniqueRowId(
