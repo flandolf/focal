@@ -3,6 +3,7 @@ import { addMinutes } from "date-fns"
 import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Square, SquareCheck, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
 import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
 import type { CalendarEvent, EventType, Project, StudySession, Subject } from "@/lib/types"
@@ -446,7 +447,7 @@ export function TextEventPlanner({
           </div>
 
           {hasDrafts && (
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border/60">
+            <ScrollArea className="min-h-0 flex-1 rounded-lg border border-border/60">
               <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2 backdrop-blur-sm">
                 <button
                   type="button"
@@ -541,7 +542,7 @@ export function TextEventPlanner({
                   )
                 })}
               </div>
-            </div>
+            </ScrollArea>
           )}
 
           {plannerLoading && (

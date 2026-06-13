@@ -4,9 +4,8 @@ import type { ComponentProps, ReactNode } from "react"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-
-const selectClassName = "flex h-10 w-full rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 interface FormFieldProps extends ComponentProps<"div"> {
   label: string
@@ -33,19 +32,32 @@ function FormField({ label, hint, labelAccessory, labelClassName, className, chi
   )
 }
 
-interface SelectFieldProps extends Omit<ComponentProps<"select">, "children"> {
+interface SelectFieldProps {
   label: string
   hint?: string
   labelClassName?: string
-  children: ReactNode
+  className?: string
+  placeholder?: string
+  value: string
+  onValueChange: (value: string) => void
+  options: { value: string; label: string }[]
 }
 
-function SelectField({ label, hint, labelClassName, className, children, ...props }: SelectFieldProps) {
+function SelectField({ label, hint, labelClassName, className, placeholder, value, onValueChange, options }: SelectFieldProps) {
   return (
     <FormField label={label} hint={hint} labelClassName={labelClassName}>
-      <select className={cn(selectClassName, className)} {...props}>
-        {children}
-      </select>
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger className={className}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </FormField>
   )
 }

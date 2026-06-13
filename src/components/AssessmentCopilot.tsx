@@ -4,6 +4,8 @@ import { AlertCircle, CalendarPlus, Check, Loader2, Wand2, X } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getApiKey, getModel } from "@/lib/settings"
 import { getSubjectById, cn, combineDateAndTime } from "@/lib/utils"
 import { getUrgencyLabel, getUrgencyClassName, type PrepBalanceItem } from "@/lib/planning"
@@ -272,7 +274,8 @@ export function AssessmentCopilot({
           </div>
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(18rem,0.75fr)_minmax(0,1.6fr)]">
-            <div className="min-h-0 space-y-4 overflow-y-auto">
+            <ScrollArea className="min-h-0">
+            <div className="space-y-4">
               <section className="rounded-xl border border-border/70 bg-background/35 p-4">
                 <h3 className="text-sm font-semibold">Summary</h3>
                 {copilotSummary ? (
@@ -361,6 +364,7 @@ export function AssessmentCopilot({
                 </Button>
               </section>
             </div>
+            </ScrollArea>
 
             <section className="flex min-h-0 flex-col rounded-xl border border-border/70 bg-background/35">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
@@ -375,7 +379,7 @@ export function AssessmentCopilot({
               </div>
 
               {copilotDrafts.length > 0 ? (
-                <div className="min-h-0 flex-1 overflow-y-auto">
+                <ScrollArea className="min-h-0 flex-1">
                   <div className="divide-y divide-border/60">
                     {copilotDrafts.map((draft, index) => {
                       const errors = copilotDraftErrors.get(draft.draftId) ?? []
@@ -434,18 +438,19 @@ export function AssessmentCopilot({
                             </div>
                             <div className="space-y-2">
                               <label className="text-xs font-medium text-muted-foreground">Assessment</label>
-                              <select
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={draft.projectId ?? ""}
-                                onChange={(event) => handleProjectChange(draft, event.target.value)}
-                              >
-                                <option value="">No assessment</option>
-                                {projects.filter((projectOption) => !projectOption.isArchived && !projectOption.isFinished).map((projectOption) => (
-                                  <option key={projectOption.id} value={projectOption.id}>
-                                    {projectOption.icon} {projectOption.name}
-                                  </option>
-                                ))}
-                              </select>
+                              <Select value={draft.projectId || "_none"} onValueChange={(value) => handleProjectChange(draft, value === "_none" ? "" : value)}>
+                                <SelectTrigger className="h-10 w-full">
+                                  <SelectValue placeholder="No assessment" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="_none">No assessment</SelectItem>
+                                  {projects.filter((projectOption) => !projectOption.isArchived && !projectOption.isFinished).map((projectOption) => (
+                                    <SelectItem key={projectOption.id} value={projectOption.id}>
+                                      {projectOption.icon} {projectOption.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
 
@@ -538,7 +543,7 @@ export function AssessmentCopilot({
                       )
                     })}
                   </div>
-                </div>
+                </ScrollArea>
               ) : (
                 <div className="flex min-h-60 flex-1 items-center justify-center p-5 text-center">
                   <p className="max-w-sm text-sm text-muted-foreground">

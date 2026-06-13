@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { cn, getSessionSubjectIds, getSubjectById } from "@/lib/utils"
 import {
@@ -346,7 +347,7 @@ export function StudySessionDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <ScrollArea className="min-h-0 flex-1">
             <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
               <div className="grid content-start gap-5">
                 <section className="grid gap-3">
@@ -417,27 +418,26 @@ export function StudySessionDialog({
                     <SelectField
                       label="Assessment link"
                       labelClassName={fieldLabelClass}
-                      value={projectId}
-                      onChange={(event) => handleProjectChange(event.target.value)}
-                    >
-                      <option value="">No assessment</option>
-                      {projects.filter((project) => !project.isArchived).map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.icon} {project.name}
-                        </option>
-                      ))}
-                    </SelectField>
+                      value={projectId || "_none"}
+                      onValueChange={(value) => handleProjectChange(value === "_none" ? "" : value)}
+                      placeholder="No assessment"
+                      options={[
+                        { value: "_none", label: "No assessment" },
+                        ...projects.filter((project) => !project.isArchived).map((project) => ({ value: project.id, label: `${project.icon} ${project.name}` })),
+                      ]}
+                    />
                     {isEdit && (
                       <SelectField
                         label="Status"
                         labelClassName={fieldLabelClass}
                         value={status}
-                        onChange={(event) => setStatus(event.target.value as StudySessionStatus)}
-                      >
-                        <option value="planned">Planned</option>
-                        <option value="in-progress">In progress</option>
-                        <option value="completed">Completed</option>
-                      </SelectField>
+                        onValueChange={(value) => setStatus(value as StudySessionStatus)}
+                        options={[
+                          { value: "planned", label: "Planned" },
+                          { value: "in-progress", label: "In progress" },
+                          { value: "completed", label: "Completed" },
+                        ]}
+                      />
                     )}
                   </div>
                 </FormSection>
@@ -514,7 +514,7 @@ export function StudySessionDialog({
                       ))}
                     </div>
                   )}
-                  <div className="max-h-72 overflow-y-auto rounded-lg border border-input bg-background/45 p-2 dark:bg-input/20">
+                  <ScrollArea className="max-h-72 rounded-lg border border-input bg-background/45 p-2 dark:bg-input/20">
                     <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-1.5">
                       {subjects.map((subject) => {
                         const selected = subjectIds.includes(subject.id)
@@ -543,7 +543,7 @@ export function StudySessionDialog({
                         )
                       })}
                     </div>
-                  </div>
+                  </ScrollArea>
 
                   {subjectIds.length === 0 && (
                     <p className="text-xs text-destructive">Subjects are required for study sessions.</p>
@@ -719,7 +719,7 @@ export function StudySessionDialog({
                 )}
               </div>
             </div>
-          </div>
+          </ScrollArea>
 
           <DialogFooter
             className={cn(
