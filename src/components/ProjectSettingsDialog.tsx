@@ -5,17 +5,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  AssessmentForm,
-  type AssessmentFormValues,
-} from "@/components/AssessmentForm"
+import { AssessmentForm } from "@/components/AssessmentForm"
 import type { Project, Subject } from "@/lib/types"
 
 interface ProjectSettingsDialogProps {
   project: Project
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (id: string, data: AssessmentFormValues) => void
+  onSubmit: (id: string, data: {
+    name: string
+    description?: string
+    icon?: string
+    subjectId?: string
+    unit?: string
+    isFavorite?: boolean
+    isArchived?: boolean
+    isFinished?: boolean
+  }) => void
   customSubjects?: Subject[]
   availableSubjects?: Subject[]
 }
@@ -28,7 +34,16 @@ export function ProjectSettingsDialog({
   customSubjects = [],
   availableSubjects,
 }: ProjectSettingsDialogProps) {
-  const handleSubmit = (values: AssessmentFormValues) => {
+  const handleSubmit = (values: {
+    name: string
+    description?: string
+    icon?: string
+    subjectId?: string
+    unit?: string
+    isFavorite?: boolean
+    isArchived?: boolean
+    isFinished?: boolean
+  }) => {
     onSubmit(project.id, values)
     onOpenChange(false)
   }

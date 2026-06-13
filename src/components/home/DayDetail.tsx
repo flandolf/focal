@@ -249,10 +249,9 @@ export function DayDetail({
                           .join(", ")
                         const selected = selectedSessionIdSet.has(s.id)
                         return (
-                          <ContextMenu>
+                          <ContextMenu key={s.id}>
                             <ContextMenuTrigger asChild>
                           <button
-                            key={s.id}
                             onClick={() => {
                               if (calendarSelectionMode) {
                                 onToggleSessionSelection(s.id)

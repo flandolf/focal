@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AssessmentForm, type AssessmentFormValues } from "@/components/AssessmentForm"
+import { AssessmentForm } from "@/components/AssessmentForm"
 import type { Project, Subject, Unit } from "@/lib/types"
 
 interface ProjectDialogProps {
@@ -19,7 +19,16 @@ interface ProjectDialogProps {
     subjectId?: string
     unit?: Unit
   }) => void
-  onSubmitEdit?: (id: string, data: AssessmentFormValues) => void
+  onSubmitEdit?: (id: string, data: {
+    name: string
+    description?: string
+    icon?: string
+    subjectId?: string
+    unit?: Unit
+    isFavorite?: boolean
+    isArchived?: boolean
+    isFinished?: boolean
+  }) => void
   customSubjects?: Subject[]
   availableSubjects?: Subject[]
 }
@@ -36,7 +45,16 @@ export function ProjectDialog({
   const isEditMode = Boolean(project)
   const existingProject = isEditMode ? project! : null
 
-  const handleSubmit = (values: AssessmentFormValues) => {
+  const handleSubmit = (values: {
+    name: string
+    description?: string
+    icon?: string
+    subjectId?: string
+    unit?: Unit
+    isFavorite?: boolean
+    isArchived?: boolean
+    isFinished?: boolean
+  }) => {
     if (existingProject && onSubmitEdit) {
       const { id } = existingProject
       onSubmitEdit(id, values)

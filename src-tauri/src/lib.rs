@@ -28,6 +28,10 @@ pub fn run() {
             commands::notion::create_notion_calendar_page,
             commands::notion::delete_notion_page,
             commands::notion::update_notion_calendar_page,
+            commands::window::window_minimize,
+            commands::window::window_maximize,
+            commands::window::window_toggle_maximize,
+            commands::window::window_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

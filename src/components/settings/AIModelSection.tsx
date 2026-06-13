@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { motion, useReducedMotion, AnimatePresence } from "framer-motion"
 import { invoke } from "@tauri-apps/api/core"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, ExternalLink, Search } from "lucide-react"
+import { Loader2, ExternalLink, Search, Sparkles, Check, FileText, Brain, HelpCircle } from "lucide-react"
 import { cn, isRecord } from "@/lib/utils"
 import { getApiKey, setApiKey, getModel, setModel, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude, getSyncOpenrouterKey, setSyncOpenrouterKey } from "@/lib/settings"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { ReasoningEffort } from "@/lib/settings"
-import { SETTINGS_SECTION_CLASS, SETTINGS_CHECKBOX_CLASS, SETTINGS_LINK_CLASS, getSettingsOptionClassName } from "./constants"
 
 interface OpenRouterModel {
   id: string
@@ -56,6 +56,15 @@ interface EndpointsResponse {
 interface PerfData {
   latency: number | null
   throughput: number | null
+}
+
+const REASONING_BLURB: Record<ReasoningEffort, string> = {
+  xhigh: "Maximum thinking, slowest. Best for hard problems.",
+  high: "Deep reasoning, slower. For multi-step tasks.",
+  medium: "Balanced. Most tasks.",
+  low: "Light thinking, fast.",
+  minimal: "Quick checks, no real planning.",
+  none: "No reasoning. Cheapest and fastest.",
 }
 
 function supportsStructuredOutput(model: OpenRouterModel): boolean {
@@ -177,6 +186,34 @@ async function fetchModelEndpoints(
   }
 }
 
+function formatContextLength(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1000) return `${Math.round(n / 1000)}k`
+  return String(n)
+}
+
+function LatencyBar({ latency }: { latency: number | null }) {
+  if (latency == null) {
+    return <span className="text-micro text-muted-foreground/35">—</span>
+  }
+  // Map latency to a 0..1 quality score (lower is better). 200ms = full, 5000ms = empty.
+  const score = Math.max(0, Math.min(1, 1 - (latency - 200) / 4800))
+  const color = score > 0.7 ? "bg-emerald-500" : score > 0.4 ? "bg-amber-500" : "bg-destructive"
+  return (
+    <div className="flex items-center gap-1.5" title={`p50 ${latency.toFixed(0)}ms`}>
+      <div className="relative h-1 w-8 overflow-hidden rounded-full bg-foreground/8">
+        <div
+          className={cn("absolute inset-y-0 left-0 rounded-full", color)}
+          style={{ width: `${score * 100}%` }}
+        />
+      </div>
+      <span className="text-micro tabular-nums text-muted-foreground/80">
+        {latency < 1000 ? `${latency.toFixed(0)}ms` : `${(latency / 1000).toFixed(1)}s`}
+      </span>
+    </div>
+  )
+}
+
 function ModelRow({
   model,
   isSelected,
@@ -194,6 +231,7 @@ function ModelRow({
 }) {
   const rowRef = useRef<HTMLButtonElement>(null)
   const perf = perfCache.get(model.id) ?? null
+  const reduceMotion = useReducedMotion()
 
   useEffect(() => {
     if (perf || !apiKey) return
@@ -213,38 +251,129 @@ function ModelRow({
   }, [model.id, apiKey, perf, enqueuePerfFetch])
 
   return (
-    <button
+    <motion.button
       type="button"
       ref={rowRef}
       onClick={onSelect}
       aria-pressed={isSelected}
+      whileHover={reduceMotion ? undefined : { x: 1 }}
+      transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.65 }}
       className={cn(
-        "w-full rounded-lg px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
         isSelected
-          ? "bg-primary/10 text-primary font-medium"
-          : "hover:bg-accent"
+          ? "bg-primary/10 text-primary font-medium ring-1 ring-primary/30"
+          : "hover:bg-accent",
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate">{model.name}</span>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {perf?.latency != null && (
-            <span className="text-micro text-muted-foreground tabular-nums">
-              {perf.latency < 1000
-                ? `${perf.latency.toFixed(0)}ms`
-                : `${(perf.latency / 1000).toFixed(1)}s`}
-            </span>
-          )}
-          {perf?.throughput != null && (
-            <span className="text-micro text-muted-foreground tabular-nums">
-              {perf.throughput >= 100
-                ? `${perf.throughput.toFixed(0)}t/s`
-                : `${perf.throughput.toFixed(1)}t/s`}
-            </span>
-          )}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border transition-colors",
+          isSelected
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-muted-foreground/30",
+        )}
+      >
+        {isSelected && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate leading-tight">{model.name}</p>
+        <p className="mt-0.5 flex items-center gap-2 text-micro text-muted-foreground/60">
+          <span className="inline-flex items-center gap-0.5">
+            <Brain className="h-2.5 w-2.5" />
+            {formatContextLength(model.context_length)}
+          </span>
+          <span className="inline-flex items-center gap-0.5">
+            <FileText className="h-2.5 w-2.5" />
+            files
+          </span>
+        </p>
+      </div>
+      <LatencyBar latency={perf?.latency ?? null} />
+    </motion.button>
+  )
+}
+
+function CreditsGauge({ credits }: { credits: OpenRouterCredits }) {
+  const reduceMotion = useReducedMotion()
+  const remaining = Math.max(0, credits.total_credits - credits.total_usage)
+  const usedRatio =
+    credits.total_credits > 0
+      ? Math.min(1, credits.total_usage / credits.total_credits)
+      : 0
+  const usedPct = Math.round(usedRatio * 100)
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/30 p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <div>
+          <p className="text-micro font-medium uppercase tracking-wider text-muted-foreground/65">
+            Credits remaining
+          </p>
+          <p className="mt-0.5 font-heading text-lg font-semibold tabular-nums">
+            ${remaining.toFixed(2)}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-micro text-muted-foreground/60 tabular-nums">
+            of ${credits.total_credits.toFixed(2)}
+          </p>
+          <p
+            className={cn(
+              "mt-0.5 text-caption font-medium tabular-nums",
+              usedRatio > 0.85
+                ? "text-destructive"
+                : usedRatio > 0.6
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-emerald-600 dark:text-emerald-400",
+            )}
+          >
+            {usedPct}% used
+          </p>
         </div>
       </div>
-    </button>
+      <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/8">
+        <motion.div
+          className={cn(
+            "absolute inset-y-0 left-0 rounded-full",
+            usedRatio > 0.85
+              ? "bg-destructive"
+              : usedRatio > 0.6
+                ? "bg-amber-500"
+                : "bg-emerald-500",
+          )}
+          initial={false}
+          animate={{ width: `${usedRatio * 100}%` }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function SelectedModelCard({ modelId, models }: { modelId: string; models: OpenRouterModel[] }) {
+  const reduceMotion = useReducedMotion()
+  const model = useMemo(() => models.find((m) => m.id === modelId), [models, modelId])
+  if (!model) return null
+  const prompt = parseFloat(model.pricing.prompt)
+  const completion = parseFloat(model.pricing.completion)
+  return (
+    <motion.div
+      key={modelId}
+      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      className="flex items-center gap-2.5 rounded-lg border border-primary/25 bg-primary/[0.05] p-2.5"
+    >
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+        <Sparkles className="h-3.5 w-3.5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-caption font-medium leading-tight">{model.name}</p>
+        <p className="mt-0.5 truncate text-[10px] text-muted-foreground/65">
+          {formatContextLength(model.context_length)} context · ${prompt.toFixed(3)} in · ${completion.toFixed(3)} out
+        </p>
+      </div>
+    </motion.div>
   )
 }
 
@@ -265,6 +394,7 @@ export function AIModelSection() {
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [modelSearch, setModelSearch] = useState("")
+  const [reasoningHelpOpen, setReasoningHelpOpen] = useState(false)
   const perfCacheRef = useRef(new Map<string, PerfData>())
   const [, setPerfCacheTick] = useState(0)
   const perfQueueRef = useRef<string[]>([])
@@ -385,15 +515,29 @@ export function AIModelSection() {
 
   return (
     <div className="flex flex-col gap-3">
-      <section className={SETTINGS_SECTION_CLASS}>
-        <label className="text-sm font-medium" htmlFor="openrouter-api-key">OpenRouter API Key</label>
+      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-medium">OpenRouter API Key</h2>
+            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+              Used for AI file renaming and any features that need a language model.
+            </p>
+          </div>
+          {saved && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-caption font-medium text-emerald-700 dark:text-emerald-400">
+              <Check className="h-3 w-3" />
+              Saved
+            </span>
+          )}
+        </div>
         <Input
           id="openrouter-api-key"
           type="password"
           value={key ?? ""}
           onChange={(e) => handleKeyChange(e.target.value)}
           placeholder="sk-or-..."
-          className="mt-2 font-mono text-xs"
+          className="mt-3 h-9 font-mono text-xs"
+          aria-label="OpenRouter API key"
         />
         <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-border/70 bg-background/30 p-2.5 transition-colors hover:border-muted-foreground/30">
           <input
@@ -409,70 +553,90 @@ export function AIModelSection() {
             </p>
           </div>
         </label>
-        <div className="mt-1.5 flex items-start justify-between gap-2">
-          <p className="min-w-0 text-caption text-muted-foreground/60">
-            Stored locally. Used for AI file renaming.
-            {saved && (
-              <span className="ml-1 text-emerald-600 dark:text-emerald-400">Saved</span>
-            )}
-          </p>
+        <div className="mt-2 flex items-center justify-end">
           <a
             href="https://openrouter.ai/keys"
             target="_blank"
             rel="noopener noreferrer"
-            className={SETTINGS_LINK_CLASS}
+            className="inline-flex shrink-0 items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
           >
             Get a key
             <ExternalLink className="h-3 w-3" />
           </a>
         </div>
-        {key && (
-          <div className="mt-3 rounded-xl border border-border/70 bg-background/30 p-3">
-            {creditsLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Loading credits...
+        <AnimatePresence initial={false}>
+          {key && (
+            <motion.div
+              key="credits"
+              initial={false}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3">
+                {creditsLoading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/30 px-3 py-2.5 text-caption text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading credits…
+                  </div>
+                ) : creditsError ? (
+                  <div className="rounded-lg border border-border/60 bg-background/30 px-3 py-2.5">
+                    <p className="text-caption text-destructive">{creditsError}</p>
+                    {creditsError.includes("Management key") && (
+                      <a
+                        href="https://openrouter.ai/settings/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        Create a Management key
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                ) : credits ? (
+                  <CreditsGauge credits={credits} />
+                ) : null}
               </div>
-            ) : creditsError ? (
-              <div>
-                <p className="text-xs text-destructive">{creditsError}</p>
-                {creditsError.includes("Management key") && (
-                  <a
-                    href="https://openrouter.ai/settings/keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={cn(SETTINGS_LINK_CLASS, "mt-1")}
-                  >
-                    Create a Management key
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-            ) : credits ? (
-              <div className="flex items-center justify-between">
-                <span className="text-caption text-muted-foreground/70">Remaining</span>
-                <span className="text-sm font-medium tabular-nums">
-                  ${(credits.total_credits - credits.total_usage).toFixed(2)}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
 
-      <section className={SETTINGS_SECTION_CLASS}>
-        <h2 className="text-sm font-medium">AI Model</h2>
-        <p className="mt-1 text-caption text-muted-foreground/70">
-          Showing only models that support structured output and file uploads. Latency and throughput shown when API key is set.
-        </p>
+      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-medium">AI Model</h2>
+            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+              Showing only models that support structured output and file uploads. Latency is live when an API key is set.
+            </p>
+          </div>
+        </div>
+        <AnimatePresence initial={false}>
+          {model && models.some((m) => m.id === model) && (
+            <motion.div
+              key="selected-wrap"
+              initial={false}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3">
+                <SelectedModelCard key={model} modelId={model} models={models} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {modelsLoading ? (
-          <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading models...
+          <div className="flex items-center gap-2 mt-2 text-caption text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading models…
           </div>
         ) : modelsError ? (
           <div className="mt-2">
-            <p className="text-xs text-destructive">{modelsError}</p>
+            <p className="text-caption text-destructive">{modelsError}</p>
             <Button
               variant="ghost"
               size="sm"
@@ -494,7 +658,7 @@ export function AIModelSection() {
             <div className="relative mt-2">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground/50" />
               <Input
-                placeholder="Search models..."
+                placeholder="Search models…"
                 value={modelSearch}
                 onChange={(e) => setModelSearch(e.target.value)}
                 className="h-8 pl-8 text-xs"
@@ -515,11 +679,47 @@ export function AIModelSection() {
         )}
       </section>
 
-      <section className={SETTINGS_SECTION_CLASS}>
-        <h2 className="text-sm font-medium">Reasoning Tokens</h2>
-        <p className="mt-1 text-caption text-muted-foreground/70">
-          Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
-        </p>
+      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-medium">Reasoning Tokens</h2>
+            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+              Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReasoningHelpOpen((v) => !v)}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="What do these levels mean?"
+            aria-expanded={reasoningHelpOpen}
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <AnimatePresence initial={false}>
+          {reasoningHelpOpen && (
+            <motion.div
+              key="help"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
+            >
+              <ul className="mt-3 grid gap-1 rounded-lg border border-border/60 bg-background/30 p-2.5 text-caption">
+                {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
+                  <li key={level} className="flex items-baseline gap-2">
+                    <span className="w-14 shrink-0 font-medium capitalize text-foreground/80">
+                      {level === "xhigh" ? "Max" : level}
+                    </span>
+                    <span className="text-muted-foreground/80">{REASONING_BLURB[level]}</span>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <p className="mt-3 block text-caption text-muted-foreground/70">Effort Level</p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -529,7 +729,13 @@ export function AIModelSection() {
               key={level}
               onClick={() => handleReasoningEffortChange(level)}
               aria-pressed={reasoningEffort === level}
-              className={getSettingsOptionClassName(reasoningEffort === level, "px-2.5 py-1 text-xs")}
+              title={REASONING_BLURB[level]}
+              className={cn(
+                "rounded-lg border bg-background/30 px-2.5 py-1 text-xs transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                reasoningEffort === level
+                  ? "border-primary bg-primary/10 text-primary font-medium"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              )}
             >
               {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
             </button>
@@ -538,7 +744,9 @@ export function AIModelSection() {
 
         {reasoningEffort !== "none" && (
           <>
-            <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">Max Tokens (Anthropic models)</label>
+            <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">
+              Max Tokens (Anthropic models)
+            </label>
             <div className="mt-1.5 flex items-center gap-2">
               <input
                 id="reasoning-max-tokens"
@@ -558,7 +766,7 @@ export function AIModelSection() {
                 type="checkbox"
                 checked={reasoningExclude}
                 onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
-                className={cn(SETTINGS_CHECKBOX_CLASS, "mt-0.5")}
+                className="h-4 w-4 shrink-0 accent-primary mt-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               />
               <div className="min-w-0">
                 <p className="text-sm">Exclude reasoning from response</p>

@@ -1,26 +1,95 @@
-import { format, parseISO, addWeeks, addMonths } from "date-fns"
-import { Clock } from "lucide-react"
-import { Trash2 } from "lucide-react"
+import { useState, useMemo, type FormEvent, type ReactNode } from "react"
+import { addMinutes, format, parseISO, addWeeks, addMonths } from "date-fns"
+import { CalendarIcon, CheckCircle2, Clock, MapPin, Repeat, Tag, Trash2 } from "lucide-react"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { EventForm, type EventFormValues } from "@/components/EventForm"
-import type { CalendarEvent, EventType, Subject } from "@/lib/types"
+import { Input } from "@/components/ui/input"
+import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
+import { VCE_SUBJECTS, type CalendarEvent, type EventType, type Subject } from "@/lib/types"
+import { cn, getSubjectById } from "@/lib/utils"
+
+const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "exam", label: "Exam" },
+  { value: "sac", label: "SAC" },
+  { value: "practice-sac", label: "Practice SAC" },
+  { value: "homework", label: "Homework" },
+  { value: "assignment", label: "Assignment" },
+  { value: "other", label: "Other" },
+  { value: "event", label: "Event" },
+]
+
+const RECURRENCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "No repeat" },
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Every 2 weeks" },
+  { value: "monthly", label: "Monthly" },
+]
+
+const fieldLabelClass = "text-control font-medium text-muted-foreground"
+const inputWithIconClass = "flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background/65 px-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
+const sectionIconClass = "h-3.5 w-3.5 text-muted-foreground"
+const sectionClass = "rounded-lg border border-border/70 bg-muted/20 p-3 dark:border-input/70 dark:bg-input/20"
+
+export type RecurrencePattern = "none" | "weekly" | "biweekly" | "monthly"
+
+export interface EventFormValues {
+  title: string
+  description?: string
+  startTime: string
+  endTime?: string
+  eventType: EventType
+  subjectId?: string
+  location?: string
+  isFinished?: boolean
+  finishedAt?: string
+  recurrence?: {
+    pattern: RecurrencePattern
+    endDate?: string
+  }
+}
+
+interface EventFormInitialValues {
+  title?: string
+  description?: string
+  eventType?: EventType
+  subjectId?: string
+  location?: string
+  date?: Date
+  startTime?: string
+  duration?: string
+  endTime?: string
+  isFinished?: boolean
+  endDate?: Date
+  finishedAt?: string
+}
+
+interface EventFormProps {
+  customSubjects: Subject[]
+  availableSubjects?: Subject[]
+  initialValues?: EventFormInitialValues
+  submitLabel: string
+  onCancel: () => void
+  onSubmit: (values: EventFormValues) => void
+  showFinishedControl?: boolean
+  footerStart?: ReactNode
+  showRecurrence?: boolean
+}
 
 interface EventDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Pass an existing event to open in edit mode; undefined for new event mode. */
   event?: CalendarEvent | null
   customSubjects: Subject[]
   availableSubjects?: Subject[]
   initialDate?: Date
-  /** Only used in new-event mode for recurring event creation. */
   onSubmit?: (data: {
     title: string
     description?: string
@@ -41,6 +110,8 @@ interface EventDialogProps {
   }[]) => void
   onDelete?: (id: string) => void
 }
+
+// ── Helpers ─────────────────────────────────────────────────────
 
 function getDurationMinutes(event: CalendarEvent) {
   if (!event.endTime) return ""
@@ -92,6 +163,414 @@ function generateRecurringEvents(
   return events
 }
 
+// ── EventForm (internal) ────────────────────────────────────────
+
+function EventForm({
+  customSubjects,
+  availableSubjects,
+  initialValues,
+  submitLabel,
+  onCancel,
+  onSubmit,
+  showFinishedControl = false,
+  footerStart,
+  showRecurrence = true,
+}: EventFormProps) {
+  const [title, setTitle] = useState(initialValues?.title ?? "")
+  const [description, setDescription] = useState(initialValues?.description ?? "")
+  const [eventType, setEventType] = useState<EventType>(initialValues?.eventType ?? "exam")
+  const [subjectId, setSubjectId] = useState(initialValues?.subjectId ?? "")
+  const [location, setLocation] = useState(initialValues?.location ?? "")
+  const [eventDate, setEventDate] = useState<Date | undefined>(() => initialValues?.date ?? new Date())
+  const [endDate, setEndDate] = useState<Date | undefined>(() => initialValues?.endDate ?? undefined)
+  const [startTime, setStartTime] = useState(initialValues?.startTime ?? "09:00")
+  const [duration, setDuration] = useState(initialValues?.duration ?? "120")
+  const [endTimeMode, setEndTimeMode] = useState<"duration" | "end">(() => {
+    if (initialValues?.endTime) return "end"
+    return "duration"
+  })
+  const [explicitEndTime, setExplicitEndTime] = useState<string>(() => {
+    if (initialValues?.endTime) {
+      const parsed = parseISO(initialValues.endTime)
+      if (!Number.isNaN(parsed.getTime())) {
+        return format(parsed, "HH:mm")
+      }
+    }
+    return ""
+  })
+  const [isFinished, setIsFinished] = useState(initialValues?.isFinished ?? false)
+  const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("none")
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | undefined>(undefined)
+
+  const baseSubjects = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects]
+  const initialSubject = getSubjectById(initialValues?.subjectId)
+  const subjects = initialSubject && !baseSubjects.some((subject) => subject.id === initialSubject.id)
+    ? [initialSubject, ...baseSubjects]
+    : baseSubjects
+  const multiDaySpanDays = useMemo(() => {
+    if (!eventDate || !endDate) return 1
+    const raw = format(endDate, "yyyy-MM-dd") !== format(eventDate, "yyyy-MM-dd")
+    if (!raw) return 1
+    return Math.round((new Date(endDate).setHours(0,0,0,0) - new Date(eventDate).setHours(0,0,0,0)) / (1000 * 60 * 60 * 24)) + 1
+  }, [eventDate, endDate])
+
+  const isMultiDay = multiDaySpanDays > 1
+
+  const effectiveEndTime = useMemo(() => {
+    const [sh, sm] = startTime.split(":").map(Number)
+    const start = new Date(eventDate ?? new Date())
+    start.setHours(sh, sm, 0, 0)
+
+    const endDateToUse = isMultiDay ? endDate : eventDate
+    if (!endDateToUse) return undefined
+
+    if (endTimeMode === "end" && explicitEndTime) {
+      const [eh, em] = explicitEndTime.split(":").map(Number)
+      const end = new Date(endDateToUse)
+      end.setHours(eh, em, 0, 0)
+      if (end > start) return end
+      return undefined
+    }
+
+    const durationMinutes = Number.parseInt(duration, 10)
+    if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+      if (isMultiDay && endDate) {
+        const end = new Date(endDate)
+        end.setHours(sh, sm, 0, 0)
+        return end >= start ? end : undefined
+      }
+      return addMinutes(start, durationMinutes)
+    }
+    return undefined
+  }, [startTime, eventDate, endDate, isMultiDay, duration, endTimeMode, explicitEndTime])
+
+  const computedDurationMinutes = useMemo(() => {
+    if (endTimeMode !== "end" || !explicitEndTime) return undefined
+    const [sh, sm] = startTime.split(":").map(Number)
+    const [eh, em] = explicitEndTime.split(":").map(Number)
+    const start = new Date(eventDate ?? new Date())
+    start.setHours(sh, sm, 0, 0)
+    const end = new Date(endDate ?? eventDate ?? new Date())
+    end.setHours(eh, em, 0, 0)
+    if (end <= start) return undefined
+    return Math.round((end.getTime() - start.getTime()) / (1000 * 60))
+  }, [startTime, eventDate, endDate, explicitEndTime, endTimeMode])
+
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault()
+    if (!title.trim() || !eventDate) return
+
+    const [hours, minutes] = startTime.split(":").map(Number)
+    const start = new Date(eventDate)
+    start.setHours(hours, minutes, 0, 0)
+
+    onSubmit({
+      title: title.trim(),
+      description: description.trim() ? description.trim() : undefined,
+      startTime: start.toISOString(),
+      endTime: effectiveEndTime?.toISOString(),
+      eventType,
+      subjectId: subjectId || undefined,
+      location: location.trim() ? location.trim() : undefined,
+      isFinished,
+      finishedAt: isFinished ? (initialValues?.finishedAt ?? new Date().toISOString()) : undefined,
+      recurrence: recurrencePattern !== "none" ? {
+        pattern: recurrencePattern,
+        endDate: recurrenceEndDate?.toISOString(),
+      } : undefined,
+    })
+  }
+
+  const computeEndTimeFromCurrent = () => {
+    const [sh, sm] = startTime.split(":").map(Number)
+    const d = new Date(eventDate ?? new Date())
+    d.setHours(sh, sm, 0, 0)
+    const minutes = Number.parseInt(duration, 10)
+    d.setMinutes(d.getMinutes() + (Number.isFinite(minutes) && minutes > 0 ? minutes : 60))
+    return format(d, "HH:mm")
+  }
+
+  const computeDurationFromCurrent = () => {
+    if (!explicitEndTime) return
+    const [sh, sm] = startTime.split(":").map(Number)
+    const [eh, em] = explicitEndTime.split(":").map(Number)
+    const startMin = sh * 60 + sm
+    const endMin = eh * 60 + em
+    const delta = endMin - startMin
+    if (delta > 0) setDuration(String(delta))
+  }
+
+  const handleEndTimeChange = (value: string) => {
+    setExplicitEndTime(value)
+    if (value) setEndTimeMode("end")
+  }
+
+  const handleDurationChange = (value: string) => {
+    setDuration(value)
+    setEndTimeMode("duration")
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="grid min-h-0">
+      <DialogBody className="grid max-h-[min(72vh,40rem)] gap-5 px-5 py-5">
+        <section className="grid gap-3">
+          <FormField
+            label="Event title"
+            labelClassName={fieldLabelClass}
+            labelAccessory={
+              <span className="text-micro font-medium uppercase tracking-normal text-muted-foreground/70">
+                Required
+              </span>
+            }
+          >
+            <Input
+              placeholder="e.g. Methods exam"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+              className="h-10 rounded-lg bg-background/65 text-base"
+            />
+          </FormField>
+        </section>
+
+        <FormSection
+          title="Classification"
+          icon={<Tag className={sectionIconClass} />}
+          className="rounded-lg border border-border/70 bg-muted/20 p-3"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SelectField
+              label="Type"
+              labelClassName={fieldLabelClass}
+              value={eventType}
+              onValueChange={(value) => setEventType(value as EventType)}
+              options={EVENT_TYPE_OPTIONS}
+            />
+            <SelectField
+              label="Subject"
+              labelClassName={fieldLabelClass}
+              value={subjectId || "_none"}
+              onValueChange={(value) => setSubjectId(value === "_none" ? "" : value)}
+              placeholder="No subject"
+              options={[
+                { value: "_none", label: "No subject" },
+                ...subjects.map((subject) => ({ value: subject.id, label: `${subject.shortCode} ${subject.name}` })),
+              ]}
+            />
+          </div>
+          {showFinishedControl && (
+            <button
+              type="button"
+              onClick={() => setIsFinished((current) => !current)}
+              className={cn(
+                "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                isFinished
+                  ? "border-primary/35 bg-primary/10 text-foreground"
+                  : "border-border/70 bg-background/40 text-muted-foreground hover:text-foreground"
+              )}
+              aria-pressed={isFinished}
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Finished</span>
+                <span className="block text-xs text-muted-foreground">
+                  Past events are marked finished automatically.
+                </span>
+              </span>
+              <CheckCircle2 className={cn("h-4 w-4 shrink-0", isFinished && "text-primary")} />
+            </button>
+          )}
+        </FormSection>
+
+        <FormSection
+          title="Schedule"
+          icon={<CalendarIcon className={sectionIconClass} />}
+          className={sectionClass}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DatePickerField
+              label="Start date"
+              date={eventDate}
+              onDateChange={setEventDate}
+              buttonClassName="h-10 rounded-lg bg-background/65"
+            />
+            <DatePickerField
+              label="End date"
+              date={endDate ?? eventDate}
+              onDateChange={(date) => setEndDate(date)}
+              buttonClassName="h-10 rounded-lg bg-background/65"
+            />
+          </div>
+
+          {isMultiDay && (
+            <div className="flex items-center gap-2 rounded-lg bg-primary/8 px-3 py-2">
+              <span className="text-xs font-semibold text-primary tabular-nums">{multiDaySpanDays} days</span>
+              <span className="text-xs text-muted-foreground">
+                {format(eventDate!, "MMM d")} &ndash; {format(endDate!, "MMM d, yyyy")}
+              </span>
+            </div>
+          )}
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <FormField label="Start time" labelClassName={fieldLabelClass}>
+              <div className={inputWithIconClass}>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                />
+              </div>
+            </FormField>
+
+            <FormField
+              label={endTimeMode === "end" ? "End time" : "Duration"}
+              labelClassName={fieldLabelClass}
+              labelAccessory={!isMultiDay && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (endTimeMode === "end") {
+                      computeDurationFromCurrent()
+                      setEndTimeMode("duration")
+                    } else {
+                      setExplicitEndTime(computeEndTimeFromCurrent())
+                      setEndTimeMode("end")
+                    }
+                  }}
+                  className="cursor-pointer rounded-sm px-0.5 -mx-0.5 text-micro font-medium uppercase tracking-normal text-muted-foreground/60 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  {endTimeMode === "end" ? "Use duration" : "Use end time"}
+                </button>
+              )}
+            >
+              {endTimeMode === "end" ? (
+                <div className={inputWithIconClass}>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="time"
+                    value={explicitEndTime}
+                    onChange={(e) => handleEndTimeChange(e.target.value)}
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  />
+                </div>
+              ) : isMultiDay ? (
+                <div className={inputWithIconClass}>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="time"
+                    value={explicitEndTime || startTime}
+                    onChange={(e) => {
+                      setExplicitEndTime(e.target.value)
+                      setEndTimeMode("end")
+                    }}
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={duration}
+                    onChange={(e) => handleDurationChange(e.target.value)}
+                    className="h-10 rounded-lg bg-background/65"
+                  />
+                  <span className="text-sm text-muted-foreground">min</span>
+                </div>
+              )}
+            </FormField>
+          </div>
+          {endDate && eventDate && endDate < eventDate && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              End date is before start date.
+            </p>
+          )}
+          {endTimeMode === "end" && computedDurationMinutes !== undefined && !isMultiDay && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {computedDurationMinutes} minutes
+            </p>
+          )}
+        </FormSection>
+
+        {showRecurrence && (
+          <FormSection
+            title="Repeat"
+            icon={<Repeat className={sectionIconClass} />}
+            className="rounded-lg border border-border/70 bg-muted/20 p-3"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SelectField
+                label="Frequency"
+                labelClassName={fieldLabelClass}
+                value={recurrencePattern}
+                onValueChange={(value) => setRecurrencePattern(value as RecurrencePattern)}
+                options={RECURRENCE_OPTIONS}
+              />
+              {recurrencePattern !== "none" && (
+                <DatePickerField
+                  label="End date (optional)"
+                  date={recurrenceEndDate}
+                  onDateChange={setRecurrenceEndDate}
+                  buttonClassName="h-10 rounded-lg bg-background/65"
+                />
+              )}
+            </div>
+            {recurrencePattern !== "none" && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Creates {recurrencePattern === "weekly" ? "weekly" : recurrencePattern === "biweekly" ? "bi-weekly" : "monthly"} events until {recurrenceEndDate ? format(recurrenceEndDate, "MMM d, yyyy") : "manually stopped"}.
+              </p>
+            )}
+          </FormSection>
+        )}
+
+        <FormSection
+          title="Context"
+          icon={<MapPin className={sectionIconClass} />}
+          className={sectionClass}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Location" labelClassName={fieldLabelClass}>
+              <div className={inputWithIconClass}>
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <input
+                  placeholder="Room, hall, campus"
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+            </FormField>
+            <FormField label="Notes" labelClassName={fieldLabelClass}>
+              <textarea
+                placeholder="Optional notes or requirements"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                className="min-h-16 resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+              />
+            </FormField>
+          </div>
+        </FormSection>
+      </DialogBody>
+
+      <DialogFooter className={cn("m-0 rounded-none px-5 py-3", footerStart && "sm:justify-between")}>
+        {footerStart}
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!title.trim()}>
+            {submitLabel}
+          </Button>
+        </div>
+      </DialogFooter>
+    </form>
+  )
+}
+
+// ── EventDialog (exported) ──────────────────────────────────────
+
 export function EventDialog({
   open,
   onOpenChange,
@@ -117,7 +596,6 @@ export function EventDialog({
       return
     }
 
-    // New mode — handle recurring events
     if (values.recurrence && values.recurrence.pattern !== "none" && onSubmitMultiple) {
       const recurringEvents = generateRecurringEvents(
         {
@@ -158,18 +636,18 @@ export function EventDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b px-5 pb-4 pt-5">
-          <div className="space-y-2 pr-9">
+          <div className="space-y-2">
             <DialogTitle>{isEditMode ? "Edit Event" : "Add Event"}</DialogTitle>
             <DialogDescription asChild>
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Clock className="h-3.5 w-3.5 shrink-0" />
-                <span>{dateLabel} · {isEditMode ? endTimeLabel : `${format(start, "h:mm a")} · start time can be adjusted below`}</span>
+                <span>{dateLabel} · {isEditMode ? endTimeLabel : format(start, "h:mm a")}</span>
               </div>
             </DialogDescription>
           </div>
         </DialogHeader>
         <EventForm
-          key={`${isEditMode ? `edit-${existingEvent?.id}` : `new-${open ? "open" : "closed"}`}`}
+          key={isEditMode && existingEvent ? `edit-${existingEvent.id}` : 'new'}
           customSubjects={customSubjects}
           availableSubjects={availableSubjects}
           initialValues={existingEvent ? {

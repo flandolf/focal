@@ -6,26 +6,27 @@ import {
   Play,
   Plus,
   SkipForward,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-const EXTRA_BREAK_MINUTES = 5
+const EXTRA_BREAK_MINUTES = 5;
 
 interface TimerControlsProps {
-  variant: "focus" | "sidebar"
-  running: boolean
-  mode: "work" | "break" | "long-break"
-  isStudyOvertime: boolean
-  canStartFocus: boolean
-  saving: boolean
-  hasActiveSession: boolean
-  timerActionLabel: string
-  onToggle: () => void
-  onReturnToBreak: () => void
-  onFinish: () => void
-  onSkipBreak: () => void
-  onStartStudyOvertime: () => void
-  onMoreBreakTime: () => void
+  variant: "sidebar" | "footer";
+  running: boolean;
+  mode: "work" | "break" | "long-break";
+  isStudyOvertime: boolean;
+  canStartFocus: boolean;
+  saving: boolean;
+  hasActiveSession: boolean;
+  timerActionLabel: string;
+  onToggle: () => void;
+  onReturnToBreak: () => void;
+  onFinish: () => void;
+  onSkipBreak: () => void;
+  onStartStudyOvertime: () => void;
+  onMoreBreakTime: () => void;
 }
 
 export function TimerControls({
@@ -44,25 +45,30 @@ export function TimerControls({
   onStartStudyOvertime,
   onMoreBreakTime,
 }: TimerControlsProps) {
-  if (variant === "focus") {
+  if (variant === "footer") {
     return (
-      <div className="mx-auto mt-3 w-full max-w-3xl border-t border-border/55 pt-3">
+      <div
+        className={cn(
+          "timer-floating-bar fixed bottom-4 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 px-3 py-3 sm:bottom-6 sm:w-[calc(100%-3rem)] sm:px-4",
+          running && "timer-floating-bar-glow",
+        )}
+      >
         <div className="flex w-full flex-col gap-2 sm:flex-row">
           <Button
             onClick={onToggle}
             disabled={mode === "work" && !canStartFocus && !running}
             size="lg"
             variant={running ? "outline" : "default"}
-            className="h-11 flex-1 gap-2 rounded-md text-sm"
+            className="h-11 flex-1 gap-2 rounded-lg text-sm transition duration-150 ease-out motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
           >
             {running ? (
-              <p className="flex items-center justify-center gap-2 text-background">
+              <span className="flex items-center justify-center gap-2">
                 <Pause className="h-4 w-4" /> Pause
-              </p>
+              </span>
             ) : (
-              <p className="flex items-center justify-center gap-2 text-background">
+              <span className="flex items-center justify-center gap-2">
                 <Play className="h-4 w-4" /> {timerActionLabel}
-              </p>
+              </span>
             )}
           </Button>
           {isStudyOvertime ? (
@@ -71,32 +77,34 @@ export function TimerControls({
               disabled={saving}
               size="lg"
               variant="default"
-              className="h-11 flex-1 gap-2 rounded-md text-sm text-primary-foreground"
+              className="h-11 flex-1 gap-2 rounded-lg text-sm transition duration-150 ease-out motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
             >
               <Coffee className="h-4 w-4" />
-              break time!
+              Break time!
             </Button>
-          ) : hasActiveSession && (
-            <Button
-              onClick={onFinish}
-              disabled={saving}
-              size="lg"
-              variant="outline"
-              className="h-11 flex-1 gap-2 rounded-md text-sm"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Finish & save
-            </Button>
+          ) : (
+            hasActiveSession && (
+              <Button
+                onClick={onFinish}
+                disabled={saving}
+                size="lg"
+                variant="outline"
+                className="h-11 flex-1 gap-2 rounded-lg text-sm transition duration-150 ease-out motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Finish & save
+              </Button>
+            )
           )}
         </div>
 
         {mode !== "work" && !isStudyOvertime && (
-          <div className="mt-2 grid grid-cols-1 gap-2 min-[520px]:grid-cols-3">
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
             <Button
               onClick={onSkipBreak}
               size="sm"
               variant="ghost"
-              className="h-10 gap-2 rounded-md text-sm"
+              className="h-9 gap-2 rounded-lg text-sm transition duration-150 ease-out motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
             >
               <SkipForward className="h-4 w-4" />
               Skip
@@ -106,7 +114,7 @@ export function TimerControls({
               disabled={!canStartFocus}
               size="sm"
               variant="outline"
-              className="h-10 min-w-0 gap-2 rounded-md text-sm"
+              className="h-9 gap-2 rounded-lg text-sm transition duration-150 ease-out motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
             >
               <BookOpen className="h-4 w-4" />
               Study overtime
@@ -115,7 +123,7 @@ export function TimerControls({
               onClick={onMoreBreakTime}
               size="sm"
               variant="outline"
-              className="h-10 gap-2 rounded-md text-sm"
+              className="h-9 gap-2 rounded-lg text-sm transition duration-150 ease-out motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
             >
               <Plus className="h-4 w-4" />
               {EXTRA_BREAK_MINUTES} min
@@ -123,7 +131,7 @@ export function TimerControls({
           </div>
         )}
       </div>
-    )
+    );
   }
 
   return (
@@ -157,17 +165,19 @@ export function TimerControls({
           <Coffee className="h-3 w-3" />
           break time!
         </Button>
-      ) : hasActiveSession && (
-        <Button
-          onClick={onFinish}
-          disabled={saving}
-          size="sm"
-          variant="ghost"
-          className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control text-muted-foreground hover:text-foreground"
-        >
-          <CheckCircle2 className="h-3 w-3" />
-          Finish & save
-        </Button>
+      ) : (
+        hasActiveSession && (
+          <Button
+            onClick={onFinish}
+            disabled={saving}
+            size="sm"
+            variant="ghost"
+            className="mt-1.5 h-8 w-full gap-1.5 rounded-xl text-control text-muted-foreground hover:text-foreground"
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Finish & save
+          </Button>
+        )
       )}
 
       {mode !== "work" && !isStudyOvertime && (
@@ -203,5 +213,5 @@ export function TimerControls({
         </div>
       )}
     </>
-  )
+  );
 }

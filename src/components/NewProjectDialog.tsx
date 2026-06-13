@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AssessmentForm, type AssessmentFormValues } from "@/components/AssessmentForm"
+import { AssessmentForm } from "@/components/AssessmentForm"
 import type { Subject, Unit } from "@/lib/types"
 
 interface NewProjectDialogProps {
@@ -17,6 +17,9 @@ interface NewProjectDialogProps {
     icon?: string
     subjectId?: string
     unit?: Unit
+    isFavorite?: boolean
+    isArchived?: boolean
+    isFinished?: boolean
   }) => void
   customSubjects?: Subject[]
   availableSubjects?: Subject[]
@@ -29,7 +32,16 @@ export function NewProjectDialog({
   customSubjects = [],
   availableSubjects,
 }: NewProjectDialogProps) {
-  const handleSubmit = (values: AssessmentFormValues) => {
+  const handleSubmit = (values: {
+    name: string
+    description?: string
+    icon?: string
+    subjectId?: string
+    unit?: Unit
+    isFavorite?: boolean
+    isArchived?: boolean
+    isFinished?: boolean
+  }) => {
     onSubmit(values)
     onOpenChange(false)
   }

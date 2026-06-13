@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react"
+import { type FormEvent } from "react"
 import { Archive, CheckCircle2, Star } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { DialogBody, DialogFooter } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   EmojiPicker,
@@ -10,30 +10,15 @@ import {
   ToggleChip,
 } from "@/components/ui/form-controls"
 import { ASSESSMENT_ICONS, VCE_UNITS } from "@/lib/assessmentOptions"
-import { VCE_SUBJECTS, type Subject, type Unit } from "@/lib/types"
-import { cn, getSubjectById } from "@/lib/utils"
+import { type Subject, type Unit } from "@/lib/types"
+import { cn } from "@/lib/utils"
+import {
+  useAssessmentForm,
+  type AssessmentFormInitialValues,
+  type AssessmentFormValues,
+} from "@/hooks/useAssessmentForm"
 
-export interface AssessmentFormValues {
-  name: string
-  description?: string
-  icon?: string
-  subjectId?: string
-  unit?: Unit
-  isFavorite?: boolean
-  isArchived?: boolean
-  isFinished?: boolean
-}
-
-interface AssessmentFormInitialValues {
-  name?: string
-  description?: string
-  icon?: string
-  subjectId?: string
-  unit?: Unit
-  isFavorite?: boolean
-  isArchived?: boolean
-  isFinished?: boolean
-}
+export type { AssessmentFormValues }
 
 interface AssessmentFormProps {
   customSubjects?: Subject[]
@@ -45,7 +30,7 @@ interface AssessmentFormProps {
   showStatusControls?: boolean
 }
 
-function AssessmentForm({
+export function AssessmentForm({
   customSubjects = [],
   availableSubjects,
   initialValues,
@@ -54,34 +39,28 @@ function AssessmentForm({
   onSubmit,
   showStatusControls = false,
 }: AssessmentFormProps) {
-  const [name, setName] = useState(initialValues?.name ?? "")
-  const [description, setDescription] = useState(initialValues?.description ?? "")
-  const [icon, setIcon] = useState(initialValues?.icon ?? "📁")
-  const [subjectId, setSubjectId] = useState(initialValues?.subjectId ?? "")
-  const [unit, setUnit] = useState<Unit | "">(initialValues?.unit ?? "")
-  const [isFavorite, setIsFavorite] = useState(initialValues?.isFavorite ?? false)
-  const [isArchived, setIsArchived] = useState(initialValues?.isArchived ?? false)
-  const [isFinished, setIsFinished] = useState(initialValues?.isFinished ?? false)
-  const baseSubjects = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects]
-  const initialSubject = getSubjectById(initialValues?.subjectId)
-  const subjects = initialSubject && !baseSubjects.some((subject) => subject.id === initialSubject.id)
-    ? [initialSubject, ...baseSubjects]
-    : baseSubjects
+  const {
+    name, setName,
+    description, setDescription,
+    icon, setIcon,
+    subjectId, setSubjectId,
+    unit, setUnit,
+    isFavorite, setIsFavorite,
+    isArchived, setIsArchived,
+    isFinished, setIsFinished,
+    subjects,
+    handleSubmit: submitForm,
+    canSave,
+  } = useAssessmentForm({
+    customSubjects,
+    availableSubjects,
+    initialValues,
+    onSubmit,
+  })
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
-    if (!name.trim()) return
-
-    onSubmit({
-      name: name.trim(),
-      description: description.trim() ? description.trim() : undefined,
-      icon,
-      subjectId: subjectId || undefined,
-      unit: unit || undefined,
-      isFavorite,
-      isArchived,
-      isFinished,
-    })
+    submitForm()
   }
 
   return (
@@ -173,12 +152,10 @@ function AssessmentForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!name.trim()}>
+        <Button type="submit" disabled={!canSave}>
           {submitLabel}
         </Button>
       </DialogFooter>
     </form>
   )
 }
-
-export { AssessmentForm }

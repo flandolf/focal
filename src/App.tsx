@@ -1,15 +1,15 @@
-import { lazy, Suspense, memo, useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
+import { lazy, Suspense, memo, useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { getCurrentWindow } from "@tauri-apps/api/window"
 import { platform } from "@tauri-apps/plugin-os"
 import { downloadDir } from "@tauri-apps/api/path"
 import { open } from "@tauri-apps/plugin-dialog"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
 import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, pressable as pressableMotion, staggerContainer, staggerItem } from "@/lib/motion"
 import { Toaster, toast } from "sonner"
-import { FolderOpen, Search, Settings } from "lucide-react"
+import { FolderOpen } from "lucide-react"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { Sidebar } from "@/components/Sidebar"
+import { TitleBar } from "@/components/TitleBar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
 import { ProjectDialog } from "@/components/ProjectDialog"
@@ -91,7 +91,7 @@ import { deleteNotionPage } from "@/lib/notion/api"
 import { recordLocalSoftDelete, recordLocalUpsert, forcePushAndMerge, forcePushAndOverwrite, pullNow, pushNow, clearFailedItems, retryFailedItem, dropQueueItem, resolveConflictAcceptRemote, resolveConflictKeepLocal, dismissConflict, clearConflicts } from "@/lib/sync/engine"
 import type { SyncTable } from "@/lib/sync/types"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
 
 const SHELL_LAYOUT_TRANSITION = { duration: 0.24, ease: MOTION_EASE } as const
@@ -1152,11 +1152,6 @@ function App() {
     setSidebarCollapsed((prev) => !prev)
   }, [])
 
-  const handleTitlebarDrag = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || event.detail > 1) return
-    void getCurrentWindow().startDragging().catch(() => undefined)
-  }, [])
-
   const contentKey = settingsView ? "settings" : analyticsView ? "analytics" : timetableView ? "timetable" : homeSelected ? "home" : selectedProject ? `project-${selectedProject.id}` : "empty"
   const layoutTransition = reduceMotion ? { duration: 0 } : SHELL_LAYOUT_TRANSITION
   const viewTransition = reduceMotion ? { duration: 0 } : VIEW_TRANSITION
@@ -1165,43 +1160,11 @@ function App() {
     <TooltipProvider>
       <MotionConfig reducedMotion="user">
       <ErrorBoundary>
-      <div className="focal-shell relative h-screen overflow-hidden px-2 pb-2 pt-(--app-titlebar-inset) text-foreground min-[1200px]:px-3 min-[1200px]:pb-3">
-        <div
-          data-tauri-drag-region
-          onMouseDown={handleTitlebarDrag}
-          className="app-titlebar-drag-region absolute inset-x-0 top-0 z-20"
-        />
-        <div className="app-titlebar-actions absolute left-(--app-titlebar-actions-left) top-(--app-titlebar-control-top) z-30 flex h-(--app-titlebar-control-size) items-center gap-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <motion.button
-                onClick={() => setSearchOpen(true)}
-                whileHover={reduceMotion ? undefined : { scale: 1.06 }}
-                whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 560, damping: 28, mass: 0.55 }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                aria-label="Search"
-              >
-                <Search className="h-3.5 w-3.5" />
-              </motion.button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start">Search · ⌘K</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <motion.button
-                onClick={() => setSettingsView(true)}
-                whileHover={reduceMotion ? undefined : { scale: 1.06 }}
-                whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 560, damping: 28, mass: 0.55 }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                aria-label="Settings"
-              >
-                <Settings className="h-3.5 w-3.5" />
-              </motion.button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start">Settings</TooltipContent>
-          </Tooltip>
+      <div className="focal-shell relative flex h-full flex-col overflow-hidden text-foreground">
+        <TitleBar
+          onSearch={() => setSearchOpen(true)}
+          onSettings={() => setSettingsView(true)}
+        >
           <NotionSyncIndicator
             status={syncStatus}
             lastSyncTime={lastSyncTime}
@@ -1212,14 +1175,12 @@ function App() {
             sync={supabaseSync}
             signedIn={Boolean(supabaseAuth.user)}
           />
-        </div>
-        <div className="hairline-grid pointer-events-none absolute inset-0 opacity-80" />
-        <div
-          className="relative z-10 flex h-full gap-2 min-[1200px]:gap-3"
-        >
+        </TitleBar>
+        <div className="hairline-grid pointer-events-none absolute inset-0 z-0 opacity-80" />
+        <div className="relative z-10 flex min-h-0 flex-1 gap-2 px-2 pb-2 min-[1200px]:gap-3 min-[1200px]:px-3 min-[1200px]:pb-3">
           <motion.div
             layout
-            className="min-h-0 shrink-0"
+            className="min-h-0 h-full shrink-0"
             style={{ width: sidebarCollapsed ? "4.5rem" : "clamp(12rem, 24vw, 17rem)" }}
             transition={layoutTransition}
           >
