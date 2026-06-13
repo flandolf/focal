@@ -4,7 +4,7 @@ import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-f
 import { supabase } from "@/lib/supabase/client"
 import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
 import { bustSubjectCache } from "@/lib/utils"
-import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, mergeRemoteRecords, removeDeletedRowId, shouldBackfillCalendarTable, shouldEnqueueFileRow, shouldEnqueueLocalTable, SYNC_TABLES } from "@/lib/sync/core"
+import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
 import { enqueueSyncItem, finishSyncQueueFlush, readSyncQueue, writeSyncQueue } from "@/lib/sync/queue"
 import {
@@ -611,26 +611,35 @@ async function enqueueAllLocalRows(force = false): Promise<void> {
   for (const id of deletedRowIds.study_sessions ?? []) {
     await enqueueRemoteSoftDelete("study_sessions", id)
   }
-  console.warn(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}`)
-  if (force || shouldEnqueueLocalTable("custom_subjects", changedTables, lastSyncAt)) {
-    for (const subject of readLocalStorageArray<Subject>(CUSTOM_SUBJECTS_KEY)) {
+  let customSubjectEnqueued = 0
+  const customSubjects = readLocalStorageArray<Subject>(CUSTOM_SUBJECTS_KEY)
+  for (const subject of customSubjects) {
+    if (force || !lastSyncAt || isChangedRow(changedRowIds, "custom_subjects", subject.id)) {
       await enqueueRemoteUpsert("custom_subjects", subject)
+      customSubjectEnqueued++
     }
   }
   for (const id of deletedRowIds.custom_subjects ?? []) {
     await enqueueRemoteSoftDelete("custom_subjects", id)
   }
-  if (force || shouldEnqueueLocalTable("hidden_subjects", changedTables, lastSyncAt)) {
-    for (const subjectId of readLocalStorageArray<string>(HIDDEN_SUBJECTS_KEY)) {
+  let hiddenSubjectEnqueued = 0
+  const hiddenSubjects = readLocalStorageArray<string>(HIDDEN_SUBJECTS_KEY)
+  for (const subjectId of hiddenSubjects) {
+    if (force || !lastSyncAt || isChangedRow(changedRowIds, "hidden_subjects", subjectId)) {
       await enqueueRemoteUpsert("hidden_subjects", subjectId)
+      hiddenSubjectEnqueued++
     }
   }
   for (const id of deletedRowIds.hidden_subjects ?? []) {
     await enqueueRemoteSoftDelete("hidden_subjects", id)
   }
-  if (force || shouldEnqueueLocalTable("timetable_config", changedTables, lastSyncAt)) {
-    await enqueueRemoteUpsert("timetable_config", getTimetableConfig())
+  let timetableEnqueued = 0
+  const timetableConfig = getTimetableConfig()
+  if (force || !lastSyncAt || isChangedRow(changedRowIds, "timetable_config", "timetable_config")) {
+    await enqueueRemoteUpsert("timetable_config", timetableConfig)
+    timetableEnqueued = 1
   }
+  console.warn(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}, customSubjects=${customSubjects.length}/${customSubjectEnqueued}, hiddenSubjects=${hiddenSubjects.length}/${hiddenSubjectEnqueued}, timetable=${timetableEnqueued}`)
 }
 
 async function applyRealtimeChange(change: RealtimeChange): Promise<void> {
