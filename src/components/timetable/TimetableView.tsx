@@ -457,14 +457,6 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
     return () => clearInterval(id)
   }, [])
 
-  const days = useMemo(() => {
-    if (!config.enabled || config.entries.length === 0) return []
-    return Array.from({ length: 10 }, (_, i) => (i + 1) as TimetableDayLabel).map((dayLabel) => {
-      const entries = getTimetableEntriesForDay(dayLabel, config.entries)
-      return { dayLabel, entries }
-    })
-  }, [config])
-
   const autoDayLabel = useMemo(() => {
     if (!config.enabled || !config.day1Starts) return null
     return getDayLabelForDate(now, config.day1Starts, config.holidays)
@@ -477,6 +469,21 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
     }
     return autoDayLabel
   }, [config, autoDayLabel])
+
+  const currentBlock = useMemo(() => {
+    const cur = currentDayLabel
+    if (cur === null) return 1
+    return cur <= 5 ? 1 : 2
+  }, [currentDayLabel])
+
+  const days = useMemo(() => {
+    if (!config.enabled || config.entries.length === 0) return []
+    const startDay = currentBlock === 1 ? 1 : 6
+    return Array.from({ length: 5 }, (_, i) => (startDay + i) as TimetableDayLabel).map((dayLabel) => {
+      const entries = getTimetableEntriesForDay(dayLabel, config.entries)
+      return { dayLabel, entries }
+    })
+  }, [config, currentBlock])
 
   const todayPeriods = useMemo(() => {
     if (currentDayLabel === null) return []
@@ -635,9 +642,10 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
                         {todayPeriods.length} period{todayPeriods.length !== 1 ? "s" : ""}
                       </>
                     )}
+                  </p>                  ) : (
+                  <p className="mt-px text-micro text-muted-foreground">
+                    Week {currentBlock} · Days {currentBlock === 1 ? "1–5" : "6–10"}
                   </p>
-                ) : (
-                  <p className="mt-px text-micro text-muted-foreground">10-day cycle</p>
                 )}
               </div>
             </div>
@@ -685,7 +693,7 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
                 </motion.div>
                 <p className="mb-1 text-xs font-medium">No timetable configured</p>
                 <p className="mb-3 max-w-xs text-micro text-muted-foreground">
-                  Upload a photo of your school timetable and AI will parse it into a native 10-day cycle.
+                  Upload a photo of your school timetable and AI will parse it into a native 10-day cycle (Mon–Fri, weekends skipped).
                 </p>
                 <Button size="sm" className="gap-1 rounded-lg h-7 px-2.5 text-xs" onClick={() => setEditOpen(true)}>
                 <Pencil className="h-4 w-4" />
@@ -712,7 +720,7 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
                 </motion.div>
               )}
 
-              {/* 10-day grid */}
+              {/* 5-day grid (current block) */}
               <motion.div
                 key="day-grid"
                 className="grid grid-cols-1 gap-1 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5"

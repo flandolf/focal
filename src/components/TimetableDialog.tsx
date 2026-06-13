@@ -610,7 +610,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                   Day 1 starts
                 </label>
                 <p className="text-xs text-muted-foreground/60">
-                  The date of a past Monday that began Day 1. Cycle repeats every 10 school days.
+                  The date of a past Monday that began Day 1. Cycle advances only on weekdays (Mon–Fri), so Day 6 = Monday of week 2.
                 </p>
                 <input
                   id="day1-starts"

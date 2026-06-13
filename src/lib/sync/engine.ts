@@ -2,7 +2,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
+import { getApiKey, getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setApiKey, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig } from "@/lib/settings"
 import { bustSubjectCache } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
@@ -18,9 +18,11 @@ import {
   rowToSession,
   rowToSubject,
   rowToTimetableConfig,
+  rowToUserSettings,
   sessionToRow,
   subjectToRow,
   timetableConfigToRow,
+  userSettingsToRow,
 } from "@/lib/sync/mappers"
 import { subscribeToSyncTables, type RealtimeChange } from "@/lib/sync/realtime"
 import type {
@@ -39,8 +41,9 @@ import type {
   SyncStatusSnapshot,
   SyncTable,
   TimetableConfigRow,
+  UserSettingsRow,
 } from "@/lib/sync/types"
-import type { CalendarEvent, Project, StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, Project, StudySession, Subject, UserSettings } from "@/lib/types"
 
 const META_FILE = "sync-meta.json"
 const FILES: Partial<Record<SyncTable, string>> = {
@@ -205,6 +208,11 @@ async function runInitialSync(): Promise<void> {
     const msg = getErrorMessage(e)
     emitStatus({ status: "error", error: msg, details: `Initial sync failed: ${msg}` })
   }
+}
+
+/** Collect all user settings from localStorage and trigger a sync upsert. */
+export function notifyUserSettingsChanged(): void {
+  void recordLocalUpsert("user_settings", collectUserSettingsForSync())
 }
 
 export async function retrySync(): Promise<void> {
@@ -382,7 +390,9 @@ async function pushQueueItem(client: SupabaseClient, item: SyncQueueItem): Promi
       ? "user_id,subject_id"
       : item.table === "timetable_config"
         ? "user_id"
-        : "id"
+        : item.table === "user_settings"
+          ? "user_id"
+          : "id"
   const { error } = await client.from(item.table).upsert(payload, { onConflict })
   if (error) {
     console.error(`[sync] upsert error for ${item.table} (rowId=${item.rowId}, onConflict=${onConflict}):`, error, "payload keys:", Object.keys(payload), "payload:"
@@ -413,6 +423,8 @@ async function pullRemoteChangesInternal(): Promise<void> {
   await pullHiddenSubjects()
   emitStatus({ status: "syncing", error: null, details: "Pulling timetable config..." })
   await pullTimetableConfig()
+  emitStatus({ status: "syncing", error: null, details: "Pulling user settings..." })
+  await pullUserSettings()
 
   // Note: we intentionally do NOT update lastSuccessfulSyncAt here.
   // enqueueAllLocalRows reads it to decide what to push; setting it to "now"
@@ -563,6 +575,30 @@ async function pullTimetableConfig(): Promise<void> {
   }
 }
 
+async function pullUserSettings(): Promise<void> {
+  if (!supabase || !currentSession) return
+  const { data, error } = await supabase.from("user_settings").select("*").eq("user_id", currentSession.user.id).maybeSingle()
+  if (error) throw error
+  if (data) {
+    const settings = rowToUserSettings(data as UserSettingsRow)
+    if (settings.openrouter_api_key) setApiKey(settings.openrouter_api_key)
+    if (settings.openrouter_model) setModel(settings.openrouter_model)
+    if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as any)
+    setReasoningMaxTokens(settings.reasoning_max_tokens)
+    setReasoningExclude(settings.reasoning_exclude)
+    setNotionCalendarSettings({
+      token: settings.notion_token,
+      dataSourceId: settings.notion_data_source_id,
+      titleProperty: settings.notion_title_property,
+      dateProperty: settings.notion_date_property,
+      typeProperty: settings.notion_type_property,
+      completedProperty: settings.notion_completed_property,
+      subjectProperty: settings.notion_subject_property,
+    })
+    emitLocalDataChanged("user_settings")
+  }
+}
+
 async function enqueueAllLocalRows(force = false): Promise<void> {
   const meta = await readMeta()
   const lastSyncAt = force ? null : meta.lastSuccessfulSyncAt
@@ -639,7 +675,13 @@ async function enqueueAllLocalRows(force = false): Promise<void> {
     await enqueueRemoteUpsert("timetable_config", timetableConfig)
     timetableEnqueued = 1
   }
-  console.warn(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}, customSubjects=${customSubjects.length}/${customSubjectEnqueued}, hiddenSubjects=${hiddenSubjects.length}/${hiddenSubjectEnqueued}, timetable=${timetableEnqueued}`)
+  let userSettingsEnqueued = 0
+  if (force || !lastSyncAt || isChangedRow(changedRowIds, "user_settings", "user_settings")) {
+    const settings = collectUserSettingsForSync()
+    await enqueueRemoteUpsert("user_settings", settings)
+    userSettingsEnqueued = 1
+  }
+  console.warn(`[sync] enqueueAllLocalRows: lastSyncAt=${lastSyncAt ?? "null"}, projects=${projects.length}/${projectEnqueued}, events=${events.length}/${eventEnqueued}, sessions=${sessions.length}/${sessionEnqueued}, customSubjects=${customSubjects.length}/${customSubjectEnqueued}, hiddenSubjects=${hiddenSubjects.length}/${hiddenSubjectEnqueued}, timetable=${timetableEnqueued}, userSettings=${userSettingsEnqueued}`)
 }
 
 async function applyRealtimeChange(change: RealtimeChange): Promise<void> {
@@ -681,6 +723,10 @@ async function applyRemoteRow(table: SyncTable, row: RemoteRow): Promise<void> {
     await pullTimetableConfig()
     return
   }
+  if (table === "user_settings") {
+    await pullUserSettings()
+    return
+  }
   const fileName = FILES[table]
   if (!fileName) return
   const local = await readJsonArray<Record<string, unknown>>(fileName)
@@ -718,6 +764,10 @@ async function removeLocalRow(table: SyncTable, id: string): Promise<void> {
     // timetable_config is single-row, handled by pullTimetableConfig
     return
   }
+  if (table === "user_settings") {
+    // user_settings is single-row, handled by pullUserSettings
+    return
+  }
   const fileName = FILES[table]
   if (!fileName) return
   const local = await readJsonArray<Record<string, unknown>>(fileName)
@@ -739,6 +789,8 @@ function localToRemoteRow(table: SyncTable, payload: LocalRecord, userId: string
       return hiddenSubjectToRow(payload as string, userId, deviceId) as HiddenSubjectRow
     case "timetable_config":
       return timetableConfigToRow(payload as ReturnType<typeof getTimetableConfig>, userId, deviceId)
+    case "user_settings":
+      return userSettingsToRow(payload as UserSettings, userId, deviceId)
   }
 }
 
@@ -944,8 +996,27 @@ function getLocalRecordId(table: SyncTable, payload: LocalRecord): string | null
   if (table === "custom_subjects") return (payload as Subject).id
   if (table === "hidden_subjects") return payload as string
   if (table === "timetable_config") return "timetable_config"
+  if (table === "user_settings") return "user_settings"
   const id = (payload as { id?: unknown }).id
   return typeof id === "string" ? id : null
+}
+
+function collectUserSettingsForSync(): UserSettings {
+  const notionSettings = getNotionCalendarSettings()
+  return {
+    openrouter_api_key: getApiKey() ?? "",
+    openrouter_model: getModel(),
+    reasoning_effort: getReasoningEffort(),
+    reasoning_max_tokens: getReasoningMaxTokens(),
+    reasoning_exclude: getReasoningExclude(),
+    notion_token: notionSettings.token,
+    notion_data_source_id: notionSettings.dataSourceId,
+    notion_title_property: notionSettings.titleProperty,
+    notion_date_property: notionSettings.dateProperty,
+    notion_type_property: notionSettings.typeProperty,
+    notion_completed_property: notionSettings.completedProperty,
+    notion_subject_property: notionSettings.subjectProperty,
+  }
 }
 
 function emitLocalDataChanged(table: SyncTable): void {

@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, ExternalLink, Search } from "lucide-react"
 import { cn, isRecord } from "@/lib/utils"
 import { getApiKey, setApiKey, getModel, setModel, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude } from "@/lib/settings"
+import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { ReasoningEffort } from "@/lib/settings"
 import { SETTINGS_SECTION_CLASS, SETTINGS_CHECKBOX_CLASS, SETTINGS_LINK_CLASS, getSettingsOptionClassName } from "./constants"
 
@@ -335,11 +336,13 @@ export function AIModelSection() {
     setApiKey(value)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+    notifyUserSettingsChanged()
   }, [])
 
   const handleModelChange = useCallback((value: string) => {
     setModelState(value)
     setModel(value)
+    notifyUserSettingsChanged()
   }, [])
 
   // eslint-disable-next-line react-hooks/refs
@@ -358,16 +361,19 @@ export function AIModelSection() {
   const handleReasoningEffortChange = useCallback((value: ReasoningEffort) => {
     setReasoningEffortState(value)
     setReasoningEffort(value)
+    notifyUserSettingsChanged()
   }, [])
 
   const handleReasoningMaxTokensChange = useCallback((value: number) => {
     setReasoningMaxTokensState(value)
     setReasoningMaxTokens(value)
+    notifyUserSettingsChanged()
   }, [])
 
   const handleReasoningExcludeChange = useCallback((checked: boolean) => {
     setReasoningExcludeState(checked)
     setReasoningExclude(checked)
+    notifyUserSettingsChanged()
   }, [])
 
   return (
