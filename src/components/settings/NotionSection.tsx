@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Loader2, RefreshCw, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getNotionCalendarSettings, setNotionCalendarSettings } from "@/lib/settings"
+import { getNotionCalendarSettings, setNotionCalendarSettings, getSyncNotionToken, setSyncNotionToken } from "@/lib/settings"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { NotionCalendarSettings } from "@/lib/settings"
 import { SETTINGS_SECTION_CLASS, SETTINGS_LINK_CLASS, formatTimeAgo } from "./constants"
@@ -20,6 +20,7 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
   const [notionSaved, setNotionSaved] = useState(false)
   const [notionSyncing, setNotionSyncing] = useState(false)
   const [notionSyncResult, setNotionSyncResult] = useState<string | null>(null)
+  const [syncNotionToken, setSyncNotionTokenState] = useState(() => getSyncNotionToken())
   const [notionSyncPhase, setNotionSyncPhase] = useState<string | null>(null)
   const [notionSyncBreakdown, setNotionSyncBreakdown] = useState<{
     created: number
@@ -42,6 +43,12 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
     setNotionSaved(true)
     setNotionSyncResult(null)
     setTimeout(() => setNotionSaved(false), 2000)
+    notifyUserSettingsChanged()
+  }, [])
+
+  const handleSyncNotionTokenChange = useCallback((checked: boolean) => {
+    setSyncNotionTokenState(checked)
+    setSyncNotionToken(checked)
     notifyUserSettingsChanged()
   }, [])
 
@@ -132,6 +139,20 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
           placeholder="secret_..."
           className="font-mono text-xs"
         />
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/70 bg-background/30 p-2.5 transition-colors hover:border-muted-foreground/30">
+          <input
+            type="checkbox"
+            checked={syncNotionToken}
+            onChange={(e) => handleSyncNotionTokenChange(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-primary mt-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+          <div className="min-w-0">
+            <p className="text-xs font-medium leading-tight">Sync token to account</p>
+            <p className="mt-0.5 text-caption text-muted-foreground/70">
+              When enabled, the integration token is stored in your Supabase account and synced across devices.
+            </p>
+          </div>
+        </label>
         <label className="text-caption text-muted-foreground/70" htmlFor="notion-data-source-id">Data source or database id</label>
         <Input
           id="notion-data-source-id"

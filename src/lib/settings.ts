@@ -13,6 +13,8 @@ const KEYS = {
   notionTypeProperty: "focal-notion-type-property",
   notionCompletedProperty: "focal-notion-completed-property",
   notionSubjectProperty: "focal-notion-subject-property",
+  syncNotionToken: "focal-sync-notion-token",
+  syncOpenrouterKey: "focal-sync-openrouter-key",
 } as const
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
@@ -114,6 +116,24 @@ export function setNotionCalendarSettings(settings: NotionCalendarSettings) {
   localStorage.setItem(KEYS.notionTypeProperty, settings.typeProperty.trim())
   localStorage.setItem(KEYS.notionCompletedProperty, settings.completedProperty.trim())
   localStorage.setItem(KEYS.notionSubjectProperty, settings.subjectProperty.trim())
+}
+
+/** Whether to sync the Notion token to the cloud account. Local-only flag, never synced. */
+export function getSyncNotionToken(): boolean {
+  return localStorage.getItem(KEYS.syncNotionToken) === "true"
+}
+
+export function setSyncNotionToken(enabled: boolean) {
+  localStorage.setItem(KEYS.syncNotionToken, String(enabled))
+}
+
+/** Whether to sync the OpenRouter API key to the cloud account. Local-only flag, never synced. */
+export function getSyncOpenrouterKey(): boolean {
+  return localStorage.getItem(KEYS.syncOpenrouterKey) === "true"
+}
+
+export function setSyncOpenrouterKey(enabled: boolean) {
+  localStorage.setItem(KEYS.syncOpenrouterKey, String(enabled))
 }
 
 export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; max_tokens?: number; exclude?: boolean } } {
