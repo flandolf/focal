@@ -1,11 +1,16 @@
 import {
   addChangedRowId,
   addDeletedRowId,
+  clearQueueItemsFromMeta,
+  coalesceQueueItem,
+  mergeRemoteRecords,
   removeDeletedRowId,
+  shouldBackfillCalendarTable,
   shouldEnqueueFileRow,
   shouldEnqueueLocalTable,
   shouldKeepLocalRow,
 } from "../src/lib/sync/core"
+import type { SyncQueueItem } from "../src/lib/sync/types"
 
 const lastSyncAt = "2026-06-13T08:00:00.000Z"
 
@@ -84,6 +89,24 @@ assertEqual(
 )
 
 assertEqual(
+  shouldBackfillCalendarTable("study_sessions", null),
+  true,
+  "study sessions need a one-time backfill so stale local rows that never uploaded still reach Supabase",
+)
+
+assertEqual(
+  shouldBackfillCalendarTable("projects", null),
+  false,
+  "calendar backfill should stay scoped to events and study sessions",
+)
+
+assertEqual(
+  shouldBackfillCalendarTable("events", "2026-06-13T12:00:00.000Z"),
+  false,
+  "calendar backfill must stop after a clean successful flush",
+)
+
+assertEqual(
   shouldKeepLocalRow("events", "event-1", { events: ["event-1"] }, {}),
   true,
   "remote soft-delete must not remove an unpushed local event edit",
@@ -93,4 +116,153 @@ assertEqual(
   shouldKeepLocalRow("study_sessions", "session-1", {}, { study_sessions: ["session-1"] }),
   true,
   "remote rows must not resurrect over an unpushed local study-session delete",
+)
+
+const dirtyLocalEvent = {
+  id: "event-1",
+  title: "Local edit",
+  updated_at: "2026-06-13T09:00:00.000Z",
+  deleted_at: null,
+  last_modified_device_id: "device-local",
+}
+
+assertJsonEqual(
+  mergeRemoteRecords({
+    table: "events",
+    local: [dirtyLocalEvent],
+    remote: [{
+      id: "event-1",
+      title: "Newer remote edit",
+      updated_at: "2026-06-13T10:00:00.000Z",
+      deleted_at: null,
+      last_modified_device_id: "device-remote",
+    }],
+    remoteToLocal: (row) => row,
+    currentDeviceId: "device-local",
+    changedRowIds: { events: ["event-1"] },
+  }),
+  [dirtyLocalEvent],
+  "unflushed local event edit must survive a newer remote pull",
+)
+
+const dirtyLocalSession = {
+  id: "session-1",
+  title: "Local study plan",
+  updated_at: "2026-06-13T09:00:00.000Z",
+  deleted_at: null,
+  last_modified_device_id: "device-local",
+}
+
+assertJsonEqual(
+  mergeRemoteRecords({
+    table: "study_sessions",
+    local: [dirtyLocalSession],
+    remote: [{
+      id: "session-1",
+      updated_at: "2026-06-13T10:00:00.000Z",
+      deleted_at: "2026-06-13T10:00:00.000Z",
+      last_modified_device_id: "device-remote",
+    }],
+    remoteToLocal: () => null,
+    currentDeviceId: "device-local",
+    changedRowIds: { study_sessions: ["session-1"] },
+  }),
+  [dirtyLocalSession],
+  "unflushed local study session must survive a remote tombstone",
+)
+
+assertJsonEqual(
+  mergeRemoteRecords({
+    table: "events",
+    local: [{
+      id: "event-2",
+      title: "Old local",
+      updated_at: "2026-06-13T07:00:00.000Z",
+      deleted_at: null,
+      last_modified_device_id: "device-local",
+    }],
+    remote: [{
+      id: "event-2",
+      title: "Fresh remote",
+      updated_at: "2026-06-13T10:00:00.000Z",
+      deleted_at: null,
+      last_modified_device_id: "device-remote",
+    }],
+    remoteToLocal: (row) => row,
+    currentDeviceId: "device-local",
+  }).map((event) => event.title),
+  ["Fresh remote"],
+  "clean local event should still accept a newer remote update",
+)
+
+const pendingEventUpsert: SyncQueueItem = {
+  id: "queue-1",
+  table: "events",
+  operation: "upsert",
+  rowId: "event-1",
+  payload: { id: "event-1", title: "Draft" },
+  createdAt: "2026-06-13T09:00:00.000Z",
+  retryCount: 3,
+}
+
+const deleteReplacesUpsert = coalesceQueueItem(
+  [pendingEventUpsert],
+  { table: "events", operation: "soft_delete", rowId: "event-1", payload: { id: "event-1", deleted_at: "2026-06-13T10:00:00.000Z" } },
+  "queue-2",
+  "2026-06-13T10:00:00.000Z",
+)
+
+assertJsonEqual(
+  deleteReplacesUpsert.map((item) => ({ operation: item.operation, retryCount: item.retryCount })),
+  [{ operation: "soft_delete", retryCount: 0 }],
+  "delete must replace a stale pending upsert and reset retries",
+)
+
+const restoreReplacesDelete = coalesceQueueItem(
+  deleteReplacesUpsert,
+  { table: "events", operation: "upsert", rowId: "event-1", payload: { id: "event-1", title: "Restored" } },
+  "queue-3",
+  "2026-06-13T11:00:00.000Z",
+)
+
+assertJsonEqual(
+  restoreReplacesDelete.map((item) => ({ operation: item.operation, rowId: item.rowId })),
+  [{ operation: "upsert", rowId: "event-1" }],
+  "restore/upsert must replace a stale pending delete for the same event",
+)
+
+assertJsonEqual(
+  clearQueueItemsFromMeta(
+    {
+      deviceId: "device-1",
+      lastSuccessfulSyncAt: null,
+      localChangedAt: {
+        events: "2026-06-13T09:00:00.000Z",
+        study_sessions: "2026-06-13T09:00:00.000Z",
+      },
+      localChangedRowIds: {
+        events: ["event-1"],
+        study_sessions: ["session-1"],
+      },
+      deletedRowIds: {
+        events: ["event-1"],
+      },
+    },
+    [{ table: "events", rowId: "event-1" }],
+  ),
+  {
+    deviceId: "device-1",
+    lastSuccessfulSyncAt: null,
+    localChangedAt: {
+      study_sessions: "2026-06-13T09:00:00.000Z",
+    },
+    localChangedRowIds: {
+      events: [],
+      study_sessions: ["session-1"],
+    },
+    deletedRowIds: {
+      events: [],
+    },
+  },
+  "max-retry cleanup should stop requeueing dropped rows without clearing unrelated dirty study sessions",
 )
