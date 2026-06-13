@@ -270,6 +270,13 @@ export function useEvents() {
       const updated = markPastEventsFinished(eventsRef.current)
       if (updated !== eventsRef.current) {
         void saveEvents(updated)
+        // Sync the isFinished/finishedAt changes to the remote so other
+        // devices pick up the auto-finished status.
+        updated.forEach((event, i) => {
+          if (event !== eventsRef.current[i]) {
+            void recordLocalUpsert("events", event)
+          }
+        })
       }
     }
 
