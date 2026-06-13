@@ -194,6 +194,59 @@ export async function retrySync(): Promise<void> {
   await runInitialSync()
 }
 
+export async function forcePushAndMerge(): Promise<void> {
+  await runForcePush("merge")
+}
+
+export async function forcePushAndOverwrite(): Promise<void> {
+  await runForcePush("overwrite")
+}
+
+async function runForcePush(mode: "merge" | "overwrite"): Promise<void> {
+  if (!currentSession || !currentDeviceId || syncDisabledReason) {
+    emitStatus({ status: "error", error: "Not signed in or sync disabled", details: "Cannot force push while signed out or sync disabled" })
+    return
+  }
+  const label = mode === "merge" ? "Force push & merge" : "Force push & overwrite"
+  try {
+    emitStatus({ status: "syncing", error: null, details: `${label} — migrating IDs...` })
+    await migrateLocalIdsToUuids()
+    emitStatus({ status: "syncing", error: null, details: `${label} — waiting for in-flight flush...` })
+    if (flushPromise) await flushPromise
+    await writeSyncQueue([])
+    await enqueueAllLocalRows(true)
+    emitStatus({ status: "syncing", error: null, details: `${label} — pushing all local data...` })
+    await flushQueue()
+    if (snapshot.status === "syncing") {
+      emitStatus({ status: "error", error: "Push could not complete", details: `${label} failed — check connection and sign-in status, then try again` })
+      return
+    }
+    if (snapshot.status === "error" && snapshot.pendingCount > 0) {
+      emitStatus({ status: "error", error: snapshot.error ?? "Some items failed to push", details: `${label} halted — ${snapshot.pendingCount} item${snapshot.pendingCount === 1 ? "" : "s"} still pending after push` })
+      return
+    }
+    if (mode === "merge") {
+      emitStatus({ status: "syncing", error: null, details: `${label} — pulling remote changes...` })
+      await pullRemoteChanges()
+    }
+    const now = new Date().toISOString()
+    const meta = await readMeta()
+    await writeMeta({ ...meta, lastSuccessfulSyncAt: now })
+    const details = mode === "merge"
+      ? "Force push & merge complete"
+      : "Force push & overwrite complete — remote data was overwritten"
+    emitStatus({ status: "synced", error: null, lastSuccessfulSyncAt: now, details, isOnline: true })
+  } catch (e) {
+    if (isMissingSyncSchemaError(e)) {
+      syncDisabledReason = MISSING_SYNC_SCHEMA_MESSAGE
+      emitStatus({ status: "error", error: syncDisabledReason, details: syncDisabledReason })
+      return
+    }
+    const msg = getErrorMessage(e)
+    emitStatus({ status: "error", error: msg, details: `${label} failed: ${msg}` })
+  }
+}
+
 async function flushQueue(): Promise<void> {
   if (syncDisabledReason) return
   if (flushPromise) return flushPromise
@@ -381,14 +434,21 @@ function mergeRemoteRows(table: SyncTable, local: Record<string, unknown>[], rem
       // Remote is newer or no local item exists
       byId.set(row.id, remoteLocal as unknown as Record<string, unknown>)
     } else if (cmp === 0 && currentDeviceId) {
-      // Tie-breaker: if timestamps are equal, prefer local if it was modified on this device.
-      // This prevents the current device from having its own changes overwritten by another
-      // device that happened to save at the exact same millisecond.
-      // If the local item lacks a device ID (e.g. pre-migration data), keep local to be safe.
+      // Tie-breaker: when timestamps are equal, decide which copy wins.
+      // If the remote was modified by this device, keep local (we just pushed it).
+      // If the local was modified by another device, prefer remote (another device
+      // saved at the same millisecond). If local lacks a device ID (pre-migration
+      // data), keep local to be safe.
       const localDeviceId = localItem.last_modified_device_id as string | undefined
-      if (localDeviceId && localDeviceId !== currentDeviceId) {
+      const remoteDeviceId = row.last_modified_device_id as string | undefined
+      if (remoteDeviceId && remoteDeviceId === currentDeviceId) {
+        // Remote was modified by this device — local is authoritative
+        // keep local (do nothing)
+      } else if (localDeviceId && localDeviceId !== currentDeviceId) {
+        // Local was modified by another device — prefer remote
         byId.set(row.id, remoteLocal as unknown as Record<string, unknown>)
       }
+      // If local was modified by this device, or neither has a device ID, keep local
     }
   })
 
@@ -434,9 +494,9 @@ async function pullTimetableConfig(): Promise<void> {
   }
 }
 
-async function enqueueAllLocalRows(): Promise<void> {
+async function enqueueAllLocalRows(force = false): Promise<void> {
   const meta = await readMeta()
-  const lastSyncAt = meta.lastSuccessfulSyncAt
+  const lastSyncAt = force ? null : meta.lastSuccessfulSyncAt
 
   const [projects, events, sessions] = await Promise.all([
     readJsonArray<Project>("projects.json"),
@@ -445,7 +505,8 @@ async function enqueueAllLocalRows(): Promise<void> {
   ])
 
   // Only enqueue rows that have been modified since the last successful sync
-  // to avoid redundant push traffic and overwriting remote data with identical local copies
+  // to avoid redundant push traffic and overwriting remote data with identical local copies.
+  // In force mode, lastSyncAt is null so every row is enqueued.
   for (const project of projects) {
     if (!lastSyncAt || compareIso(project.updated_at, lastSyncAt) > 0) {
       await recordLocalUpsert("projects", project)

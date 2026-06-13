@@ -1,8 +1,9 @@
 import { useState } from "react"
-import { LogOut, Mail, UserPlus, RefreshCw, WifiOff } from "lucide-react"
+import { LogOut, Mail, UserPlus, RefreshCw, WifiOff, Clock, AlertTriangle, CheckCircle2, UploadCloud, CloudCog, Flame } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SETTINGS_SECTION_CLASS } from "@/components/settings/constants"
+import { confirmDestructiveAction } from "@/lib/confirmToast"
 import type { SyncStatusSnapshot } from "@/lib/sync/types"
 
 interface AccountSectionProps {
@@ -15,6 +16,8 @@ interface AccountSectionProps {
   onSignUp: (email: string, password: string) => Promise<unknown>
   onSignOut: () => Promise<void>
   onRetrySync?: () => void
+  onForcePushAndMerge?: () => void
+  onForcePushAndOverwrite?: () => void
 }
 
 export function AccountSection({
@@ -27,11 +30,14 @@ export function AccountSection({
   onSignUp,
   onSignOut,
   onRetrySync,
+  onForcePushAndMerge,
+  onForcePushAndOverwrite,
 }: AccountSectionProps) {
   const [formEmail, setFormEmail] = useState("")
   const [password, setPassword] = useState("")
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in")
   const [formError, setFormError] = useState<string | null>(null)
+  const [showForcePush, setShowForcePush] = useState(false)
 
   const submit = async () => {
     setFormError(null)
@@ -46,6 +52,32 @@ export function AccountSection({
       setFormError(String(e))
     }
   }
+
+function SyncStatusBadge({ status }: { status: SyncStatusSnapshot["status"] }) {
+  const config = {
+    synced: { color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: CheckCircle2, label: "Synced" },
+    syncing: { color: "text-primary bg-primary/10 border-primary/20", icon: RefreshCw, label: "Syncing..." },
+    pending: { color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20", icon: Clock, label: "Pending" },
+    error: { color: "text-destructive bg-destructive/10 border-destructive/20", icon: AlertTriangle, label: "Error" },
+    "signed-out": { color: "text-muted-foreground bg-muted/25 border-border", icon: Clock, label: "Signed out" },
+  }[status]
+  const Icon = config.icon
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-caption font-medium ${config.color}`}>
+      <Icon className="h-3 w-3" />
+      {config.label}
+    </span>
+  )
+}
+
+function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+  } catch {
+    return iso
+  }
+}
 
   return (
     <section className={SETTINGS_SECTION_CLASS}>
@@ -62,25 +94,94 @@ export function AccountSection({
         </p>
       ) : email ? (
         <div className="mt-4 space-y-3">
-          <div className="rounded-lg border border-border/70 bg-background/35 px-3 py-2">
-            <p className="text-sm font-medium">{email}</p>
-            <p className="mt-1 text-caption text-muted-foreground">
-              {sync.isOnline === false ? (
-                <span className="inline-flex items-center gap-1 text-amber-500">
+          <div className="rounded-lg border border-border/70 bg-background/35 px-3 py-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">{email}</p>
+              <SyncStatusBadge status={sync.isOnline === false ? "error" : sync.status} />
+            </div>
+
+            {/* Sync status detail */}
+            <div className="space-y-2">
+              {sync.isOnline === false && (
+                <p className="text-caption text-amber-500 inline-flex items-center gap-1">
                   <WifiOff className="h-3 w-3" />
-                  Offline
-                </span>
-              ) : sync.status === "error"
-                ? sync.error ?? "Sync error"
-                : sync.status === "pending"
-                  ? `${sync.pendingCount} pending local change${sync.pendingCount === 1 ? "" : "s"}`
-                  : sync.status}
-            </p>
+                  Offline — sync paused until connection is restored
+                </p>
+              )}
+              {sync.status === "error" && sync.error && sync.isOnline && (
+                <p className="text-caption text-destructive">{sync.error}</p>
+              )}
+              {sync.status === "pending" && (
+                <p className="text-caption text-muted-foreground">
+                  {sync.pendingCount} local change{sync.pendingCount === 1 ? "" : "s"} queued for next sync
+                  {sync.details ? ` (${sync.details})` : ""}
+                </p>
+              )}
+              {sync.status === "syncing" && sync.details && (
+                <p className="text-caption text-muted-foreground">{sync.details}</p>
+              )}
+              {sync.lastSuccessfulSyncAt && (
+                <p className="text-caption text-muted-foreground inline-flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Last successful sync: {formatDateTime(sync.lastSuccessfulSyncAt)}
+                </p>
+              )}
+            </div>
+
+            {/* Table stats grid */}
+            {sync.tableStats && sync.tableStats.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {sync.tableStats.map((stat) => (
+                  <div
+                    key={stat.table}
+                    className="rounded-md border border-border/60 bg-background/50 px-2 py-1.5"
+                  >
+                    <p className="text-[11px] font-medium text-muted-foreground capitalize">{stat.table.replace("_", " ")}</p>
+                    <div className="mt-0.5 flex flex-wrap gap-x-2 text-caption">
+                      {stat.pulled !== undefined && stat.pulled > 0 && (
+                        <span className="text-emerald-600 dark:text-emerald-400">{stat.pulled} pulled</span>
+                      )}
+                      {stat.pushed !== undefined && stat.pushed > 0 && (
+                        <span className="text-primary">{stat.pushed} pushed</span>
+                      )}
+                      {stat.failed !== undefined && stat.failed > 0 && (
+                        <span className="text-destructive">{stat.failed} failed</span>
+                      )}
+                      {(stat.pulled === 0 || stat.pulled === undefined) &&
+                        (stat.pushed === 0 || stat.pushed === undefined) &&
+                        (stat.failed === 0 || stat.failed === undefined) && (
+                        <span className="text-muted-foreground/50">No changes</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Failed items */}
+            {sync.failedItems && sync.failedItems.length > 0 && (
+              <div className="rounded-md border border-destructive/20 bg-destructive/5 px-2 py-2">
+                <p className="text-caption text-destructive font-medium inline-flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {sync.failedItems.length} failed item{sync.failedItems.length === 1 ? "" : "s"}
+                </p>
+                <ul className="mt-1 space-y-1">
+                  {sync.failedItems.map((item, i) => (
+                    <li key={i} className="text-caption text-destructive/80">
+                      <span className="font-medium capitalize">{item.table.replace("_", " ")}</span>{" "}
+                      <code className="rounded bg-background/60 px-1 font-mono text-[10px]">{item.rowId.slice(0, 8)}</code>
+                      {item.error && ` — ${item.error}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {sync.status === "error" && sync.isOnline && onRetrySync && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="mt-2 h-7 gap-1 text-caption"
+                className="h-7 gap-1 text-caption"
                 onClick={() => void onRetrySync()}
                 disabled={loading}
               >
@@ -88,6 +189,61 @@ export function AccountSection({
                 Retry sync
               </Button>
             )}
+
+            {/* Force push controls */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowForcePush((v) => !v)}
+                className="flex items-center gap-1 text-caption text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <CloudCog className="h-3 w-3" />
+                {showForcePush ? "Hide force push options" : "Force push options"}
+              </button>
+              {showForcePush && (
+                <div className="mt-2 space-y-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+                  <p className="text-caption text-amber-700 dark:text-amber-400">
+                    Use these when data on this device is not reaching other devices. Both operations push everything from this machine to Supabase.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-caption border-amber-500/30 hover:bg-amber-500/10"
+                      onClick={async () => {
+                        const confirmed = await confirmDestructiveAction({
+                          title: "Force push & merge?",
+                          description: "This pushes ALL local data to Supabase, then pulls remote data back to merge. Any pending queued changes will be dropped and re-queued. Use this when you want this device to win but still keep any remote-only items.",
+                          actionLabel: "Push & Merge",
+                        })
+                        if (confirmed) void onForcePushAndMerge?.()
+                      }}
+                      disabled={loading || sync.status === "syncing"}
+                    >
+                      <UploadCloud className="h-3 w-3" />
+                      Push & Merge
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-caption border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={async () => {
+                        const confirmed = await confirmDestructiveAction({
+                          title: "Force push & overwrite?",
+                          description: "This pushes ALL local data to Supabase and overwrites remote data for items that exist locally. Any pending queued changes will be dropped and re-queued. Remote-only items that don't exist locally are untouched.",
+                          actionLabel: "Push & Overwrite",
+                        })
+                        if (confirmed) void onForcePushAndOverwrite?.()
+                      }}
+                      disabled={loading || sync.status === "syncing"}
+                    >
+                      <Flame className="h-3 w-3" />
+                      Push & Overwrite
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <Button variant="outline" size="sm" className="gap-1.5" disabled={loading} onClick={() => void onSignOut()}>
             <LogOut className="h-4 w-4" />
