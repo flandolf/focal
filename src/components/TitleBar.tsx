@@ -74,7 +74,7 @@ function TrafficLights({
   )
 
   const buttons = reversed
-    ? [maximizeButton, minimizeButton, closeButton]
+    ? [minimizeButton, maximizeButton, closeButton]
     : [closeButton, minimizeButton, maximizeButton]
 
   return (
