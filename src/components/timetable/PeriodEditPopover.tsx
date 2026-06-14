@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useMemo } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import {
   Trash2,
@@ -55,17 +55,12 @@ export function PeriodEditPopover({
   const [endTime, setEndTime] = useState(period.endTime)
   const [moveToDay, setMoveToDay] = useState<TimetableDayLabel | null>(null)
 
-  // Sync state when period changes (e.g., different period selected)
-  useEffect(() => {
-    if (open) {
-      setPeriodName(period.period)
-      setSubject(period.subject)
-      setLocation(period.location ?? "")
-      setStartTime(period.startTime)
-      setEndTime(period.endTime)
-      setMoveToDay(null)
-    }
-  }, [period, open])
+  // ponytail: form state resets are handled by remounting the inner
+  // content via the `key` prop below when the period data or popover
+  // open state changes. This avoids the cascading-render anti-pattern
+  // of useEffect + setState, and the ref-during-render lint trap.
+  // Ceiling: if a popover ever needs live validation that survives
+  // period swaps, lift state out and use a controlled-form hook.
 
   const allSubjects = useMemo(() => [...VCE_SUBJECTS, ...subjects], [subjects])
 
@@ -111,6 +106,7 @@ export function PeriodEditPopover({
         onKeyDown={handleKeyDown}
       >
         <motion.div
+          key={`${open}-${period.period}-${period.startTime}-${period.endTime}-${period.subject}-${period.location ?? ""}`}
           initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: MOTION_DURATION.fast, ease: MOTION_EASE_SNAPPY }}

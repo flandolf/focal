@@ -54,7 +54,6 @@ import {
 } from "@/lib/motion";
 import { DEFAULT_VIEW_SETTINGS } from "@/lib/settings";
 import {
-  VCE_SUBJECTS,
   type TimetableDayLabel,
   type Subject,
   type TimetablePeriod,
@@ -970,7 +969,6 @@ function DayTimelineCard({
   dayToWeekday,
   allDayLabels,
   customSubjects,
-  cycleLength,
   onEditDay,
   onToggleHide,
   onCopyTo,
@@ -995,7 +993,6 @@ function DayTimelineCard({
   dayToWeekday: number[];
   allDayLabels?: TimetableDayLabel[];
   customSubjects?: Subject[];
-  cycleLength?: number;
   onEditDay: () => void;
   onToggleHide: () => void;
   onCopyTo: (day: TimetableDayLabel) => void;
@@ -1766,7 +1763,6 @@ export const TimetableView = memo(function TimetableView({
                     dayToWeekday={dayToWeekday}
                     allDayLabels={allDaysListForProps}
                     customSubjects={customSubjects}
-                    cycleLength={cycleLength}
                     onEditDay={() => {
                       setEditDayLabel(dayLabel);
                       setEditDayOpen(true);
