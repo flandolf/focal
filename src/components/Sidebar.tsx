@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "framer-motion"
 import { staggerContainer, staggerItem } from "@/lib/motion"
 import {
   Archive,
+  ArrowUpDown,
   Atom,
   BarChart3,
   BookOpen,
@@ -13,8 +14,10 @@ import {
   Calculator,
   ChartNoAxesColumn,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   CircleDot,
+  Copy,
   Dna,
   FlaskConical,
   Folder,
@@ -56,7 +59,9 @@ import {
 } from "@/components/ui/context-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StudyTimer } from "@/components/StudyTimer"
-import { cn, formatDeadline, isOverdue, sortProjectsByDeadline, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
+import { cn, formatDeadline, isOverdue, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
+import type { ProjectSortKey } from "@/hooks/useProjects"
+import { sortProjects } from "@/hooks/useProjects"
 import type { DeadlineType, Project, StudySession, Subject } from "@/lib/types"
 
 type FilterMode = "active" | "favorites" | "archived" | "finished"
@@ -81,7 +86,6 @@ function CollapsibleInline({
   className?: string
 }) {
   if (!show) return null
-
   return (
     <span className={cn("inline-flex min-w-0 overflow-hidden whitespace-nowrap", className)}>
       {children}
@@ -99,7 +103,6 @@ function CollapsibleBlock({
   className?: string
 }) {
   if (!show) return null
-
   return (
     <div className={cn("min-w-0 overflow-hidden", className)}>
       {children}
@@ -144,7 +147,6 @@ function getSidebarDeadlineIcon(type?: DeadlineType): LucideIcon {
 
 function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGroup[] {
   const groups = new Map<string, AssessmentSubjectGroup>()
-
   assessments.forEach((assessment) => {
     const subject = getSubjectById(assessment.subjectId)
     const subjectId = assessment.subjectId ?? "unassigned"
@@ -153,7 +155,6 @@ function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGr
       existing.assessments.push(assessment)
       return
     }
-
     groups.set(subjectId, {
       subjectId,
       label: subject?.name ?? "Unassigned",
@@ -162,13 +163,20 @@ function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGr
       assessments: [assessment],
     })
   })
-
   return Array.from(groups.values()).sort((a, b) => {
     if (a.subjectId === "unassigned") return 1
     if (b.subjectId === "unassigned") return -1
     return a.label.localeCompare(b.label)
   })
 }
+
+const SORT_OPTIONS: { key: ProjectSortKey; label: string }[] = [
+  { key: "deadline", label: "Deadline" },
+  { key: "name", label: "Name A–Z" },
+  { key: "created-newest", label: "Newest" },
+  { key: "created-oldest", label: "Oldest" },
+  { key: "fileCount", label: "File count" },
+]
 
 interface SidebarProps {
   projects: Project[]
@@ -191,6 +199,7 @@ interface SidebarProps {
   onToggleArchive?: (id: string) => void
   onToggleFinished?: (id: string) => void
   onOpenProjectSettings?: (id: string) => void
+  onDuplicateProject?: (id: string) => void
   onDropFolder?: (path: string) => void
   onStartPomodoroSession: (data: {
     subjectIds: string[]
@@ -208,6 +217,13 @@ interface SidebarProps {
   bumpProjectIds?: Set<string>
   onSearch?: () => void
   onSettings?: () => void
+  sortKey?: ProjectSortKey
+  onSortChange?: (key: ProjectSortKey) => void
+  selectedProjectIds?: Set<string>
+  onToggleProjectSelection?: (id: string) => void
+  onBulkArchive?: (ids: string[]) => void
+  onBulkFinish?: (ids: string[]) => void
+  onBulkDelete?: (ids: string[]) => void
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -235,14 +251,23 @@ export const Sidebar = memo(function Sidebar({
   onDeletePomodoroSession,
   onAddFile,
   onOpenProjectSettings,
+  onDuplicateProject,
   onDropFolder,
   fileCounts,
   bumpProjectIds,
   onSearch,
   onSettings,
+  sortKey = "deadline",
+  onSortChange,
+  selectedProjectIds,
+  onToggleProjectSelection,
+  onBulkArchive,
+  onBulkFinish,
+  onBulkDelete,
 }: SidebarProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("active")
   const [isDragOver, setIsDragOver] = useState(false)
+  const [showSortMenu, setShowSortMenu] = useState(false)
   const reduceMotion = useReducedMotion() === true
 
   const dragCounter = useRef(0)
@@ -277,7 +302,6 @@ export const Sidebar = memo(function Sidebar({
 
     if (!onDropFolder) return
 
-    // Try to get the path from text/uri-list first (gives file:// URLs on most platforms)
     const uriList = e.dataTransfer.getData("text/uri-list")
     if (uriList) {
       const lines = uriList.split(/\r?\n/).filter((line) => line.trim())
@@ -290,7 +314,6 @@ export const Sidebar = memo(function Sidebar({
       }
     }
 
-    // Fallback: try text/plain (some platforms send the raw path)
     const plain = e.dataTransfer.getData("text/plain")
     if (plain) {
       const trimmed = plain.trim()
@@ -300,7 +323,9 @@ export const Sidebar = memo(function Sidebar({
       }
     }
   }, [onDropFolder])
-  const sorted = sortProjectsByDeadline(projects)
+
+  const effectiveSortKey = sortKey ?? "deadline"
+  const sorted = sortProjects(projects, effectiveSortKey, fileCounts)
 
   const filtered = sorted.filter((p) => {
     if (filterMode === "favorites") return p.isFavorite && !p.isArchived && !p.isFinished
@@ -324,6 +349,20 @@ export const Sidebar = memo(function Sidebar({
   const pressTransition = reduceMotion ? { duration: 0 } : SIDEBAR_PRESS_TRANSITION
   const hoverLift = reduceMotion ? undefined : { scale: 1.025 }
   const tapPress = reduceMotion ? undefined : { scale: 0.96 }
+
+  const selectedCount = selectedProjectIds?.size ?? 0
+  const selectedIdsArray = selectedProjectIds ? Array.from(selectedProjectIds) : []
+  const bulkBarVisible = selectedCount > 0 && !isCollapsed
+
+  const handleProjectClick = useCallback((projectId: string) => {
+    if (selectedProjectIds && selectedProjectIds.size > 0 && onToggleProjectSelection) {
+      onToggleProjectSelection(projectId)
+    } else {
+      onSelect(projectId)
+    }
+  }, [selectedProjectIds, onToggleProjectSelection, onSelect])
+
+  const sortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Sort"
 
   return (
     <aside
@@ -494,6 +533,33 @@ export const Sidebar = memo(function Sidebar({
             </motion.button>
           ))}
         </div>
+
+        {/* Sort dropdown */}
+        {!isCollapsed && onSortChange && (
+          <DropdownMenu open={showSortMenu} onOpenChange={setShowSortMenu}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-micro text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              >
+                <ArrowUpDown className="h-3 w-3 shrink-0" />
+                <span>{sortLabel}</span>
+                <ChevronDown className="ml-auto h-3 w-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-36">
+              {SORT_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.key}
+                  onSelect={() => onSortChange(opt.key)}
+                  className={cn(sortKey === opt.key && "font-medium text-foreground")}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       <ScrollArea className="min-h-0 w-full max-w-full flex-1 overflow-hidden">
@@ -536,6 +602,8 @@ export const Sidebar = memo(function Sidebar({
                 const subject = getSubjectById(project.subjectId)
                 const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
                 const DeadlineIcon = getSidebarDeadlineIcon(project.deadlineType)
+                const isMultiSelecting = (selectedProjectIds?.size ?? 0) > 0
+                const isSelected = selectedProjectIds?.has(project.id) ?? false
 
                 return (
                     <ContextMenu key={project.id}>
@@ -553,11 +621,33 @@ export const Sidebar = memo(function Sidebar({
                         selectedId === project.id
                           ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
                           : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                        isSelected && "ring-1 ring-primary/30 bg-sidebar-accent/30",
                         project.isArchived && "opacity-60",
                         project.isFinished && "opacity-70"
                       )}
-                      onClick={() => onSelect(project.id)}
+                      onClick={() => handleProjectClick(project.id)}
                     >
+                      {/* Checkbox for multi-select */}
+                      {!isCollapsed && onToggleProjectSelection && (
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all",
+                            isMultiSelecting
+                              ? "opacity-100"
+                              : "opacity-0 group-hover:opacity-100",
+                            isSelected
+                              ? "border-primary/40 bg-primary/10 text-primary"
+                              : "border-muted-foreground/30 hover:border-muted-foreground/50"
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onToggleProjectSelection(project.id)
+                          }}
+                        >
+                          {isSelected && <CheckCircle2 className="h-3 w-3" />}
+                        </button>
+                      )}
                       <span className="relative shrink-0">
                         <span
                           className={cn(
@@ -601,8 +691,6 @@ export const Sidebar = memo(function Sidebar({
                           </div>
                           {project.deadline && !project.isFinished && (
                             <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
-                              {project.deadline && !project.isFinished && (
-                                <>
                                   <span
                                   className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
                                     style={{
@@ -620,8 +708,6 @@ export const Sidebar = memo(function Sidebar({
                                   )}>
                                     {formatDeadline(project.deadline)}
                                   </span>
-                                </>
-                              )}
                             </div>
                           )}
                       </CollapsibleBlock>
@@ -649,6 +735,17 @@ export const Sidebar = memo(function Sidebar({
                               >
                                 <Pencil />
                                 Rename
+                              </DropdownMenuItem>
+                            )}
+                            {onDuplicateProject && (
+                              <DropdownMenuItem
+                                onSelect={(event) => {
+                                  event.stopPropagation()
+                                  onDuplicateProject(project.id)
+                                }}
+                              >
+                                <Copy />
+                                Duplicate
                               </DropdownMenuItem>
                             )}
                             {onToggleFinished && (
@@ -740,6 +837,17 @@ export const Sidebar = memo(function Sidebar({
                           </CtxMenuItem>
                         )}
                         <CtxMenuSep />
+                        {onDuplicateProject && (
+                          <CtxMenuItem
+                            onSelect={(event) => {
+                              event.stopPropagation()
+                              onDuplicateProject(project.id)
+                            }}
+                          >
+                            <Copy />
+                            Duplicate
+                          </CtxMenuItem>
+                        )}
                         {onToggleFinished && (
                           <CtxMenuItem
                             onSelect={(event) => {
@@ -795,6 +903,45 @@ export const Sidebar = memo(function Sidebar({
           ) : null}
         </div>
       </ScrollArea>
+
+      {/* Bulk action bar */}
+      {bulkBarVisible && onBulkArchive && onBulkFinish && onBulkDelete && (
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 20, opacity: 0 }}
+          className="mx-2 mb-2 flex items-center gap-1.5 rounded-xl border border-primary/20 bg-sidebar-accent/80 backdrop-blur-sm p-1.5"
+        >
+          <span className="px-2 text-micro font-medium tabular-nums">
+            {selectedCount} selected
+          </span>
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onBulkArchive(selectedIdsArray)}
+              className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+            >
+              Archive
+            </button>
+            <button
+              type="button"
+              onClick={() => onBulkFinish(selectedIdsArray)}
+              className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+            >
+              Finish
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (onBulkDelete) onBulkDelete(selectedIdsArray)
+              }}
+              className="rounded-lg px-2 py-1 text-micro text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
+            >
+              Delete
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       <StudyTimer
         isCollapsed={isCollapsed}

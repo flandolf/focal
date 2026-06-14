@@ -95,6 +95,25 @@ export const VCE_SUBJECTS: Subject[] = [
 
 export const DEFAULT_SUBFOLDERS = ["SACs", "Notes", "Past-Papers", "Exam-Revision", "Resources"];
 
+export interface ProjectChecklistItem {
+  id: string
+  text: string
+  completed: boolean
+}
+
+export interface ProjectTemplate {
+  id: string
+  name: string
+  description?: string
+  icon?: string
+  subjectId?: string
+  unit?: Unit
+  deadlineType?: DeadlineType
+  customSubfolders?: string[]
+  checklist?: { text: string }[]
+  created_at: string
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -112,6 +131,10 @@ export interface Project {
   isFinished?: boolean;
   customSubfolders?: string[];
   isLinked?: boolean;
+  notes?: string
+  checklist?: ProjectChecklistItem[]
+  dependsOn?: string[]
+  templateId?: string
   updated_at?: string;
   deleted_at?: string | null;
   last_modified_device_id?: string | null;

@@ -1,6 +1,6 @@
 import { createElement } from "react"
 import { motion, useReducedMotion } from "framer-motion"
-import { Clock, Folder, Link, Settings, FolderUp, Plus, CheckCircle2, RefreshCw, Pencil } from "lucide-react"
+import { Clock, Download, Folder, Bookmark, Link, Settings, FolderUp, Plus, CheckCircle2, RefreshCw, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -23,6 +23,8 @@ interface ProjectHeaderProps {
   onRefresh?: () => void
   hasPendingChanges?: boolean
   onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
+  onExport?: () => void
+  onSaveAsTemplate?: () => void
   filteredFiles: FileInfo[]
   selectedFiles: Set<string>
 }
@@ -39,6 +41,8 @@ export function ProjectHeader({
   onRefresh,
   hasPendingChanges,
   onCreateEvents,
+  onExport,
+  onSaveAsTemplate,
   filteredFiles,
   selectedFiles,
 }: ProjectHeaderProps) {
@@ -160,6 +164,26 @@ export function ProjectHeader({
               </TooltipTrigger>
               <TooltipContent side="bottom">Open in Finder</TooltipContent>
             </Tooltip>
+            {onSaveAsTemplate && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onSaveAsTemplate}>
+                    <Bookmark className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Save as template</TooltipContent>
+              </Tooltip>
+            )}
+            {onExport && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onExport}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Export project</TooltipContent>
+              </Tooltip>
+            )}
             {onCreateEvents && (
               <FileStudyPlannerButton
                 project={project}

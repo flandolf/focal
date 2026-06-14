@@ -939,6 +939,36 @@ pub fn rename_project_folder(old_name: String, new_name: String) -> Result<(), S
     Ok(())
 }
 
+/// Copy an entire project folder (recursive) within the projects directory.
+#[tauri::command]
+pub async fn copy_project_folder(source_name: String, dest_name: String) -> Result<(), String> {
+    let projects_dir = get_projects_dir()?;
+    let src = projects_dir.join(&source_name);
+    let dest = projects_dir.join(&dest_name);
+
+    if !src.exists() {
+        return Err(format!("Source folder not found: {}", source_name));
+    }
+    if !src.is_dir() {
+        return Err(format!("Source path is not a directory: {}", source_name));
+    }
+    if dest.exists() {
+        return Err(format!("A folder named \"{}\" already exists", dest_name));
+    }
+
+    let dest_clone = dest.clone();
+    tokio::task::spawn_blocking(move || {
+        std::fs::create_dir_all(&dest_clone)
+            .map_err(|e| format!("Failed to create destination: {}", e))?;
+        copy_dir_recursive(&src, &dest_clone)
+            .map_err(|e| format!("Failed to copy folder contents: {}", e))
+    })
+    .await
+    .map_err(|_| "Blocking task panicked".to_string())??;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

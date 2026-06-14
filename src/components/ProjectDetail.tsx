@@ -15,6 +15,7 @@ import { ProjectHeader } from "@/components/project/ProjectHeader"
 import { FileTree } from "@/components/project/FileTree"
 import type { ListItem } from "@/components/project/FileTree"
 import { SessionList } from "@/components/project/SessionList"
+import { ProjectChecklistPanel } from "@/components/project/ProjectChecklistPanel"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
 import { notifyProjectActionError } from "@/components/project/shared"
 
@@ -27,10 +28,20 @@ interface ProjectDetailProps {
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
   onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
-
+  onUpdateNotes?: (notes: string) => void
+  onAddChecklistItem?: (text: string) => void
+  onToggleChecklistItem?: (itemId: string) => void
+  onRemoveChecklistItem?: (itemId: string) => void
+  onExport?: () => void
+  onSaveAsTemplate?: () => void
 }
 
-export const ProjectDetail = memo(function ProjectDetail({ project, sessions, onFilesChanged, onOpenSettings, onToggleFinished, onSelectSession, onNewSession, onCreateEvents }: ProjectDetailProps) {
+export const ProjectDetail = memo(function ProjectDetail({
+  project, sessions, onFilesChanged, onOpenSettings, onToggleFinished,
+  onSelectSession, onNewSession, onCreateEvents,
+  onUpdateNotes, onAddChecklistItem, onToggleChecklistItem, onRemoveChecklistItem,
+  onExport, onSaveAsTemplate,
+}: ProjectDetailProps) {
   const {
     files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
     addFileTags, removeFileTag, toggleFavorite,
@@ -49,7 +60,6 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
   const [showBulkMoveMenu, setShowBulkMoveMenu] = useState(false)
   const activeDropKeysRef = useRef(new Set<string>())
 
-  /** Breadcrumb segments derived from current subfolder path */
   const breadcrumbSegments = useMemo(() => {
     const segments: { label: string; path: string }[] = []
     if (selectedSubfolder === null) {
@@ -200,7 +210,6 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
   const handleCreateFolder = useCallback(async () => {
     try {
       const baseName = "New Folder"
-      // Check existing child folders at the current level to avoid naming conflicts
       const existingNames = new Set<string>()
       for (const f of files) {
         if (!f.subfolder) continue
@@ -378,7 +387,6 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
     }
   }, [files, addFileTags, onFilesChanged])
 
-  /** Subfolders at the current navigation level (immediate children only). */
   const currentLevelSubfolders = useMemo(() => {
     const set = new Set<string>()
     for (const f of files) {
@@ -426,7 +434,6 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
         return !file.subfolder
       }
       if (selectedSubfolder) {
-        // Only show files directly in this folder (not descendants)
         const fileSubfolder = file.subfolder ?? ""
         if (fileSubfolder !== selectedSubfolder) {
           return false
@@ -442,20 +449,16 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
     const showFolders = !searchQuery && selectedTags.length === 0 && selectedSubfolder !== null
 
     if (showFolders) {
-      // Recursive file count: each file contributes to every ancestor folder path
       const recursiveCounts = new Map<string, number>()
-      // Direct file count: files whose exact subfolder matches the folder path
       const directCounts = new Map<string, number>()
       for (const f of files) {
         if (!f.subfolder) continue
-        // Recursive: contribute to every ancestor
         const parts = f.subfolder.split("/")
         let current = ""
         for (const part of parts) {
           current = current ? `${current}/${part}` : part
           recursiveCounts.set(current, (recursiveCounts.get(current) ?? 0) + 1)
         }
-        // Direct: count only at the leaf folder
         directCounts.set(f.subfolder, (directCounts.get(f.subfolder) ?? 0) + 1)
       }
 
@@ -487,7 +490,6 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
       items.push({ type: "file", data: file })
     }
 
-    // Append recently removed files that would be visible in the current view
     const currentPaths = new Set(files.map((f) => f.path))
     for (const file of removedFiles) {
       if (currentPaths.has(file.path)) continue
@@ -501,9 +503,7 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
       items.push({ type: "file", data: file, isExiting: true })
     }
 
-    // Sort according to the active sort column, keeping folders grouped before files
     items.sort((a, b) => {
-      // Folders always sort before files, regardless of direction
       if (a.type !== b.type) {
         return a.type === "folder" ? -1 : 1
       }
@@ -515,11 +515,9 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
         return sortAsc ? cmp : -cmp
       }
 
-      // Files: sort by the active column
       const fa = a as { type: "file"; data: FileInfo }
       const fb = b as { type: "file"; data: FileInfo }
       const cmp = SORT_COMPARATORS[sortKey](fa.data, fb.data)
-      // ponytail: stable sort — when equal, preserve insertion order
       return sortAsc ? cmp : -cmp
     })
 
@@ -563,6 +561,8 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
     }
   }
 
+  const hasChecklist = onUpdateNotes && onAddChecklistItem && onToggleChecklistItem && onRemoveChecklistItem
+
   return (
     <div className="relative flex h-full flex-col">
       {isDragging && (
@@ -590,9 +590,22 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
         onRefresh={() => loadFiles({ silent: true })}
         hasPendingChanges={hasPendingChanges}
         onCreateEvents={onCreateEvents}
+        onExport={onExport}
+        onSaveAsTemplate={onSaveAsTemplate}
         filteredFiles={filteredFiles}
         selectedFiles={selectedFiles}
       />
+
+      {/* Notes & Checklist Panel */}
+      {hasChecklist && (
+        <ProjectChecklistPanel
+          project={project}
+          onUpdateNotes={(notes) => onUpdateNotes!(notes)}
+          onAddChecklistItem={(text) => onAddChecklistItem!(text)}
+          onToggleChecklistItem={(itemId) => onToggleChecklistItem!(itemId)}
+          onRemoveChecklistItem={(itemId) => onRemoveChecklistItem!(itemId)}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col">
         {viewMode === "sessions" ? (

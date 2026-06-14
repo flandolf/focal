@@ -7,7 +7,7 @@ import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-
 import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, pressable as pressableMotion, staggerContainer, staggerItem } from "@/lib/motion"
 import { Toaster, toast } from "sonner"
 import { FolderOpen } from "lucide-react"
-import { useProjects } from "@/hooks/useProjects"
+import { useProjects, type ProjectSortKey } from "@/hooks/useProjects"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
@@ -29,6 +29,7 @@ import { TitleBar } from "@/components/TitleBar"
 import { ProjectDetail } from "@/components/ProjectDetail"
 import { HomeView } from "@/components/HomeView"
 import { ProjectDialog } from "@/components/ProjectDialog"
+import { ProjectTemplateDialog } from "@/components/ProjectTemplateDialog"
 import { StudySessionDialog } from "@/components/StudySessionDialog"
 import { EventDialog } from "@/components/EventDialog"
 import { GlobalSearch } from "@/components/GlobalSearch"
@@ -40,6 +41,7 @@ import { SupabaseSyncIndicator } from "@/components/SupabaseSyncIndicator"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
+import type { ProjectTemplate } from "@/lib/types"
 
 const TimetableView = lazy(() =>
   import("@/components/timetable/TimetableView").then((m) => ({ default: m.TimetableView })),
@@ -193,7 +195,7 @@ function App() {
     }
   }, [])
 
-  const { projects, addProject, updateProject, deleteProject, restoreProject, scanAndImportProjects, linkFolderAsProject } = useProjects()
+  const { projects, addProject, updateProject, deleteProject, restoreProject, duplicateProject, bulkArchive, bulkFinish, bulkDelete, bulkUnarchive, addChecklistItem, toggleChecklistItem, removeChecklistItem, addDependency, removeDependency, getDependencyProjects, getDependentsOfProject, getTemplates, saveAsTemplate, deleteTemplate, loadFromTemplate, scanAndImportProjects, linkFolderAsProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
   const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, restoreEvent, restoreEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -217,6 +219,11 @@ function App() {
   const [analyticsView, setAnalyticsView] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [timetableView, setTimetableView] = useState(false)
+  const [sidebarSortKey, setSidebarSortKey] = useState<ProjectSortKey>("deadline")
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set())
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [templateSaveProjectId, setTemplateSaveProjectId] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<ProjectTemplate[]>(() => getTemplates())
   const [timetableConfig, setTimetableConfig] = useState(getTimetableConfig)
   const [zoom, setZoom] = useState(() => {
     try {
@@ -1234,6 +1241,179 @@ function App() {
     }
   }, [projects, addProject])
 
+  // New project management handlers
+  const handleDuplicateProject = useCallback(async (id: string) => {
+    try {
+      const copy = await duplicateProject(id)
+      setSelectedId(copy.id)
+      setHomeSelected(false)
+      toast.success(`Duplicated as "${copy.name}"`)
+    } catch (e) {
+      toast.error(`Failed to duplicate: ${String(e)}`)
+    }
+  }, [duplicateProject])
+
+  const handleToggleProjectSelection = useCallback((id: string) => {
+    setSelectedProjectIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const handleBulkArchive = useCallback(async (ids: string[]) => {
+    try {
+      await bulkArchive(ids)
+      setSelectedProjectIds(new Set())
+      toast.success(`${ids.length} assessment${ids.length > 1 ? "s" : ""} archived`)
+    } catch (e) {
+      toast.error(`Failed to archive: ${String(e)}`)
+    }
+  }, [bulkArchive])
+
+  const handleBulkFinish = useCallback(async (ids: string[]) => {
+    try {
+      await bulkFinish(ids)
+      setSelectedProjectIds(new Set())
+      toast.success(`${ids.length} assessment${ids.length > 1 ? "s" : ""} marked complete`)
+    } catch (e) {
+      toast.error(`Failed to update: ${String(e)}`)
+    }
+  }, [bulkFinish])
+
+  const handleBulkDelete = useCallback(async (ids: string[]) => {
+    const confirmed = await confirmDestructiveAction({
+      title: `Delete ${ids.length} assessment${ids.length > 1 ? "s" : ""}?`,
+      description: "This also removes associated study sessions.",
+      actionLabel: "Delete",
+    })
+    if (!confirmed) return
+    try {
+      await bulkDelete(ids)
+      setSelectedProjectIds(new Set())
+      if (selectedId && ids.includes(selectedId)) {
+        setSelectedId(null)
+        setHomeSelected(true)
+      }
+      toast.success(`${ids.length} assessment${ids.length > 1 ? "s" : ""} deleted`)
+    } catch (e) {
+      toast.error(`Failed to delete: ${String(e)}`)
+    }
+  }, [bulkDelete, selectedId])
+
+  const handleUpdateNotes = useCallback(async (notes: string) => {
+    if (!selectedId) return
+    try {
+      await updateProject(selectedId, { notes: notes || undefined })
+    } catch (e) {
+      toast.error(`Failed to update notes: ${String(e)}`)
+    }
+  }, [selectedId, updateProject])
+
+  const handleAddChecklistItem = useCallback(async (text: string) => {
+    if (!selectedId) return
+    try {
+      await addChecklistItem(selectedId, text)
+    } catch (e) {
+      toast.error(`Failed to add task: ${String(e)}`)
+    }
+  }, [selectedId, addChecklistItem])
+
+  const handleToggleChecklistItem = useCallback(async (itemId: string) => {
+    if (!selectedId) return
+    try {
+      await toggleChecklistItem(selectedId, itemId)
+    } catch (e) {
+      toast.error(`Failed to update task: ${String(e)}`)
+    }
+  }, [selectedId, toggleChecklistItem])
+
+  const handleRemoveChecklistItem = useCallback(async (itemId: string) => {
+    if (!selectedId) return
+    try {
+      await removeChecklistItem(selectedId, itemId)
+    } catch (e) {
+      toast.error(`Failed to remove task: ${String(e)}`)
+    }
+  }, [selectedId, removeChecklistItem])
+
+  const handleAddDependency = useCallback(async (projectId: string, dependsOnId: string) => {
+    try {
+      await addDependency(projectId, dependsOnId)
+    } catch (e) {
+      toast.error(`Failed to add dependency: ${String(e)}`)
+    }
+  }, [addDependency])
+
+  const handleRemoveDependency = useCallback(async (projectId: string, dependsOnId: string) => {
+    try {
+      await removeDependency(projectId, dependsOnId)
+    } catch (e) {
+      toast.error(`Failed to remove dependency: ${String(e)}`)
+    }
+  }, [removeDependency])
+
+  const handleSaveAsTemplate = useCallback((projectId: string | null, name: string) => {
+    if (!projectId) return
+    try {
+      saveAsTemplate(projectId, name)
+      setTemplates(getTemplates())
+      toast.success(`Template "${name}" saved`)
+    } catch (e) {
+      toast.error(`Failed to save template: ${String(e)}`)
+    }
+  }, [saveAsTemplate, getTemplates])
+
+  const handleDeleteTemplate = useCallback((templateId: string) => {
+    deleteTemplate(templateId)
+    setTemplates(getTemplates())
+  }, [deleteTemplate, getTemplates])
+
+  const handleLoadTemplate = useCallback(async (templateId: string) => {
+    try {
+      const project = await loadFromTemplate(templateId)
+      setSelectedId(project.id)
+      setHomeSelected(false)
+      toast.success(`Created "${project.name}" from template`)
+    } catch (e) {
+      toast.error(`Failed to load template: ${String(e)}`)
+    }
+  }, [loadFromTemplate])
+
+  const handleOpenTemplateDialog = useCallback((projectId?: string) => {
+    setTemplates(getTemplates())
+    setTemplateSaveProjectId(projectId ?? null)
+    setTemplateDialogOpen(true)
+  }, [getTemplates])
+
+  const handleExportProject = useCallback(async () => {
+    if (!selectedProject) return
+    try {
+      const data = {
+        exportedAt: new Date().toISOString(),
+        assessment: selectedProject,
+        sessions: selectedProjectSessions,
+      }
+      const content = JSON.stringify(data, null, 2)
+      const blob = new Blob([content], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `focal-${selectedProject.name.replace(/[^a-zA-Z0-9]/g, "-")}-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success("Project exported")
+    } catch (e) {
+      toast.error(`Failed to export: ${String(e)}`)
+    }
+  }, [selectedProject, selectedProjectSessions])
+
   const handleToggleCollapse = useCallback(() => {
     setSidebarCollapsed((prev) => !prev)
   }, [])
@@ -1294,6 +1474,7 @@ function App() {
               onDeletePomodoroSession={handleDeleteStudySession}
               onAddFile={handleAddFileFromSidebar}
               onOpenProjectSettings={handleOpenProjectSettings}
+              onDuplicateProject={handleDuplicateProject}
               onDropFolder={handleDropFolder}
               fileCounts={fileCounts}
               bumpProjectIds={bumpProjectIds}
@@ -1301,6 +1482,13 @@ function App() {
               timetableSelected={timetableView}
               onSearch={() => setSearchOpen(true)}
               onSettings={() => setSettingsView(true)}
+              sortKey={sidebarSortKey}
+              onSortChange={setSidebarSortKey}
+              selectedProjectIds={selectedProjectIds}
+              onToggleProjectSelection={handleToggleProjectSelection}
+              onBulkArchive={handleBulkArchive}
+              onBulkFinish={handleBulkFinish}
+              onBulkDelete={handleBulkDelete}
             />
           </motion.div>
           <motion.main
@@ -1409,6 +1597,12 @@ function App() {
                     onSelectSession={handleSelectSession}
                     onNewSession={handleOpenNewSession}
                     onCreateEvents={handleCreateEvents}
+                    onUpdateNotes={handleUpdateNotes}
+                    onAddChecklistItem={handleAddChecklistItem}
+                    onToggleChecklistItem={handleToggleChecklistItem}
+                    onRemoveChecklistItem={handleRemoveChecklistItem}
+                    onExport={handleExportProject}
+                    onSaveAsTemplate={() => handleOpenTemplateDialog(selectedProject.id)}
                   />
                 ) : (
                   <motion.div
@@ -1514,6 +1708,16 @@ function App() {
           onSave={setCustomSubjects}
           open={subjectsOpen}
           onOpenChange={setSubjectsOpen}
+        />
+        <ProjectTemplateDialog
+          open={templateDialogOpen}
+          onOpenChange={setTemplateDialogOpen}
+          templates={templates}
+          onSaveAsTemplate={handleSaveAsTemplate}
+          onLoadTemplate={handleLoadTemplate}
+          onDeleteTemplate={handleDeleteTemplate}
+          projectIdForSave={templateSaveProjectId}
+          projectNameForSave={templateSaveProjectId ? projects.find((p) => p.id === templateSaveProjectId)?.name : undefined}
         />
         <NotionConflictDialog
           open={notionConflictDialogOpen}

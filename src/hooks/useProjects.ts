@@ -1,11 +1,52 @@
 import { useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import type { Project, DeadlineType, Unit } from "@/lib/types"
-import { sanitiseFolderName, generateId } from "@/lib/utils"
+import type { Project, ProjectChecklistItem, ProjectTemplate, DeadlineType, Unit } from "@/lib/types"
+import { sanitiseFolderName, generateId, sortProjectsByDeadline } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS } from "@/lib/types"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
+
+export type ProjectSortKey = "deadline" | "name" | "created-newest" | "created-oldest" | "fileCount"
+
+export function sortProjects(projects: Project[], sortKey: ProjectSortKey, fileCounts: Record<string, number>): Project[] {
+  const sorted = [...projects]
+  switch (sortKey) {
+    case "name":
+      sorted.sort((a, b) => a.name.localeCompare(b.name))
+      break
+    case "created-newest":
+      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      break
+    case "created-oldest":
+      sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      break
+    case "fileCount":
+      sorted.sort((a, b) => (fileCounts[b.id] ?? 0) - (fileCounts[a.id] ?? 0))
+      break
+    case "deadline":
+    default:
+      return sortProjectsByDeadline(projects)
+  }
+  return sorted
+}
+
+const TEMPLATES_KEY = "focal-project-templates"
+
+function getStoredTemplates(): ProjectTemplate[] {
+  try {
+    const raw = localStorage.getItem(TEMPLATES_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((t): t is ProjectTemplate => typeof t === "object" && t !== null && typeof (t as ProjectTemplate).id === "string") : []
+  } catch {
+    return []
+  }
+}
+
+function saveTemplates(templates: ProjectTemplate[]) {
+  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates))
+}
 
 function normaliseProject(raw: unknown): Project {
   const obj = raw as Record<string, unknown>
@@ -29,6 +70,10 @@ function normaliseProject(raw: unknown): Project {
     isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
     isLinked: typeof obj.isLinked === "boolean" ? obj.isLinked : undefined,
     customSubfolders: Array.isArray(obj.customSubfolders) ? obj.customSubfolders.filter((s): s is string => typeof s === "string") : undefined,
+    notes: typeof obj.notes === "string" ? obj.notes : undefined,
+    dependsOn: Array.isArray(obj.dependsOn) ? obj.dependsOn.filter((d): d is string => typeof d === "string") : undefined,
+    templateId: typeof obj.templateId === "string" ? obj.templateId : undefined,
+    checklist: Array.isArray(obj.checklist) ? (obj.checklist as unknown[]).filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && typeof (item as Record<string, unknown>).id === "string" && typeof (item as Record<string, unknown>).text === "string").map((item) => ({ id: item.id as string, text: item.text as string, completed: Boolean(item.completed) })) : undefined,
   }
 }
 
@@ -229,6 +274,235 @@ export function useProjects() {
     if (updatedProject) void recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
+  const duplicateProject = useCallback(async (id: string) => {
+    const source = projectsRef.current.find((p) => p.id === id)
+    if (!source) throw new Error("Project not found")
+
+    const baseName = `${source.name} (Copy)`
+    let copyName = baseName
+    let counter = 1
+    const existingNames = new Set(projectsRef.current.map((p) => p.name))
+    while (existingNames.has(copyName)) {
+      counter++
+      copyName = `${source.name} (Copy ${counter})`
+    }
+
+    const sanitised = sanitiseFolderName(copyName)
+    if (!sanitised) throw new Error("Could not generate a valid folder name")
+
+    try {
+      await invoke("copy_project_folder", {
+        sourceName: source.folder_path,
+        destName: sanitised,
+      })
+    } catch (e) {
+      console.warn("Could not copy project folder on disk:", e)
+    }
+
+    const now = new Date().toISOString()
+    const project: Project = {
+      id: generateId(),
+      name: copyName,
+      description: source.description,
+      icon: source.icon,
+      deadline: source.deadline,
+      created_at: now,
+      updated_at: now,
+      folder_path: sanitised,
+      subjectId: source.subjectId,
+      unit: source.unit,
+      deadlineType: source.deadlineType,
+      examDate: source.examDate,
+      customSubfolders: source.customSubfolders ? [...source.customSubfolders] : undefined,
+      checklist: source.checklist ? source.checklist.map((item) => ({ ...item, id: generateId(), completed: false })) : undefined,
+      notes: source.notes,
+      dependsOn: source.dependsOn ? [...source.dependsOn] : undefined,
+    }
+    const updated = [...projectsRef.current, project]
+    await saveProjects(updated)
+    void recordLocalUpsert("projects", project)
+    return project
+  }, [projectsRef, saveProjects])
+
+  const bulkArchive = useCallback(async (ids: string[]) => {
+    const updated = projectsRef.current.map((p) =>
+      ids.includes(p.id) ? { ...p, isArchived: true, updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    ids.forEach((id) => {
+      const project = updated.find((p) => p.id === id)
+      if (project) void recordLocalUpsert("projects", project)
+    })
+  }, [projectsRef, saveProjects])
+
+  const bulkFinish = useCallback(async (ids: string[]) => {
+    const updated = projectsRef.current.map((p) =>
+      ids.includes(p.id) ? { ...p, isFinished: true, isArchived: false, updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    ids.forEach((id) => {
+      const project = updated.find((p) => p.id === id)
+      if (project) void recordLocalUpsert("projects", project)
+    })
+  }, [projectsRef, saveProjects])
+
+  const bulkDelete = useCallback(async (ids: string[]) => {
+    const updated = projectsRef.current.filter((p) => !ids.includes(p.id))
+    await saveProjects(updated)
+    ids.forEach((id) => void recordLocalSoftDelete("projects", id))
+  }, [projectsRef, saveProjects])
+
+  const bulkUnarchive = useCallback(async (ids: string[]) => {
+    const updated = projectsRef.current.map((p) =>
+      ids.includes(p.id) ? { ...p, isArchived: false, updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    ids.forEach((id) => {
+      const project = updated.find((p) => p.id === id)
+      if (project) void recordLocalUpsert("projects", project)
+    })
+  }, [projectsRef, saveProjects])
+
+  const addChecklistItem = useCallback(async (projectId: string, text: string) => {
+    if (!text.trim()) return
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project) throw new Error("Project not found")
+    const newItem: ProjectChecklistItem = { id: generateId(), text: text.trim(), completed: false }
+    const checklist = [...(project.checklist ?? []), newItem]
+    const updated = projectsRef.current.map((p) =>
+      p.id === projectId ? { ...p, checklist, updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    const updatedProject = updated.find((p) => p.id === projectId)
+    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+  }, [projectsRef, saveProjects])
+
+  const toggleChecklistItem = useCallback(async (projectId: string, itemId: string) => {
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project?.checklist) return
+    const checklist = project.checklist.map((item) =>
+      item.id === itemId ? { ...item, completed: !item.completed } : item
+    )
+    const updated = projectsRef.current.map((p) =>
+      p.id === projectId ? { ...p, checklist, updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    const updatedProject = updated.find((p) => p.id === projectId)
+    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+  }, [projectsRef, saveProjects])
+
+  const removeChecklistItem = useCallback(async (projectId: string, itemId: string) => {
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project?.checklist) return
+    const checklist = project.checklist.filter((item) => item.id !== itemId)
+    const updated = projectsRef.current.map((p) =>
+      p.id === projectId ? { ...p, checklist: checklist.length > 0 ? checklist : undefined, updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    const updatedProject = updated.find((p) => p.id === projectId)
+    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+  }, [projectsRef, saveProjects])
+
+  const addDependency = useCallback(async (projectId: string, dependsOnId: string) => {
+    if (projectId === dependsOnId) return
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project) throw new Error("Project not found")
+    const dependsOn = project.dependsOn ?? []
+    if (dependsOn.includes(dependsOnId)) return
+    const updated = projectsRef.current.map((p) =>
+      p.id === projectId ? { ...p, dependsOn: [...dependsOn, dependsOnId], updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    const updatedProject = updated.find((p) => p.id === projectId)
+    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+  }, [projectsRef, saveProjects])
+
+  const removeDependency = useCallback(async (projectId: string, dependsOnId: string) => {
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project?.dependsOn) return
+    const dependsOn = project.dependsOn.filter((d) => d !== dependsOnId)
+    const updated = projectsRef.current.map((p) =>
+      p.id === projectId ? { ...p, dependsOn: dependsOn.length > 0 ? dependsOn : undefined, updated_at: new Date().toISOString() } : p
+    )
+    await saveProjects(updated)
+    const updatedProject = updated.find((p) => p.id === projectId)
+    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+  }, [projectsRef, saveProjects])
+
+  const getDependencyProjects = useCallback((projectId: string): Project[] => {
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project?.dependsOn) return []
+    return projectsRef.current.filter((p) => project.dependsOn!.includes(p.id))
+  }, [projectsRef])
+
+  const getDependentsOfProject = useCallback((projectId: string): Project[] => {
+    return projectsRef.current.filter((p) => p.dependsOn?.includes(projectId))
+  }, [projectsRef])
+
+  const getTemplates = useCallback((): ProjectTemplate[] => {
+    return getStoredTemplates()
+  }, [])
+
+  const saveAsTemplate = useCallback((projectId: string, templateName: string) => {
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project) throw new Error("Project not found")
+    const templates = getStoredTemplates()
+    const template: ProjectTemplate = {
+      id: generateId(),
+      name: templateName || project.name,
+      description: project.description,
+      icon: project.icon,
+      subjectId: project.subjectId,
+      unit: project.unit,
+      deadlineType: project.deadlineType,
+      customSubfolders: project.customSubfolders,
+      checklist: project.checklist?.map((item) => ({ text: item.text })),
+      created_at: new Date().toISOString(),
+    }
+    templates.push(template)
+    saveTemplates(templates)
+    return template
+  }, [projectsRef])
+
+  const deleteTemplate = useCallback((templateId: string) => {
+    const templates = getStoredTemplates().filter((t) => t.id !== templateId)
+    saveTemplates(templates)
+  }, [])
+
+  const loadFromTemplate = useCallback(async (templateId: string) => {
+    const template = getStoredTemplates().find((t) => t.id === templateId)
+    if (!template) throw new Error("Template not found")
+    const project = await addProject(
+      template.name,
+      template.description,
+      template.icon,
+      undefined,
+      template.subjectId,
+      template.unit,
+      template.deadlineType,
+      undefined,
+      template.customSubfolders,
+      false,
+      undefined,
+      false,
+    )
+    // Copy checklist items from template
+    if (template.checklist && template.checklist.length > 0) {
+      const checklist: ProjectChecklistItem[] = template.checklist.map((item) => ({
+        id: generateId(),
+        text: item.text,
+        completed: false,
+      }))
+      const current = [...projectsRef.current, project]
+      const updatedProject = { ...project, checklist, updated_at: new Date().toISOString() }
+      const updated = current.map((p) => p.id === project.id ? updatedProject : p)
+      await saveProjects(updated)
+      void recordLocalUpsert("projects", updatedProject)
+      return updatedProject
+    }
+    return project
+  }, [addProject, projectsRef, saveProjects])
+
   return {
     projects,
     loading,
@@ -237,8 +511,24 @@ export function useProjects() {
     updateProject,
     deleteProject,
     restoreProject,
+    duplicateProject,
+    bulkArchive,
+    bulkFinish,
+    bulkDelete,
+    bulkUnarchive,
     addCustomSubfolder,
     removeCustomSubfolder,
+    addChecklistItem,
+    toggleChecklistItem,
+    removeChecklistItem,
+    addDependency,
+    removeDependency,
+    getDependencyProjects,
+    getDependentsOfProject,
+    getTemplates,
+    saveAsTemplate,
+    deleteTemplate,
+    loadFromTemplate,
     scanAndImportProjects,
     linkFolderAsProject,
     refresh,
