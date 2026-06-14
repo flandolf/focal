@@ -27,6 +27,7 @@ pub fn run() {
             commands::files::set_projects_directory,
             commands::files::get_projects_directory,
             commands::files::get_default_documents_dir,
+            commands::files::rename_project_folder,
             commands::files::scan_projects_root,
             commands::credits::get_credits,
             commands::notion::query_notion_calendar,

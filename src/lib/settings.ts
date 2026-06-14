@@ -119,22 +119,22 @@ export function setNotionCalendarSettings(settings: NotionCalendarSettings) {
   localStorage.setItem(KEYS.notionSubjectProperty, settings.subjectProperty.trim())
 }
 
-/** Whether to sync the Notion token to the cloud account. Local-only flag, never synced. */
+/** Notion tokens are local-only; legacy sync flags are cleared and ignored. */
 export function getSyncNotionToken(): boolean {
-  return localStorage.getItem(KEYS.syncNotionToken) === "true"
+  return false
 }
 
-export function setSyncNotionToken(enabled: boolean) {
-  localStorage.setItem(KEYS.syncNotionToken, String(enabled))
+export function setSyncNotionToken(_enabled: boolean) {
+  localStorage.removeItem(KEYS.syncNotionToken)
 }
 
-/** Whether to sync the OpenRouter API key to the cloud account. Local-only flag, never synced. */
+/** OpenRouter API keys are local-only; legacy sync flags are cleared and ignored. */
 export function getSyncOpenrouterKey(): boolean {
-  return localStorage.getItem(KEYS.syncOpenrouterKey) === "true"
+  return false
 }
 
-export function setSyncOpenrouterKey(enabled: boolean) {
-  localStorage.setItem(KEYS.syncOpenrouterKey, String(enabled))
+export function setSyncOpenrouterKey(_enabled: boolean) {
+  localStorage.removeItem(KEYS.syncOpenrouterKey)
 }
 
 export function getProjectsRootPath(): string | null {

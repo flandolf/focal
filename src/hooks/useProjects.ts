@@ -97,8 +97,29 @@ export function useProjects() {
     id: string,
     updates: Partial<Omit<Project, "id" | "created_at" | "folder_path">>
   ) => {
+    const current = projectsRef.current.find((p) => p.id === id)
+
+    // If the name changed, rename the folder on disk and update folder_path
+    let folderPathOverride: string | undefined
+    if (current && updates.name && updates.name !== current.name) {
+      const sanitised = sanitiseFolderName(updates.name)
+      if (sanitised && sanitised !== current.folder_path) {
+        try {
+          await invoke("rename_project_folder", {
+            oldName: current.folder_path,
+            newName: sanitised,
+          })
+        } catch (e) {
+          console.warn("Failed to rename project folder on disk:", e)
+        }
+      }
+      folderPathOverride = sanitised || current.folder_path
+    }
+
     const updated = projectsRef.current.map((p) =>
-      p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
+      p.id === id
+        ? { ...p, ...updates, ...(folderPathOverride ? { folder_path: folderPathOverride } : {}), updated_at: new Date().toISOString() }
+        : p
     )
     await saveProjects(updated)
     const project = updated.find((p) => p.id === id)

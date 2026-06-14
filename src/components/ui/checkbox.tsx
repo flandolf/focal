@@ -41,7 +41,6 @@ function Checkbox({
       >
         <CheckboxPrimitive.Indicator
           data-slot="checkbox-indicator"
-          forceMount
           asChild
         >
           <motion.span

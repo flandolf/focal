@@ -1095,6 +1095,13 @@ const StudyTimerInner = memo(function StudyTimerInner({
             >
               <Maximize2 className="h-3 w-3" />
             </button>
+            <button
+              onClick={handleReset}
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+              aria-label="Reset timer"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
           </div>
         </div>
         <AnimatePresence initial={false}>
@@ -1116,33 +1123,6 @@ const StudyTimerInner = memo(function StudyTimerInner({
               }}
             >
               <div className="space-y-2 px-3 py-2">
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={() => setExpanded(false)}
-                    className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                    aria-label="Collapse Pomodoro timer"
-                  >
-                    <Timer className="h-3.5 w-3.5" />
-                    Pomodoro
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      onClick={openFocusView}
-                      className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                      aria-label="Open full screen timer"
-                    >
-                      <Maximize2 className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={handleReset}
-                      className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-                      aria-label="Reset timer"
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
                 <div className={cn("text-xs font-medium", modeColor)}>
                   {modeLabel} · Cycle {cycles + 1}
                 </div>

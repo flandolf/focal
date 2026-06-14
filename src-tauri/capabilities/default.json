@@ -12,7 +12,7 @@
       "identifier": "opener:allow-open-path",
       "allow": [
         {
-          "path": "$HOME/Documents/Projects/**"
+          "path": "$HOME/**"
         }
       ]
     },

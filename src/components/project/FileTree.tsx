@@ -550,6 +550,13 @@ function VirtualFileList({
     if (!el) return
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // ponytail: ignore events from input/textarea — the user is typing, not
+      // navigating the file list.
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return
       if (listItems.length === 0) return
       const currentFocused = focusedIndexRef.current
 

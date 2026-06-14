@@ -35,14 +35,33 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
   const [entries, setEntries] = useState<RenameEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [useFileContent, setUseFileContent] = useState(() => getAutoRenameUseFileContent())
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const apiKeyMissing = !getApiKey()
+
   const handleOpen = useCallback(() => {
-    setEntries(files.map((f) => ({ file: f, newName: f.name, approved: true })))
+    setSelectedPaths(new Set(files.map((f) => f.path)))
+    setEntries([])
     setUseFileContent(getAutoRenameUseFileContent())
     setError(null)
     setOpen(true)
   }, [files])
 
+  const toggleSelected = useCallback((path: string) => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
+
+  const selectAll = useCallback(() => {
+    setSelectedPaths(new Set(files.map((f) => f.path)))
+  }, [files])
+
+  const deselectAll = useCallback(() => {
+    setSelectedPaths(new Set())
+  }, [])
 
   const handleGenerate = useCallback(async () => {
     const key = getApiKey()
@@ -50,13 +69,18 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
       setError("OpenRouter API key not configured. Set it in Settings.")
       return
     }
+    const selectedFiles = files.filter((f) => selectedPaths.has(f.path))
+    if (selectedFiles.length === 0) {
+      setError("No files selected. Select at least one file to rename.")
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      const fileContentPreviews = useFileContent ? await getFileContentPreviews(files) : new Map<string, string>()
-      const results = await generateRenames(files, key, getModel(), fileContentPreviews)
+      const fileContentPreviews = useFileContent ? await getFileContentPreviews(selectedFiles) : new Map<string, string>()
+      const results = await generateRenames(selectedFiles, key, getModel(), fileContentPreviews)
       const newEntries: RenameEntry[] = results.map((r) => {
-        const file = files.find((f) => f.name === r.original)!
+        const file = selectedFiles.find((f) => f.name === r.original)!
         return { file, newName: r.renamed, approved: r.renamed !== r.original }
       })
       setEntries(newEntries)
@@ -65,7 +89,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
     } finally {
       setLoading(false)
     }
-  }, [files, useFileContent])
+  }, [files, selectedPaths, useFileContent])
 
   const toggleApproved = useCallback((index: number) => {
     setEntries((prev) =>
@@ -107,6 +131,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
 
   const changedCount = entries.filter((e) => e.newName !== e.file.name).length
   const approvedCount = entries.filter((e) => e.approved && e.newName !== e.file.name).length
+  const selectedCount = selectedPaths.size
 
   if (files.length === 0) return null
 
@@ -166,10 +191,10 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
               />
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
                 onClick={handleGenerate}
-                disabled={loading || apiKeyMissing}
+                disabled={loading || apiKeyMissing || selectedCount === 0}
                 className="gap-1.5 text-background"
                 size="sm"
               >
@@ -180,6 +205,11 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                 )}
                 {loading ? "Generating..." : "Generate Renames"}
               </Button>
+              {entries.length === 0 && selectedCount > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {selectedCount} of {files.length} file{files.length !== 1 ? "s" : ""} selected
+                </span>
+              )}
               {entries.length > 0 && (
                 <>
                   <span className="text-xs text-muted-foreground">
@@ -217,6 +247,65 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
               )}
             </div>
 
+            {/* File selection list (before generation) */}
+            {entries.length === 0 && (
+              <>
+                <div className="flex shrink-0 items-center gap-3">
+                  <button
+                    onClick={selectAll}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    onClick={deselectAll}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Deselect all
+                  </button>
+                </div>
+                <ScrollArea className="min-h-0 flex-1 rounded-lg border">
+                  <div className="grid grid-cols-1 gap-px bg-border/30 md:grid-cols-2">
+                    {files.map((file) => {
+                      const isSelected = selectedPaths.has(file.path)
+                      return (
+                        <div
+                          key={file.path}
+                          className={cn(
+                            "flex min-w-0 items-center gap-2.5 bg-background px-3 py-2 cursor-pointer transition-colors hover:bg-accent/30",
+                            !isSelected && "opacity-40"
+                          )}
+                          onClick={() => toggleSelected(file.path)}
+                        >
+                          <FileTypeIcon
+                            extension={file.extension}
+                            className="size-7 shrink-0 rounded-md"
+                            iconClassName="size-3.5"
+                          />
+                          <div
+                            className={cn(
+                              "shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+                              isSelected
+                                ? "bg-primary border-primary text-primary-foreground"
+                                : "border-muted-foreground/30"
+                            )}
+                          >
+                            {isSelected && <Check className="h-2.5 w-2.5" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate leading-tight">
+                              {file.name}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              </>
+            )}
+
+            {/* Rename review list (after generation) */}
             {entries.length > 0 && (
               <ScrollArea className="min-h-0 flex-1 rounded-lg border">
                 <div className="grid grid-cols-1 gap-px bg-border/30 md:grid-cols-2">

@@ -37,11 +37,13 @@ export const SORT_COMPARATORS: Record<SortKey, (a: FileInfo, b: FileInfo) => num
 function computeFilesHash(files: FileInfo[]): string {
   let totalSize = 0
   let maxModified = 0
+  const paths: string[] = []
   for (const f of files) {
     totalSize += f.size
     maxModified = Math.max(maxModified, f.modified)
+    paths.push(f.path)
   }
-  return `${files.length}:${totalSize}:${maxModified}`
+  return `${files.length}:${totalSize}:${maxModified}:${paths.sort().join("|")}`
 }
 
 function updateFileTags(file: FileInfo, tags: FileTag[]): FileInfo {

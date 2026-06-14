@@ -1,10 +1,16 @@
 import { compareIso } from "@/lib/sync/mappers"
 import type { SyncConflictItem, SyncMeta, SyncOperation, SyncQueueItem, SyncTable } from "@/lib/sync/types"
+import type { UserSettings } from "@/lib/types"
 
 export const SYNC_TABLES: SyncTable[] = ["projects", "events", "study_sessions", "custom_subjects", "hidden_subjects", "timetable_config", "user_settings"]
 
 export function isSyncTable(value: unknown): value is SyncTable {
   return typeof value === "string" && (SYNC_TABLES as string[]).includes(value)
+}
+
+export function scrubUserSettingsSecrets(settings: UserSettings): UserSettings {
+  // ponytail: account sync stores settings as plaintext JSON; keep bearer secrets local-only.
+  return { ...settings, openrouter_api_key: "", notion_token: "" }
 }
 
 export function shouldEnqueueLocalTable(

@@ -103,6 +103,7 @@ function FileRowInner({
   );
 
   const handleOpenClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target instanceof HTMLElement && e.target.closest("button,input")) return;
     if (e.detail === 2) {
       onOpen?.(file);
     }
@@ -193,6 +194,7 @@ function FileRowInner({
                   value={renameValue}
                   onChange={(e) => setRenameValue(e.target.value)}
                   onKeyDown={(e) => {
+                    e.stopPropagation()
                     if (e.key === "Enter") confirmRename();
                     if (e.key === "Escape") cancelRename();
                   }}
@@ -201,6 +203,10 @@ function FileRowInner({
                   autoFocus
                 />
                 <button
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     confirmRename();
@@ -211,6 +217,10 @@ function FileRowInner({
                   <Check className="h-3.5 w-3.5" />
                 </button>
                 <button
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     cancelRename();

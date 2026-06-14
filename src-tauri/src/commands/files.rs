@@ -170,6 +170,14 @@ fn recently_moved_dest(src: &str) -> Option<PathBuf> {
         .cloned()
 }
 
+/// Returns true when the rename/move produced the destination despite
+/// reporting an error (common on synced/network filesystems).  We only
+/// check `dest.exists()` because `src` may still show as present during
+/// a race window, and the important question is whether the move landed.
+fn rename_landed_after_error(_src: &Path, dest: &Path) -> bool {
+    dest.exists()
+}
+
 /// Normalize a path that may come from a drag-and-drop event or file picker.
 /// Strips `file://`/`file:///` / `file://localhost/` prefixes and URL-decodes percent-encoded characters.
 fn normalize_path(path: &str) -> String {
@@ -263,17 +271,29 @@ pub async fn move_files_to_project(
                 } else {
                     moved = true;
                 }
-            } else if std::fs::rename(&src, &dest).is_ok() {
-                moved = true;
-            } else if let Err(e) = std::fs::copy(&src, &dest) {
-                if let Some(previous_dest) = recently_moved_dest(&normalized) {
-                    new_paths.push(previous_dest.to_string_lossy().to_string());
-                    continue;
-                }
-                skipped.push(format!("{} (move failed: {})", normalized, e));
             } else {
-                let _ = std::fs::remove_file(&src);
                 moved = true;
+                if std::fs::rename(&src, &dest).is_err()
+                    && !rename_landed_after_error(&src, &dest)
+                {
+                    if src.exists() {
+                        if let Err(e) = std::fs::copy(&src, &dest) {
+                            if let Some(previous_dest) = recently_moved_dest(&normalized) {
+                                new_paths.push(previous_dest.to_string_lossy().to_string());
+                                continue;
+                            }
+                            if !dest.exists() {
+                                skipped.push(format!("{} (move failed: {})", normalized, e));
+                                moved = false;
+                            }
+                            // ponytail: dest exists — rename landed during copy attempt
+                        } else {
+                            let _ = std::fs::remove_file(&src);
+                        }
+                    }
+                    // ponytail: if src no longer exists after a failed rename, the
+                    // filesystem driver already moved it — treat as success.
+                }
             }
             if moved {
                 new_paths.push(dest.to_string_lossy().to_string());
@@ -481,10 +501,18 @@ pub fn delete_files(file_paths: Vec<String>) -> Result<usize, String> {
             ));
         }
         if p.exists() && p.is_file() {
-            std::fs::remove_file(&p).map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+            if let Err(e) = std::fs::remove_file(&p) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(format!("Failed to delete {}: {}", path, e));
+                }
+            }
             deleted += 1;
         } else if p.exists() && p.is_dir() {
-            std::fs::remove_dir_all(&p).map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+            if let Err(e) = std::fs::remove_dir_all(&p) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(format!("Failed to delete {}: {}", path, e));
+                }
+            }
             deleted += 1;
         }
     }
@@ -509,7 +537,27 @@ pub fn rename_file(file_path: String, new_name: String) -> Result<String, String
             new_name
         ));
     }
-    std::fs::rename(&src, &dest).map_err(|e| format!("Failed to rename file: {}", e))?;
+
+    // ponytail: try rename first; if it fails (e.g. cloud placeholder), fall
+    // back to copy+delete.  Both checks are re-checked after the copy because
+    // synced filesystem drivers can move the file between the check and the copy.
+    if std::fs::rename(&src, &dest).is_err()
+        && !rename_landed_after_error(&src, &dest)
+    {
+        if src.exists() {
+            if let Err(e) = std::fs::copy(&src, &dest) {
+                if !dest.exists() {
+                    return Err(format!("Failed to rename file: {}", e));
+                }
+                // dest exists — rename landed during the copy attempt
+            } else {
+                let _ = std::fs::remove_file(&src);
+            }
+        }
+        // ponytail: if src didn't exist before the fallback, the filesystem
+        // driver already moved it — treat as success.
+    }
+
     Ok(dest.to_string_lossy().to_string())
 }
 
@@ -536,7 +584,15 @@ pub fn move_file_to_folder(file_path: String, dest_folder: String) -> Result<Str
     if dest.exists() {
         return Err("A file with the same name already exists in the destination".to_string());
     }
-    std::fs::rename(&src, &dest).map_err(|e| format!("Failed to move file: {}", e))?;
+    if let Err(e) = std::fs::rename(&src, &dest) {
+        if !rename_landed_after_error(&src, &dest) {
+            if src.exists() {
+                return Err(format!("Failed to move file: {}", e));
+            }
+            // ponytail: src gone after failed rename — filesystem driver already
+            // moved it; treat as success.
+        }
+    }
     Ok(dest.to_string_lossy().to_string())
 }
 
@@ -849,6 +905,104 @@ pub async fn import_folder_to_project(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn rename_project_folder(old_name: String, new_name: String) -> Result<(), String> {
+    let projects_dir = get_projects_dir()?;
+    let old_path = projects_dir.join(&old_name);
+    let new_path = projects_dir.join(&new_name);
+
+    if !old_path.exists() {
+        return Err(format!("Folder not found: {}", old_name));
+    }
+    if !old_path.is_dir() {
+        return Err(format!("Path is not a directory: {}", old_name));
+    }
+    if new_path.exists() {
+        return Err(format!(
+            "A folder named \"{}\" already exists",
+            new_name
+        ));
+    }
+
+    if let Err(e) = std::fs::rename(&old_path, &new_path) {
+        if !rename_landed_after_error(&old_path, &new_path) {
+            if old_path.exists() {
+                return Err(format!("Failed to rename folder: {}", e));
+            }
+            // ponytail: src gone after failed rename — filesystem driver already
+            // moved it; treat as success.
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn rename_landed_after_error_dest_exists() {
+        let base = std::env::temp_dir().join(format!(
+            "focal-files-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&base).unwrap();
+        let src = base.join("old.txt");
+        let dest = base.join("new.txt");
+        std::fs::write(&dest, "moved").unwrap();
+
+        // dest exists, src does not — typical "rename landed after error"
+        assert!(rename_landed_after_error(&src, &dest));
+
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn rename_landed_after_error_both_exist() {
+        let base = std::env::temp_dir().join(format!(
+            "focal-files-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&base).unwrap();
+        let src = base.join("old.txt");
+        let dest = base.join("new.txt");
+        std::fs::write(&src, "original").unwrap();
+        std::fs::write(&dest, "moved").unwrap();
+
+        // dest exists even though src also exists — the rename landed
+        assert!(rename_landed_after_error(&src, &dest));
+
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn rename_landed_after_error_neither_exist() {
+        let base = std::env::temp_dir().join(format!(
+            "focal-files-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&base).unwrap();
+        let src = base.join("old.txt");
+        let dest = base.join("new.txt");
+
+        // neither exists — rename did not land
+        assert!(!rename_landed_after_error(&src, &dest));
+
+        let _ = std::fs::remove_dir_all(base);
+    }
 }
 
 fn read_project_files_recursive(

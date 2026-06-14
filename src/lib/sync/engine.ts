@@ -2,9 +2,9 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getApiKey, getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getSyncNotionToken, getSyncOpenrouterKey, getTimetableConfig, setApiKey, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
+import { getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache } from "@/lib/utils"
-import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
+import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
 import { enqueueSyncItem, finishSyncQueueFlush, readSyncQueue, writeSyncQueue } from "@/lib/sync/queue"
 import {
@@ -83,6 +83,42 @@ const listeners = new Set<(status: SyncStatusSnapshot) => void>()
 // Accumulated failed items that persist across status updates until explicitly cleared
 let persistedFailedItems: SyncStatusSnapshot["failedItems"] = []
 let persistedConflicts: SyncStatusSnapshot["conflicts"] = []
+
+const SECRET_SETTING_KEYS = ["openrouter_api_key", "notion_token"] as const
+
+function userSettingsHasSecrets(settings: Partial<UserSettings> | null | undefined): boolean {
+  return SECRET_SETTING_KEYS.some((key) => typeof settings?.[key] === "string" && settings[key].trim() !== "")
+}
+
+function sanitizeSyncPayload(table: SyncTable, payload: unknown): unknown {
+  if (table !== "user_settings" || typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return payload
+  }
+  const row = payload as Record<string, unknown>
+  if (typeof row.settings !== "object" || row.settings === null || Array.isArray(row.settings)) {
+    return payload
+  }
+  return {
+    ...row,
+    settings: scrubUserSettingsSecrets(row.settings as UserSettings),
+  }
+}
+
+function sanitizeQueueItem(item: SyncQueueItem): SyncQueueItem {
+  return { ...item, payload: sanitizeSyncPayload(item.table, item.payload) }
+}
+
+function redactedPayloadSummary(table: SyncTable, payload: unknown): unknown {
+  const sanitized = sanitizeSyncPayload(table, payload)
+  if (typeof sanitized !== "object" || sanitized === null || Array.isArray(sanitized)) return sanitized
+  const row = sanitized as Record<string, unknown>
+  return {
+    keys: Object.keys(row),
+    settingsKeys: typeof row.settings === "object" && row.settings !== null && !Array.isArray(row.settings)
+      ? Object.keys(row.settings)
+      : undefined,
+  }
+}
 
 function emitStatus(update: Partial<SyncStatusSnapshot>) {
   // Merge new failed items with persisted ones; keep old failures not in the new set.
@@ -178,7 +214,7 @@ async function enqueueRemoteUpsert(table: SyncTable, payload: LocalRecord): Prom
     table,
     operation: "upsert",
     rowId: getQueueRowId(table, payload, row),
-    payload: row,
+    payload: sanitizeSyncPayload(table, row),
   })
 }
 
@@ -446,7 +482,11 @@ async function flushQueue(): Promise<void> {
 async function flushQueueInternal(): Promise<void> {
   if (!currentSession || !supabase) return
   if (!snapshot.isOnline) return
-  const queue = await readSyncQueue()
+  const rawQueue = await readSyncQueue()
+  const queue = rawQueue.map(sanitizeQueueItem)
+  if (JSON.stringify(queue) !== JSON.stringify(rawQueue)) {
+    await writeSyncQueue(queue)
+  }
   if (queue.length === 0) {
     emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: snapshot.lastSuccessfulSyncAt, details: "All changes synced", isOnline: snapshot.isOnline })
     return
@@ -489,7 +529,7 @@ async function flushQueueInternal(): Promise<void> {
       processedIds.push(item.id)
     } catch (e) {
       const errMsg = getErrorMessage(e)
-      console.error(`[sync] pushQueueItem failed for ${item.table} ${item.rowId}:`, errMsg, item.payload)
+      console.error(`[sync] pushQueueItem failed for ${item.table} ${item.rowId}:`, errMsg, redactedPayloadSummary(item.table, item.payload))
       processedIds.push(item.id)
       if (isTransientSyncError(e)) {
         // Exponential backoff: items with network errors get up to MAX_SYNC_RETRIES_TRANSIENT retries
@@ -554,7 +594,7 @@ async function flushQueueInternal(): Promise<void> {
 }
 
 async function pushQueueItem(client: SupabaseClient, item: SyncQueueItem): Promise<void> {
-  const payload = item.payload as Record<string, unknown>
+  const payload = sanitizeSyncPayload(item.table, item.payload) as Record<string, unknown>
   if (item.operation === "soft_delete") {
     if (item.table === "custom_subjects") {
       const { error } = await client.from(item.table).update(payload).eq("subject_key", item.rowId)
@@ -582,8 +622,7 @@ async function pushQueueItem(client: SupabaseClient, item: SyncQueueItem): Promi
           : "id"
   const { error } = await client.from(item.table).upsert(payload, { onConflict })
   if (error) {
-    console.error(`[sync] upsert error for ${item.table} (rowId=${item.rowId}, onConflict=${onConflict}):`, error, "payload keys:", Object.keys(payload), "payload:"
-      , JSON.stringify(payload, null, 2))
+    console.error(`[sync] upsert error for ${item.table} (rowId=${item.rowId}, onConflict=${onConflict}):`, error, "payload:", redactedPayloadSummary(item.table, payload))
     throw error
   }
 }
@@ -779,14 +818,16 @@ async function pullUserSettings(): Promise<void> {
   const { data, error } = await supabase.from("user_settings").select("*").eq("user_id", currentSession.user.id).maybeSingle()
   if (error) throw error
   if (data) {
-    const settings = rowToUserSettings(data as UserSettingsRow)
-    if (getSyncOpenrouterKey() && settings.openrouter_api_key) setApiKey(settings.openrouter_api_key)
+    const row = data as UserSettingsRow
+    const settings = scrubUserSettingsSecrets(rowToUserSettings(row))
+    await scrubRemoteUserSettingsSecrets(row)
     if (settings.openrouter_model) setModel(settings.openrouter_model)
     if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
     setReasoningMaxTokens(settings.reasoning_max_tokens)
     setReasoningExclude(settings.reasoning_exclude)
+    const currentNotionSettings = getNotionCalendarSettings()
     setNotionCalendarSettings({
-      token: getSyncNotionToken() ? settings.notion_token : getNotionCalendarSettings().token,
+      token: currentNotionSettings.token,
       dataSourceId: settings.notion_data_source_id,
       titleProperty: settings.notion_title_property,
       dateProperty: settings.notion_date_property,
@@ -795,6 +836,21 @@ async function pullUserSettings(): Promise<void> {
       subjectProperty: settings.notion_subject_property,
     })
     emitLocalDataChanged("user_settings")
+  }
+}
+
+async function scrubRemoteUserSettingsSecrets(row: UserSettingsRow): Promise<void> {
+  if (!supabase || !currentSession || !userSettingsHasSecrets(row.settings)) return
+  const nextSettings = scrubUserSettingsSecrets(rowToUserSettings(row))
+  const { error } = await supabase
+    .from("user_settings")
+    .update({
+      settings: nextSettings,
+      last_modified_device_id: currentDeviceId,
+    })
+    .eq("user_id", currentSession.user.id)
+  if (error) {
+    console.warn("[sync] failed to scrub remote user_settings secrets:", getErrorMessage(error))
   }
 }
 
@@ -1203,12 +1259,12 @@ function getLocalRecordId(table: SyncTable, payload: LocalRecord): string | null
 function collectUserSettingsForSync(): UserSettings {
   const notionSettings = getNotionCalendarSettings()
   return {
-    openrouter_api_key: getSyncOpenrouterKey() ? (getApiKey() ?? "") : "",
+    openrouter_api_key: "",
     openrouter_model: getModel(),
     reasoning_effort: getReasoningEffort(),
     reasoning_max_tokens: getReasoningMaxTokens(),
     reasoning_exclude: getReasoningExclude(),
-    notion_token: getSyncNotionToken() ? notionSettings.token : "",
+    notion_token: "",
     notion_data_source_id: notionSettings.dataSourceId,
     notion_title_property: notionSettings.titleProperty,
     notion_date_property: notionSettings.dateProperty,
