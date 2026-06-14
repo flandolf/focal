@@ -11,7 +11,6 @@ import {
   MapPin,
   Pin,
   PinOff,
-  Wand2,
   Sparkles,
   Sun,
   CheckCircle2,
@@ -19,10 +18,12 @@ import {
   Eye,
   EyeOff,
   Copy,
-  CheckSquare,
+  Plus,
+  GripVertical,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover,
   PopoverContent,
@@ -42,9 +43,9 @@ import {
   setTimetableConfig,
   setTimetableCurrentDayOverride,
 } from "@/lib/settings";
-import { TimetableDialog } from "@/components/TimetableDialog";
+import { TimetableEditor } from "@/components/timetable/TimetableEditor";
 import { InlineEditDayDialog } from "@/components/timetable/InlineEditDayDialog";
-import { TimetableAiEditor } from "@/components/timetable/TimetableAiEditor";
+import { PeriodEditPopover } from "@/components/timetable/PeriodEditPopover";
 import {
   MOTION_DURATION,
   MOTION_EASE,
@@ -52,11 +53,12 @@ import {
   staggerItem,
 } from "@/lib/motion";
 import { DEFAULT_VIEW_SETTINGS } from "@/lib/settings";
-import type {
-  TimetableDayLabel,
-  Subject,
-  TimetablePeriod,
-  TimetableViewSettings,
+import {
+  VCE_SUBJECTS,
+  type TimetableDayLabel,
+  type Subject,
+  type TimetablePeriod,
+  type TimetableViewSettings,
 } from "@/lib/types";
 
 // --- Helpers ---
@@ -152,30 +154,19 @@ function ViewSettingsPopover({
           <Settings2 className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-3 space-y-3" align="end">
+      <PopoverContent className="w-60 p-3 space-y-3" align="end">
         {/* View section */}
         <div className="space-y-2">
-          <p className="text-micro font-bold uppercase tracking-wider text-muted-foreground/60">
+          <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground/50">
             View
           </p>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <button
-              type="button"
-              onClick={() =>
-                onChange({ showAllDays: !viewSettings.showAllDays })
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <Checkbox
+              checked={viewSettings.showAllDays}
+              onCheckedChange={(checked) =>
+                onChange({ showAllDays: checked === true })
               }
-              className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                viewSettings.showAllDays
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-muted-foreground/30",
-              )}
-              role="checkbox"
-              aria-checked={viewSettings.showAllDays}
-              aria-label={`Show all ${cycleLength} days`}
-            >
-              {viewSettings.showAllDays && <CheckSquare className="h-3 w-3" />}
-            </button>
+            />
             <span className="flex-1 text-xs leading-tight">
               Show all {cycleLength} days
             </span>
@@ -184,75 +175,44 @@ function ViewSettingsPopover({
 
         {/* Display section */}
         <div className="space-y-2">
-          <p className="text-micro font-bold uppercase tracking-wider text-muted-foreground/60">
+          <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground/50">
             Display
           </p>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <button
-              type="button"
-              onClick={() =>
-                onChange({ showLocations: !viewSettings.showLocations })
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <Checkbox
+              checked={viewSettings.showLocations}
+              onCheckedChange={(checked) =>
+                onChange({ showLocations: checked === true })
               }
-              className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                viewSettings.showLocations
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-muted-foreground/30",
-              )}
-              role="checkbox"
-              aria-checked={viewSettings.showLocations}
-              aria-label="Show locations"
-            >
-              {viewSettings.showLocations && (
-                <CheckSquare className="h-3 w-3" />
-              )}
-            </button>
+            />
             <span className="flex-1 text-xs leading-tight">Show locations</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <button
-              type="button"
-              onClick={() => onChange({ showBreaks: !viewSettings.showBreaks })}
-              className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                viewSettings.showBreaks
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-muted-foreground/30",
-              )}
-              role="checkbox"
-              aria-checked={viewSettings.showBreaks}
-              aria-label="Show breaks"
-            >
-              {viewSettings.showBreaks && <CheckSquare className="h-3 w-3" />}
-            </button>
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <Checkbox
+              checked={viewSettings.showBreaks}
+              onCheckedChange={(checked) =>
+                onChange({ showBreaks: checked === true })
+              }
+            />
             <span className="flex-1 text-xs leading-tight">
               Show breaks (Recess, Lunch…)
             </span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <button
-              type="button"
-              onClick={() => onChange({ use24Hour: !viewSettings.use24Hour })}
-              className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                viewSettings.use24Hour
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-muted-foreground/30",
-              )}
-              role="checkbox"
-              aria-checked={viewSettings.use24Hour}
-              aria-label="24-hour time"
-            >
-              {viewSettings.use24Hour && <CheckSquare className="h-3 w-3" />}
-            </button>
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <Checkbox
+              checked={viewSettings.use24Hour}
+              onCheckedChange={(checked) =>
+                onChange({ use24Hour: checked === true })
+              }
+            />
             <span className="flex-1 text-xs leading-tight">24-hour time</span>
           </label>
         </div>
 
-        {/* Week block section — only meaningful for the default 10-day cycle */}
+        {/* Week block section */}
         {useBlockModel ? (
           <div className="space-y-2">
-            <p className="text-micro font-bold uppercase tracking-wider text-muted-foreground/60">
+            <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground/50">
               Week block
             </p>
             <div className="flex gap-1">
@@ -282,8 +242,8 @@ function ViewSettingsPopover({
           </div>
         ) : (
           <p className="text-caption text-muted-foreground/50">
-            Week blocks are a 10-day feature — your {cycleLength}-day cycle shows
-            all days at once.
+            Week blocks only apply to 10-day cycles — your {cycleLength}-day
+            cycle always shows all days.
           </p>
         )}
       </PopoverContent>
@@ -641,6 +601,13 @@ function TimelineBlock({
   showLocation,
   onEdit,
   onDelete,
+  onSavePeriod,
+  onMovePeriod,
+  dayLabel,
+  allDayLabels,
+  customSubjects,
+  entryIdx,
+  periodIdx,
 }: {
   layout: { top: number; height: number };
   period: TimetablePeriod;
@@ -652,6 +619,13 @@ function TimelineBlock({
   showLocation?: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onSavePeriod?: (updated: TimetablePeriod) => void;
+  onMovePeriod?: (toDay: TimetableDayLabel) => void;
+  dayLabel?: TimetableDayLabel;
+  allDayLabels?: TimetableDayLabel[];
+  customSubjects?: Subject[];
+  entryIdx?: number;
+  periodIdx?: number;
 }) {
   const isBreak = isBreakLabel(period.period);
   const compact = layout.height <= 4.5;
@@ -659,7 +633,17 @@ function TimelineBlock({
   const periodLabel = (subject?.name ?? period.subject) || period.period;
   const timeLabel = `${formatTime(period.startTime, use24Hour ?? false)}-${formatTime(period.endTime, use24Hour ?? false)}`;
 
-  return (
+  const dragHandle = useCallback((e: React.DragEvent) => {
+    e.dataTransfer.setData(
+      "application/focal-period",
+      JSON.stringify({ dayLabel, entryIdx, periodIdx, period }),
+    );
+    e.dataTransfer.effectAllowed = "move";
+  }, [dayLabel, entryIdx, periodIdx, period]);
+
+  const canInlineEdit = !!onSavePeriod && !!onMovePeriod && dayLabel !== undefined && allDayLabels !== undefined;
+
+  const blockContent = (
     <div
       className={cn(
         "group/block absolute left-9 right-2 overflow-hidden rounded-lg border transition-[background-color,border-color,box-shadow,transform] duration-200",
@@ -671,6 +655,7 @@ function TimelineBlock({
         isNextPeriod && !isCurrentPeriod && "border-primary/25 bg-primary/5",
         !isBreak && "hover:border-primary/35 hover:bg-primary/8",
         markerOnly && "rounded-md",
+        canInlineEdit && "cursor-pointer",
       )}
       style={{
         top: `${layout.top}%`,
@@ -680,6 +665,8 @@ function TimelineBlock({
             ? `color-mix(in oklch, ${subject.color} ${isCurrentPeriod ? 16 : 10}%, transparent)`
             : undefined,
       }}
+      draggable={canInlineEdit}
+      onDragStart={canInlineEdit ? dragHandle : undefined}
       aria-label={`${periodLabel}, ${timeLabel}`}
       title={`${periodLabel} · ${timeLabel}`}
     >
@@ -747,8 +734,16 @@ function TimelineBlock({
         )}
       </div>
 
-      {/* Hover actions */}
+      {/* Drag handle + hover actions */}
       <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 rounded-md bg-background/88 p-0.5 opacity-0 ring-1 ring-border/30 backdrop-blur-md transition-all duration-150 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100">
+        {canInlineEdit && (
+          <span
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40"
+            title="Drag to move"
+          >
+            <GripVertical className="h-3 w-3" />
+          </span>
+        )}
         <button
           type="button"
           onClick={(e) => {
@@ -786,6 +781,26 @@ function TimelineBlock({
       )}
     </div>
   );
+
+  // Wrap in PeriodEditPopover if inline editing is enabled
+  if (canInlineEdit && onSavePeriod && onMovePeriod) {
+    return (
+      <PeriodEditPopover
+        period={period}
+        dayLabel={dayLabel}
+        cycleLength={allDayLabels.length}
+        allDayLabels={allDayLabels}
+        subjects={customSubjects ?? []}
+        onSave={onSavePeriod}
+        onDelete={onDelete}
+        onMove={onMovePeriod}
+      >
+        {blockContent}
+      </PeriodEditPopover>
+    );
+  }
+
+  return blockContent;
 }
 
 // --- Current time indicator ---
@@ -953,10 +968,17 @@ function DayTimelineCard({
   showLocation,
   showBreaks,
   dayToWeekday,
+  allDayLabels,
+  customSubjects,
+  cycleLength,
   onEditDay,
   onToggleHide,
   onCopyTo,
   onDeletePeriod,
+  onSavePeriod,
+  onMovePeriod,
+  onDropPeriod,
+  onQuickAdd,
 }: {
   dayLabel: TimetableDayLabel;
   entries: { periods: TimetablePeriod[] }[];
@@ -971,10 +993,17 @@ function DayTimelineCard({
   showLocation?: boolean;
   showBreaks?: boolean;
   dayToWeekday: number[];
+  allDayLabels?: TimetableDayLabel[];
+  customSubjects?: Subject[];
+  cycleLength?: number;
   onEditDay: () => void;
   onToggleHide: () => void;
   onCopyTo: (day: TimetableDayLabel) => void;
   onDeletePeriod: (entryIdx: number, periodIdx: number) => void;
+  onSavePeriod?: (entryIdx: number, periodIdx: number, updated: TimetablePeriod) => void;
+  onMovePeriod?: (fromEntryIdx: number, fromPeriodIdx: number, toDay: TimetableDayLabel) => void;
+  onDropPeriod?: (fromDayLabel: TimetableDayLabel, fromEntryIdx: number, fromPeriodIdx: number, period: TimetablePeriod) => void;
+  onQuickAdd?: () => void;
 }) {
   const hourMarkers = useMemo(
     () => getHourMarkers(timelineStart, timelineEnd),
@@ -1003,6 +1032,41 @@ function DayTimelineCard({
     [filteredPeriods, timelineStart, timelineEnd],
   );
 
+  // Drop zone handlers
+  const [dragOver, setDragOver] = useState(false);
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOver(true);
+  }, []);
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only set false if leaving the card (not entering a child)
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDragOver(false);
+  }, []);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const raw = e.dataTransfer.getData("application/focal-period");
+      if (!raw) return;
+      try {
+        const data = JSON.parse(raw) as {
+          dayLabel: TimetableDayLabel;
+          entryIdx: number;
+          periodIdx: number;
+          period: TimetablePeriod;
+        };
+        if (data.dayLabel !== dayLabel && onDropPeriod) {
+          onDropPeriod(data.dayLabel, data.entryIdx, data.periodIdx, data.period);
+        }
+      } catch {
+        // ignore malformed data
+      }
+    },
+    [dayLabel, onDropPeriod],
+  );
+
   return (
     <motion.div
       variants={staggerItem}
@@ -1010,7 +1074,11 @@ function DayTimelineCard({
         "group/day glass-panel card-glow relative flex flex-col overflow-hidden rounded-2xl",
         isToday && "active-glow",
         isHidden && "opacity-40",
+        dragOver && "ring-2 ring-primary/40 bg-primary/5",
       )}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       <DayHeader
         dayLabel={dayLabel}
@@ -1042,9 +1110,7 @@ function DayTimelineCard({
               <div className="h-px flex-1 bg-border/32" />
             </div>
           );
-        })}
-
-        {/* Period blocks */}
+        })}            {/* Period blocks */}
         {filteredPeriods.length > 0 ? (
           <>
             {filteredPeriods.map(({ period, periodIdx, entryIdx }) => {
@@ -1077,6 +1143,23 @@ function DayTimelineCard({
                   showLocation={showLocation}
                   onEdit={onEditDay}
                   onDelete={() => onDeletePeriod(entryIdx, periodIdx)}
+                  onSavePeriod={
+                    onSavePeriod
+                      ? (updated: TimetablePeriod) =>
+                          onSavePeriod(entryIdx, periodIdx, updated)
+                      : undefined
+                  }
+                  onMovePeriod={
+                    onMovePeriod
+                      ? (toDay: TimetableDayLabel) =>
+                          onMovePeriod(entryIdx, periodIdx, toDay)
+                      : undefined
+                  }
+                  dayLabel={dayLabel}
+                  allDayLabels={allDayLabels}
+                  customSubjects={customSubjects}
+                  entryIdx={entryIdx}
+                  periodIdx={periodIdx}
                 />
               );
             })}
@@ -1101,6 +1184,20 @@ function DayTimelineCard({
             <p className="text-caption font-medium text-muted-foreground/55">
               {isHidden ? "Hidden from view" : "No classes"}
             </p>
+            {!isHidden && onQuickAdd && (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onQuickAdd();
+                }}
+                className="mt-1 h-6 gap-1 rounded-md text-xs text-muted-foreground/60 hover:text-foreground"
+              >
+                <Plus className="h-3 w-3" />
+                Add period
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -1114,8 +1211,7 @@ export const TimetableView = memo(function TimetableView({
   customSubjects,
 }: TimetableViewProps) {
   const [config, setConfig] = useState(getTimetableConfig);
-  const [aiEditOpen, setAiEditOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [editDayOpen, setEditDayOpen] = useState(false);
   const [editDayLabel, setEditDayLabel] = useState<TimetableDayLabel>(1);
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
@@ -1308,6 +1404,96 @@ export const TimetableView = memo(function TimetableView({
     [config],
   );
 
+  const handleUpdatePeriod = useCallback(
+    (dayLabel: TimetableDayLabel, entryIdx: number, periodIdx: number, updated: TimetablePeriod) => {
+      const dayEntryIndices = config.entries
+        .map((e, i) => (e.dayLabel === dayLabel ? i : -1))
+        .filter((i) => i !== -1);
+      const globalEntryIdx = dayEntryIndices[entryIdx];
+      if (globalEntryIdx === undefined) return;
+
+      const newEntries = config.entries.map((e, i) =>
+        i === globalEntryIdx
+          ? {
+              ...e,
+              periods: e.periods.map((p, pi) => (pi === periodIdx ? updated : p)),
+            }
+          : e,
+      );
+      const updatedConfig = { ...config, entries: newEntries };
+      setTimetableConfig(updatedConfig);
+      window.dispatchEvent(new Event("focal-timetable-updated"));
+      setConfig(getTimetableConfig());
+    },
+    [config],
+  );
+
+  const handleMovePeriod = useCallback(
+    (dayLabel: TimetableDayLabel, entryIdx: number, periodIdx: number, toDay: TimetableDayLabel) => {
+      if (dayLabel === toDay) return;
+
+      const dayEntryIndices = config.entries
+        .map((e, i) => (e.dayLabel === dayLabel ? i : -1))
+        .filter((i) => i !== -1);
+      const globalEntryIdx = dayEntryIndices[entryIdx];
+      if (globalEntryIdx === undefined) return;
+
+      const entry = config.entries[globalEntryIdx];
+      const periodToMove = entry.periods[periodIdx];
+      if (!periodToMove) return;
+
+      // Remove from source
+      const sourcePeriods = entry.periods.filter((_, i) => i !== periodIdx);
+      let newEntries = config.entries.map((e, i) => {
+        if (i !== globalEntryIdx) return e;
+        return { ...e, periods: sourcePeriods };
+      });
+
+      // Remove empty source entries
+      newEntries = newEntries.filter((e) => e.periods.length > 0);
+
+      // Add to destination
+      const destIdx = newEntries.findIndex((e) => e.dayLabel === toDay);
+      if (destIdx === -1) {
+        newEntries.push({
+          dayLabel: toDay,
+          periods: [periodToMove],
+        });
+      } else {
+        newEntries = newEntries.map((e, i) =>
+          i === destIdx
+            ? { ...e, periods: [...e.periods, periodToMove] }
+            : e,
+        );
+      }
+
+      const updatedConfig = {
+        ...config,
+        entries: newEntries,
+        enabled: newEntries.length > 0,
+      };
+      setTimetableConfig(updatedConfig);
+      window.dispatchEvent(new Event("focal-timetable-updated"));
+      setConfig(getTimetableConfig());
+    },
+    [config],
+  );
+
+  const handleDropPeriod = useCallback(
+    (fromDayLabel: TimetableDayLabel, fromEntryIdx: number, fromPeriodIdx: number, period: TimetablePeriod, toDay: TimetableDayLabel) => {
+      if (fromDayLabel === toDay) return;
+      handleMovePeriod(fromDayLabel, fromEntryIdx, fromPeriodIdx, toDay);
+    },
+    [handleMovePeriod],
+  );
+
+  const handleQuickAdd = useCallback((dayLabel: TimetableDayLabel) => {
+    setEditDayLabel(dayLabel);
+    setEditDayOpen(true);
+  }, []);
+
+  const allDaysListForProps = useMemo(() => allDaysList, [allDaysList]);
+
   const refreshConfig = useCallback(() => setConfig(getTimetableConfig()), []);
 
   const showDayPicker = config.enabled && !!config.day1Starts;
@@ -1475,19 +1661,10 @@ export const TimetableView = memo(function TimetableView({
                 variant="outline"
                 size="sm"
                 className="gap-1 rounded-lg h-7 px-2.5 text-xs"
-                onClick={() => setEditOpen(true)}
+                onClick={() => setEditorOpen(true)}
               >
                 <Pencil className="h-3 w-3" />
                 Edit
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 rounded-lg h-7 px-2.5 text-xs"
-                onClick={() => setAiEditOpen(true)}
-              >
-                <Wand2 className="h-3 w-3" />
-                AI
               </Button>
             </div>
           </motion.div>
@@ -1524,7 +1701,7 @@ export const TimetableView = memo(function TimetableView({
               <Button
                 size="sm"
                 className="gap-1 rounded-lg h-7 px-2.5 text-xs btn-glow-primary"
-                onClick={() => setEditOpen(true)}
+                onClick={() => setEditorOpen(true)}
               >
                 <Pencil className="h-4 w-4" />
                 Set up Timetable
@@ -1587,6 +1764,9 @@ export const TimetableView = memo(function TimetableView({
                     showLocation={viewSettings.showLocations}
                     showBreaks={viewSettings.showBreaks}
                     dayToWeekday={dayToWeekday}
+                    allDayLabels={allDaysListForProps}
+                    customSubjects={customSubjects}
+                    cycleLength={cycleLength}
                     onEditDay={() => {
                       setEditDayLabel(dayLabel);
                       setEditDayOpen(true);
@@ -1596,6 +1776,16 @@ export const TimetableView = memo(function TimetableView({
                     onDeletePeriod={(entryIdx, periodIdx) =>
                       handleDeletePeriod(dayLabel, entryIdx, periodIdx)
                     }
+                    onSavePeriod={(entryIdx, periodIdx, updated) =>
+                      handleUpdatePeriod(dayLabel, entryIdx, periodIdx, updated)
+                    }
+                    onMovePeriod={(entryIdx, periodIdx, toDay) =>
+                      handleMovePeriod(dayLabel, entryIdx, periodIdx, toDay)
+                    }
+                    onDropPeriod={(fromDay, fromEntryIdx, fromPeriodIdx, period) =>
+                      handleDropPeriod(fromDay, fromEntryIdx, fromPeriodIdx, period, dayLabel)
+                    }
+                    onQuickAdd={() => handleQuickAdd(dayLabel)}
                   />
                 ))}
               </motion.div>
@@ -1631,10 +1821,10 @@ export const TimetableView = memo(function TimetableView({
         </div>
       </ScrollArea>
 
-      <TimetableDialog
-        open={editOpen}
+      <TimetableEditor
+        open={editorOpen}
         onOpenChange={(open) => {
-          setEditOpen(open);
+          setEditorOpen(open);
           if (!open) refreshConfig();
         }}
         customSubjects={customSubjects}
@@ -1648,15 +1838,6 @@ export const TimetableView = memo(function TimetableView({
           if (!open) refreshConfig();
         }}
         dayLabel={editDayLabel}
-        customSubjects={customSubjects}
-      />
-
-      <TimetableAiEditor
-        open={aiEditOpen}
-        onOpenChange={(open) => {
-          setAiEditOpen(open);
-          if (!open) refreshConfig();
-        }}
         customSubjects={customSubjects}
       />
     </>

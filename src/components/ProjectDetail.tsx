@@ -600,10 +600,10 @@ export const ProjectDetail = memo(function ProjectDetail({
       {hasChecklist && (
         <ProjectChecklistPanel
           project={project}
-          onUpdateNotes={(notes) => onUpdateNotes!(notes)}
-          onAddChecklistItem={(text) => onAddChecklistItem!(text)}
-          onToggleChecklistItem={(itemId) => onToggleChecklistItem!(itemId)}
-          onRemoveChecklistItem={(itemId) => onRemoveChecklistItem!(itemId)}
+          onUpdateNotes={(notes) => onUpdateNotes(notes)}
+          onAddChecklistItem={(text) => onAddChecklistItem(text)}
+          onToggleChecklistItem={(itemId) => onToggleChecklistItem(itemId)}
+          onRemoveChecklistItem={(itemId) => onRemoveChecklistItem(itemId)}
         />
       )}
 
