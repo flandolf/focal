@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { staggerContainer, staggerItem } from "@/lib/motion"
 import { cn } from "@/lib/utils"
-import type { Project, ProjectChecklistItem } from "@/lib/types"
+import type { Project } from "@/lib/types"
 
 interface ProjectChecklistPanelProps {
   project: Project

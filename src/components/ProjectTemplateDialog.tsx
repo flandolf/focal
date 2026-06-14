@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import { Bookmark, Trash2, Loader2 } from "lucide-react"
 import {
   Dialog,
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getSubjectById } from "@/lib/utils"
 import { getDeadlineTypeInfo } from "@/lib/utils"
-import type { ProjectTemplate, Subject } from "@/lib/types"
+import type { ProjectTemplate } from "@/lib/types"
 
 interface ProjectTemplateDialogProps {
   open: boolean
