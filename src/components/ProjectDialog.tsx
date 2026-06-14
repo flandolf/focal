@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Link } from "lucide-react"
 import { AssessmentForm } from "@/components/AssessmentForm"
 import type { Project, Subject, Unit } from "@/lib/types"
 
@@ -75,6 +76,14 @@ export function ProjectDialog({
               : "Create a SAC, test, exam, or assessment folder to organise your files."}
           </DialogDescription>
         </DialogHeader>
+        {existingProject?.isLinked && (
+          <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+            <Link className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <p>
+              This assessment links to a folder in another location (e.g., OneDrive). Files are not copied, and the path is synced across devices.
+            </p>
+          </div>
+        )}
         <AssessmentForm
           key={`${isEditMode ? `edit-${existingProject?.id}` : `new-${open ? "open" : "closed"}`}`}
           customSubjects={customSubjects}

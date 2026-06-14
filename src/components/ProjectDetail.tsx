@@ -1,12 +1,13 @@
-import { useEffect, useState, useCallback, useMemo, memo } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react"
 import { Plus, Loader2 } from "lucide-react"
 import { openPath } from "@tauri-apps/plugin-opener"
-import { homeDir } from "@tauri-apps/api/path"
+import { join } from "@tauri-apps/api/path"
+import { exists } from "@tauri-apps/plugin-fs"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow"
 import { toast } from "sonner"
 import type { UnlistenFn } from "@tauri-apps/api/event"
-import { useProjectFiles } from "@/hooks/useProjectFiles"
+import { useProjectFiles, SORT_COMPARATORS } from "@/hooks/useProjectFiles"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { type FileTag } from "@/lib/types"
 import type { CalendarEvent, Project, FileInfo, StudySession } from "@/lib/types"
@@ -15,7 +16,7 @@ import { FileTree } from "@/components/project/FileTree"
 import type { ListItem } from "@/components/project/FileTree"
 import { SessionList } from "@/components/project/SessionList"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
-import { notifyProjectActionError, joinHomePath } from "@/components/project/shared"
+import { notifyProjectActionError } from "@/components/project/shared"
 
 interface ProjectDetailProps {
   project: Project
@@ -34,9 +35,11 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
     files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
     addFileTags, removeFileTag, toggleFavorite,
     sortKey, sortAsc, setSortKey, setSortAsc,
-    firstLevelSubfolders, allSubfolders,
+    firstLevelSubfolders, hasPendingChanges, changedPaths, removedFiles,
   } = useProjectFiles(project.folder_path)
   const [isDragging, setIsDragging] = useState(false)
+  const [isShiftPressed, setIsShiftPressed] = useState(false)
+  const shiftPressedRef = useRef(false)
   const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>("__root__")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<FileTag[]>([])
@@ -44,6 +47,7 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
   const [viewMode, setViewMode] = useState<"files" | "sessions">("files")
   const [showBulkTagMenu, setShowBulkTagMenu] = useState(false)
   const [showBulkMoveMenu, setShowBulkMoveMenu] = useState(false)
+  const activeDropKeysRef = useRef(new Set<string>())
 
   /** Breadcrumb segments derived from current subfolder path */
   const breadcrumbSegments = useMemo(() => {
@@ -98,51 +102,91 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
   }, [files, loading, onFilesChanged])
 
   useEffect(() => {
+    let cancelled = false
     let unlisten: UnlistenFn | undefined
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Shift") {
+        shiftPressedRef.current = true
+        setIsShiftPressed(true)
+      }
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift") {
+        shiftPressedRef.current = false
+        setIsShiftPressed(false)
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    window.addEventListener("keyup", onKeyUp)
 
     const setup = async () => {
       try {
-        unlisten = await getCurrentWebviewWindow().onDragDropEvent((event) => {
+        const u = await getCurrentWebviewWindow().onDragDropEvent((event) => {
           const payload = event.payload
 
           switch (payload.type) {
             case "enter":
             case "over":
-              setIsDragging(true)
+              if (!cancelled) setIsDragging(true)
               break
-            case "drop":
-              setIsDragging(false)
-              if (payload.paths.length > 0) {
-                const targetFolder = selectedSubfolder && selectedSubfolder !== "__root__"
-                  ? `${project.folder_path}/${selectedSubfolder}`
-                  : project.folder_path
-                invoke("move_files_to_project", {
-                  files: payload.paths,
-                  projectName: targetFolder,
-                })
-                  .then(() => {
+            case "drop": {
+              if (!cancelled) setIsDragging(false)
+              if (cancelled || payload.paths.length === 0) break
+              const targetFolder = selectedSubfolder && selectedSubfolder !== "__root__"
+                ? `${project.folder_path}/${selectedSubfolder}`
+                : project.folder_path
+              const dropKey = `${targetFolder}\0${payload.paths.join("\0")}`
+              if (activeDropKeysRef.current.has(dropKey)) break
+              activeDropKeysRef.current.add(dropKey)
+              const copy = shiftPressedRef.current
+              invoke("move_files_to_project", {
+                files: payload.paths,
+                projectName: targetFolder,
+                copy,
+              })
+                .then(() => {
+                  if (!cancelled) {
                     void loadFiles()
                     onFilesChanged()
-                  })
-                  .catch((e) => {
-                    notifyProjectActionError("Could not move dropped files", e)
-                  })
-              }
+                  }
+                })
+                .catch((e) => {
+                  if (!cancelled) {
+                    void loadFiles()
+                    onFilesChanged()
+                    notifyProjectActionError(copy ? "Could not copy dropped files" : "Could not move dropped files", e)
+                  }
+                })
+                .finally(() => {
+                  activeDropKeysRef.current.delete(dropKey)
+                })
               break
+            }
             case "leave":
-              setIsDragging(false)
+              if (!cancelled) setIsDragging(false)
               break
           }
         })
+        if (!cancelled) {
+          unlisten = u
+        } else {
+          u()
+        }
       } catch (e) {
-        notifyProjectActionError("Drag and drop is unavailable", e)
+        if (!cancelled) {
+          notifyProjectActionError("Drag and drop is unavailable", e)
+        }
       }
     }
 
     void setup()
 
     return () => {
+      cancelled = true
       unlisten?.()
+      window.removeEventListener("keydown", onKeyDown)
+      window.removeEventListener("keyup", onKeyUp)
     }
   }, [project.folder_path, selectedSubfolder, loadFiles, onFilesChanged])
 
@@ -153,12 +197,51 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
     }
   }
 
+  const handleCreateFolder = useCallback(async () => {
+    try {
+      const baseName = "New Folder"
+      // Check existing child folders at the current level to avoid naming conflicts
+      const existingNames = new Set<string>()
+      for (const f of files) {
+        if (!f.subfolder) continue
+        if (selectedSubfolder === "__root__" || !selectedSubfolder) {
+          const firstPart = f.subfolder.split("/")[0]
+          if (firstPart) existingNames.add(firstPart)
+        } else if (f.subfolder.startsWith(`${selectedSubfolder}/`)) {
+          const relative = f.subfolder.slice(selectedSubfolder.length + 1)
+          const firstPart = relative.split("/")[0]
+          if (firstPart) existingNames.add(firstPart)
+        }
+      }
+      let name = baseName
+      let counter = 1
+      while (existingNames.has(name)) {
+        name = `${baseName} (${counter})`
+        counter++
+      }
+      const relativePath = selectedSubfolder && selectedSubfolder !== "__root__"
+        ? `${project.folder_path}/${selectedSubfolder}/${name}`
+        : `${project.folder_path}/${name}`
+      const projectsDir = await invoke<string>("get_projects_directory")
+      const fullPath = await join(projectsDir, relativePath)
+      if (await exists(fullPath)) {
+        toast.error(`A folder named "${name}" already exists`)
+        return
+      }
+      await invoke("create_project_folder", { projectName: relativePath })
+      await loadFiles()
+      onFilesChanged()
+    } catch (e) {
+      notifyProjectActionError("Could not create folder", e)
+    }
+  }, [files, project.folder_path, selectedSubfolder, loadFiles, onFilesChanged])
+
   const handleOpenFolder = async () => {
     try {
-      const home = await homeDir()
+      const projectsDir = await invoke<string>("get_projects_directory")
       const folderPath = selectedSubfolder && selectedSubfolder !== "__root__"
-        ? joinHomePath(home, "Documents", "Projects", project.folder_path, selectedSubfolder)
-        : joinHomePath(home, "Documents", "Projects", project.folder_path)
+        ? await join(projectsDir, project.folder_path, selectedSubfolder)
+        : await join(projectsDir, project.folder_path)
       await openPath(folderPath)
     } catch (e) {
       notifyProjectActionError("Could not open folder", e)
@@ -211,10 +294,11 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
 
   const handleShowInFinder = async (file: FileInfo) => {
     try {
-      const parentFolder = file.path.substring(0, file.path.lastIndexOf("/"))
+      const lastSep = Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\"))
+      const parentFolder = lastSep >= 0 ? file.path.substring(0, lastSep) : file.path
       await openPath(parentFolder)
     } catch (e) {
-      notifyProjectActionError("Could not show file in Finder", e)
+      notifyProjectActionError("Could not show file in folder", e)
     }
   }
 
@@ -228,8 +312,8 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
 
   const handleMoveFile = async (file: FileInfo, destSubfolder: string) => {
     try {
-      const home = await homeDir()
-      const destFolder = joinHomePath(home, "Documents", "Projects", project.folder_path, destSubfolder)
+      const projectsDir = await invoke<string>("get_projects_directory")
+      const destFolder = await join(projectsDir, project.folder_path, destSubfolder)
       await moveFileToFolder(file.path, destFolder)
       onFilesChanged()
     } catch (e) {
@@ -250,8 +334,8 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
 
   const handleBulkMove = async (destSubfolder: string) => {
     if (selectedFiles.size === 0) return
-    const home = await homeDir()
-    const destFolder = joinHomePath(home, "Documents", "Projects", project.folder_path, destSubfolder)
+    const projectsDir = await invoke<string>("get_projects_directory")
+    const destFolder = await join(projectsDir, project.folder_path, destSubfolder)
     const paths = Array.from(selectedFiles)
     let moved = 0
     let failed = 0
@@ -293,6 +377,23 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
       notifyProjectActionError("Could not tag files in folder", e)
     }
   }, [files, addFileTags, onFilesChanged])
+
+  /** Subfolders at the current navigation level (immediate children only). */
+  const currentLevelSubfolders = useMemo(() => {
+    const set = new Set<string>()
+    for (const f of files) {
+      if (!f.subfolder) continue
+      if (selectedSubfolder === null || selectedSubfolder === "__root__") {
+        const first = f.subfolder.split("/")[0]
+        if (first) set.add(first)
+      } else if (f.subfolder.startsWith(`${selectedSubfolder}/`)) {
+        const relative = f.subfolder.slice(selectedSubfolder.length + 1)
+        const firstPart = relative.split("/")[0]
+        if (firstPart) set.add(`${selectedSubfolder}/${firstPart}`)
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  }, [files, selectedSubfolder])
 
   const handleApplyAutoRenames = useCallback(
     async (renames: { filePath: string; newName: string }[]) => {
@@ -342,20 +443,27 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
 
     if (showFolders) {
       // Recursive file count: each file contributes to every ancestor folder path
-      const fileCountsByFolder = new Map<string, number>()
+      const recursiveCounts = new Map<string, number>()
+      // Direct file count: files whose exact subfolder matches the folder path
+      const directCounts = new Map<string, number>()
       for (const f of files) {
         if (!f.subfolder) continue
+        // Recursive: contribute to every ancestor
         const parts = f.subfolder.split("/")
         let current = ""
         for (const part of parts) {
           current = current ? `${current}/${part}` : part
-          fileCountsByFolder.set(current, (fileCountsByFolder.get(current) ?? 0) + 1)
+          recursiveCounts.set(current, (recursiveCounts.get(current) ?? 0) + 1)
         }
+        // Direct: count only at the leaf folder
+        directCounts.set(f.subfolder, (directCounts.get(f.subfolder) ?? 0) + 1)
       }
 
       if (selectedSubfolder === "__root__") {
         for (const folder of firstLevelSubfolders) {
-          items.push({ type: "folder", name: folder, path: folder, fileCount: fileCountsByFolder.get(folder) ?? 0 })
+          const direct = directCounts.get(folder) ?? 0
+          const total = recursiveCounts.get(folder) ?? 0
+          items.push({ type: "folder", name: folder, path: folder, fileCount: direct, totalFileCount: total })
         }
       } else if (selectedSubfolder) {
         const childFolders = new Set<string>()
@@ -368,7 +476,9 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
         }
         for (const folder of childFolders) {
           const fullPath = `${selectedSubfolder}/${folder}`
-          items.push({ type: "folder", name: folder, path: fullPath, fileCount: fileCountsByFolder.get(fullPath) ?? 0 })
+          const direct = directCounts.get(fullPath) ?? 0
+          const total = recursiveCounts.get(fullPath) ?? 0
+          items.push({ type: "folder", name: folder, path: fullPath, fileCount: direct, totalFileCount: total })
         }
       }
     }
@@ -377,14 +487,44 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
       items.push({ type: "file", data: file })
     }
 
+    // Append recently removed files that would be visible in the current view
+    const currentPaths = new Set(files.map((f) => f.path))
+    for (const file of removedFiles) {
+      if (currentPaths.has(file.path)) continue
+      if (searchQuery && !file.name.toLowerCase().includes(searchQuery.toLowerCase())) continue
+      if (selectedTags.length > 0) {
+        const fileTags = file.tags ?? (file.tag ? [file.tag] : [])
+        if (!selectedTags.some(tag => fileTags.includes(tag))) continue
+      }
+      if (selectedSubfolder === "__root__" && file.subfolder) continue
+      if (selectedSubfolder && selectedSubfolder !== "__root__" && file.subfolder !== selectedSubfolder) continue
+      items.push({ type: "file", data: file, isExiting: true })
+    }
+
+    // Sort according to the active sort column, keeping folders grouped before files
     items.sort((a, b) => {
-      const nameA = a.type === "file" ? a.data.name : a.name
-      const nameB = b.type === "file" ? b.data.name : b.name
-      return nameA.localeCompare(nameB, undefined, { numeric: true })
+      // Folders always sort before files, regardless of direction
+      if (a.type !== b.type) {
+        return a.type === "folder" ? -1 : 1
+      }
+
+      if (a.type === "folder") {
+        const fa = a as { type: "folder"; name: string; path: string }
+        const fb = b as { type: "folder"; name: string; path: string }
+        const cmp = fa.name.localeCompare(fb.name, undefined, { numeric: true })
+        return sortAsc ? cmp : -cmp
+      }
+
+      // Files: sort by the active column
+      const fa = a as { type: "file"; data: FileInfo }
+      const fb = b as { type: "file"; data: FileInfo }
+      const cmp = SORT_COMPARATORS[sortKey](fa.data, fb.data)
+      // ponytail: stable sort — when equal, preserve insertion order
+      return sortAsc ? cmp : -cmp
     })
 
     return items
-  }, [filteredFiles, firstLevelSubfolders, selectedSubfolder, files, searchQuery, selectedTags])
+  }, [filteredFiles, firstLevelSubfolders, selectedSubfolder, files, searchQuery, selectedTags, removedFiles, sortKey, sortAsc])
 
   const handleFileSelectionChange = (file: FileInfo, selected: boolean) => {
     const newSelected = new Set(selectedFiles)
@@ -431,7 +571,9 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
             <div className="w-14 h-14 rounded-2xl bg-primary/12 flex items-center justify-center shadow-[0_0_40px_-12px_color-mix(in_oklch,var(--primary)_30%,transparent)]">
               <Plus className="h-7 w-7 text-primary/70" />
             </div>
-            <p className="text-sm font-medium text-primary/80">Drop files here</p>
+            <p className="text-sm font-medium text-primary/80">
+              {isShiftPressed ? "Copy files here" : "Drop files here"}
+            </p>
           </div>
         </div>
       )}
@@ -445,6 +587,8 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
         onToggleFinished={onToggleFinished}
         onOpenFolder={handleOpenFolder}
         onAddFiles={handleAddFiles}
+        onRefresh={() => loadFiles({ silent: true })}
+        hasPendingChanges={hasPendingChanges}
         onCreateEvents={onCreateEvents}
         filteredFiles={filteredFiles}
         selectedFiles={selectedFiles}
@@ -479,12 +623,13 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
             sortAsc={sortAsc}
             setSortKey={setSortKey}
             setSortAsc={setSortAsc}
-            allSubfolders={allSubfolders}
+            allSubfolders={currentLevelSubfolders}
             showBulkTagMenu={showBulkTagMenu}
             setShowBulkTagMenu={setShowBulkTagMenu}
             showBulkMoveMenu={showBulkMoveMenu}
             setShowBulkMoveMenu={setShowBulkMoveMenu}
             onAddFiles={handleAddFiles}
+            onCreateFolder={handleCreateFolder}
             onOpenFile={handleOpenFile}
             onRenameFile={handleRenameFile}
             onRemoveTag={handleRemoveTag}
@@ -504,6 +649,8 @@ export const ProjectDetail = memo(function ProjectDetail({ project, sessions, on
             onBreadcrumbNavigate={handleBreadcrumbNavigate}
             onGoBack={handleGoBack}
             canGoBack={canGoBack}
+            changedPaths={changedPaths}
+            removedFiles={removedFiles}
           />
         )}
       </div>

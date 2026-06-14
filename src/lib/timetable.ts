@@ -103,7 +103,7 @@ function toTimetableEntry(raw: unknown): TimetableParseDraft | null {
   const rawDay = r.day ?? r.day_label ?? r.dayNumber ?? r.day_number
   const dayLabel =
     typeof rawDay === "number" && rawDay >= 1 && rawDay <= 10 && Number.isInteger(rawDay)
-      ? (rawDay as TimetableDayLabel)
+      ? rawDay
       : null
 
   if (!dayLabel) return null
@@ -360,8 +360,8 @@ export function getDayLabelForDate(
   date: Date,
   day1Starts: string,
   holidays: SchoolHoliday[],
-  cycleLength: number = 10,
-  weekendTimetables: boolean = false,
+  cycleLength = 10,
+  weekendTimetables = false,
 ): TimetableDayLabel | null {
   if (isDateInHoliday(date, holidays)) return null
 
@@ -384,7 +384,7 @@ export function getDayLabelForDate(
     ? diffDays
     : countWeekdaysBetween(startLocal, dateLocal)
   const length = Number.isInteger(cycleLength) && cycleLength >= 1 ? cycleLength : 10
-  return ((schoolDayCount % length) + 1) as TimetableDayLabel
+  return (schoolDayCount % length) + 1
 }
 
 /**
@@ -646,7 +646,7 @@ The summary should be a brief sentence explaining the key change made.`,
     .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
     .map((e) => {
       const dayLabel = typeof e.day_label === "number" && e.day_label >= 1 && e.day_label <= 10
-        ? (e.day_label as TimetableDayLabel)
+        ? e.day_label
         : 1
       const rawPeriods = Array.isArray(e.periods) ? e.periods : []
       const periods = rawPeriods

@@ -1,6 +1,6 @@
 import { createElement } from "react"
 import { motion, useReducedMotion } from "framer-motion"
-import { Clock, Folder, Settings, FolderUp, Plus, CheckCircle2 } from "lucide-react"
+import { Clock, Folder, Link, Settings, FolderUp, Plus, CheckCircle2, RefreshCw, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -20,6 +20,8 @@ interface ProjectHeaderProps {
   onToggleFinished?: (id: string) => void
   onOpenFolder: () => void
   onAddFiles: () => void
+  onRefresh?: () => void
+  hasPendingChanges?: boolean
   onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
   filteredFiles: FileInfo[]
   selectedFiles: Set<string>
@@ -34,6 +36,8 @@ export function ProjectHeader({
   onToggleFinished,
   onOpenFolder,
   onAddFiles,
+  onRefresh,
+  hasPendingChanges,
   onCreateEvents,
   filteredFiles,
   selectedFiles,
@@ -53,7 +57,7 @@ export function ProjectHeader({
       <div className="px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <motion.div variants={staggerItem} className="min-w-0 flex-1">
-            <div className="flex items-center gap-3 min-[1200px]:gap-3.5">
+            <div className="group flex items-center gap-3 min-[1200px]:gap-3.5">
               <motion.span
                 whileHover={reduceMotion ? undefined : { scale: 1.05, transition: { type: "spring", stiffness: 480, damping: 28 } }}
                 whileTap={reduceMotion ? undefined : { scale: 0.95 }}
@@ -63,6 +67,15 @@ export function ProjectHeader({
                 {createElement(projectIcon, { className: "h-5 w-5", "aria-hidden": true })}
               </motion.span>
               <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,background-color] hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                aria-label={`Rename ${project.name}`}
+                title="Rename"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
             </div>
             <p className="mt-1.5 truncate text-caption text-muted-foreground">
               Files folder / <span className="font-mono">{project.folder_path}</span>
@@ -93,6 +106,12 @@ export function ProjectHeader({
                   {deadlineInfo.icon} {formatDeadline(project.deadline)}
                 </Badge>
               )}
+              {project.isLinked && (
+                <span className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  <Link className="h-3 w-3" aria-hidden="true" />
+                  Linked
+                </span>
+              )}
             </div>
           </motion.div>
           <motion.div variants={staggerItem} className="flex shrink-0 items-center gap-1.5">
@@ -104,6 +123,21 @@ export function ProjectHeader({
               </TooltipTrigger>
                 <TooltipContent side="bottom">Assessment details</TooltipContent>
             </Tooltip>
+            {onRefresh && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-lg" onClick={onRefresh}>
+                    <RefreshCw className="h-4 w-4" />
+                    {hasPendingChanges && (
+                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {hasPendingChanges ? "External changes detected — click to refresh" : "Refresh files"}
+                </TooltipContent>
+              </Tooltip>
+            )}
             {onToggleFinished && (
               <Tooltip>
                 <TooltipTrigger asChild>

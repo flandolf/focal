@@ -15,6 +15,7 @@ const KEYS = {
   notionSubjectProperty: "focal-notion-subject-property",
   syncNotionToken: "focal-sync-notion-token",
   syncOpenrouterKey: "focal-sync-openrouter-key",
+  projectsRootPath: "focal-projects-root-path",
 } as const
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
@@ -136,6 +137,18 @@ export function setSyncOpenrouterKey(enabled: boolean) {
   localStorage.setItem(KEYS.syncOpenrouterKey, String(enabled))
 }
 
+export function getProjectsRootPath(): string | null {
+  return localStorage.getItem(KEYS.projectsRootPath)
+}
+
+export function setProjectsRootPath(path: string | null) {
+  if (path) {
+    localStorage.setItem(KEYS.projectsRootPath, path)
+  } else {
+    localStorage.removeItem(KEYS.projectsRootPath)
+  }
+}
+
 export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; max_tokens?: number; exclude?: boolean } } {
   const effort = getReasoningEffort()
   if (effort === "none") return {}
@@ -150,7 +163,7 @@ export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; 
 
 // --- Timetable ---
 
-import type { TimetableConfig, TimetableDayLabel } from "@/lib/types"
+import type { TimetableConfig, TimetableDayLabel, TimetableEntry } from "@/lib/types"
 export type { TimetableConfig } from "@/lib/types"
 
 import type { TimetableViewSettings } from "@/lib/types"
@@ -246,24 +259,30 @@ export function getTimetableConfig(): TimetableConfig {
     const weekendTimetables = parsed.weekendTimetables === true
     const dayToWeekday = (() => {
       if (!Array.isArray(parsed.dayToWeekday)) return defaultDayToWeekday(cycleLength, weekendTimetables)
-      const stored = parsed.dayToWeekday.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+      const stored = parsed.dayToWeekday.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6) as number[]
       // If the stored array was for an older cycle length, rebase it to the current one.
       if (stored.length === cycleLength) return stored
       return defaultDayToWeekday(cycleLength, weekendTimetables)
     })()
     const rawEntries = Array.isArray(parsed.entries) ? parsed.entries : []
-    const entries = rawEntries
+    const entries: TimetableEntry[] = rawEntries
       .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
       .filter((e) => isValidDayLabel(e.dayLabel, cycleLength))
       .map((e) => ({
         dayLabel: e.dayLabel as TimetableDayLabel,
-        periods: Array.isArray(e.periods) ? e.periods : [],
+        periods: Array.isArray(e.periods) ? (e.periods as TimetableEntry["periods"]) : [],
       }))
     const rawViewSettings = parsed.viewSettings as Partial<TimetableViewSettings> | undefined
     return {
       enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : false,
       day1Starts: typeof parsed.day1Starts === "string" ? parsed.day1Starts : "",
-      holidays: Array.isArray(parsed.holidays) ? (parsed.holidays as TimetableConfig["holidays"]) : [],
+      holidays: Array.isArray(parsed.holidays)
+        ? parsed.holidays.filter((h): h is TimetableConfig["holidays"][number] => {
+            if (typeof h !== "object" || h === null) return false
+            const record = h as Record<string, unknown>
+            return typeof record.name === "string" && typeof record.startDate === "string" && typeof record.endDate === "string"
+          })
+        : [],
       entries,
       cycleLength,
       dayToWeekday,

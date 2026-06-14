@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type ReactNode,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -195,6 +196,7 @@ export function FocusView({
 }: FocusViewProps) {
   const closeButtonRefInternal = useRef<HTMLButtonElement | null>(null);
   const resolvedCloseRef = closeButtonRef ?? closeButtonRefInternal;
+  const orbitRef = useRef<HTMLDivElement | null>(null);
   const [sessionIntention, setSessionIntention] = useState("");
 
   useEffect(() => {
@@ -209,6 +211,23 @@ export function FocusView({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose, resolvedCloseRef]);
+
+  useLayoutEffect(() => {
+    const el = orbitRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      // Tick width is w-3 (0.75rem ≈ 12px at 16px root). Place tick center at orbit radius.
+      const radius = Math.max(0, rect.width / 2 - 6);
+      el.style.setProperty("--orbit-radius", `${radius}px`);
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -343,6 +362,7 @@ export function FocusView({
                 >
                   <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,oklch(0.55_0.09_242/0.16),transparent_58%)] blur-2xl motion-reduce:hidden" />
                   <div
+                    ref={orbitRef}
                     className={cn(
                       "focus-orbit pointer-events-none absolute inset-[4.5%] rounded-full motion-reduce:hidden",
                       isFocusMode ? "focus-orbit-work" : "focus-orbit-break",
@@ -363,7 +383,7 @@ export function FocusView({
                               : "bg-muted-foreground/12",
                           )}
                           style={{
-                            transform: `rotate(${tick * 7.5}deg) translateX(min(24rem, calc(min(45vw, 17rem) + max(0px, (100vw - 1500px) * 0.08))))`,
+                            transform: `rotate(${tick * 7.5}deg) translateX(var(--orbit-radius))`,
                           }}
                         />
                       );

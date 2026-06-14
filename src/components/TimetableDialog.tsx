@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils"
 import {
   defaultDayToWeekday,
   DEFAULT_CYCLE_LENGTH,
-  DEFAULT_WEEKEND_TIMETABLES,
   getCycleLength,
   getDayToWeekday,
   getTimetableConfig,
@@ -30,7 +29,7 @@ import {
   setTimetableConfig,
   type TimetableConfig,
 } from "@/lib/settings"
-import { VCE_SUBJECTS, type TimetableEntry, type TimetableDayLabel } from "@/lib/types"
+import { VCE_SUBJECTS, type TimetableEntry } from "@/lib/types"
 import { parseTimetableFromImage } from "@/lib/timetable"
 
 type Step = "upload" | "review"
@@ -706,7 +705,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
     const timetableEntries: TimetableEntry[] = approvedEntries
       .filter((e) => e.dayLabel >= 1 && e.dayLabel <= cycleLength)
       .map((e) => ({
-        dayLabel: e.dayLabel as TimetableDayLabel,
+        dayLabel: e.dayLabel,
         periods: e.periods.map((p) => ({
           period: p.period,
           subject: p.subject,

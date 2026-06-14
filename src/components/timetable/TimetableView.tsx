@@ -68,13 +68,13 @@ function dayLabelsInRange(start: number, count: number, cycleLength: number): Ti
   for (let i = 0; i < count; i++) {
     const label = ((start - 1 + i) % cycleLength) + 1
     if (label < 1) continue
-    out.push(label as TimetableDayLabel)
+    out.push(label)
   }
   return out
 }
 
 function allDayLabels(cycleLength: number): TimetableDayLabel[] {
-  return Array.from({ length: cycleLength }, (_, i) => (i + 1) as TimetableDayLabel)
+  return Array.from({ length: cycleLength }, (_, i) => i + 1)
 }
 
 /** Pick a grid column count that keeps the popover tight for any cycle length. */

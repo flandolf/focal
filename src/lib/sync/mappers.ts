@@ -284,10 +284,6 @@ function isConfidenceScore(value: unknown): value is ConfidenceScore {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
 }
 
-function isDayLabel(value: unknown): value is TimetableDayLabel {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 60
-}
-
 function isDayLabelInRange(value: unknown, cycleLength: number): value is TimetableDayLabel {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= cycleLength
 }

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, Runtime, State};
+use tauri::{AppHandle, Manager};
 
 #[tauri::command]
 pub async fn window_minimize(app: AppHandle) -> Result<(), String> {

@@ -7,6 +7,22 @@ import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-
 import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, pressable as pressableMotion, staggerContainer, staggerItem } from "@/lib/motion"
 import { Toaster, toast } from "sonner"
 import { FolderOpen } from "lucide-react"
+import { useProjects } from "@/hooks/useProjects"
+import { useStudySessions } from "@/hooks/useStudySessions"
+import { useEvents } from "@/hooks/useEvents"
+import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
+import { useNotionSync } from "@/hooks/useNotionSync"
+import { useSupabaseAuth } from "@/hooks/useSupabaseAuth"
+import { useSupabaseSync } from "@/hooks/useSupabaseSync"
+import { useTheme } from "@/lib/themes"
+import { confirmDestructiveAction } from "@/lib/confirmToast"
+import { showUndoToast } from "@/lib/undoToast"
+import { getNotionCalendarSettings, getTimetableConfig, getProjectsRootPath } from "@/lib/settings"
+import { isPomodoroSession, getPomodoroDescription, getPomodoroNotes, getPomodoroTitle, POMODORO_DESCRIPTION_PREFIX, getAdjacentPomodoroSession, getUniqueStrings, getUniqueArrayItems } from "@/lib/pomodoro"
+import { deleteNotionPage } from "@/lib/notion/api"
+import { recordLocalSoftDelete, recordLocalUpsert, forcePushAndMerge, forcePushAndOverwrite, pullNow, pushNow, clearFailedItems, retryFailedItem, dropQueueItem, resolveConflictAcceptRemote, resolveConflictKeepLocal, dismissConflict, clearConflicts } from "@/lib/sync/engine"
+import type { SyncTable } from "@/lib/sync/types"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { Sidebar } from "@/components/Sidebar"
 import { TitleBar } from "@/components/TitleBar"
@@ -21,6 +37,9 @@ import { CustomSubjects } from "@/components/CustomSubjects"
 import { NotionConflictDialog } from "@/components/NotionConflictDialog"
 import { NotionSyncIndicator } from "@/components/NotionSyncIndicator"
 import { SupabaseSyncIndicator } from "@/components/SupabaseSyncIndicator"
+import { Button } from "@/components/ui/button"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
 
 const TimetableView = lazy(() =>
   import("@/components/timetable/TimetableView").then((m) => ({ default: m.TimetableView })),
@@ -74,30 +93,51 @@ function ViewFallback({ label }: { label?: string }) {
     </div>
   )
 }
-import { useProjects } from "@/hooks/useProjects"
-import { useStudySessions } from "@/hooks/useStudySessions"
-import { useEvents } from "@/hooks/useEvents"
-import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
-import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
-import { useNotionSync } from "@/hooks/useNotionSync"
-import { useSupabaseAuth } from "@/hooks/useSupabaseAuth"
-import { useSupabaseSync } from "@/hooks/useSupabaseSync"
-import { useTheme } from "@/lib/themes"
-import { confirmDestructiveAction } from "@/lib/confirmToast"
-import { showUndoToast } from "@/lib/undoToast"
-import { getNotionCalendarSettings, getTimetableConfig } from "@/lib/settings"
-import { isPomodoroSession, getPomodoroDescription, getPomodoroNotes, getPomodoroTitle, POMODORO_DESCRIPTION_PREFIX, getAdjacentPomodoroSession, getUniqueStrings, getUniqueArrayItems } from "@/lib/pomodoro"
-import { deleteNotionPage } from "@/lib/notion/api"
-import { recordLocalSoftDelete, recordLocalUpsert, forcePushAndMerge, forcePushAndOverwrite, pullNow, pushNow, clearFailedItems, retryFailedItem, dropQueueItem, resolveConflictAcceptRemote, resolveConflictKeepLocal, dismissConflict, clearConflicts } from "@/lib/sync/engine"
-import type { SyncTable } from "@/lib/sync/types"
-import { Button } from "@/components/ui/button"
-import { TooltipProvider } from "@/components/ui/tooltip"
-import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
 
 const SHELL_LAYOUT_TRANSITION = { duration: 0.24, ease: MOTION_EASE } as const
 const VIEW_TRANSITION = { duration: 0.18, ease: MOTION_EASE } as const
 const EMPTY_STATE_TRANSITION = { duration: MOTION_DURATION.slow, ease: MOTION_EASE } as const
 const HIDDEN_SUBJECTS_STORAGE_KEY = "focal-hidden-subjects"
+
+interface NotionSource {
+  type: string
+  id?: string
+}
+
+/** Delete a Notion page if the item has a linked Notion source. */
+async function deleteNotionPageIfLinked(source: NotionSource | undefined) {
+  if (source?.type !== "notion" || !source.id) return
+  const settings = getNotionCalendarSettings()
+  if (!settings.token.trim() || !settings.dataSourceId.trim()) return
+  try {
+    await deleteNotionPage(settings, source.id)
+  } catch (e) {
+    console.error("Failed to delete Notion page:", e)
+    toast.error("Failed to delete from Notion — it may reappear on next sync")
+  }
+}
+
+/** Delete multiple Notion pages in parallel, collecting failures. */
+async function deleteNotionPagesIfLinked(sources: (NotionSource | undefined)[], silent = false) {
+  const settings = getNotionCalendarSettings()
+  const canDelete = settings.token.trim() && settings.dataSourceId.trim()
+  if (!canDelete) return
+  const pageIds = sources
+    .filter((s): s is NotionSource => s?.type === "notion" && Boolean(s.id))
+    .map((s) => s.id!)
+  if (pageIds.length === 0) return
+  const failedIds: string[] = []
+  await Promise.allSettled(
+    pageIds.map((pageId) =>
+      deleteNotionPage(settings, pageId).catch(() => {
+        failedIds.push(pageId)
+      })
+    )
+  )
+  if (!silent && failedIds.length > 0) {
+    toast.error(`${failedIds.length} item${failedIds.length === 1 ? "" : "s"} failed to delete from Notion — they may reappear on next sync`)
+  }
+}
 
 function getStoredHiddenSubjectIds() {
   if (typeof window === "undefined") return []
@@ -142,8 +182,18 @@ try {
 }
 
 function App() {
+  // Initialize projects directory override from localStorage on startup
+  useEffect(() => {
+    const root = getProjectsRootPath()
+    if (root) {
+      invoke("set_projects_directory", { path: root }).catch((e) => {
+        console.error("Failed to set projects directory:", e)
+        toast.warning("Your saved projects folder could not be loaded. It may have been moved or deleted.")
+      })
+    }
+  }, [])
 
-  const { projects, addProject, updateProject, deleteProject, restoreProject } = useProjects()
+  const { projects, addProject, updateProject, deleteProject, restoreProject, scanAndImportProjects, linkFolderAsProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
   const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, restoreEvent, restoreEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -157,6 +207,9 @@ function App() {
   const [newItemDialogKey, setNewItemDialogKey] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
+  const prevFileCountsRef = useRef<Record<string, number>>({})
+  const [bumpProjectIds, setBumpProjectIds] = useState<Set<string>>(new Set())
+  const bumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [subjectsOpen, setSubjectsOpen] = useState(false)
@@ -368,7 +421,23 @@ function App() {
         counts[projects[i].id] = 0
       }
     }
+    const bumps = new Set<string>()
+    for (const [id, count] of Object.entries(counts)) {
+      const prev = prevFileCountsRef.current[id]
+      if (prev !== undefined && prev !== count) {
+        bumps.add(id)
+      }
+    }
+    prevFileCountsRef.current = counts
     setFileCounts(counts)
+    if (bumps.size > 0) {
+      setBumpProjectIds(bumps)
+      if (bumpTimeoutRef.current) clearTimeout(bumpTimeoutRef.current)
+      bumpTimeoutRef.current = setTimeout(() => {
+        bumpTimeoutRef.current = null
+        setBumpProjectIds(new Set())
+      }, 500)
+    }
   }, [projects])
 
   // Check for timely study notifications on app load and when planning data changes
@@ -453,12 +522,11 @@ function App() {
     try {
       await invoke("move_files_to_project", {
         files: selected,
-        projectName: project.name,
+        projectName: project.folder_path,
       })
       await refreshFileCounts()
       toast.success(`Added ${selected.length} file${selected.length === 1 ? "" : "s"} to ${project.name}`)
-    } catch (e) {
-      console.error("Failed to add files:", e)
+    } catch {
       toast.error("Failed to add files")
     }
   }, [projects, refreshFileCounts])
@@ -741,15 +809,7 @@ function App() {
     if (!confirmed) return
     try {
       await deleteSession(id)
-      if (session.source?.type === "notion" && session.source.id) {
-        const settings = getNotionCalendarSettings()
-        if (settings.token.trim() && settings.dataSourceId.trim()) {
-          void deleteNotionPage(settings, session.source.id).catch((e) => {
-            console.error("Failed to delete Notion page:", e)
-            toast.error("Failed to delete session from Notion — it may reappear on next sync")
-          })
-        }
-      }
+      void deleteNotionPageIfLinked(session.source)
       showUndoToast({
         message: "Study session deleted",
         onUndo: async () => {
@@ -842,15 +902,7 @@ function App() {
     if (!confirmed) return
     try {
       await deleteEvent(id)
-      if (event.source?.type === "notion" && event.source.id) {
-        const settings = getNotionCalendarSettings()
-        if (settings.token.trim() && settings.dataSourceId.trim()) {
-          void deleteNotionPage(settings, event.source.id).catch((e) => {
-            console.error("Failed to delete Notion page:", e)
-            toast.error("Failed to delete event from Notion — it may reappear on next sync")
-          })
-        }
-      }
+      void deleteNotionPageIfLinked(event.source)
       showUndoToast({
         message: "Event deleted",
         onUndo: async () => {
@@ -888,27 +940,11 @@ function App() {
         itemIds.eventIds.length > 0 ? deleteEvents(itemIds.eventIds) : Promise.resolve(),
         itemIds.sessionIds.length > 0 ? deleteSessions(itemIds.sessionIds) : Promise.resolve(),
       ])
-      // Delete Notion pages for sourced items in parallel (collect failures for toast)
-      const settings = getNotionCalendarSettings()
-      const canDeleteNotion = settings.token.trim() && settings.dataSourceId.trim()
-      if (canDeleteNotion) {
-        const notionPageIds: string[] = [
-          ...deletedEvents.filter((e) => e.source?.type === "notion" && e.source.id).map((e) => e.source!.id),
-          ...deletedSessions.filter((s) => s.source?.type === "notion" && s.source.id).map((s) => s.source!.id),
-        ]
-        const failedIds: string[] = []
-        await Promise.allSettled(
-          notionPageIds.map((pageId) =>
-            deleteNotionPage(settings, pageId).catch((e) => {
-              console.error("Failed to delete Notion page:", e)
-              failedIds.push(pageId)
-            })
-          )
-        )
-        if (failedIds.length > 0) {
-          toast.error(`${failedIds.length} item${failedIds.length === 1 ? "" : "s"} failed to delete from Notion — they may reappear on next sync`)
-        }
-      }
+      // Delete Notion pages for sourced items in parallel
+      await deleteNotionPagesIfLinked([
+        ...deletedEvents.map((e) => e.source),
+        ...deletedSessions.map((s) => s.source),
+      ])
 
       showUndoToast({
         message: `${total} calendar item${total === 1 ? "" : "s"} deleted`,
@@ -1003,18 +1039,7 @@ function App() {
       )
 
       // Delete Notion pages for merged-away events in parallel
-      const settings = getNotionCalendarSettings()
-      const canDeleteNotion = settings.token.trim() && settings.dataSourceId.trim()
-      if (canDeleteNotion) {
-        const notionPageIds = selectedEvents.slice(1)
-          .filter((e) => e.source?.type === "notion" && e.source.id)
-          .map((e) => e.source!.id)
-        notionPageIds.forEach((pageId) => {
-          void deleteNotionPage(settings, pageId).catch((e) => {
-            console.error("Failed to delete Notion page:", e)
-          })
-        })
-      }
+      void deleteNotionPagesIfLinked(selectedEvents.slice(1).map((e) => e.source), true)
 
       toast.success(`${selectedEvents.length} events merged`)
       void requestNotionSync(false)
@@ -1085,18 +1110,7 @@ function App() {
       )
 
       // Delete Notion pages for merged-away sessions in parallel
-      const settings = getNotionCalendarSettings()
-      const canDeleteNotion = settings.token.trim() && settings.dataSourceId.trim()
-      if (canDeleteNotion) {
-        const notionPageIds = selectedSessions.slice(1)
-          .filter((s) => s.source?.type === "notion" && s.source.id)
-          .map((s) => s.source!.id)
-        notionPageIds.forEach((pageId) => {
-          void deleteNotionPage(settings, pageId).catch((e) => {
-            console.error("Failed to delete Notion page:", e)
-          })
-        })
-      }
+      void deleteNotionPagesIfLinked(selectedSessions.slice(1).map((s) => s.source), true)
 
       toast.success(`${selectedSessions.length} study sessions merged`)
       void requestNotionSync(false)
@@ -1178,6 +1192,48 @@ function App() {
     setSettingsOpen(true)
   }, [])
 
+  const handleOpenProjectSettings = useCallback((id: string) => {
+    setSelectedId(id)
+    setHomeSelected(false)
+    setSettingsView(false)
+    setAnalyticsView(false)
+    setTimetableView(false)
+    setSettingsOpen(true)
+  }, [])
+
+  const handleDropFolder = useCallback(async (path: string) => {
+    try {
+      const result = await invoke<{ folder_path: string; is_linked: boolean }>("handle_folder_drop", { sourcePath: path })
+      const existingPaths = new Set(projects.map((p) => p.folder_path))
+      if (existingPaths.has(result.folder_path)) {
+        toast.error(`A project for "${result.folder_path}" already exists`)
+        return
+      }
+      const project = await addProject(
+        result.folder_path,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        result.folder_path,
+        result.is_linked,
+      )
+      setSelectedId(project.id)
+      setHomeSelected(false)
+      setSettingsView(false)
+      setAnalyticsView(false)
+      setTimetableView(false)
+      toast.success(result.is_linked ? `Linked "${result.folder_path}"` : `Imported "${result.folder_path}"`)
+    } catch (e) {
+      toast.error(`Failed to drop folder: ${String(e)}`)
+    }
+  }, [projects, addProject])
+
   const handleToggleCollapse = useCallback(() => {
     setSidebarCollapsed((prev) => !prev)
   }, [])
@@ -1237,7 +1293,10 @@ function App() {
               onUpdatePomodoroSession={handleUpdatePomodoroSession}
               onDeletePomodoroSession={handleDeleteStudySession}
               onAddFile={handleAddFileFromSidebar}
+              onOpenProjectSettings={handleOpenProjectSettings}
+              onDropFolder={handleDropFolder}
               fileCounts={fileCounts}
+              bumpProjectIds={bumpProjectIds}
               onSelectTimetable={handleSelectTimetable}
               timetableSelected={timetableView}
               onSearch={() => setSearchOpen(true)}
@@ -1298,6 +1357,11 @@ function App() {
                     onKeepLocal={(table, rowId) => { void resolveConflictKeepLocal(table as SyncTable, rowId) }}
                     onDismissConflict={(table, rowId) => { dismissConflict(table as SyncTable, rowId) }}
                     onClearConflicts={() => clearConflicts()}
+                    onProjectsRootChanged={() => {
+                      void refreshFileCounts()
+                    }}
+                    onScanAndImportProjects={scanAndImportProjects}
+                    onLinkFolderAsProject={linkFolderAsProject}
                   />
                   </Suspense>
                 ) : timetableView ? (

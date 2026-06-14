@@ -51,6 +51,3 @@ export function notifyProjectActionError(message: string, error: unknown) {
   toast.error(`${message}: ${getErrorMessage(error)}`)
 }
 
-export function joinHomePath(home: string, ...segments: string[]) {
-  return [home.replace(/\/+$/, ""), ...segments].join("/")
-}

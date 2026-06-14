@@ -8,9 +8,7 @@ import {
   Plus,
   SkipForward,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { TRANSITION } from "@/lib/motion";
 
 const EXTRA_BREAK_MINUTES = 5;
 

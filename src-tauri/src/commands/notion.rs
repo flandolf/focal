@@ -71,7 +71,11 @@ async fn parse_notion_response(response: reqwest::Response) -> NotionPageRespons
         // Notion error shape: {"object":"error","status":404,"code":"object_not_found","message":"..."}
         let notion_code = serde_json::from_str::<Value>(&body)
             .ok()
-            .and_then(|v| v.get("code").and_then(|c| c.as_str()).map(|s| s.to_string()))
+            .and_then(|v| {
+                v.get("code")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string())
+            })
             .unwrap_or_else(|| "NOTION_ERROR".to_string());
         let message = if body.is_empty() {
             format!("Notion returned {}", status)
@@ -109,7 +113,10 @@ pub async fn fetch_notion_schema(token: String, data_source_id: String) -> Notio
     let body = json!({ "page_size": 1 });
 
     let response = match HTTP_CLIENT
-        .post(&format!("{}/databases/{}/query", NOTION_BASE_URL, data_source_id))
+        .post(format!(
+            "{}/databases/{}/query",
+            NOTION_BASE_URL, data_source_id
+        ))
         .bearer_auth(token)
         .header("Notion-Version", NOTION_API_VERSION)
         .json(&body)
@@ -173,7 +180,11 @@ pub async fn query_notion_calendar(token: String, data_source_id: String) -> Not
             let body = response.text().await.unwrap_or_default();
             let notion_code = serde_json::from_str::<Value>(&body)
                 .ok()
-                .and_then(|v| v.get("code").and_then(|c| c.as_str()).map(|s| s.to_string()))
+                .and_then(|v| {
+                    v.get("code")
+                        .and_then(|c| c.as_str())
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_else(|| "NOTION_ERROR".to_string());
             let message = if body.is_empty() {
                 format!("Notion returned {}", status)
@@ -309,7 +320,12 @@ async fn replace_page_children(token: &str, page_id: &str, new_children: Value) 
             if let Some(results) = json.get("results").and_then(|v| v.as_array()) {
                 let block_ids: Vec<String> = results
                     .iter()
-                    .filter_map(|block| block.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .filter_map(|block| {
+                        block
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
                     .collect();
 
                 // Delete all blocks concurrently

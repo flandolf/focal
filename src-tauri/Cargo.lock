@@ -1018,6 +1018,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-os",
  "tauri-plugin-shell",
+ "tokio",
 ]
 
 [[package]]

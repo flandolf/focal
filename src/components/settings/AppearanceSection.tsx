@@ -1,4 +1,4 @@
-import { useState, useCallback, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Moon, Sun, Monitor, Sparkles, Minus, Plus } from "lucide-react";
 import type { ThemeId, ThemeMode } from "@/lib/themes";

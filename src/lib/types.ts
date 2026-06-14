@@ -111,6 +111,7 @@ export interface Project {
   isArchived?: boolean;
   isFinished?: boolean;
   customSubfolders?: string[];
+  isLinked?: boolean;
   updated_at?: string;
   deleted_at?: string | null;
   last_modified_device_id?: string | null;

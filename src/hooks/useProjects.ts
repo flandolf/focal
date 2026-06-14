@@ -27,6 +27,7 @@ function normaliseProject(raw: unknown): Project {
     isFavorite: typeof obj.isFavorite === "boolean" ? obj.isFavorite : false,
     isArchived: typeof obj.isArchived === "boolean" ? obj.isArchived : false,
     isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
+    isLinked: typeof obj.isLinked === "boolean" ? obj.isLinked : undefined,
     customSubfolders: Array.isArray(obj.customSubfolders) ? obj.customSubfolders.filter((s): s is string => typeof s === "string") : undefined,
   }
 }
@@ -40,9 +41,10 @@ export function useProjects() {
 
   const projectsRef = useLatestRef(projects)
 
-  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, examDate?: string, customSubfolders?: string[]) => {
+  const addProject = useCallback(async (name: string, description?: string, icon?: string, deadline?: string, subjectId?: string, unit?: Unit, deadlineType?: DeadlineType, examDate?: string, customSubfolders?: string[], skipDiskCreation?: boolean, folderPathOverride?: string, isLinked?: boolean) => {
     const sanitised = sanitiseFolderName(name)
-    if (!sanitised) {
+    const folderPath = folderPathOverride ?? sanitised
+    if (!folderPath) {
       throw new Error("Project name cannot be empty after sanitisation")
     }
 
@@ -67,20 +69,23 @@ export function useProjects() {
       deadline,
       created_at: now,
       updated_at: now,
-      folder_path: sanitised,
+      folder_path: folderPath,
       subjectId,
       unit,
       deadlineType,
       examDate,
       customSubfolders,
+      isLinked,
     }
-    try {
-      await invoke("create_project_with_subfolders", {
-        projectName: sanitised,
-        subfolders: allSubfolders,
-      })
-    } catch (e) {
-      console.warn("Could not create project folder on disk:", e)
+    if (!skipDiskCreation) {
+      try {
+        await invoke("create_project_with_subfolders", {
+      projectName: folderPath,
+      subfolders: allSubfolders,
+        })
+      } catch (e) {
+        console.warn("Could not create project folder on disk:", e)
+      }
     }
     const updated = [...projectsRef.current, project]
     await saveProjects(updated)
@@ -114,6 +119,38 @@ export function useProjects() {
     await saveProjects(updated)
     void recordLocalUpsert("projects", restored)
   }, [projectsRef, saveProjects])
+
+  const linkFolderAsProject = useCallback(async (folderPath: string) => {
+    const rawPath = await invoke<string>("link_folder_as_project", { sourcePath: folderPath })
+    const existingPaths = new Set(projectsRef.current.map((p) => p.folder_path))
+    if (existingPaths.has(rawPath)) {
+      throw new Error(`A project named "${rawPath}" already exists.`)
+    }
+    const project = await addProject(rawPath, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true, rawPath, true)
+    return project
+  }, [projectsRef, addProject])
+
+  const scanAndImportProjects = useCallback(async () => {
+    const folderNames = await invoke<string[]>("scan_projects_root")
+    const existingPaths = new Set(projectsRef.current.map((p) => p.folder_path))
+    const created: string[] = []
+    const skipped: string[] = []
+    const failed: string[] = []
+    for (const name of folderNames) {
+      if (existingPaths.has(name)) {
+        skipped.push(name)
+        continue
+      }
+      try {
+        await addProject(name, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true, undefined, false)
+        created.push(name)
+      } catch (e) {
+        console.warn(`Failed to import project from folder "${name}":`, e)
+        failed.push(name)
+      }
+    }
+    return { created, skipped, failed }
+  }, [projectsRef, addProject])
 
   const addCustomSubfolder = useCallback(async (id: string, folderName: string) => {
     const sanitised = sanitiseFolderName(folderName)
@@ -181,6 +218,8 @@ export function useProjects() {
     restoreProject,
     addCustomSubfolder,
     removeCustomSubfolder,
+    scanAndImportProjects,
+    linkFolderAsProject,
     refresh,
   }
 }

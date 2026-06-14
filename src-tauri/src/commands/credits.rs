@@ -1,4 +1,13 @@
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
+use std::time::Duration;
+
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("failed to build reqwest HTTP client")
+});
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreditsInfo {
@@ -34,8 +43,7 @@ pub async fn get_credits(api_key: String) -> CreditsResponse {
         return error_response("VALIDATION_ERROR", "API key is required");
     }
 
-    let client = reqwest::Client::new();
-    let resp = match client
+    let resp = match HTTP_CLIENT
         .get("https://openrouter.ai/api/v1/credits")
         .bearer_auth(api_key)
         .send()

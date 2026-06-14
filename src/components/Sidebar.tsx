@@ -1,4 +1,4 @@
-import { useState, memo, type ReactNode } from "react"
+import { useState, memo, useCallback, useRef, type ReactNode } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { staggerContainer, staggerItem } from "@/lib/motion"
 import {
@@ -18,16 +18,19 @@ import {
   Dna,
   FlaskConical,
   Folder,
+  FolderOpen,
   Home,
   Landmark,
   Languages,
   Library,
+  Link,
   Map as MapIcon,
   MapPin,
   MoreHorizontal,
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plus,
   Star,
   Timer,
@@ -187,6 +190,8 @@ interface SidebarProps {
   onToggleFavorite?: (id: string) => void
   onToggleArchive?: (id: string) => void
   onToggleFinished?: (id: string) => void
+  onOpenProjectSettings?: (id: string) => void
+  onDropFolder?: (path: string) => void
   onStartPomodoroSession: (data: {
     subjectIds: string[]
     durationSeconds: number
@@ -200,6 +205,7 @@ interface SidebarProps {
   onDeletePomodoroSession?: (id: string) => Promise<void>
   onAddFile?: (projectId: string) => void
   fileCounts: Record<string, number>
+  bumpProjectIds?: Set<string>
   onSearch?: () => void
   onSettings?: () => void
 }
@@ -228,12 +234,72 @@ export const Sidebar = memo(function Sidebar({
   onUpdatePomodoroSession,
   onDeletePomodoroSession,
   onAddFile,
+  onOpenProjectSettings,
+  onDropFolder,
   fileCounts,
+  bumpProjectIds,
   onSearch,
   onSettings,
 }: SidebarProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("active")
+  const [isDragOver, setIsDragOver] = useState(false)
   const reduceMotion = useReducedMotion() === true
+
+  const dragCounter = useRef(0)
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current += 1
+    if (!isDragOver) setIsDragOver(true)
+  }, [isDragOver])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current -= 1
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0
+      setIsDragOver(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current = 0
+    setIsDragOver(false)
+
+    if (!onDropFolder) return
+
+    // Try to get the path from text/uri-list first (gives file:// URLs on most platforms)
+    const uriList = e.dataTransfer.getData("text/uri-list")
+    if (uriList) {
+      const lines = uriList.split(/\r?\n/).filter((line) => line.trim())
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith("file://")) {
+          onDropFolder(trimmed)
+          return
+        }
+      }
+    }
+
+    // Fallback: try text/plain (some platforms send the raw path)
+    const plain = e.dataTransfer.getData("text/plain")
+    if (plain) {
+      const trimmed = plain.trim()
+      if (trimmed) {
+        onDropFolder(trimmed)
+        return
+      }
+    }
+  }, [onDropFolder])
   const sorted = sortProjectsByDeadline(projects)
 
   const filtered = sorted.filter((p) => {
@@ -261,8 +327,23 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <aside
-      className="glass-sidebar flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground transition-all duration-300 ease-out min-[1200px]:rounded-[1.35rem]"
+      className={cn(
+        "glass-sidebar relative flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground transition-all duration-300 ease-out min-[1200px]:rounded-[1.35rem]",
+        isDragOver && "ring-2 ring-primary/50 ring-inset"
+      )}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
+      {isDragOver && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-[inherit] bg-primary/8 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <FolderOpen className="h-8 w-8" />
+            <span className="text-sm font-medium">Drop folder to create assessment</span>
+          </div>
+        </div>
+      )}
       <div className={cn(
         "pb-2 pt-2.5 min-[1200px]:pb-3 min-[1200px]:pt-3",
         isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-3 min-[1200px]:px-4"
@@ -477,17 +558,24 @@ export const Sidebar = memo(function Sidebar({
                       )}
                       onClick={() => onSelect(project.id)}
                     >
-                      <span
-                        className={cn(
-                          "flex shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
-                          isCollapsed ? "size-6.5 rounded-xl" : "size-5"
+                      <span className="relative shrink-0">
+                        <span
+                          className={cn(
+                            "flex items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
+                            isCollapsed ? "size-6.5 rounded-xl" : "size-5"
+                          )}
+                          style={subject ? {
+                            backgroundColor: subject.color + "14",
+                            color: subject.color,
+                          } : undefined}
+                        >
+                          <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3")} aria-hidden="true" />
+                        </span>
+                        {project.isLinked && isCollapsed && (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-primary/90 ring-1 ring-background">
+                            <Link className="size-2 text-background" />
+                          </span>
                         )}
-                        style={subject ? {
-                          backgroundColor: subject.color + "14",
-                          color: subject.color,
-                        } : undefined}
-                      >
-                        <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3")} aria-hidden="true" />
                       </span>
                       <CollapsibleBlock show={!isCollapsed} className="flex-1">
                           <div className="flex w-full min-w-0 items-center gap-1">
@@ -497,8 +585,16 @@ export const Sidebar = memo(function Sidebar({
                                 Done
                               </span>
                             )}
+                            {project.isLinked && (
+                              <span className="shrink-0 text-muted-foreground/70" title="Linked folder">
+                                <Link className="size-3" aria-hidden="true" />
+                              </span>
+                            )}
                             {fileCounts[project.id] > 0 && (
-                              <span className="text-caption text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden">
+                              <span className={cn(
+                                "text-caption text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden inline-block",
+                                bumpProjectIds?.has(project.id) && "animate-badge-bump",
+                              )}>
                                 {fileCounts[project.id]}
                               </span>
                             )}
@@ -544,6 +640,17 @@ export const Sidebar = memo(function Sidebar({
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
+                            {onOpenProjectSettings && (
+                              <DropdownMenuItem
+                                onSelect={(event) => {
+                                  event.stopPropagation()
+                                  onOpenProjectSettings(project.id)
+                                }}
+                              >
+                                <Pencil />
+                                Rename
+                              </DropdownMenuItem>
+                            )}
                             {onToggleFinished && (
                               <DropdownMenuItem
                                 onSelect={(event) => {
@@ -595,6 +702,17 @@ export const Sidebar = memo(function Sidebar({
                     </motion.div>
                       </ContextMenuTrigger>
                       <ContextMenuContent className="w-44">
+                        {onOpenProjectSettings && (
+                          <CtxMenuItem
+                            onSelect={(event) => {
+                              event.stopPropagation()
+                              onOpenProjectSettings(project.id)
+                            }}
+                          >
+                            <Pencil />
+                            Rename
+                          </CtxMenuItem>
+                        )}
                         <CtxMenuItem
                           onSelect={(event) => {
                             event.stopPropagation()

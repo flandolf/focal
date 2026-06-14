@@ -13,6 +13,8 @@ const IS_MACOS = (() => {
   }
 })()
 
+const noop = () => { /* no-op */ }
+
 interface TitleBarProps {
   onSearch?: () => void
   onSettings?: () => void
@@ -134,7 +136,7 @@ function AppActions({
   )
 }
 
-export function TitleBar({ onSearch = () => {}, onSettings = () => {}, children }: TitleBarProps) {
+export function TitleBar({ onSearch = noop, onSettings = noop, children }: TitleBarProps) {
   const reduceMotion = useReducedMotion()
 
   const handleMinimize = useCallback(() => {

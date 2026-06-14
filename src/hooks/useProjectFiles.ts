@@ -1,8 +1,11 @@
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
-import { downloadDir } from "@tauri-apps/api/path"
+import { downloadDir, join } from "@tauri-apps/api/path"
+import { watch } from "@tauri-apps/plugin-fs"
+
 import type { FileInfo, FileTag } from "@/lib/types"
+import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import {
   setFileTags,
   addFileTags,
@@ -12,13 +15,33 @@ import {
   purgeMetadata,
 } from "@/lib/fileMetadata"
 
-export type SortKey = "name" | "modified" | "size" | "extension"
+export type SortKey = "name" | "modified" | "size" | "extension" | "tags"
 
-const SORT_COMPARATORS: Record<SortKey, (a: FileInfo, b: FileInfo) => number> = {
+function tagsCompare(a: FileInfo, b: FileInfo): number {
+  const aTags = a.tags ?? (a.tag ? [a.tag] : [])
+  const bTags = b.tags ?? (b.tag ? [b.tag] : [])
+  const aStr = aTags.join(", ")
+  const bStr = bTags.join(", ")
+  return aStr.localeCompare(bStr) || a.name.localeCompare(b.name, undefined, { numeric: true })
+}
+
+export const SORT_COMPARATORS: Record<SortKey, (a: FileInfo, b: FileInfo) => number> = {
   name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }),
   modified: (a, b) => b.modified - a.modified,
   size: (a, b) => a.size - b.size,
   extension: (a, b) => a.extension.localeCompare(b.extension) || a.name.localeCompare(b.name, undefined, { numeric: true }),
+  tags: tagsCompare,
+}
+
+/** Lightweight hash to detect whether the file list has changed without merging metadata. */
+function computeFilesHash(files: FileInfo[]): string {
+  let totalSize = 0
+  let maxModified = 0
+  for (const f of files) {
+    totalSize += f.size
+    maxModified = Math.max(maxModified, f.modified)
+  }
+  return `${files.length}:${totalSize}:${maxModified}`
 }
 
 function updateFileTags(file: FileInfo, tags: FileTag[]): FileInfo {
@@ -34,25 +57,78 @@ export function useProjectFiles(projectName: string | null) {
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState<SortKey>("name")
   const [sortAsc, setSortAsc] = useState(true)
+  const [hasPendingChanges, setHasPendingChanges] = useState(false)
+  const [changedPaths, setChangedPaths] = useState<Set<string>>(new Set())
+  const [removedFiles, setRemovedFiles] = useState<FileInfo[]>([])
+  const filesHashRef = useRef<string>("")
+  const filesRef = useRef<FileInfo[]>([])
+  const changedPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const removedFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const loadFiles = useCallback(async () => {
+  useEffect(() => {
+    filesRef.current = files
+  }, [files])
+
+  const loadFiles = useCallback(async (options?: { silent?: boolean; notifyOnChange?: boolean }) => {
+    if (!options?.notifyOnChange) {
+      setHasPendingChanges(false)
+    }
     if (!projectName) {
+      filesHashRef.current = ""
       setFiles([])
+      setRemovedFiles([])
       return
     }
-    setLoading(true)
+    if (!options?.silent) setLoading(true)
     try {
       const result = await invoke<FileInfo[]>("get_project_files", {
         projectName,
         recursive: true,
       })
-      await mergeMetadata(result)
-      setFiles(result)
+      // Normalize subfolder separator (Rust uses \ on Windows)
+      for (const f of result) {
+        if (f.subfolder) {
+          f.subfolder = f.subfolder.replace(/\\/g, "/")
+        }
+      }
+      const hash = computeFilesHash(result)
+      if (hash !== filesHashRef.current) {
+        filesHashRef.current = hash
+        await mergeMetadata(result)
+        setFiles(result)
+        if (options?.notifyOnChange) {
+          setHasPendingChanges(true)
+          const oldPaths = new Set(filesRef.current.map((f) => f.path))
+          const newPaths = new Set(result.map((f) => f.path))
+          const diff = new Set<string>()
+          for (const p of newPaths) if (!oldPaths.has(p)) diff.add(p)
+          for (const p of oldPaths) if (!newPaths.has(p)) diff.add(p)
+          if (diff.size > 0) {
+            setChangedPaths(diff)
+            if (changedPathsTimeoutRef.current) clearTimeout(changedPathsTimeoutRef.current)
+            changedPathsTimeoutRef.current = setTimeout(() => setChangedPaths(new Set()), 600)
+          }
+          const removed = filesRef.current.filter((f) => !newPaths.has(f.path))
+          if (removed.length > 0) {
+            setRemovedFiles((prev) => {
+              const existing = new Set(prev.map((f) => f.path))
+              const merged = [...prev]
+              for (const f of removed) {
+                if (!existing.has(f.path)) merged.push(f)
+              }
+              return merged
+            })
+            if (removedFilesTimeoutRef.current) clearTimeout(removedFilesTimeoutRef.current)
+            removedFilesTimeoutRef.current = setTimeout(() => setRemovedFiles([]), 400)
+          }
+        }
+      }
     } catch (e) {
       console.error("Failed to load files:", e)
+      filesHashRef.current = ""
       setFiles([])
     } finally {
-      setLoading(false)
+      if (!options?.silent) setLoading(false)
     }
   }, [projectName])
 
@@ -107,6 +183,7 @@ export function useProjectFiles(projectName: string | null) {
       await loadFiles()
       return selected.length
     } catch (e) {
+      await loadFiles()
       console.error("Failed to move files:", e)
       throw e
     }
@@ -195,6 +272,59 @@ export function useProjectFiles(projectName: string | null) {
     return result
   }, [files])
 
+  /** Watch the project directory for external file system changes. */
+  const loadFilesRef = useLatestRef(loadFiles)
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!projectName) return
+
+    let unwatch: (() => void) | undefined
+
+    const setup = async () => {
+      try {
+        const projectsDir = await invoke<string>("get_projects_directory")
+        const projectPath = await join(projectsDir, projectName)
+        unwatch = await watch(
+          projectPath,
+          () => {
+            if (refreshTimeoutRef.current) {
+              clearTimeout(refreshTimeoutRef.current)
+            }
+            refreshTimeoutRef.current = setTimeout(() => {
+              refreshTimeoutRef.current = null
+              void loadFilesRef.current({ silent: true, notifyOnChange: true })
+            }, 200)
+          },
+          { recursive: true },
+        )
+      } catch (e) {
+        console.error("Failed to watch project directory:", e)
+      }
+    }
+
+    void setup()
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+        refreshTimeoutRef.current = null
+      }
+      void unwatch?.()
+    }
+  }, [projectName, loadFilesRef])
+
+  /** Refresh immediately when the window regains focus. */
+  useEffect(() => {
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") {
+        void loadFiles({ silent: true, notifyOnChange: true })
+      }
+    }
+    document.addEventListener("visibilitychange", handleFocus)
+    return () => document.removeEventListener("visibilitychange", handleFocus)
+  }, [loadFiles])
+
   return {
     files: sortedFiles,
     allSubfolders,
@@ -213,5 +343,8 @@ export function useProjectFiles(projectName: string | null) {
     sortAsc,
     setSortKey,
     setSortAsc,
+    hasPendingChanges,
+    changedPaths,
+    removedFiles,
   }
 }

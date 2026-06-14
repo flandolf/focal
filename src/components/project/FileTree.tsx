@@ -1,6 +1,6 @@
-import { useRef, useCallback } from "react"
+import { useRef, useCallback, useEffect, useState } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, LayoutList } from "lucide-react"
+import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, LayoutList, FolderPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -13,10 +13,8 @@ import { cn } from "@/lib/utils"
 import { getSegmentedButtonClassName, POPOVER_ITEM_BUTTON_CLASS } from "./shared"
 
 export type ListItem =
-  | { type: "file"; data: FileInfo }
-  | { type: "folder"; name: string; path: string; fileCount: number }
-
-const FILE_TABLE_GRID = "grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_2rem] min-[1000px]:grid-cols-[1rem_2rem_minmax(0,1fr)_5rem_3.5rem_2rem]"
+  | { type: "file"; data: FileInfo; isExiting?: boolean }
+  | { type: "folder"; name: string; path: string; fileCount: number; totalFileCount: number }
 
 interface FileTreeProps {
   files: FileInfo[]
@@ -39,6 +37,7 @@ interface FileTreeProps {
   showBulkMoveMenu: boolean
   setShowBulkMoveMenu: (open: boolean) => void
   onAddFiles: () => void
+  onCreateFolder?: () => void
   onOpenFile: (file: { path: string }) => void
   onRenameFile: (file: FileInfo, newName: string) => void
   onRemoveTag: (file: FileInfo, tag: FileTag) => void
@@ -59,6 +58,10 @@ interface FileTreeProps {
   onBreadcrumbNavigate: (path: string) => void
   onGoBack: () => void
   canGoBack: boolean
+  /** Paths of files that changed externally and should animate */
+  changedPaths?: Set<string>
+  /** Files that were removed externally and should animate out */
+  removedFiles?: FileInfo[]
 }
 
 export function FileTree({
@@ -82,6 +85,7 @@ export function FileTree({
   showBulkMoveMenu,
   setShowBulkMoveMenu,
   onAddFiles,
+  onCreateFolder,
   onOpenFile,
   onRenameFile,
   onRemoveTag,
@@ -101,6 +105,8 @@ export function FileTree({
   onBreadcrumbNavigate,
   onGoBack,
   canGoBack,
+  changedPaths,
+  removedFiles,
 }: FileTreeProps) {
   if (loading) {
     return (
@@ -110,29 +116,43 @@ export function FileTree({
     )
   }
 
-  if (files.length === 0) {
+  // Show empty state when this folder level has nothing to display (no active search/filter).
+  if (listItems.length === 0 && !searchQuery && selectedTags.length === 0) {
+    const hasFilesElsewhere = files.length > 0
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-5 text-center min-[1200px]:px-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background/35">
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background/35 ring-1 ring-border/50">
           <FolderOpen className="h-6 w-6 text-muted-foreground/40" />
         </div>
-        <p className="text-sm font-medium text-foreground mb-1">No files yet</p>
-        <p className="text-xs text-muted-foreground mb-5 max-w-56 leading-relaxed">
-          Drag and drop files here, or select them from your computer.
+        <p className="text-sm font-medium text-foreground mb-1">
+          {hasFilesElsewhere ? "This folder is empty" : "No files yet"}
         </p>
-        <Button variant="secondary" size="sm" onClick={onAddFiles} className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          Add Files
-        </Button>
+        <p className="text-xs text-muted-foreground mb-5 max-w-56 leading-relaxed">
+          {hasFilesElsewhere
+            ? "Add files here or create a new subfolder."
+            : "Drag and drop files here, or select them from your computer."}
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onAddFiles} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            Add Files
+          </Button>
+          {onCreateFolder && (
+            <Button variant="outline" size="sm" onClick={onCreateFolder} className="gap-1.5">
+              <FolderPlus className="h-3.5 w-3.5" />
+              New Folder
+            </Button>
+          )}
+        </div>
       </div>
     )
   }
 
   return (
     <>
-      {/* Navigation bar: breadcrumb + view toggle + sort */}
-      <div className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8">
-        <div className="flex items-center gap-3">
+      {/* Navigation bar: breadcrumb + view toggle + sort + new folder */}
+      <div className="border-t border-border/30 px-4 py-2 min-[1200px]:px-8">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Breadcrumb + back */}
           <Breadcrumb
             segments={breadcrumbSegments}
@@ -142,6 +162,19 @@ export function FileTree({
           />
 
           <div className="flex-1" />
+
+          {/* New folder */}
+          {onCreateFolder && (
+            <button
+              type="button"
+              onClick={onCreateFolder}
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+              title="Create new folder"
+            >
+              <FolderPlus className="h-3.5 w-3.5" />
+              <span className="hidden min-[900px]:inline">New Folder</span>
+            </button>
+          )}
 
           {/* View toggle: Folders vs All */}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
@@ -165,7 +198,7 @@ export function FileTree({
             </button>
           </div>
 
-          {/* Sort controls */}
+          {/* Sort indicator */}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
             <button
               type="button"
@@ -176,20 +209,6 @@ export function FileTree({
             >
               {sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
             </button>
-            {(["name", "modified", "size", "extension"] as SortKey[]).map((key) => (
-              <button
-                type="button"
-                key={key}
-                onClick={() => {
-                  if (sortKey === key) setSortAsc(!sortAsc)
-                  else setSortKey(key)
-                }}
-                aria-pressed={sortKey === key}
-                className={getSegmentedButtonClassName(sortKey === key, "px-2")}
-              >
-                {{ name: "Name", modified: "Date", size: "Size", extension: "Type" }[key]}
-              </button>
-            ))}
           </div>
         </div>
 
@@ -240,22 +259,9 @@ export function FileTree({
         </div>
       </div>
 
-      {/* Column headers */}
-      <div className={cn(
-        "grid items-center gap-3 border-b border-border/50 bg-muted/25 px-5 py-2.5 text-xs uppercase text-muted-foreground/70 min-[1200px]:px-8",
-        FILE_TABLE_GRID,
-      )}>
-        <span aria-hidden="true" />
-        <span aria-hidden="true" />
-        <span>Name</span>
-        <span className="text-right">Size</span>
-        <span className="hidden text-right min-[1000px]:block">Type</span>
-        <span className="sr-only">Actions</span>
-      </div>
-
       {/* Selection bar */}
       {selectedFiles.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-accent/20 px-5 py-2.5 min-[1200px]:gap-3 min-[1200px]:px-8">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-accent/20 px-4 py-2.5 min-[1200px]:gap-3 min-[1200px]:px-8">
           <span className="text-xs font-medium">{selectedFiles.size} selected</span>
           <Button variant="ghost" size="sm" onClick={onSelectAll} className="h-7 px-2 text-xs">
             Select All
@@ -315,16 +321,19 @@ export function FileTree({
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-40 gap-1 p-1">
-              {allSubfolders.map((folder) => (
-                <button
-                  type="button"
-                  key={folder}
-                  onClick={() => { void onBulkMove(folder); setShowBulkMoveMenu(false) }}
-                  className={POPOVER_ITEM_BUTTON_CLASS}
-                >
-                  {folder}
-                </button>
-              ))}
+              {allSubfolders.map((folder) => {
+                const displayName = folder.split("/").pop() ?? folder
+                return (
+                  <button
+                    type="button"
+                    key={folder}
+                    onClick={() => { void onBulkMove(folder); setShowBulkMoveMenu(false) }}
+                    className={POPOVER_ITEM_BUTTON_CLASS}
+                  >
+                    {displayName}
+                  </button>
+                )
+              })}
             </PopoverContent>
           </Popover>
 
@@ -340,6 +349,73 @@ export function FileTree({
           </Button>
         </div>
       )}
+
+      {/* Column header */}
+      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border/60 bg-muted/30 text-caption text-muted-foreground min-[1200px]:px-6">
+        <div className="w-6 shrink-0" />
+        <div className="w-8 shrink-0" />
+        <button
+          type="button"
+          onClick={() => {
+            if (sortKey === "name") setSortAsc(!sortAsc)
+            else { setSortKey("name"); setSortAsc(true) }
+          }}
+          aria-sort={sortKey === "name" ? (sortAsc ? "ascending" : "descending") : "none"}
+          className="flex flex-1 min-w-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+        >
+          Name
+          {sortKey === "name" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (sortKey === "modified") setSortAsc(!sortAsc)
+            else { setSortKey("modified"); setSortAsc(true) }
+          }}
+          aria-sort={sortKey === "modified" ? (sortAsc ? "ascending" : "descending") : "none"}
+          className="flex w-28 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+        >
+          Date
+          {sortKey === "modified" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (sortKey === "size") setSortAsc(!sortAsc)
+            else { setSortKey("size"); setSortAsc(true) }
+          }}
+          aria-sort={sortKey === "size" ? (sortAsc ? "ascending" : "descending") : "none"}
+          className="flex w-20 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+        >
+          Size
+          {sortKey === "size" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (sortKey === "extension") setSortAsc(!sortAsc)
+            else { setSortKey("extension"); setSortAsc(true) }
+          }}
+          aria-sort={sortKey === "extension" ? (sortAsc ? "ascending" : "descending") : "none"}
+          className="flex w-16 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+        >
+          Type
+          {sortKey === "extension" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (sortKey === "tags") setSortAsc(!sortAsc)
+            else { setSortKey("tags"); setSortAsc(true) }
+          }}
+          aria-sort={sortKey === "tags" ? (sortAsc ? "ascending" : "descending") : "none"}
+          className="flex w-24 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+        >
+          Tags
+          {sortKey === "tags" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+        </button>
+        <div className="w-8 shrink-0" />
+      </div>
 
       {/* File list — virtualized */}
       <VirtualFileList
@@ -357,13 +433,15 @@ export function FileTree({
         allSubfolders={allSubfolders}
         onFolderClick={setSelectedSubfolder}
         onFolderTagAll={onFolderTagAll}
+        changedPaths={changedPaths}
+        removedFiles={removedFiles}
       />
 
     </>
   )
 }
 
-const ESTIMATED_ROW_HEIGHT = 64
+const ESTIMATED_ROW_HEIGHT = 48
 
 interface VirtualFileListProps {
   listItems: ListItem[]
@@ -375,11 +453,13 @@ interface VirtualFileListProps {
   onToggleFavorite: (file: FileInfo) => void
   onShowInFinder: (file: FileInfo) => void
   onCopyPath: (file: FileInfo) => void
-  onMoveFile: (file: FileInfo, destSubfolder: string) => void
+  onMoveFile: (file: FileInfo, destFolder: string) => void
   onFileSelectionChange: (file: FileInfo, selected: boolean) => void
   onFolderTagAll?: (folderPath: string, tag: FileTag) => void
   allSubfolders: string[]
   onFolderClick: (folder: string) => void
+  changedPaths?: Set<string>
+  removedFiles?: FileInfo[]
 }
 
 function VirtualFileList({
@@ -397,8 +477,27 @@ function VirtualFileList({
   onFolderTagAll,
   allSubfolders,
   onFolderClick,
+  changedPaths,
+  removedFiles: _removedFiles,
 }: VirtualFileListProps) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1)
+  const focusedIndexRef = useRef(focusedIndex)
+
+  // Keep ref in sync with state for the keyboard listener
+  useEffect(() => {
+    focusedIndexRef.current = focusedIndex
+  }, [focusedIndex])
+
+  // Clamp focusedIndex when listItems changes (e.g. filtering, sorting)
+  useEffect(() => {
+    setFocusedIndex((prev) => {
+      if (prev >= listItems.length) {
+        return listItems.length > 0 ? listItems.length - 1 : -1
+      }
+      return prev
+    })
+  }, [listItems])
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -444,10 +543,78 @@ function VirtualFileList({
     onFileSelectionChange(file, selected)
   }, [onFileSelectionChange])
 
+  // Keyboard navigation — uses refs for values that change frequently
+  // so the listener is only registered once.
+  useEffect(() => {
+    const el = parentRef.current
+    if (!el) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (listItems.length === 0) return
+      const currentFocused = focusedIndexRef.current
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        setFocusedIndex((prev) => {
+          const next = prev < listItems.length - 1 ? prev + 1 : prev
+          virtualizer.scrollToIndex(next, { align: "auto" })
+          return next
+        })
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault()
+        setFocusedIndex((prev) => {
+          const next = prev > 0 ? prev - 1 : prev
+          virtualizer.scrollToIndex(next, { align: "auto" })
+          return next
+        })
+      } else if (e.key === "Enter") {
+        if (currentFocused >= 0 && currentFocused < listItems.length) {
+          const item = listItems[currentFocused]
+          if (item.type === "file") {
+            onOpenFile(item.data)
+          } else {
+            onFolderClick(item.path)
+          }
+        }
+      } else if (e.key === " ") {
+        e.preventDefault()
+        if (currentFocused >= 0 && currentFocused < listItems.length) {
+          const item = listItems[currentFocused]
+          if (item.type === "file") {
+            onFileSelectionChange(item.data, !selectedFiles.has(item.data.path))
+          }
+        }
+      } else if (e.key === "Home") {
+        e.preventDefault()
+        if (listItems.length > 0) {
+          setFocusedIndex(0)
+          virtualizer.scrollToIndex(0, { align: "start" })
+        }
+      } else if (e.key === "End") {
+        e.preventDefault()
+        if (listItems.length > 0) {
+          const last = listItems.length - 1
+          setFocusedIndex(last)
+          virtualizer.scrollToIndex(last, { align: "end" })
+        }
+      }
+    }
+
+    el.addEventListener("keydown", onKeyDown)
+    return () => el.removeEventListener("keydown", onKeyDown)
+  }, [listItems, onOpenFile, onFolderClick, onFileSelectionChange, selectedFiles, virtualizer])
+
   const items = virtualizer.getVirtualItems()
 
   return (
-    <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto">
+    <div
+      ref={parentRef}
+      className="min-h-0 flex-1 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25"
+      tabIndex={0}
+      role="listbox"
+      aria-label="Files and folders"
+      aria-activedescendant={focusedIndex >= 0 ? `file-item-${focusedIndex}` : undefined}
+    >
       <div
         style={{
           height: `${virtualizer.getTotalSize()}px`,
@@ -466,19 +633,41 @@ function VirtualFileList({
         >
           {items.map((virtualItem) => {
             const item = listItems[virtualItem.index]
+            const path = item.type === "file" ? item.data.path : item.path
+            const isChanged = changedPaths?.has(path) ?? false
+            const isExiting = item.type === "file" && item.isExiting
+            const isFocused = virtualItem.index === focusedIndex
             return (
               <div
                 key={virtualItem.key}
+                id={`file-item-${virtualItem.index}`}
                 data-index={virtualItem.index}
                 ref={virtualizer.measureElement}
-                className="border-b border-border/60"
+                className={cn(
+                  isChanged && "animate-file-row-glow",
+                  isExiting && "animate-file-row-exit",
+                )}
+                role="option"
+                aria-selected={item.type === "file" ? selectedFiles.has(item.data.path) : undefined}
+                onMouseDown={() => setFocusedIndex(virtualItem.index)}
               >
-                {item.type === "folder" ? (                    <FolderRow
-                      name={item.name}
-                      fileCount={item.fileCount}
-                      onClick={() => onFolderClick(item.path)}
-                      onTagAll={onFolderTagAll ? (tag) => onFolderTagAll(item.path, tag) : undefined}
-                    />
+                {item.type === "folder" ? (
+                  <FolderRow
+                    name={item.name}
+                    fileCount={item.fileCount}
+                    totalFileCount={item.totalFileCount}
+                    onClick={() => onFolderClick(item.path)}
+                    onTagAll={onFolderTagAll ? (tag) => onFolderTagAll(item.path, tag) : undefined}
+                    isFocused={isFocused}
+                    onFileDrop={(filePath) => {
+                      const fileItem = listItems.find(
+                        (i) => i.type === "file" && i.data.path === filePath,
+                      )
+                      if (fileItem?.type === "file") {
+                        onMoveFile(fileItem.data, item.path)
+                      }
+                    }}
+                  />
                 ) : (
                   <FileRow
                     file={item.data}
@@ -494,6 +683,7 @@ function VirtualFileList({
                     onSelectionChange={handleSelectionChange}
                     subfolders={allSubfolders}
                     selectionMode={selectedFiles.size > 0}
+                    isFocused={isFocused}
                   />
                 )}
               </div>

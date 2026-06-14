@@ -85,6 +85,9 @@ interface SettingsViewProps {
   onKeepLocal?: (table: string, rowId: string) => void;
   onDismissConflict?: (table: string, rowId: string) => void;
   onClearConflicts?: () => void;
+  onProjectsRootChanged?: () => void;
+  onScanAndImportProjects?: () => Promise<{ created: string[]; skipped: string[]; failed: string[] }>;
+  onLinkFolderAsProject?: (folderPath: string) => Promise<unknown>;
 }
 
 const SECTION_ITEMS: {
@@ -182,6 +185,9 @@ export function SettingsView({
   onKeepLocal,
   onDismissConflict,
   onClearConflicts,
+  onProjectsRootChanged,
+  onScanAndImportProjects,
+  onLinkFolderAsProject,
 }: SettingsViewProps) {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("account");
@@ -418,6 +424,9 @@ export function SettingsView({
                 {activeSection === "data" && (
                   <DataSection
                     onOpenExport={onOpenExport}
+                    onProjectsRootChanged={onProjectsRootChanged}
+                    onScanAndImportProjects={onScanAndImportProjects}
+                    onLinkFolderAsProject={onLinkFolderAsProject}
                   />
                 )}
               </motion.div>

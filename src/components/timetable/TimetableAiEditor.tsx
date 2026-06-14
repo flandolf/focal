@@ -391,7 +391,7 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
     setEditableEntries((prev) => prev.filter((e) => e.id !== id))
   }
   const changeEntryDay = (id: string, day: number) => {
-    setEditableEntries((prev) => prev.map((e) => (e.id === id ? { ...e, dayLabel: day as TimetableDayLabel } : e)))
+    setEditableEntries((prev) => prev.map((e) => (e.id === id ? { ...e, dayLabel: day } : e)))
   }
   const updatePeriod = (entryId: string, periodIdx: number, field: string, value: string) => {
     setEditableEntries((prev) =>

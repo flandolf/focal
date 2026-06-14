@@ -15,6 +15,8 @@ import {
   RotateCcw,
   Timer,
 } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { MOTION_EASE, REDUCED_TRANSITION } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
   VCE_SUBJECTS,
@@ -383,7 +385,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
   onUpdateSession,
   onDeleteSession,
 }: StudyTimerProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [focusViewOpen, setFocusViewOpen] = useState(false);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
   const [settings, setSettings] = useState<TimerSettings>(getInitialSettings);
@@ -430,10 +432,11 @@ const StudyTimerInner = memo(function StudyTimerInner({
       }
       return null;
     },
-  );
-  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(
+  );      const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(
     recoverySessionId !== null,
   );
+  const reduceMotion = useReducedMotion() === true;
+  const expandedRef = useRef<HTMLDivElement>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -1017,11 +1020,11 @@ const StudyTimerInner = memo(function StudyTimerInner({
           onFinish={handleRecoveryFinish}
           onDiscard={handleRecoveryDiscard}
         />
-        <div className="flex justify-center py-2">
+        <div className="flex flex-col items-center gap-1 py-1">
           <button
             onClick={onExpand}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-xl outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/35",
+              "flex h-8 w-8 items-center justify-center rounded-xl outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/35",
               running
                 ? modeColor
                 : "text-muted-foreground hover:text-foreground",
@@ -1035,41 +1038,13 @@ const StudyTimerInner = memo(function StudyTimerInner({
           >
             <Timer className="h-4 w-4" />
           </button>
-        </div>
-      </>
-    );
-  }
-
-  if (!expanded) {
-    return (
-      <>
-        {focusPortal}
-        <RecoveryDialog
-          open={recoveryDialogOpen}
-          onOpenChange={setRecoveryDialogOpen}
-          sessionId={recoverySessionId ?? ""}
-          onResume={handleRecoveryResume}
-          onFinish={handleRecoveryFinish}
-          onDiscard={handleRecoveryDiscard}
-        />
-        <div className="border-t border-sidebar-border/70 px-3 py-2">
           <button
-            onClick={() => setExpanded(true)}
-            className="flex min-h-8 w-full items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-            aria-label="Expand Pomodoro timer"
+            onClick={openFocusView}
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+            aria-label="Open full screen timer"
+            title="Open full screen timer"
           >
-            <Timer className="h-3.5 w-3.5 shrink-0" />
-            <span
-              className={cn("font-heading tabular-nums", running && modeColor)}
-            >
-              {running ? timeDisplay : "Pomodoro"}
-            </span>
-            {running && (
-              <span className={cn("text-micro font-medium ml-auto", modeColor)}>
-                {activeSubjectLabel}
-              </span>
-            )}
-            <ChevronUp className="h-3 w-3 ml-auto" />
+            <Maximize2 className="h-4 w-4" />
           </button>
         </div>
       </>
@@ -1087,182 +1062,239 @@ const StudyTimerInner = memo(function StudyTimerInner({
         onFinish={handleRecoveryFinish}
         onDiscard={handleRecoveryDiscard}
       />
-      <div className="space-y-3 border-t border-sidebar-border/70 px-3 py-3">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setExpanded(false)}
-            className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-            aria-label="Collapse Pomodoro timer"
-          >
-            <Timer className="h-3.5 w-3.5" />
-            Pomodoro
-            <ChevronDown className="h-3 w-3" />
-          </button>
+      <div className="border-t border-sidebar-border/70">
+        <div className="px-2 py-1.5">
           <div className="flex items-center gap-1">
             <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex min-h-8 flex-1 items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+              aria-label={expanded ? "Collapse Pomodoro timer" : "Expand Pomodoro timer"}
+            >
+              <Timer className="h-3.5 w-3.5 shrink-0" />
+              <span
+                className={cn("font-heading tabular-nums", running && modeColor)}
+              >
+                {running ? timeDisplay : "Pomodoro"}
+              </span>
+              {running && (
+                <span className={cn("text-micro font-medium ml-auto", modeColor)}>
+                  {activeSubjectLabel}
+                </span>
+              )}
+              {expanded ? (
+                <ChevronDown className="h-3 w-3 ml-auto" />
+              ) : (
+                <ChevronUp className="h-3 w-3 ml-auto" />
+              )}
+            </button>
+            <button
               onClick={openFocusView}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
               aria-label="Open full screen timer"
+              title="Open full screen timer"
             >
               <Maximize2 className="h-3 w-3" />
             </button>
-            <button
-              onClick={handleReset}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
-              aria-label="Reset timer"
+          </div>
+        </div>
+        <AnimatePresence initial={false}>
+          {expanded && (
+            <motion.div
+              ref={expandedRef}
+              key="expanded"
+              initial={reduceMotion ? "visible" : "hidden"}
+              animate="visible"
+              exit={reduceMotion ? "visible" : "hidden"}
+              variants={{
+                hidden: { height: 0, opacity: 0, overflow: "hidden" },
+                visible: { height: "auto", opacity: 1 },
+              }}
+              transition={reduceMotion ? REDUCED_TRANSITION : { duration: 0.22, ease: MOTION_EASE }}
+              className="overflow-hidden"
+              onAnimationComplete={() => {
+                expandedRef.current?.style.setProperty("overflow", "visible");
+              }}
             >
-              <RotateCcw className="h-3 w-3" />
-            </button>
-          </div>
-        </div>
-        <div className={cn("text-xs font-medium", modeColor)}>
-          {modeLabel} · Cycle {cycles + 1}
-        </div>
-
-        <DurationInputs
-          variant="sidebar"
-          settings={settings}
-          onChange={updateDuration}
-        />
-
-        <SubjectPicker
-          variant="sidebar"
-          subjects={subjects}
-          selectedSubjectIds={selectedSubjectIds}
-          activeSessionId={activeSessionId}
-          onSubjectClick={handleSubjectClick}
-        />
-
-        <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-3">
-          <div className="mx-auto relative h-20 w-20">
-            {/* Flow pressure indicator — pulsing dot when timer is running */}
-            {running && (
-              <div className="flow-pressure absolute -top-0.5 -right-0.5 z-10 h-2.5 w-2.5 rounded-full bg-primary" />
-            )}
-            <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
-              <circle
-                cx="40"
-                cy="40"
-                r="34"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="text-muted/20"
-              />
-              <circle
-                cx="40"
-                cy="40"
-                r="34"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeDasharray={`${2 * Math.PI * 34}`}
-                strokeDashoffset={`${2 * Math.PI * 34 * (1 - progress)}`}
-                strokeLinecap="round"
-                className={cn(
-                  "transition-[stroke-dashoffset] duration-1000",
-                  mode === "work" || isStudyOvertime
-                    ? "text-background"
-                    : "text-emerald-500",
-                )}
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="font-heading text-lg font-semibold leading-tight tabular-nums">
-                {timeDisplay}
-              </span>
-            </div>
-          </div>
-
-          <TimerControls
-            variant="sidebar"
-            running={running}
-            mode={mode}
-            isStudyOvertime={isStudyOvertime}
-            canStartFocus={canStartFocus}
-            saving={saving}
-            hasActiveSession={!!activeSessionId}
-            timerActionLabel={timerActionLabel}
-            onToggle={handleToggle}
-            onReturnToBreak={handleReturnToBreak}
-            onFinish={handleFinish}
-            onSkipBreak={handleSkipBreak}
-            onStartStudyOvertime={handleStartStudyOvertime}
-            onMoreBreakTime={handleMoreBreakTime}
-          />
-          {reflectionSessionId && (
-            <div className="mt-3 space-y-3 border-t border-border/30 pt-3">
-              <p className="text-xs font-semibold text-foreground/80">
-                Review this session
-              </p>
-              <div>
-                <p className="text-micro font-medium text-muted-foreground mb-1.5">
-                  Confidence
-                </p>
-                <div className="grid grid-cols-5 gap-1">
-                  {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
+              <div className="space-y-2 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setExpanded(false)}
+                    className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+                    aria-label="Collapse Pomodoro timer"
+                  >
+                    <Timer className="h-3.5 w-3.5" />
+                    Pomodoro
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  <div className="flex items-center gap-0.5">
                     <button
-                      key={score}
-                      type="button"
-                      onClick={() => setReflectionConfidence(score)}
-                      aria-pressed={reflectionConfidence === score}
-                      className={cn(
-                        "h-7 rounded-md border text-xs font-medium transition-colors",
-                        reflectionConfidence === score
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                      )}
+                      onClick={openFocusView}
+                      className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+                      aria-label="Open full screen timer"
                     >
-                      {score}
+                      <Maximize2 className="h-3 w-3" />
                     </button>
-                  ))}
+                    <button
+                      onClick={handleReset}
+                      className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+                      aria-label="Reset timer"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+                <div className={cn("text-xs font-medium", modeColor)}>
+                  {modeLabel} · Cycle {cycles + 1}
+                </div>
+
+                <DurationInputs
+                  variant="sidebar"
+                  settings={settings}
+                  onChange={updateDuration}
+                />
+
+                <SubjectPicker
+                  variant="sidebar"
+                  subjects={subjects}
+                  selectedSubjectIds={selectedSubjectIds}
+                  activeSessionId={activeSessionId}
+                  onSubjectClick={handleSubjectClick}
+                />
+
+                <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-2">
+                  <div className="mx-auto relative h-16 w-16">
+                    {/* Flow pressure indicator — pulsing dot when timer is running */}
+                    {running && (
+                      <div className="flow-pressure absolute -top-0.5 -right-0.5 z-10 h-2.5 w-2.5 rounded-full bg-primary" />
+                    )}
+                    <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="34"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        className="text-muted/20"
+                      />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="34"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeDasharray={`${2 * Math.PI * 34}`}
+                        strokeDashoffset={`${2 * Math.PI * 34 * (1 - progress)}`}
+                        strokeLinecap="round"
+                        className={cn(
+                          "transition-[stroke-dashoffset] duration-1000",
+                          mode === "work" || isStudyOvertime
+                            ? "text-background"
+                            : "text-emerald-500",
+                        )}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="font-heading text-lg font-semibold leading-tight tabular-nums">
+                        {timeDisplay}
+                      </span>
+                    </div>
+                  </div>
+
+                  <TimerControls
+                    variant="sidebar"
+                    running={running}
+                    mode={mode}
+                    isStudyOvertime={isStudyOvertime}
+                    canStartFocus={canStartFocus}
+                    saving={saving}
+                    hasActiveSession={!!activeSessionId}
+                    timerActionLabel={timerActionLabel}
+                    onToggle={handleToggle}
+                    onReturnToBreak={handleReturnToBreak}
+                    onFinish={handleFinish}
+                    onSkipBreak={handleSkipBreak}
+                    onStartStudyOvertime={handleStartStudyOvertime}
+                    onMoreBreakTime={handleMoreBreakTime}
+                  />
+                  {reflectionSessionId && (
+                    <div className="mt-2 space-y-2 border-t border-border/30 pt-2">
+                      <p className="text-xs font-semibold text-foreground/80">
+                        Review this session
+                      </p>
+                      <div>
+                        <p className="text-micro font-medium text-muted-foreground mb-1.5">
+                          Confidence
+                        </p>
+                        <div className="grid grid-cols-5 gap-1">
+                          {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
+                            <button
+                              key={score}
+                              type="button"
+                              onClick={() => setReflectionConfidence(score)}
+                              aria-pressed={reflectionConfidence === score}
+                              className={cn(
+                                "h-7 rounded-md border text-xs font-medium transition-colors",
+                                reflectionConfidence === score
+                                  ? "border-primary bg-primary/10 text-primary"
+                                  : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                              )}
+                            >
+                              {score}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-micro font-medium text-muted-foreground mb-1">
+                          Blockers
+                        </p>
+                        <textarea
+                          placeholder="What felt unclear?"
+                          value={reflectionBlockers}
+                          onChange={(e) => setReflectionBlockers(e.target.value)}
+                          rows={2}
+                          className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-micro font-medium text-muted-foreground mb-1">
+                          Next action
+                        </p>
+                        <textarea
+                          placeholder="e.g. redo practice exam"
+                          value={reflectionNextAction}
+                          onChange={(e) => setReflectionNextAction(e.target.value)}
+                          rows={2}
+                          className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={saveReflection}
+                          disabled={saving}
+                          className="flex-1 h-7 rounded-lg bg-primary text-primary-foreground text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                        >
+                          {saving ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={dismissReflection}
+                          disabled={saving}
+                          className="flex-1 h-7 rounded-lg border border-border/70 bg-background/45 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div>
-                <p className="text-micro font-medium text-muted-foreground mb-1">
-                  Blockers
-                </p>
-                <textarea
-                  placeholder="What felt unclear?"
-                  value={reflectionBlockers}
-                  onChange={(e) => setReflectionBlockers(e.target.value)}
-                  rows={2}
-                  className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                />
-              </div>
-              <div>
-                <p className="text-micro font-medium text-muted-foreground mb-1">
-                  Next action
-                </p>
-                <textarea
-                  placeholder="e.g. redo practice exam"
-                  value={reflectionNextAction}
-                  onChange={(e) => setReflectionNextAction(e.target.value)}
-                  rows={2}
-                  className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={saveReflection}
-                  disabled={saving}
-                  className="flex-1 h-7 rounded-lg bg-primary text-primary-foreground text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  {saving ? "Saving..." : "Save"}
-                </button>
-                <button
-                  type="button"
-                  onClick={dismissReflection}
-                  disabled={saving}
-                  className="flex-1 h-7 rounded-lg border border-border/70 bg-background/45 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
     </>
   );
