@@ -200,6 +200,8 @@ interface SidebarProps {
   onDeletePomodoroSession?: (id: string) => Promise<void>
   onAddFile?: (projectId: string) => void
   fileCounts: Record<string, number>
+  onSearch?: () => void
+  onSettings?: () => void
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -227,6 +229,8 @@ export const Sidebar = memo(function Sidebar({
   onDeletePomodoroSession,
   onAddFile,
   fileCounts,
+  onSearch,
+  onSettings,
 }: SidebarProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("active")
   const reduceMotion = useReducedMotion() === true
@@ -318,7 +322,7 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
             homeSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
             isCollapsed && "justify-center px-0"
           )}
@@ -343,7 +347,7 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
             timetableSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
             isCollapsed && "justify-center px-0"
           )}
@@ -363,7 +367,7 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
             analyticsSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
             isCollapsed && "justify-center px-0"
           )}
@@ -466,7 +470,7 @@ export const Sidebar = memo(function Sidebar({
                         "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
                         isCollapsed ? "justify-center px-2 py-1.25" : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
                         selectedId === project.id
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
                           : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
                         project.isArchived && "opacity-60",
                         project.isFinished && "opacity-70"
@@ -681,6 +685,8 @@ export const Sidebar = memo(function Sidebar({
         availableSubjects={availableSubjects}
         sessions={sessions}
         selectedProject={selectedProject}
+        onSearch={onSearch}
+        onSettings={onSettings}
         onStartSession={onStartPomodoroSession}
         onUpdateSession={onUpdatePomodoroSession}
         onDeleteSession={onDeletePomodoroSession}

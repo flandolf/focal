@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart3,
   BookOpen,
@@ -19,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Project, Subject } from "@/lib/types";
+import { TitleBar } from "@/components/TitleBar";
 import { TimerControls } from "@/components/timer/TimerControls";
 import { SubjectPicker } from "@/components/timer/SubjectPicker";
 import { DurationInputs } from "@/components/timer/DurationInputs";
@@ -86,6 +88,8 @@ interface FocusViewProps {
   running: boolean;
   mode: "work" | "break" | "long-break";
   isStudyOvertime: boolean;
+  onSearch?: () => void;
+  onSettings?: () => void;
   secondsLeft: number;
   overtimeSeconds: number;
   totalSeconds: number;
@@ -175,6 +179,8 @@ export function FocusView({
   workbenchTitle,
   sessionScopeLabel,
   sessionStateLabel,
+  onSearch,
+  onSettings,
   onToggle,
   onReset,
   onReturnToBreak,
@@ -232,16 +238,20 @@ export function FocusView({
       aria-modal="true"
       aria-label="Full screen study timer"
     >
+      {/* Titlebar — reuses the app's TitleBar component for consistent window chrome */}
+      <TitleBar onSearch={onSearch} onSettings={onSettings} />
+
       <div className="pointer-events-none absolute inset-0 hairline-grid opacity-35" />
       <div
         className={cn(
           "focus-field pointer-events-none absolute inset-0",
           isFocusMode ? "focus-field-work" : "focus-field-break",
+          running && "ambient-drift",
         )}
         aria-hidden="true"
       />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-linear-to-b from-primary/10 to-transparent" />
-      <div className="relative z-10 flex h-dvh min-h-0 flex-col px-3 pt-[calc(var(--app-titlebar-inset)+0.25rem)] sm:px-5 min-[1200px]:px-6 min-[1800px]:px-8 min-[2200px]:px-10">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-3 pt-0.5 sm:px-5 min-[1200px]:px-6 min-[1800px]:px-8 min-[2200px]:px-10">
         <header className="grid shrink-0 gap-2 border-b border-border/50 pb-2 min-[640px]:grid-cols-[minmax(0,1fr)_auto] min-[640px]:items-end">
           <div className="min-w-0">
             <h1 className="font-heading text-lg font-semibold tracking-tight text-foreground min-[520px]:text-xl">
@@ -466,14 +476,30 @@ export function FocusView({
                     <span className="mt-2 font-heading text-[3.25rem] font-semibold leading-none tabular-nums tracking-[-0.03em] text-foreground min-[520px]:text-[4.5rem] min-[1180px]:text-[5.75rem] min-[1500px]:text-[7rem] min-[2200px]:text-[8rem]">
                       {timeDisplay}
                     </span>
-                    <span
-                      className={cn("mt-4 text-sm font-semibold", modeColor)}
-                    >
-                      {timerStageDetail}
-                    </span>
-                    <span className="mt-2 text-xs text-muted-foreground">
-                      {progressPercent}% complete
-                    </span>
+                    <AnimatePresence mode="wait">
+                      <motion.span
+                        key={mode + (isStudyOvertime ? '-overtime' : '')}
+                        initial={{ opacity: 0, y: 6, filter: "blur(4px)" }}
+                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+                        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                        className={cn("mt-4 text-sm font-semibold", modeColor)}
+                      >
+                        {timerStageDetail}
+                      </motion.span>
+                    </AnimatePresence>
+                    <AnimatePresence mode="wait">
+                      <motion.span
+                        key={`progress-${progressPercent}`}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="mt-2 text-xs text-muted-foreground"
+                      >
+                        {progressPercent}% complete
+                      </motion.span>
+                    </AnimatePresence>
                   </div>
                 </div>
 
@@ -536,12 +562,41 @@ export function FocusView({
                   <BarChart3 className="h-4 w-4" aria-hidden="true" />
                 </div>
               </div>
-              <FocusStat
-                label="Today"
-                value={formatMinutes(todayAnalytics.totalMinutes)}
-                detail={`${todayAnalytics.completedBlocks} completed block${todayAnalytics.completedBlocks === 1 ? "" : "s"}${todayAnalytics.activeBlocks > 0 ? " · active now" : ""}`}
-                icon={<BarChart3 className="h-4 w-4" />}
-              />
+              <div className="relative">
+                <FocusStat
+                  label="Today"
+                  value={formatMinutes(todayAnalytics.totalMinutes)}
+                  detail={`${todayAnalytics.completedBlocks} completed block${todayAnalytics.completedBlocks === 1 ? "" : "s"}${todayAnalytics.activeBlocks > 0 ? " · active now" : ""}`}
+                  icon={<BarChart3 className="h-4 w-4" />}
+                />
+                {running && todayAnalytics.totalMinutes > 0 && (
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2" aria-hidden="true">
+                    <svg
+                      width="48"
+                      height="20"
+                      viewBox="0 0 48 20"
+                      className="text-primary/40"
+                    >
+                      <polyline
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points="0,16 10,14 18,17 26,10 34,8 42,3 47,5"
+                        className="sparkline-live"
+                      />
+                      <circle
+                        cx="47"
+                        cy="5"
+                        r="1.5"
+                        fill="currentColor"
+                        className="sparkline-live"
+                      />
+                    </svg>
+                  </div>
+                )}
+              </div>
               <FocusStat
                 label="Current Block"
                 value={formatMinutes(Math.ceil(elapsedSeconds / 60))}

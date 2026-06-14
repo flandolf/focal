@@ -8,6 +8,9 @@ interface ShortcutHandlers {
   onGoHome?: () => void
   onGoAnalytics?: () => void
   onToggleSidebar?: () => void
+  onZoomIn?: () => void
+  onZoomOut?: () => void
+  onZoomReset?: () => void
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
@@ -59,6 +62,27 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
 
       // Don't handle single-key shortcuts when typing in inputs
       if (isInputFocused()) return
+
+      // Cmd/Ctrl + = (or +): Zoom in
+      if (meta && (key === "=" || key === "+")) {
+        e.preventDefault()
+        handlersRef.current.onZoomIn?.()
+        return
+      }
+
+      // Cmd/Ctrl + -: Zoom out
+      if (meta && key === "-") {
+        e.preventDefault()
+        handlersRef.current.onZoomOut?.()
+        return
+      }
+
+      // Cmd/Ctrl + 0: Reset zoom
+      if (meta && key === "0") {
+        e.preventDefault()
+        handlersRef.current.onZoomReset?.()
+        return
+      }
 
       // H: Go home
       if (key === "h" && !meta && !e.altKey && !e.shiftKey) {

@@ -165,6 +165,33 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [timetableView, setTimetableView] = useState(false)
   const [timetableConfig, setTimetableConfig] = useState(getTimetableConfig)
+  const [zoom, setZoom] = useState(() => {
+    try {
+      const stored = localStorage.getItem("focal-app-scale")
+      const parsed = stored ? parseFloat(stored) : 1
+      return Number.isFinite(parsed) && parsed >= 0.5 && parsed <= 2 ? parsed : 1
+    } catch { return 1 }
+  })
+
+  // Persist zoom to localStorage and apply natively via Tauri webview zoom
+  useEffect(() => {
+    localStorage.setItem("focal-app-scale", String(zoom))
+    invoke("window_set_zoom", { scale: zoom }).catch(() => {
+      // Tauri not available (dev/browser mode)
+    })
+  }, [zoom])
+
+  const handleZoomIn = useCallback(() => {
+    setZoom((prev) => Math.min(prev + 0.1, 1.5))
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    setZoom((prev) => Math.max(prev - 0.1, 0.75))
+  }, [])
+
+  const handleZoomReset = useCallback(() => {
+    setZoom(1)
+  }, [])
 
   // Keep timetableConfig in sync with localStorage changes
   useEffect(() => {
@@ -406,6 +433,9 @@ function App() {
     onGoHome: handleSelectHome,
     onGoAnalytics: handleSelectAnalytics,
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
+    onZoomIn: handleZoomIn,
+    onZoomOut: handleZoomOut,
+    onZoomReset: handleZoomReset,
   })
 
   const handleAddFileFromSidebar = useCallback(async (projectId: string) => {
@@ -1210,6 +1240,8 @@ function App() {
               fileCounts={fileCounts}
               onSelectTimetable={handleSelectTimetable}
               timetableSelected={timetableView}
+              onSearch={() => setSearchOpen(true)}
+              onSettings={() => setSettingsView(true)}
             />
           </motion.div>
           <motion.main
@@ -1235,6 +1267,8 @@ function App() {
                     resolvedDark={resolvedDark}
                     setTheme={setTheme}
                     setMode={setMode}
+                    zoom={zoom}
+                    onZoomChange={(v) => setZoom(v)}
                     subjects={allSubjects}
                     hiddenSubjectIds={hiddenSubjectIds}
                     onToggleSubjectVisibility={handleToggleSubjectVisibility}

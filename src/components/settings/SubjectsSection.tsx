@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { EyeOff, Check } from "lucide-react"
+import { EyeOff, Check, Palette } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Subject } from "@/lib/types"
 
@@ -8,6 +8,7 @@ interface SubjectsSectionProps {
   hiddenSubjectIds: string[]
   onToggleSubjectVisibility: (subjectId: string) => void
   onShowAllSubjects: () => void
+  onOpenSubjects?: () => void
 }
 
 export function SubjectsSection({
@@ -15,6 +16,7 @@ export function SubjectsSection({
   hiddenSubjectIds,
   onToggleSubjectVisibility,
   onShowAllSubjects,
+  onOpenSubjects,
 }: SubjectsSectionProps) {
   const hiddenSubjectCount = hiddenSubjectIds.length
   const visibleCount = subjects.length - hiddenSubjectCount
@@ -108,6 +110,23 @@ export function SubjectsSection({
           )
         })}
       </div>
+
+      {onOpenSubjects && (
+        <div className="mt-4 border-t border-border/60 pt-4">
+          <p className="text-caption text-muted-foreground/65 text-wrap-balance mb-3">
+            Create new subjects, recolor existing ones, or remove custom subjects.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenSubjects}
+            className="gap-1.5"
+          >
+            <Palette className="h-3.5 w-3.5" />
+            Manage subjects
+          </Button>
+        </div>
+      )}
     </section>
   )
 }

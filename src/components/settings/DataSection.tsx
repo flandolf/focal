@@ -1,16 +1,15 @@
 import { useState, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
-import { FolderInput, Database, Palette, Loader2, FileBox, ArrowUpRight, type LucideIcon } from "lucide-react"
+import { FolderInput, Database, Loader2, FileBox, ArrowUpRight, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface DataSectionProps {
   onOpenExport?: () => void
-  onOpenSubjects?: () => void
 }
 
 interface Action {
-  id: "import" | "export" | "subjects"
+  id: "import" | "export"
   title: string
   description: string
   icon: LucideIcon
@@ -18,7 +17,7 @@ interface Action {
   external?: boolean
 }
 
-export function DataSection({ onOpenExport, onOpenSubjects }: DataSectionProps) {
+export function DataSection({ onOpenExport }: DataSectionProps) {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ name: string; error?: string } | null>(null)
 
@@ -55,22 +54,13 @@ export function DataSection({ onOpenExport, onOpenSubjects }: DataSectionProps) 
       onSelect: onOpenExport,
     })
   }
-  if (onOpenSubjects) {
-    actions.push({
-      id: "subjects",
-      title: "Manage subjects",
-      description: "Create, recolor, and remove your custom subjects.",
-      icon: Palette,
-      onSelect: onOpenSubjects,
-    })
-  }
 
   return (
     <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
       <div>
         <h2 className="text-sm font-medium">Data</h2>
         <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
-          Move your files in and out of Focal, or customise the subjects that show up in pickers.
+          Move your files in and out of Focal.
         </p>
       </div>
 

@@ -14,8 +14,8 @@ const IS_MACOS = (() => {
 })()
 
 interface TitleBarProps {
-  onSearch: () => void
-  onSettings: () => void
+  onSearch?: () => void
+  onSettings?: () => void
   children?: React.ReactNode
 }
 
@@ -134,7 +134,7 @@ function AppActions({
   )
 }
 
-export function TitleBar({ onSearch, onSettings, children }: TitleBarProps) {
+export function TitleBar({ onSearch = () => {}, onSettings = () => {}, children }: TitleBarProps) {
   const reduceMotion = useReducedMotion()
 
   const handleMinimize = useCallback(() => {

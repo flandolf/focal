@@ -325,6 +325,8 @@ interface StudyTimerProps {
   availableSubjects?: Subject[];
   sessions?: StudySession[];
   selectedProject?: Project;
+  onSearch?: () => void;
+  onSettings?: () => void;
   onStartSession: (data: {
     subjectIds: string[];
     durationSeconds: number;
@@ -375,6 +377,8 @@ const StudyTimerInner = memo(function StudyTimerInner({
   availableSubjects,
   sessions = [],
   selectedProject,
+  onSearch,
+  onSettings,
   onStartSession,
   onUpdateSession,
   onDeleteSession,
@@ -983,6 +987,8 @@ const StudyTimerInner = memo(function StudyTimerInner({
           workbenchTitle={workbenchTitle}
           sessionScopeLabel={sessionScopeLabel}
           sessionStateLabel={sessionStateLabel}
+          onSearch={onSearch}
+          onSettings={onSettings}
           onToggle={handleToggle}
           onReset={handleReset}
           onReturnToBreak={handleReturnToBreak}
@@ -1129,6 +1135,10 @@ const StudyTimerInner = memo(function StudyTimerInner({
 
         <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-3">
           <div className="mx-auto relative h-20 w-20">
+            {/* Flow pressure indicator — pulsing dot when timer is running */}
+            {running && (
+              <div className="flow-pressure absolute -top-0.5 -right-0.5 z-10 h-2.5 w-2.5 rounded-full bg-primary" />
+            )}
             <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
               <circle
                 cx="40"

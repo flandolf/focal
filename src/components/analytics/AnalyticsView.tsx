@@ -189,7 +189,7 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
           )}
 
           {/* Chart grid: crossfade on range change, cards stagger on mount */}
-          <motion.div variants={staggerItem}>
+          <motion.div variants={staggerItem} className="analytics-aurora relative">
             <AnimatePresence mode="wait">
               <motion.div
                 key={range}
@@ -206,28 +206,28 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
                 >
                   <motion.div
                     variants={staggerItem}
-                    className="min-[900px]:col-span-2"
+                    className="chart-glow-border relative min-[900px]:col-span-2"
                   >
                     <StudyTimeTrendChart data={filteredTimeTrends} />
                   </motion.div>
-                  <motion.div variants={staggerItem}>
+                  <motion.div variants={staggerItem} className="chart-glow-border relative">
                     <SubjectBreakdownChart data={filteredBreakdown} />
                   </motion.div>
-                  <motion.div variants={staggerItem}>
+                  <motion.div variants={staggerItem} className="chart-glow-border relative">
                     <SubjectCompletionChart data={filteredCompletion} />
                   </motion.div>
                   <motion.div
                     variants={staggerItem}
-                    className={unfiltered ? "opacity-65" : undefined}
+                    className={cn("chart-glow-border relative", unfiltered && "opacity-65")}
                   >
                     <TimeOfDayChart data={data.timeOfDay} />
                   </motion.div>
-                  <motion.div variants={staggerItem}>
+                  <motion.div variants={staggerItem} className="chart-glow-border relative">
                     <EfficiencyChart data={filteredEfficiency} />
                   </motion.div>
                   <motion.div
                     variants={staggerItem}
-                    className="min-[900px]:col-span-2"
+                    className="chart-glow-border relative min-[900px]:col-span-2"
                   >
                     <ConsistencyHeatmap
                       days={data.consistency.days}
@@ -348,7 +348,7 @@ function KpiCard({
   return (
     <motion.div
       whileHover={hoverLift(reduceMotion)}
-      className="rounded-2xl"
+      className="kpi-breath-glow relative rounded-2xl"
     >
       <Card className="rounded-2xl bg-background/48 border-border/70 px-4 py-3 backdrop-blur shadow-sm">
         <div className="text-2xl font-semibold tabular-nums leading-tight">

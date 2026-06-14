@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { isRecord } from "@/lib/utils"
 
-export type ThemeId = "focal" | "codex" | "claude" | "github" | "linear" | "notion" | "sprout" | "ember"
+export type ThemeId = "focal" | "rose" | "slate" | "tide" | "ember" | "moss" | "violet" | "coral" | "sand" | "mist"
 export type ThemeMode = "light" | "dark" | "system"
 
 export interface ThemeDef {
@@ -11,13 +11,15 @@ export interface ThemeDef {
 
 export const THEMES: ThemeDef[] = [
   { id: "focal", name: "Focal" },
-  { id: "codex", name: "Codex" },
-  { id: "claude", name: "Claude" },
-  { id: "github", name: "GitHub" },
-  { id: "linear", name: "Linear" },
-  { id: "notion", name: "Notion" },
-  { id: "sprout", name: "Sprout" },
+  { id: "rose", name: "Rose" },
+  { id: "slate", name: "Slate" },
+  { id: "tide", name: "Tide" },
   { id: "ember", name: "Ember" },
+  { id: "moss", name: "Moss" },
+  { id: "violet", name: "Violet" },
+  { id: "coral", name: "Coral" },
+  { id: "sand", name: "Sand" },
+  { id: "mist", name: "Mist" },
 ]
 
 const STORAGE_KEY = "focal-theme"
@@ -80,7 +82,7 @@ export function useTheme() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(selection))
     const root = document.documentElement
-    root.classList.remove("focal", "codex", "claude", "github", "linear", "notion", "sprout", "ember")
+    root.classList.remove("focal", "rose", "slate", "tide", "ember", "moss", "violet", "coral", "sand", "mist")
     if (selection.theme !== "focal") {
       root.classList.add(selection.theme)
     }

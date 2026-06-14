@@ -43,6 +43,8 @@ interface SettingsViewProps {
   resolvedDark: boolean;
   setTheme: (theme: ThemeId) => void;
   setMode: (mode: "light" | "dark" | "system") => void;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
   subjects: Subject[];
   hiddenSubjectIds: string[];
   onToggleSubjectVisibility: (subjectId: string) => void;
@@ -149,6 +151,8 @@ export function SettingsView({
   mode,
   setTheme,
   setMode,
+  zoom,
+  onZoomChange,
   subjects,
   hiddenSubjectIds,
   onToggleSubjectVisibility,
@@ -355,6 +359,8 @@ export function SettingsView({
                     mode={mode}
                     setTheme={setTheme}
                     setMode={setMode}
+                    zoom={zoom}
+                    onZoomChange={onZoomChange}
                   />
                 )}
 
@@ -389,6 +395,7 @@ export function SettingsView({
                     hiddenSubjectIds={hiddenSubjectIds}
                     onToggleSubjectVisibility={onToggleSubjectVisibility}
                     onShowAllSubjects={onShowAllSubjects}
+                    onOpenSubjects={onOpenSubjects}
                   />
                 )}
 
@@ -411,7 +418,6 @@ export function SettingsView({
                 {activeSection === "data" && (
                   <DataSection
                     onOpenExport={onOpenExport}
-                    onOpenSubjects={onOpenSubjects}
                   />
                 )}
               </motion.div>

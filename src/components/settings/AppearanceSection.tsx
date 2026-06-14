@@ -1,24 +1,26 @@
-import { useState, type ReactNode } from "react"
-import { motion, useReducedMotion } from "framer-motion"
-import { Moon, Sun, Monitor, Sparkles } from "lucide-react"
-import type { ThemeId, ThemeMode } from "@/lib/themes"
-import { cn } from "@/lib/utils"
+import { useState, useCallback, type ReactNode } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { Moon, Sun, Monitor, Sparkles, Minus, Plus } from "lucide-react";
+import type { ThemeId, ThemeMode } from "@/lib/themes";
+import { cn } from "@/lib/utils";
 
 interface AppearanceSectionProps {
-  theme: ThemeId
-  mode: ThemeMode
-  setTheme: (theme: ThemeId) => void
-  setMode: (mode: ThemeMode) => void
+  theme: ThemeId;
+  mode: ThemeMode;
+  setTheme: (theme: ThemeId) => void;
+  setMode: (mode: ThemeMode) => void;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
 }
 
 interface ThemeSwatch {
-  bg: string
-  surface: string
-  ink: string
-  mutedInk: string
-  primary: string
-  accent: string
-  ring: string
+  bg: string;
+  surface: string;
+  ink: string;
+  mutedInk: string;
+  primary: string;
+  accent: string;
+  ring: string;
 }
 
 // OKLCH values pulled verbatim from index.css per theme. Light-mode swatches
@@ -26,89 +28,109 @@ interface ThemeSwatch {
 // picker itself sits above the mode toggle.
 const THEME_SWATCHES: Record<ThemeId, ThemeSwatch> = {
   focal: {
-    bg: "oklch(0.978 0.005 250)",
-    surface: "oklch(0.985 0.004 250 / 0.65)",
-    ink: "oklch(0.170 0.018 255)",
-    mutedInk: "oklch(0.380 0.025 245)",
-    primary: "oklch(0.480 0.085 242)",
-    accent: "oklch(0.700 0.080 160)",
-    ring: "oklch(0.480 0.085 242 / 0.35)",
+    bg: "oklch(0.978 0.006 260)",
+    surface: "oklch(0.986 0.004 260 / 0.65)",
+    ink: "oklch(0.180 0.016 260)",
+    mutedInk: "oklch(0.380 0.022 255)",
+    primary: "oklch(0.480 0.100 255)",
+    accent: "oklch(0.650 0.075 175)",
+    ring: "oklch(0.480 0.100 255 / 0.35)",
   },
-  codex: {
-    bg: "oklch(0.964 0.008 300)",
-    surface: "oklch(0.978 0.005 300 / 0.65)",
-    ink: "oklch(0.300 0.018 300)",
-    mutedInk: "oklch(0.420 0.025 295)",
-    primary: "oklch(0.580 0.140 290)",
-    accent: "oklch(0.680 0.090 155)",
-    ring: "oklch(0.580 0.140 290 / 0.35)",
+  rose: {
+    bg: "oklch(0.975 0.010 10)",
+    surface: "oklch(0.985 0.006 10 / 0.65)",
+    ink: "oklch(0.200 0.014 358)",
+    mutedInk: "oklch(0.400 0.024 0)",
+    primary: "oklch(0.550 0.120 358)",
+    accent: "oklch(0.680 0.075 165)",
+    ring: "oklch(0.550 0.120 358 / 0.35)",
   },
-  claude: {
-    bg: "oklch(0.962 0.008 80)",
-    surface: "oklch(0.972 0.006 80 / 0.65)",
-    ink: "oklch(0.210 0.005 100)",
-    mutedInk: "oklch(0.400 0.018 75)",
-    primary: "oklch(0.560 0.110 40)",
-    accent: "oklch(0.650 0.060 160)",
-    ring: "oklch(0.560 0.110 40 / 0.35)",
+  slate: {
+    bg: "oklch(0.978 0.003 265)",
+    surface: "oklch(0.988 0.002 265 / 0.65)",
+    ink: "oklch(0.200 0.008 265)",
+    mutedInk: "oklch(0.400 0.010 260)",
+    primary: "oklch(0.480 0.055 260)",
+    accent: "oklch(0.620 0.048 180)",
+    ring: "oklch(0.480 0.055 260 / 0.35)",
   },
-  github: {
-    bg: "oklch(0.980 0.002 250)",
-    surface: "oklch(0.995 0.001 250 / 0.65)",
-    ink: "oklch(0.220 0.010 255)",
-    mutedInk: "oklch(0.390 0.020 248)",
-    primary: "oklch(0.500 0.100 245)",
-    accent: "oklch(0.680 0.080 145)",
-    ring: "oklch(0.500 0.100 245 / 0.35)",
-  },
-  linear: {
-    bg: "oklch(0.976 0.005 270)",
-    surface: "oklch(0.988 0.003 270 / 0.65)",
-    ink: "oklch(0.240 0.020 275)",
-    mutedInk: "oklch(0.400 0.024 268)",
-    primary: "oklch(0.520 0.130 265)",
-    accent: "oklch(0.700 0.080 140)",
-    ring: "oklch(0.520 0.130 265 / 0.35)",
-  },
-  notion: {
-    bg: "oklch(0.970 0.006 70)",
-    surface: "oklch(0.980 0.004 70 / 0.65)",
-    ink: "oklch(0.220 0.008 60)",
-    mutedInk: "oklch(0.390 0.016 62)",
-    primary: "oklch(0.420 0.060 50)",
-    accent: "oklch(0.600 0.055 155)",
-    ring: "oklch(0.420 0.060 50 / 0.35)",
-  },
-  sprout: {
-    bg: "oklch(0.968 0.008 140)",
-    surface: "oklch(0.978 0.005 140 / 0.65)",
-    ink: "oklch(0.220 0.012 155)",
-    mutedInk: "oklch(0.400 0.020 148)",
-    primary: "oklch(0.500 0.120 155)",
-    accent: "oklch(0.620 0.070 170)",
-    ring: "oklch(0.500 0.120 155 / 0.35)",
+  tide: {
+    bg: "oklch(0.970 0.008 190)",
+    surface: "oklch(0.980 0.005 190 / 0.65)",
+    ink: "oklch(0.180 0.012 200)",
+    mutedInk: "oklch(0.380 0.020 195)",
+    primary: "oklch(0.480 0.105 195)",
+    accent: "oklch(0.620 0.065 230)",
+    ring: "oklch(0.480 0.105 195 / 0.35)",
   },
   ember: {
-    bg: "oklch(0.965 0.008 60)",
-    surface: "oklch(0.975 0.006 60 / 0.65)",
-    ink: "oklch(0.200 0.012 50)",
-    mutedInk: "oklch(0.400 0.020 55)",
-    primary: "oklch(0.550 0.140 45)",
-    accent: "oklch(0.640 0.070 170)",
-    ring: "oklch(0.550 0.140 45 / 0.35)",
+    bg: "oklch(0.972 0.010 75)",
+    surface: "oklch(0.982 0.006 75 / 0.65)",
+    ink: "oklch(0.180 0.014 65)",
+    mutedInk: "oklch(0.380 0.022 68)",
+    primary: "oklch(0.560 0.130 65)",
+    accent: "oklch(0.680 0.075 150)",
+    ring: "oklch(0.560 0.130 65 / 0.35)",
   },
-}
+  moss: {
+    bg: "oklch(0.968 0.008 145)",
+    surface: "oklch(0.978 0.005 145 / 0.65)",
+    ink: "oklch(0.180 0.014 150)",
+    mutedInk: "oklch(0.380 0.022 148)",
+    primary: "oklch(0.480 0.110 150)",
+    accent: "oklch(0.620 0.070 200)",
+    ring: "oklch(0.480 0.110 150 / 0.35)",
+  },
+  violet: {
+    bg: "oklch(0.972 0.010 295)",
+    surface: "oklch(0.982 0.006 295 / 0.65)",
+    ink: "oklch(0.200 0.018 290)",
+    mutedInk: "oklch(0.400 0.028 288)",
+    primary: "oklch(0.550 0.135 290)",
+    accent: "oklch(0.680 0.075 165)",
+    ring: "oklch(0.550 0.135 290 / 0.35)",
+  },
+  coral: {
+    bg: "oklch(0.974 0.010 30)",
+    surface: "oklch(0.984 0.006 30 / 0.65)",
+    ink: "oklch(0.180 0.012 25)",
+    mutedInk: "oklch(0.380 0.020 28)",
+    primary: "oklch(0.540 0.125 28)",
+    accent: "oklch(0.660 0.070 160)",
+    ring: "oklch(0.540 0.125 28 / 0.35)",
+  },
+  sand: {
+    bg: "oklch(0.970 0.006 70)",
+    surface: "oklch(0.980 0.004 70 / 0.65)",
+    ink: "oklch(0.220 0.008 65)",
+    mutedInk: "oklch(0.400 0.014 62)",
+    primary: "oklch(0.450 0.060 55)",
+    accent: "oklch(0.620 0.050 150)",
+    ring: "oklch(0.450 0.060 55 / 0.35)",
+  },
+  mist: {
+    bg: "oklch(0.976 0.004 255)",
+    surface: "oklch(0.986 0.003 255 / 0.65)",
+    ink: "oklch(0.180 0.010 260)",
+    mutedInk: "oklch(0.380 0.016 255)",
+    primary: "oklch(0.460 0.070 252)",
+    accent: "oklch(0.620 0.048 175)",
+    ring: "oklch(0.460 0.070 252 / 0.35)",
+  },
+};
 
 const THEME_BLURB: Record<ThemeId, string> = {
-  focal: "Sharp blue, the default.",
-  codex: "Editorial violet.",
-  claude: "Warm coral and cream.",
-  github: "Neutral gray and blue.",
-  linear: "Deep violet, precise.",
-  notion: "Warm beige, calm.",
-  sprout: "Fresh green, natural.",
-  ember: "Warm amber, energetic.",
-}
+  focal: "Crisp indigo-blue, the default.",
+  rose: "Soft romantic pink.",
+  slate: "Cool neutral gray, minimal.",
+  tide: "Oceanic teal, refreshing.",
+  ember: "Warm golden amber.",
+  moss: "Earthy forest green.",
+  violet: "Rich deep purple.",
+  coral: "Vibrant coral red.",
+  sand: "Warm beige, grounded.",
+  mist: "Airy blue-gray, calm.",
+};
 
 /**
  * A miniature mock of a Focal window rendered in the actual theme colors.
@@ -121,7 +143,10 @@ function ThemePreview({ swatch }: { swatch: ThemeSwatch }) {
       className="relative h-14 w-full overflow-hidden rounded-md"
       style={{ background: swatch.bg }}
     >
-      <div className="absolute inset-0 grid" style={{ gridTemplateColumns: "32% 1fr" }}>
+      <div
+        className="absolute inset-0 grid"
+        style={{ gridTemplateColumns: "32% 1fr" }}
+      >
         {/* Sidebar */}
         <div
           className="border-r"
@@ -196,12 +221,12 @@ function ThemePreview({ swatch }: { swatch: ThemeSwatch }) {
         style={{ boxShadow: `inset 0 0 0 1px ${swatch.ring}` }}
       />
     </div>
-  )
+  );
 }
 
 /** Animated checkmark that draws in when the theme is active. */
 function ActiveCheck({ swatch }: { swatch: ThemeSwatch }) {
-  const reduceMotion = useReducedMotion()
+  const reduceMotion = useReducedMotion();
   return (
     <svg
       width="14"
@@ -218,7 +243,11 @@ function ActiveCheck({ swatch }: { swatch: ThemeSwatch }) {
         fill={swatch.primary}
         initial={false}
         animate={{ scale: 1, opacity: 1 }}
-        transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }
+        }
         style={{ transformOrigin: "7px 7px" }}
       />
       <motion.path
@@ -230,11 +259,15 @@ function ActiveCheck({ swatch }: { swatch: ThemeSwatch }) {
         fill="none"
         initial={false}
         animate={{ pathLength: 1 }}
-        transition={reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.16, 1, 0.3, 1], delay: 0.06 }}
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { duration: 0.32, ease: [0.16, 1, 0.3, 1], delay: 0.06 }
+        }
         style={{ pathLength: reduceMotion ? 1 : undefined }}
       />
     </svg>
-  )
+  );
 }
 
 function ThemeCard({
@@ -244,11 +277,11 @@ function ThemeCard({
   onSelect,
   swatch,
 }: {
-  id: ThemeId
-  name: string
-  selected: boolean
-  onSelect: () => void
-  swatch: ThemeSwatch
+  id: ThemeId;
+  name: string;
+  selected: boolean;
+  onSelect: () => void;
+  swatch: ThemeSwatch;
 }) {
   return (
     <button
@@ -256,10 +289,10 @@ function ThemeCard({
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        "group/theme relative flex flex-col gap-1.5 rounded-lg border bg-background/30 p-2 text-left outline-none transition-all",
+        "group/theme relative flex w-full flex-col gap-1.5 rounded-lg border bg-background/30 p-2 text-left outline-none transition-all",
         "focus-visible:ring-3 focus-visible:ring-ring/50",
         selected
-          ? "border-primary/60 bg-primary/[0.04] shadow-[0_0_0_1px_var(--primary)]"
+          ? "border-primary/60 bg-primary/4"
           : "border-border/70 hover:border-muted-foreground/35 hover:bg-background/45",
       )}
     >
@@ -279,10 +312,12 @@ function ThemeCard({
           style={{ background: swatch.primary }}
           aria-hidden="true"
         />
-      </div>
-      <span className="truncate text-[10px] text-muted-foreground/65">{THEME_BLURB[id]}</span>
+      </div>{" "}
+      <span className="truncate text-caption text-muted-foreground/65">
+        {THEME_BLURB[id]}
+      </span>
     </button>
-  )
+  );
 }
 
 function ModeOption({
@@ -292,11 +327,11 @@ function ModeOption({
   icon,
   label,
 }: {
-  value: ThemeMode
-  selected: boolean
-  onSelect: () => void
-  icon: ReactNode
-  label: string
+  value: ThemeMode;
+  selected: boolean;
+  onSelect: () => void;
+  icon: ReactNode;
+  label: string;
 }) {
   return (
     <button
@@ -304,7 +339,7 @@ function ModeOption({
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        "flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors outline-none",
+        "flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors outline-none",
         "focus-visible:ring-3 focus-visible:ring-ring/50",
         selected
           ? "border-primary bg-primary/10 text-primary font-medium"
@@ -314,25 +349,34 @@ function ModeOption({
       {icon}
       {label}
     </button>
-  )
+  );
 }
 
-export function AppearanceSection({ theme, mode, setTheme, setMode }: AppearanceSectionProps) {
-  const [hovered, setHovered] = useState<ThemeId | null>(null)
-  const reduceMotion = useReducedMotion()
-  const displayTheme: ThemeId = hovered ?? theme
-  const displaySwatch = THEME_SWATCHES[displayTheme]
+export function AppearanceSection({
+  theme,
+  mode,
+  setTheme,
+  setMode,
+  zoom,
+  onZoomChange,
+}: AppearanceSectionProps) {
+  const [hovered, setHovered] = useState<ThemeId | null>(null);
+  const reduceMotion = useReducedMotion();
+  const displayTheme: ThemeId = hovered ?? theme;
+  const displaySwatch = THEME_SWATCHES[displayTheme];
 
   const themeIds: ThemeId[] = [
     "focal",
-    "codex",
-    "claude",
-    "github",
-    "linear",
-    "notion",
-    "sprout",
+    "rose",
+    "slate",
+    "tide",
     "ember",
-  ]
+    "moss",
+    "violet",
+    "coral",
+    "sand",
+    "mist",
+  ];
 
   return (
     <div className="flex flex-col gap-3">
@@ -340,7 +384,7 @@ export function AppearanceSection({ theme, mode, setTheme, setMode }: Appearance
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">Theme</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+            <p className="mt-0.5 text-caption text-muted-foreground/70 text-wrap-balance">
               Pick a look for the whole app. Switches apply instantly.
             </p>
           </div>
@@ -351,22 +395,35 @@ export function AppearanceSection({ theme, mode, setTheme, setMode }: Appearance
         </div>
 
         {/* Hover preview — appears between the heading and the grid for emphasis */}
-        <div className="mt-3 flex items-center gap-3 rounded-lg border border-dashed border-border/60 bg-background/20 p-2">
+        <div className="mt-3 flex items-center gap-3 rounded-lg border border-dashed border-border/60 bg-background/20 p-1.5">
           <motion.div
             key={displayTheme}
             initial={reduceMotion ? false : { opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }
+            }
             className="h-10 w-20 shrink-0"
           >
             <div
               className="h-full w-full overflow-hidden rounded-md"
-              style={{ background: displaySwatch.bg, boxShadow: `inset 0 0 0 1px ${displaySwatch.ring}` }}
+              style={{
+                background: displaySwatch.bg,
+                boxShadow: `inset 0 0 0 1px ${displaySwatch.ring}`,
+              }}
             >
-              <div className="grid h-full" style={{ gridTemplateColumns: "35% 1fr" }}>
+              <div
+                className="grid h-full"
+                style={{ gridTemplateColumns: "35% 1fr" }}
+              >
                 <div
                   className="border-r"
-                  style={{ background: displaySwatch.surface, borderColor: "oklch(0 0 0 / 0.06)" }}
+                  style={{
+                    background: displaySwatch.surface,
+                    borderColor: "oklch(0 0 0 / 0.06)",
+                  }}
                 />
                 <div className="flex items-center justify-end gap-0.5 p-1">
                   <span
@@ -383,25 +440,37 @@ export function AppearanceSection({ theme, mode, setTheme, setMode }: Appearance
           </motion.div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-caption font-medium capitalize text-foreground">
-              {hovered ? THEME_BLURB[hovered] : "Hover to preview, click to apply"}
+              {hovered
+                ? THEME_BLURB[hovered]
+                : "Hover to preview, click to apply"}
             </p>
-            <p className="mt-0.5 truncate text-[10px] text-muted-foreground/65">
-              Currently: <span className="font-medium capitalize text-foreground/75">{theme}</span>
+            <p className="mt-0.5 truncate text-caption text-muted-foreground/65">
+              Currently:{" "}
+              <span className="font-medium capitalize text-foreground/75">
+                {theme}
+              </span>
               {hovered && hovered !== theme && (
-                <span className="text-muted-foreground/55"> · previewing {hovered}</span>
+                <span className="text-muted-foreground/55">
+                  {" "}
+                  · previewing {hovered}
+                </span>
               )}
             </p>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           {themeIds.map((id) => (
             <div
               key={id}
               onMouseEnter={() => setHovered(id)}
-              onMouseLeave={() => setHovered((current) => (current === id ? null : current))}
+              onMouseLeave={() =>
+                setHovered((current) => (current === id ? null : current))
+              }
               onFocus={() => setHovered(id)}
-              onBlur={() => setHovered((current) => (current === id ? null : current))}
+              onBlur={() =>
+                setHovered((current) => (current === id ? null : current))
+              }
             >
               <ThemeCard
                 id={id}
@@ -419,7 +488,7 @@ export function AppearanceSection({ theme, mode, setTheme, setMode }: Appearance
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">Mode</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+            <p className="mt-0.5 text-caption text-muted-foreground/70 text-wrap-balance">
               System follows your OS. Light and dark work in every theme.
             </p>
           </div>
@@ -448,6 +517,67 @@ export function AppearanceSection({ theme, mode, setTheme, setMode }: Appearance
           />
         </div>
       </section>
+
+      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-medium">Zoom</h2>
+            <p className="mt-0.5 text-caption text-muted-foreground/70 text-wrap-balance">
+              Adjust the overall app scale. Keyboard: Ctrl+= to zoom in, Ctrl+-
+              to zoom out, Ctrl+0 to reset.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-md border border-border/60 bg-background/40 px-2 py-0.5 font-mono text-caption font-medium text-foreground/80 select-none">
+            {Math.round(zoom * 100)}%
+          </span>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onZoomChange(Math.max(zoom - 0.1, 0.75))}
+            disabled={zoom <= 0.75}
+            aria-label="Zoom out"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background/40 text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <input
+            type="range"
+            min="0.75"
+            max="1.5"
+            step="0.05"
+            value={zoom}
+            onChange={(e) => onZoomChange(parseFloat(e.target.value))}
+            aria-label="Zoom level"
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border/70 outline-none transition-colors
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full
+              [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary/60 [&::-webkit-slider-thumb]:bg-background
+              [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110
+              [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2
+              [&::-moz-range-thumb]:border-primary/60 [&::-moz-range-thumb]:bg-background [&::-moz-range-thumb]:shadow-sm"
+            style={{
+              background: `linear-gradient(to right, var(--primary) ${((zoom - 0.75) / 0.75) * 100}%, transparent ${((zoom - 0.75) / 0.75) * 100}%)`,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => onZoomChange(Math.min(zoom + 0.1, 1.5))}
+            disabled={zoom >= 1.5}
+            aria-label="Zoom in"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background/40 text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onZoomChange(1)}
+            disabled={zoom === 1}
+            className="shrink-0 rounded-md border border-border/60 bg-background/40 px-2 py-1 text-caption text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            Reset
+          </button>
+        </div>
+      </section>
     </div>
-  )
+  );
 }
