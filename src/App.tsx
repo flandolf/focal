@@ -195,7 +195,7 @@ function App() {
     }
   }, [])
 
-  const { projects, addProject, updateProject, deleteProject, restoreProject, duplicateProject, bulkArchive, bulkFinish, bulkDelete, bulkUnarchive, addChecklistItem, toggleChecklistItem, removeChecklistItem, addDependency, removeDependency, getDependencyProjects, getDependentsOfProject, getTemplates, saveAsTemplate, deleteTemplate, loadFromTemplate, scanAndImportProjects, linkFolderAsProject } = useProjects()
+  const { projects, addProject, updateProject, deleteProject, restoreProject, duplicateProject, bulkArchive, bulkUnarchive, bulkFinish, bulkDelete, addChecklistItem, toggleChecklistItem, removeChecklistItem, addDependency, removeDependency, getTemplates, saveAsTemplate, deleteTemplate, loadFromTemplate, scanAndImportProjects, linkFolderAsProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
   const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, restoreEvent, restoreEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -1275,6 +1275,16 @@ function App() {
     }
   }, [bulkArchive])
 
+  const handleBulkUnarchive = useCallback(async (ids: string[]) => {
+    try {
+      await bulkUnarchive(ids)
+      setSelectedProjectIds(new Set())
+      toast.success(`${ids.length} assessment${ids.length > 1 ? "s" : ""} restored`)
+    } catch (e) {
+      toast.error(`Failed to restore: ${String(e)}`)
+    }
+  }, [bulkUnarchive])
+
   const handleBulkFinish = useCallback(async (ids: string[]) => {
     try {
       await bulkFinish(ids)
@@ -1341,21 +1351,23 @@ function App() {
     }
   }, [selectedId, removeChecklistItem])
 
-  const handleAddDependency = useCallback(async (projectId: string, dependsOnId: string) => {
+  const handleAddDependency = useCallback(async (dependsOnId: string) => {
+    if (!selectedId) return
     try {
-      await addDependency(projectId, dependsOnId)
+      await addDependency(selectedId, dependsOnId)
     } catch (e) {
       toast.error(`Failed to add dependency: ${String(e)}`)
     }
-  }, [addDependency])
+  }, [selectedId, addDependency])
 
-  const handleRemoveDependency = useCallback(async (projectId: string, dependsOnId: string) => {
+  const handleRemoveDependency = useCallback(async (dependsOnId: string) => {
+    if (!selectedId) return
     try {
-      await removeDependency(projectId, dependsOnId)
+      await removeDependency(selectedId, dependsOnId)
     } catch (e) {
       toast.error(`Failed to remove dependency: ${String(e)}`)
     }
-  }, [removeDependency])
+  }, [selectedId, removeDependency])
 
   const handleSaveAsTemplate = useCallback((projectId: string | null, name: string) => {
     if (!projectId) return
@@ -1390,7 +1402,7 @@ function App() {
     setTemplateDialogOpen(true)
   }, [getTemplates])
 
-  const handleExportProject = useCallback(async () => {
+  const handleExportProject = useCallback(() => {
     if (!selectedProject) return
     try {
       const data = {
@@ -1487,6 +1499,7 @@ function App() {
               selectedProjectIds={selectedProjectIds}
               onToggleProjectSelection={handleToggleProjectSelection}
               onBulkArchive={handleBulkArchive}
+              onBulkUnarchive={handleBulkUnarchive}
               onBulkFinish={handleBulkFinish}
               onBulkDelete={handleBulkDelete}
             />
@@ -1601,6 +1614,10 @@ function App() {
                     onAddChecklistItem={handleAddChecklistItem}
                     onToggleChecklistItem={handleToggleChecklistItem}
                     onRemoveChecklistItem={handleRemoveChecklistItem}
+                    onAddDependency={handleAddDependency}
+                    onRemoveDependency={handleRemoveDependency}
+                    onOpenProject={handleSelectProject}
+                    availableProjects={projects}
                     onExport={handleExportProject}
                     onSaveAsTemplate={() => handleOpenTemplateDialog(selectedProject.id)}
                   />

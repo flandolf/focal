@@ -1,6 +1,6 @@
-import { useState, memo, useCallback, useRef, type ReactNode } from "react"
-import { motion, useReducedMotion } from "framer-motion"
-import { staggerContainer, staggerItem } from "@/lib/motion"
+import { useState, memo, useCallback, useRef, type ReactNode } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/lib/motion";
 import {
   Archive,
   ArrowUpDown,
@@ -41,56 +41,73 @@ import {
   Trash2,
   TrendingUp,
   type LucideIcon,
-} from "lucide-react"
+} from "lucide-react";
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem as CtxMenuItem,
   ContextMenuSeparator as CtxMenuSep,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { StudyTimer } from "@/components/StudyTimer"
-import { cn, formatDeadline, isOverdue, getDeadlineTypeInfo, getSubjectById } from "@/lib/utils"
-import type { ProjectSortKey } from "@/hooks/useProjects"
-import { sortProjects } from "@/hooks/useProjects"
-import type { DeadlineType, Project, StudySession, Subject } from "@/lib/types"
+} from "@/components/ui/context-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { StudyTimer } from "@/components/StudyTimer";
+import {
+  cn,
+  formatDeadline,
+  isOverdue,
+  getDeadlineTypeInfo,
+  getSubjectById,
+} from "@/lib/utils";
+import type { ProjectSortKey } from "@/hooks/useProjects";
+import { sortProjects } from "@/hooks/useProjects";
+import type { DeadlineType, Project, StudySession, Subject } from "@/lib/types";
 
-type FilterMode = "active" | "favorites" | "archived" | "finished"
+type FilterMode = "active" | "favorites" | "archived" | "finished";
 
 interface AssessmentSubjectGroup {
-  subjectId: string
-  label: string
-  shortCode: string
-  color?: string
-  assessments: Project[]
+  subjectId: string;
+  label: string;
+  shortCode: string;
+  color?: string;
+  assessments: Project[];
 }
 
-const SIDEBAR_PRESS_TRANSITION = { type: "spring", stiffness: 520, damping: 34, mass: 0.65 } as const
+const SIDEBAR_PRESS_TRANSITION = {
+  type: "spring",
+  stiffness: 520,
+  damping: 34,
+  mass: 0.65,
+} as const;
 
 function CollapsibleInline({
   show,
   children,
   className,
 }: {
-  show: boolean
-  children: ReactNode
-  className?: string
+  show: boolean;
+  children: ReactNode;
+  className?: string;
 }) {
-  if (!show) return null
+  if (!show) return null;
   return (
-    <span className={cn("inline-flex min-w-0 overflow-hidden whitespace-nowrap", className)}>
+    <span
+      className={cn(
+        "inline-flex min-w-0 overflow-hidden whitespace-nowrap",
+        className,
+      )}
+    >
       {children}
     </span>
-  )
+  );
 }
 
 function CollapsibleBlock({
@@ -98,16 +115,14 @@ function CollapsibleBlock({
   children,
   className,
 }: {
-  show: boolean
-  children: ReactNode
-  className?: string
+  show: boolean;
+  children: ReactNode;
+  className?: string;
 }) {
-  if (!show) return null
+  if (!show) return null;
   return (
-    <div className={cn("min-w-0 overflow-hidden", className)}>
-      {children}
-    </div>
-  )
+    <div className={cn("min-w-0 overflow-hidden", className)}>{children}</div>
+  );
 }
 
 const SUBJECT_ICONS: Record<string, LucideIcon> = {
@@ -125,35 +140,37 @@ const SUBJECT_ICONS: Record<string, LucideIcon> = {
   geo: MapIcon,
   econ: TrendingUp,
   bm: BriefcaseBusiness,
-}
+};
 
 const DEADLINE_ICONS: Record<DeadlineType | "default", LucideIcon> = {
   sac: NotebookPen,
   exam: CalendarDays,
   assignment: ClipboardList,
   default: MapPin,
-}
+};
 
 function getSidebarProjectIcon(project: Project): LucideIcon {
   if (project.subjectId && SUBJECT_ICONS[project.subjectId]) {
-    return SUBJECT_ICONS[project.subjectId]
+    return SUBJECT_ICONS[project.subjectId];
   }
-  return Folder
+  return Folder;
 }
 
 function getSidebarDeadlineIcon(type?: DeadlineType): LucideIcon {
-  return type ? DEADLINE_ICONS[type] : DEADLINE_ICONS.default
+  return type ? DEADLINE_ICONS[type] : DEADLINE_ICONS.default;
 }
 
-function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGroup[] {
-  const groups = new Map<string, AssessmentSubjectGroup>()
+function getAssessmentSubjectGroups(
+  assessments: Project[],
+): AssessmentSubjectGroup[] {
+  const groups = new Map<string, AssessmentSubjectGroup>();
   assessments.forEach((assessment) => {
-    const subject = getSubjectById(assessment.subjectId)
-    const subjectId = assessment.subjectId ?? "unassigned"
-    const existing = groups.get(subjectId)
+    const subject = getSubjectById(assessment.subjectId);
+    const subjectId = assessment.subjectId ?? "unassigned";
+    const existing = groups.get(subjectId);
     if (existing) {
-      existing.assessments.push(assessment)
-      return
+      existing.assessments.push(assessment);
+      return;
     }
     groups.set(subjectId, {
       subjectId,
@@ -161,13 +178,13 @@ function getAssessmentSubjectGroups(assessments: Project[]): AssessmentSubjectGr
       shortCode: subject?.shortCode ?? "GEN",
       color: subject?.color,
       assessments: [assessment],
-    })
-  })
+    });
+  });
   return Array.from(groups.values()).sort((a, b) => {
-    if (a.subjectId === "unassigned") return 1
-    if (b.subjectId === "unassigned") return -1
-    return a.label.localeCompare(b.label)
-  })
+    if (a.subjectId === "unassigned") return 1;
+    if (b.subjectId === "unassigned") return -1;
+    return a.label.localeCompare(b.label);
+  });
 }
 
 const SORT_OPTIONS: { key: ProjectSortKey; label: string }[] = [
@@ -176,54 +193,55 @@ const SORT_OPTIONS: { key: ProjectSortKey; label: string }[] = [
   { key: "created-newest", label: "Newest" },
   { key: "created-oldest", label: "Oldest" },
   { key: "fileCount", label: "File count" },
-]
+];
 
 interface SidebarProps {
-  projects: Project[]
-  sessions: StudySession[]
-  customSubjects: Subject[]
-  availableSubjects?: Subject[]
-  selectedId: string | null
-  homeSelected: boolean
-  timetableSelected: boolean
-  analyticsSelected: boolean
-  isCollapsed: boolean
-  onToggleCollapse: () => void
-  onSelect: (id: string) => void
-  onSelectHome: () => void
-  onSelectTimetable: () => void
-  onSelectAnalytics: () => void
-  onDelete: (id: string) => void
-  onNewProject: () => void
-  onToggleFavorite?: (id: string) => void
-  onToggleArchive?: (id: string) => void
-  onToggleFinished?: (id: string) => void
-  onOpenProjectSettings?: (id: string) => void
-  onDuplicateProject?: (id: string) => void
-  onDropFolder?: (path: string) => void
+  projects: Project[];
+  sessions: StudySession[];
+  customSubjects: Subject[];
+  availableSubjects?: Subject[];
+  selectedId: string | null;
+  homeSelected: boolean;
+  timetableSelected: boolean;
+  analyticsSelected: boolean;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  onSelect: (id: string) => void;
+  onSelectHome: () => void;
+  onSelectTimetable: () => void;
+  onSelectAnalytics: () => void;
+  onDelete: (id: string) => void;
+  onNewProject: () => void;
+  onToggleFavorite?: (id: string) => void;
+  onToggleArchive?: (id: string) => void;
+  onToggleFinished?: (id: string) => void;
+  onOpenProjectSettings?: (id: string) => void;
+  onDuplicateProject?: (id: string) => void;
+  onDropFolder?: (path: string) => void;
   onStartPomodoroSession: (data: {
-    subjectIds: string[]
-    durationSeconds: number
-    projectId?: string
-    cycleNumber: number
-  }) => Promise<StudySession>
+    subjectIds: string[];
+    durationSeconds: number;
+    projectId?: string;
+    cycleNumber: number;
+  }) => Promise<StudySession>;
   onUpdatePomodoroSession: (
     id: string,
-    updates: Partial<Omit<StudySession, "id" | "created_at">>
-  ) => Promise<void>
-  onDeletePomodoroSession?: (id: string) => Promise<void>
-  onAddFile?: (projectId: string) => void
-  fileCounts: Record<string, number>
-  bumpProjectIds?: Set<string>
-  onSearch?: () => void
-  onSettings?: () => void
-  sortKey?: ProjectSortKey
-  onSortChange?: (key: ProjectSortKey) => void
-  selectedProjectIds?: Set<string>
-  onToggleProjectSelection?: (id: string) => void
-  onBulkArchive?: (ids: string[]) => void
-  onBulkFinish?: (ids: string[]) => void
-  onBulkDelete?: (ids: string[]) => void
+    updates: Partial<Omit<StudySession, "id" | "created_at">>,
+  ) => Promise<void>;
+  onDeletePomodoroSession?: (id: string) => Promise<void>;
+  onAddFile?: (projectId: string) => void;
+  fileCounts: Record<string, number>;
+  bumpProjectIds?: Set<string>;
+  onSearch?: () => void;
+  onSettings?: () => void;
+  sortKey?: ProjectSortKey;
+  onSortChange?: (key: ProjectSortKey) => void;
+  selectedProjectIds?: Set<string>;
+  onToggleProjectSelection?: (id: string) => void;
+  onBulkArchive?: (ids: string[]) => void;
+  onBulkUnarchive?: (ids: string[]) => void;
+  onBulkFinish?: (ids: string[]) => void;
+  onBulkDelete?: (ids: string[]) => void;
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -262,113 +280,151 @@ export const Sidebar = memo(function Sidebar({
   selectedProjectIds,
   onToggleProjectSelection,
   onBulkArchive,
+  onBulkUnarchive,
   onBulkFinish,
   onBulkDelete,
 }: SidebarProps) {
-  const [filterMode, setFilterMode] = useState<FilterMode>("active")
-  const [isDragOver, setIsDragOver] = useState(false)
-  const [showSortMenu, setShowSortMenu] = useState(false)
-  const reduceMotion = useReducedMotion() === true
+  const [filterMode, setFilterMode] = useState<FilterMode>("active");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const reduceMotion = useReducedMotion() === true;
 
-  const dragCounter = useRef(0)
+  const dragCounter = useRef(0);
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter.current += 1
-    if (!isDragOver) setIsDragOver(true)
-  }, [isDragOver])
+  const handleDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter.current += 1;
+      if (!isDragOver) setIsDragOver(true);
+    },
+    [isDragOver],
+  );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter.current -= 1
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
     if (dragCounter.current <= 0) {
-      dragCounter.current = 0
-      setIsDragOver(false)
+      dragCounter.current = 0;
+      setIsDragOver(false);
     }
-  }, [])
+  }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter.current = 0
-    setIsDragOver(false)
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter.current = 0;
+      setIsDragOver(false);
 
-    if (!onDropFolder) return
+      if (!onDropFolder) return;
 
-    const uriList = e.dataTransfer.getData("text/uri-list")
-    if (uriList) {
-      const lines = uriList.split(/\r?\n/).filter((line) => line.trim())
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (trimmed.startsWith("file://")) {
-          onDropFolder(trimmed)
-          return
+      const uriList = e.dataTransfer.getData("text/uri-list");
+      if (uriList) {
+        const lines = uriList.split(/\r?\n/).filter((line) => line.trim());
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("file://")) {
+            onDropFolder(trimmed);
+            return;
+          }
         }
       }
-    }
 
-    const plain = e.dataTransfer.getData("text/plain")
-    if (plain) {
-      const trimmed = plain.trim()
-      if (trimmed) {
-        onDropFolder(trimmed)
-        return
+      const plain = e.dataTransfer.getData("text/plain");
+      if (plain) {
+        const trimmed = plain.trim();
+        if (trimmed) {
+          onDropFolder(trimmed);
+          return;
+        }
       }
-    }
-  }, [onDropFolder])
+    },
+    [onDropFolder],
+  );
 
-  const effectiveSortKey = sortKey ?? "deadline"
-  const sorted = sortProjects(projects, effectiveSortKey, fileCounts)
+  const effectiveSortKey = sortKey ?? "deadline";
+  const sorted = sortProjects(projects, effectiveSortKey, fileCounts);
 
   const filtered = sorted.filter((p) => {
-    if (filterMode === "favorites") return p.isFavorite && !p.isArchived && !p.isFinished
-    if (filterMode === "archived") return p.isArchived
-    if (filterMode === "finished") return p.isFinished && !p.isArchived
-    return !p.isArchived && !p.isFinished
-  })
+    if (filterMode === "favorites")
+      return p.isFavorite && !p.isArchived && !p.isFinished;
+    if (filterMode === "archived") return p.isArchived;
+    if (filterMode === "finished") return p.isFinished && !p.isArchived;
+    return !p.isArchived && !p.isFinished;
+  });
 
-  const favoriteCount = sorted.filter((p) => p.isFavorite && !p.isArchived && !p.isFinished).length
-  const archivedCount = sorted.filter((p) => p.isArchived).length
-  const finishedCount = sorted.filter((p) => p.isFinished && !p.isArchived).length
-  const activeCount = sorted.filter((p) => !p.isArchived && !p.isFinished).length
-  const subjectGroups = getAssessmentSubjectGroups(filtered)
-  const selectedProject = selectedId ? projects.find((project) => project.id === selectedId) : undefined
-  const filterItems: { mode: FilterMode; label: string; icon: LucideIcon; count?: number }[] = [
+  const favoriteCount = sorted.filter(
+    (p) => p.isFavorite && !p.isArchived && !p.isFinished,
+  ).length;
+  const archivedCount = sorted.filter((p) => p.isArchived).length;
+  const finishedCount = sorted.filter(
+    (p) => p.isFinished && !p.isArchived,
+  ).length;
+  const activeCount = sorted.filter(
+    (p) => !p.isArchived && !p.isFinished,
+  ).length;
+  const subjectGroups = getAssessmentSubjectGroups(filtered);
+  const selectedProject = selectedId
+    ? projects.find((project) => project.id === selectedId)
+    : undefined;
+  const filterItems: {
+    mode: FilterMode;
+    label: string;
+    icon: LucideIcon;
+    count?: number;
+  }[] = [
     { mode: "active", label: "Current", icon: CircleDot },
     { mode: "favorites", label: "Starred", icon: Star, count: favoriteCount },
     { mode: "archived", label: "Archive", icon: Archive, count: archivedCount },
-    { mode: "finished", label: "Done", icon: CheckCircle2, count: finishedCount },
-  ]
-  const pressTransition = reduceMotion ? { duration: 0 } : SIDEBAR_PRESS_TRANSITION
-  const hoverLift = reduceMotion ? undefined : { scale: 1.025 }
-  const tapPress = reduceMotion ? undefined : { scale: 0.96 }
+    {
+      mode: "finished",
+      label: "Done",
+      icon: CheckCircle2,
+      count: finishedCount,
+    },
+  ];
+  const pressTransition = reduceMotion
+    ? { duration: 0 }
+    : SIDEBAR_PRESS_TRANSITION;
+  const hoverLift = reduceMotion ? undefined : { scale: 1.025 };
+  const tapPress = reduceMotion ? undefined : { scale: 0.96 };
 
-  const selectedCount = selectedProjectIds?.size ?? 0
-  const selectedIdsArray = selectedProjectIds ? Array.from(selectedProjectIds) : []
-  const bulkBarVisible = selectedCount > 0 && !isCollapsed
+  const selectedCount = selectedProjectIds?.size ?? 0;
+  const selectedIdsArray = selectedProjectIds
+    ? Array.from(selectedProjectIds)
+    : [];
+  const bulkBarVisible = selectedCount > 0 && !isCollapsed;
 
-  const handleProjectClick = useCallback((projectId: string) => {
-    if (selectedProjectIds && selectedProjectIds.size > 0 && onToggleProjectSelection) {
-      onToggleProjectSelection(projectId)
-    } else {
-      onSelect(projectId)
-    }
-  }, [selectedProjectIds, onToggleProjectSelection, onSelect])
+  const handleProjectClick = useCallback(
+    (projectId: string) => {
+      if (
+        selectedProjectIds &&
+        selectedProjectIds.size > 0 &&
+        onToggleProjectSelection
+      ) {
+        onToggleProjectSelection(projectId);
+      } else {
+        onSelect(projectId);
+      }
+    },
+    [selectedProjectIds, onToggleProjectSelection, onSelect],
+  );
 
-  const sortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Sort"
+  const sortLabel =
+    SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Sort";
 
   return (
     <aside
       className={cn(
         "glass-sidebar relative flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground transition-all duration-300 ease-out min-[1200px]:rounded-[1.35rem]",
-        isDragOver && "ring-2 ring-primary/50 ring-inset"
+        isDragOver && "ring-2 ring-primary/50 ring-inset",
       )}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -379,46 +435,57 @@ export const Sidebar = memo(function Sidebar({
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-[inherit] bg-primary/8 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-2 text-primary">
             <FolderOpen className="h-8 w-8" />
-            <span className="text-sm font-medium">Drop folder to create assessment</span>
+            <span className="text-sm font-medium">
+              Drop folder to create assessment
+            </span>
           </div>
         </div>
       )}
-      <div className={cn(
-        "pb-2 pt-2.5 min-[1200px]:pb-3 min-[1200px]:pt-3",
-        isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-3 min-[1200px]:px-4"
-      )}>
-        <div className={cn(
-          "flex items-center gap-3 select-none",
-          isCollapsed && "justify-center gap-1"
-        )}>
-            <CollapsibleBlock show={!isCollapsed}>
-              <h1 className="font-heading text-base font-semibold">Focal</h1>
-              <p className="text-caption text-muted-foreground max-[900px]:hidden">Study workspace</p>
-            </CollapsibleBlock>
-            <motion.button
-              onClick={onToggleCollapse}
-              whileHover={hoverLift}
-              whileTap={tapPress}
-              transition={pressTransition}
-              className={cn(
-                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground",
-                !isCollapsed && "ml-auto"
-              )}
-              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {isCollapsed ? (
-                <PanelLeftOpen className="h-3.5 w-3.5" />
-              ) : (
-                <PanelLeftClose className="h-3.5 w-3.5" />
-              )}
-            </motion.button>
+      <div
+        className={cn(
+          "pb-2 pt-2.5 min-[1200px]:pb-3 min-[1200px]:pt-3",
+          isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-3 min-[1200px]:px-4",
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center gap-3 select-none",
+            isCollapsed && "justify-center gap-1",
+          )}
+        >
+          <CollapsibleBlock show={!isCollapsed}>
+            <h1 className="font-heading text-base font-semibold">Focal</h1>
+            <p className="text-caption text-muted-foreground max-[900px]:hidden">
+              Study workspace
+            </p>
+          </CollapsibleBlock>
+          <motion.button
+            onClick={onToggleCollapse}
+            whileHover={hoverLift}
+            whileTap={tapPress}
+            transition={pressTransition}
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground",
+              !isCollapsed && "ml-auto",
+            )}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isCollapsed ? (
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            )}
+          </motion.button>
         </div>
 
         <div className="mt-3 flex justify-center">
           <Button
             onClick={onNewProject}
-            className={cn("h-8 overflow-hidden rounded-2xl text-primary-foreground btn-glow-primary", isCollapsed ? "w-8 px-0" : "w-full gap-1")}
+            className={cn(
+              "h-8 overflow-hidden rounded-2xl text-primary-foreground btn-glow-primary",
+              isCollapsed ? "w-8 px-0" : "w-full gap-1",
+            )}
             size="sm"
             title={isCollapsed ? "New Assessment" : undefined}
           >
@@ -430,10 +497,12 @@ export const Sidebar = memo(function Sidebar({
         </div>
       </div>
 
-      <div className={cn(
-        "space-y-1.5 min-[1200px]:space-y-2",
-        isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-2.5 min-[1200px]:px-3"
-      )}>
+      <div
+        className={cn(
+          "space-y-1.5 min-[1200px]:space-y-2",
+          isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-2.5 min-[1200px]:px-3",
+        )}
+      >
         <motion.button
           onClick={onSelectHome}
           whileHover={hoverLift}
@@ -444,7 +513,7 @@ export const Sidebar = memo(function Sidebar({
             homeSelected
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
-            isCollapsed && "justify-center px-0"
+            isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Today" : undefined}
         >
@@ -454,7 +523,7 @@ export const Sidebar = memo(function Sidebar({
           </CollapsibleInline>
           <CollapsibleInline show={!isCollapsed} className="ml-auto">
             <span className="rounded-full bg-background/55 px-2 py-0.5 text-caption text-muted-foreground">
-                {activeCount}
+              {activeCount}
             </span>
           </CollapsibleInline>
         </motion.button>
@@ -469,7 +538,7 @@ export const Sidebar = memo(function Sidebar({
             timetableSelected
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
-            isCollapsed && "justify-center px-0"
+            isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Timetable" : undefined}
         >
@@ -489,7 +558,7 @@ export const Sidebar = memo(function Sidebar({
             analyticsSelected
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
-            isCollapsed && "justify-center px-0"
+            isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Analytics" : undefined}
         >
@@ -502,7 +571,7 @@ export const Sidebar = memo(function Sidebar({
         <div
           className={cn(
             "gap-1 rounded-xl border border-sidebar-border bg-background/30 p-0.5 min-[1200px]:rounded-2xl",
-            isCollapsed ? "flex flex-col" : "grid grid-cols-2"
+            isCollapsed ? "flex flex-col" : "grid grid-cols-2",
           )}
         >
           {filterItems.map(({ mode, label, icon: Icon, count }) => (
@@ -517,16 +586,19 @@ export const Sidebar = memo(function Sidebar({
                 isCollapsed ? "px-0" : "gap-1 px-2 py-1.5 text-xs",
                 filterMode === mode
                   ? "bg-background/80 text-foreground shadow-xs font-medium"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
               title={isCollapsed ? label : undefined}
             >
-              <Icon className={cn("shrink-0", isCollapsed ? "h-4 w-4" : "h-3 w-3")} />
-              <CollapsibleInline show={!isCollapsed}>
-                {label}
-              </CollapsibleInline>
+              <Icon
+                className={cn("shrink-0", isCollapsed ? "h-4 w-4" : "h-3 w-3")}
+              />
+              <CollapsibleInline show={!isCollapsed}>{label}</CollapsibleInline>
               {count != null && count > 0 && !isCollapsed && (
-                <CollapsibleInline show={!isCollapsed} className="tabular-nums text-caption">
+                <CollapsibleInline
+                  show={!isCollapsed}
+                  className="tabular-nums text-caption"
+                >
                   {count}
                 </CollapsibleInline>
               )}
@@ -552,7 +624,9 @@ export const Sidebar = memo(function Sidebar({
                 <DropdownMenuItem
                   key={opt.key}
                   onSelect={() => onSortChange(opt.key)}
-                  className={cn(sortKey === opt.key && "font-medium text-foreground")}
+                  className={cn(
+                    sortKey === opt.key && "font-medium text-foreground",
+                  )}
                 >
                   {opt.label}
                 </DropdownMenuItem>
@@ -563,10 +637,12 @@ export const Sidebar = memo(function Sidebar({
       </div>
 
       <ScrollArea className="min-h-0 w-full max-w-full flex-1 overflow-hidden">
-        <div className={cn(
-          "w-full max-w-full overflow-x-hidden pb-1.5 pt-2 min-[1200px]:pt-2.5",
-          "px-1.5 min-[1200px]:px-2"
-        )}>
+        <div
+          className={cn(
+            "w-full max-w-full overflow-x-hidden pb-1.5 pt-2 min-[1200px]:pt-2.5",
+            "px-1.5 min-[1200px]:px-2",
+          )}
+        >
           {subjectGroups.length > 0 ? (
             <motion.div
               className="flex w-full min-w-0 max-w-full flex-col gap-2"
@@ -583,319 +659,394 @@ export const Sidebar = memo(function Sidebar({
                 </motion.div>
               )}
               {subjectGroups.map((group) => (
-                <motion.div key={group.subjectId} variants={staggerItem} className="min-w-0">
+                <motion.div
+                  key={group.subjectId}
+                  variants={staggerItem}
+                  className="min-w-0"
+                >
                   {!isCollapsed && (
-                    <div className="mb-0.5 flex items-center gap-1.5 px-2">
+                    <div className="mb-0.5 flex items-center gap-2 px-2">
                       <span
                         className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40"
-                        style={group.color ? { backgroundColor: group.color } : undefined}
+                        style={
+                          group.color
+                            ? { backgroundColor: group.color }
+                            : undefined
+                        }
                       />
                       <p className="min-w-0 flex-1 truncate text-micro font-semibold uppercase text-muted-foreground/75">
                         {group.label}
                       </p>
-                      <span className="text-micro tabular-nums text-muted-foreground/60">{group.assessments.length}</span>
+                      <span className="text-micro tabular-nums text-muted-foreground/60">
+                        {group.assessments.length}
+                      </span>
                     </div>
                   )}
-                    <div className="flex w-full min-w-0 max-w-full flex-col gap-0.5">
-                {group.assessments.map((project) => {
-                const ProjectIcon = getSidebarProjectIcon(project)
-                const subject = getSubjectById(project.subjectId)
-                const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
-                const DeadlineIcon = getSidebarDeadlineIcon(project.deadlineType)
-                const isMultiSelecting = (selectedProjectIds?.size ?? 0) > 0
-                const isSelected = selectedProjectIds?.has(project.id) ?? false
+                  <div className="flex w-full min-w-0 max-w-full flex-col gap-0.5">
+                    {group.assessments.map((project) => {
+                      const ProjectIcon = getSidebarProjectIcon(project);
+                      const subject = getSubjectById(project.subjectId);
+                      const deadlineInfo = getDeadlineTypeInfo(
+                        project.deadlineType,
+                      );
+                      const DeadlineIcon = getSidebarDeadlineIcon(
+                        project.deadlineType,
+                      );
+                      const isMultiSelecting =
+                        (selectedProjectIds?.size ?? 0) > 0;
+                      const isSelected =
+                        selectedProjectIds?.has(project.id) ?? false;
 
-                return (
-                    <ContextMenu key={project.id}>
-                      <ContextMenuTrigger asChild>
-                    <motion.div
-                      key={project.id}
-                      layout
-                      variants={staggerItem}
-                      whileHover={reduceMotion ? undefined : { x: isCollapsed ? 0 : 2, scale: isCollapsed ? 1.04 : 1.01 }}
-                      whileTap={tapPress}
-                      transition={pressTransition}
-                      className={cn(
-                        "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
-                        isCollapsed ? "justify-center px-2 py-1.25" : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
-                        selectedId === project.id
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
-                        isSelected && "ring-1 ring-primary/30 bg-sidebar-accent/30",
-                        project.isArchived && "opacity-60",
-                        project.isFinished && "opacity-70"
-                      )}
-                      onClick={() => handleProjectClick(project.id)}
-                    >
-                      {/* Checkbox for multi-select */}
-                      {!isCollapsed && onToggleProjectSelection && (
-                        <button
-                          type="button"
-                          className={cn(
-                            "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all",
-                            isMultiSelecting
-                              ? "opacity-100"
-                              : "opacity-0 group-hover:opacity-100",
-                            isSelected
-                              ? "border-primary/40 bg-primary/10 text-primary"
-                              : "border-muted-foreground/30 hover:border-muted-foreground/50"
-                          )}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            onToggleProjectSelection(project.id)
-                          }}
-                        >
-                          {isSelected && <CheckCircle2 className="h-3 w-3" />}
-                        </button>
-                      )}
-                      <span className="relative shrink-0">
-                        <span
-                          className={cn(
-                            "flex items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
-                            isCollapsed ? "size-6.5 rounded-xl" : "size-5"
-                          )}
-                          style={subject ? {
-                            backgroundColor: subject.color + "14",
-                            color: subject.color,
-                          } : undefined}
-                        >
-                          <ProjectIcon className={cn(isCollapsed ? "size-4" : "size-3")} aria-hidden="true" />
-                        </span>
-                        {project.isLinked && isCollapsed && (
-                          <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-primary/90 ring-1 ring-background">
-                            <Link className="size-2 text-background" />
-                          </span>
-                        )}
-                      </span>
-                      <CollapsibleBlock show={!isCollapsed} className="flex-1">
-                          <div className="flex w-full min-w-0 items-center gap-1">
-                            <p className="w-0 min-w-0 flex-1 truncate text-xs font-medium leading-4">{project.name}</p>
-                            {project.isFinished && (
-                              <span className="hidden text-micro font-medium text-green-600 dark:text-green-400 shrink-0 min-[1050px]:inline-flex">
-                                Done
-                              </span>
-                            )}
-                            {project.isLinked && (
-                              <span className="shrink-0 text-muted-foreground/70" title="Linked folder">
-                                <Link className="size-3" aria-hidden="true" />
-                              </span>
-                            )}
-                            {fileCounts[project.id] > 0 && (
-                              <span className={cn(
-                                "text-caption text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden inline-block",
-                                bumpProjectIds?.has(project.id) && "animate-badge-bump",
-                              )}>
-                                {fileCounts[project.id]}
-                              </span>
-                            )}
-                          </div>
-                          {project.deadline && !project.isFinished && (
-                            <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
-                                  <span
-                                  className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
-                                    style={{
-                                      color: deadlineInfo.color
-                                    }}
-                                  >
-                                    <DeadlineIcon className="size-2.5" aria-hidden="true" />
-                                    {deadlineInfo.label}
-                                  </span>
-                                  <span className={cn(
-                                    "truncate text-micro font-medium select-none",
-                                    isOverdue(project.deadline)
-                                      ? "text-destructive"
-                                      : "text-muted-foreground"
-                                  )}>
-                                    {formatDeadline(project.deadline)}
-                                  </span>
-                            </div>
-                          )}
-                      </CollapsibleBlock>
-                      {!isCollapsed && (
-                        <div
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0"
-                        >
-                          <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              aria-label={`Assessment actions for ${project.name}`}
-                              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
-                              onClick={(event) => event.stopPropagation()}
+                      return (
+                        <ContextMenu key={project.id}>
+                          <ContextMenuTrigger asChild>
+                            <motion.div
+                              key={project.id}
+                              layout
+                              variants={staggerItem}
+                              whileHover={
+                                reduceMotion
+                                  ? undefined
+                                  : {
+                                      x: isCollapsed ? 0 : 2,
+                                      scale: isCollapsed ? 1.04 : 1.01,
+                                    }
+                              }
+                              whileTap={tapPress}
+                              transition={pressTransition}
+                              className={cn(
+                                "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
+                                isCollapsed
+                                  ? "justify-center px-2 py-1.25"
+                                  : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
+                                selectedId === project.id
+                                  ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
+                                  : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                                isSelected &&
+                                  "ring-1 ring-primary/30 bg-sidebar-accent/30",
+                                project.isArchived && "opacity-60",
+                                project.isFinished && "opacity-70",
+                              )}
+                              onClick={() => handleProjectClick(project.id)}
                             >
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
+                              {/* Checkbox for multi-select */}
+                              {!isCollapsed && onToggleProjectSelection && (
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() =>
+                                    onToggleProjectSelection(project.id)
+                                  }
+                                  onClick={(event) => event.stopPropagation()}
+                                  className={cn(
+                                    isMultiSelecting
+                                      ? "opacity-100"
+                                      : "opacity-0 group-hover:opacity-100",
+                                  )}
+                                />
+                              )}
+                              <span className="relative shrink-0">
+                                <span
+                                  className={cn(
+                                    "flex items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
+                                    isCollapsed
+                                      ? "size-6.5 rounded-xl"
+                                      : "size-5",
+                                  )}
+                                  style={
+                                    subject
+                                      ? {
+                                          backgroundColor: subject.color + "14",
+                                          color: subject.color,
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  <ProjectIcon
+                                    className={cn(
+                                      isCollapsed ? "size-4" : "size-3",
+                                    )}
+                                    aria-hidden="true"
+                                  />
+                                </span>
+                                {project.isLinked && isCollapsed && (
+                                  <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-primary/90 ring-1 ring-background">
+                                    <Link className="size-2 text-background" />
+                                  </span>
+                                )}
+                              </span>
+                              <CollapsibleBlock
+                                show={!isCollapsed}
+                                className="flex-1"
+                              >
+                                <div className="flex w-full min-w-0 items-center gap-1">
+                                  <p className="w-0 min-w-0 flex-1 truncate text-xs font-medium leading-4">
+                                    {project.name}
+                                  </p>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    {project.isFinished && (
+                                      <span className="hidden text-micro font-medium text-green-600 dark:text-green-400 min-[1050px]:inline-flex">
+                                        Done
+                                      </span>
+                                    )}
+                                    {project.isLinked && (
+                                      <span
+                                        className="text-muted-foreground/70"
+                                        title="Linked folder"
+                                      >
+                                        <Link
+                                          className="size-3"
+                                          aria-hidden="true"
+                                        />
+                                      </span>
+                                    )}
+                                  </div>
+                                  {fileCounts[project.id] > 0 && (
+                                    <span
+                                      className={cn(
+                                        "ml-2 text-sm text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden inline-block",
+                                        bumpProjectIds?.has(project.id) &&
+                                          "animate-badge-bump",
+                                      )}
+                                    >
+                                      {fileCounts[project.id]}
+                                    </span>
+                                  )}
+                                </div>
+                                {project.deadline && !project.isFinished && (
+                                  <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
+                                    <span
+                                      className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
+                                      style={{
+                                        color: deadlineInfo.color,
+                                      }}
+                                    >
+                                      <DeadlineIcon
+                                        className="size-2.5"
+                                        aria-hidden="true"
+                                      />
+                                      {deadlineInfo.label}
+                                    </span>
+                                    <span
+                                      className={cn(
+                                        "truncate text-micro font-medium select-none",
+                                        isOverdue(project.deadline)
+                                          ? "text-destructive"
+                                          : "text-muted-foreground",
+                                      )}
+                                    >
+                                      {formatDeadline(project.deadline)}
+                                    </span>
+                                  </div>
+                                )}
+                              </CollapsibleBlock>
+                              {!isCollapsed && (
+                                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button
+                                        aria-label={`Assessment actions for ${project.name}`}
+                                        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
+                                        onClick={(event) =>
+                                          event.stopPropagation()
+                                        }
+                                      >
+                                        <MoreHorizontal className="h-3.5 w-3.5" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent
+                                      align="end"
+                                      className="w-44"
+                                    >
+                                      {onOpenProjectSettings && (
+                                        <DropdownMenuItem
+                                          onSelect={(event) => {
+                                            event.stopPropagation();
+                                            onOpenProjectSettings(project.id);
+                                          }}
+                                        >
+                                          <Pencil />
+                                          Rename
+                                        </DropdownMenuItem>
+                                      )}
+                                      {onDuplicateProject && (
+                                        <DropdownMenuItem
+                                          onSelect={(event) => {
+                                            event.stopPropagation();
+                                            onDuplicateProject(project.id);
+                                          }}
+                                        >
+                                          <Copy />
+                                          Duplicate
+                                        </DropdownMenuItem>
+                                      )}
+                                      {onToggleFinished && (
+                                        <DropdownMenuItem
+                                          onSelect={(event) => {
+                                            event.stopPropagation();
+                                            onToggleFinished(project.id);
+                                          }}
+                                        >
+                                          <CheckCircle2
+                                            className={cn(
+                                              project.isFinished &&
+                                                "text-green-500",
+                                            )}
+                                          />
+                                          {project.isFinished
+                                            ? "Mark current"
+                                            : "Mark complete"}
+                                        </DropdownMenuItem>
+                                      )}
+                                      {onToggleFavorite && (
+                                        <DropdownMenuItem
+                                          onSelect={(event) => {
+                                            event.stopPropagation();
+                                            onToggleFavorite(project.id);
+                                          }}
+                                        >
+                                          <Star
+                                            className={cn(
+                                              project.isFavorite &&
+                                                "fill-yellow-400 text-yellow-400",
+                                            )}
+                                          />
+                                          {project.isFavorite
+                                            ? "Unstar"
+                                            : "Star"}
+                                        </DropdownMenuItem>
+                                      )}
+                                      {onToggleArchive && (
+                                        <DropdownMenuItem
+                                          onSelect={(event) => {
+                                            event.stopPropagation();
+                                            onToggleArchive(project.id);
+                                          }}
+                                        >
+                                          <Archive />
+                                          {project.isArchived
+                                            ? "Restore"
+                                            : "Archive"}
+                                        </DropdownMenuItem>
+                                      )}
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        variant="destructive"
+                                        onSelect={(event) => {
+                                          event.stopPropagation();
+                                          onDelete(project.id);
+                                        }}
+                                      >
+                                        <Trash2 />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              )}
+                            </motion.div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="w-44">
                             {onOpenProjectSettings && (
-                              <DropdownMenuItem
+                              <CtxMenuItem
                                 onSelect={(event) => {
-                                  event.stopPropagation()
-                                  onOpenProjectSettings(project.id)
+                                  event.stopPropagation();
+                                  onOpenProjectSettings(project.id);
                                 }}
                               >
                                 <Pencil />
                                 Rename
-                              </DropdownMenuItem>
+                              </CtxMenuItem>
                             )}
-                            {onDuplicateProject && (
-                              <DropdownMenuItem
+                            <CtxMenuItem
+                              onSelect={(event) => {
+                                event.stopPropagation();
+                                const subjectIds = project.subjectId
+                                  ? [project.subjectId]
+                                  : [];
+                                void onStartPomodoroSession({
+                                  subjectIds,
+                                  durationSeconds: 25 * 60,
+                                  projectId: project.id,
+                                  cycleNumber: 0,
+                                });
+                              }}
+                            >
+                              <Timer />
+                              Start Session
+                            </CtxMenuItem>
+                            {onAddFile && (
+                              <CtxMenuItem
                                 onSelect={(event) => {
-                                  event.stopPropagation()
-                                  onDuplicateProject(project.id)
+                                  event.stopPropagation();
+                                  onAddFile(project.id);
+                                }}
+                              >
+                                <Upload />
+                                Add File
+                              </CtxMenuItem>
+                            )}
+                            <CtxMenuSep />
+                            {onDuplicateProject && (
+                              <CtxMenuItem
+                                onSelect={(event) => {
+                                  event.stopPropagation();
+                                  onDuplicateProject(project.id);
                                 }}
                               >
                                 <Copy />
                                 Duplicate
-                              </DropdownMenuItem>
+                              </CtxMenuItem>
                             )}
                             {onToggleFinished && (
-                              <DropdownMenuItem
+                              <CtxMenuItem
                                 onSelect={(event) => {
-                                  event.stopPropagation()
-                                  onToggleFinished(project.id)
+                                  event.stopPropagation();
+                                  onToggleFinished(project.id);
                                 }}
                               >
-                                <CheckCircle2 className={cn(project.isFinished && "text-green-500")} />
-                                {project.isFinished ? "Mark current" : "Mark complete"}
-                              </DropdownMenuItem>
+                                <CheckCircle2 />
+                                {project.isFinished
+                                  ? "Mark current"
+                                  : "Mark complete"}
+                              </CtxMenuItem>
                             )}
                             {onToggleFavorite && (
-                              <DropdownMenuItem
+                              <CtxMenuItem
                                 onSelect={(event) => {
-                                  event.stopPropagation()
-                                  onToggleFavorite(project.id)
+                                  event.stopPropagation();
+                                  onToggleFavorite(project.id);
                                 }}
                               >
-                                <Star className={cn(project.isFavorite && "fill-yellow-400 text-yellow-400")} />
+                                <Star />
                                 {project.isFavorite ? "Unstar" : "Star"}
-                              </DropdownMenuItem>
+                              </CtxMenuItem>
                             )}
                             {onToggleArchive && (
-                              <DropdownMenuItem
+                              <CtxMenuItem
                                 onSelect={(event) => {
-                                  event.stopPropagation()
-                                  onToggleArchive(project.id)
+                                  event.stopPropagation();
+                                  onToggleArchive(project.id);
                                 }}
                               >
                                 <Archive />
                                 {project.isArchived ? "Restore" : "Archive"}
-                              </DropdownMenuItem>
+                              </CtxMenuItem>
                             )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
+                            <CtxMenuSep />
+                            <CtxMenuItem
                               variant="destructive"
                               onSelect={(event) => {
-                                event.stopPropagation()
-                                onDelete(project.id)
+                                event.stopPropagation();
+                                onDelete(project.id);
                               }}
                             >
                               <Trash2 />
                               Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        </div>
-                      )}
-                    </motion.div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent className="w-44">
-                        {onOpenProjectSettings && (
-                          <CtxMenuItem
-                            onSelect={(event) => {
-                              event.stopPropagation()
-                              onOpenProjectSettings(project.id)
-                            }}
-                          >
-                            <Pencil />
-                            Rename
-                          </CtxMenuItem>
-                        )}
-                        <CtxMenuItem
-                          onSelect={(event) => {
-                            event.stopPropagation()
-                            const subjectIds = project.subjectId ? [project.subjectId] : []
-                            void onStartPomodoroSession({
-                              subjectIds,
-                              durationSeconds: 25 * 60,
-                              projectId: project.id,
-                              cycleNumber: 0,
-                            })
-                          }}
-                        >
-                          <Timer />
-                          Start Session
-                        </CtxMenuItem>
-                        {onAddFile && (
-                          <CtxMenuItem
-                            onSelect={(event) => {
-                              event.stopPropagation()
-                              onAddFile(project.id)
-                            }}
-                          >
-                            <Upload />
-                            Add File
-                          </CtxMenuItem>
-                        )}
-                        <CtxMenuSep />
-                        {onDuplicateProject && (
-                          <CtxMenuItem
-                            onSelect={(event) => {
-                              event.stopPropagation()
-                              onDuplicateProject(project.id)
-                            }}
-                          >
-                            <Copy />
-                            Duplicate
-                          </CtxMenuItem>
-                        )}
-                        {onToggleFinished && (
-                          <CtxMenuItem
-                            onSelect={(event) => {
-                              event.stopPropagation()
-                              onToggleFinished(project.id)
-                            }}
-                          >
-                            <CheckCircle2 />
-                            {project.isFinished ? "Mark current" : "Mark complete"}
-                          </CtxMenuItem>
-                        )}
-                        {onToggleFavorite && (
-                          <CtxMenuItem
-                            onSelect={(event) => {
-                              event.stopPropagation()
-                              onToggleFavorite(project.id)
-                            }}
-                          >
-                            <Star />
-                            {project.isFavorite ? "Unstar" : "Star"}
-                          </CtxMenuItem>
-                        )}
-                        {onToggleArchive && (
-                          <CtxMenuItem
-                            onSelect={(event) => {
-                              event.stopPropagation()
-                              onToggleArchive(project.id)
-                            }}
-                          >
-                            <Archive />
-                            {project.isArchived ? "Restore" : "Archive"}
-                          </CtxMenuItem>
-                        )}
-                        <CtxMenuSep />
-                        <CtxMenuItem
-                          variant="destructive"
-                          onSelect={(event) => {
-                            event.stopPropagation()
-                            onDelete(project.id)
-                          }}
-                        >
-                          <Trash2 />
-                          Delete
-                        </CtxMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                )
-              })}
+                            </CtxMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      );
+                    })}
                   </div>
                 </motion.div>
               ))}
@@ -905,43 +1056,58 @@ export const Sidebar = memo(function Sidebar({
       </ScrollArea>
 
       {/* Bulk action bar */}
-      {bulkBarVisible && onBulkArchive && onBulkFinish && onBulkDelete && (
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 20, opacity: 0 }}
-          className="mx-2 mb-2 flex items-center gap-1.5 rounded-xl border border-primary/20 bg-sidebar-accent/80 backdrop-blur-sm p-1.5"
-        >
-          <span className="px-2 text-micro font-medium tabular-nums">
-            {selectedCount} selected
-          </span>
-          <div className="ml-auto flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => onBulkArchive(selectedIdsArray)}
-              className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
-            >
-              Archive
-            </button>
-            <button
-              type="button"
-              onClick={() => onBulkFinish(selectedIdsArray)}
-              className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
-            >
-              Finish
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (onBulkDelete) onBulkDelete(selectedIdsArray)
-              }}
-              className="rounded-lg px-2 py-1 text-micro text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
-            >
-              Delete
-            </button>
-          </div>
-        </motion.div>
-      )}
+      {bulkBarVisible &&
+        (onBulkArchive ?? onBulkUnarchive) &&
+        onBulkFinish &&
+        onBulkDelete && (
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 20, opacity: 0 }}
+            className="mx-2 mb-2 flex items-center gap-1.5 rounded-xl border border-primary/20 bg-sidebar-accent/80 backdrop-blur-sm p-1.5"
+          >
+            <span className="px-2 text-micro font-medium tabular-nums">
+              {selectedCount} selected
+            </span>
+            <div className="ml-auto flex items-center gap-0.5">
+              {filterMode === "archived"
+                ? onBulkUnarchive && (
+                    <button
+                      type="button"
+                      onClick={() => onBulkUnarchive(selectedIdsArray)}
+                      className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                    >
+                      Restore
+                    </button>
+                  )
+                : onBulkArchive && (
+                    <button
+                      type="button"
+                      onClick={() => onBulkArchive(selectedIdsArray)}
+                      className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                    >
+                      Archive
+                    </button>
+                  )}
+              <button
+                type="button"
+                onClick={() => onBulkFinish(selectedIdsArray)}
+                className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+              >
+                Finish
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onBulkDelete) onBulkDelete(selectedIdsArray);
+                }}
+                className="rounded-lg px-2 py-1 text-micro text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </motion.div>
+        )}
 
       <StudyTimer
         isCollapsed={isCollapsed}
@@ -956,7 +1122,6 @@ export const Sidebar = memo(function Sidebar({
         onUpdateSession={onUpdatePomodoroSession}
         onDeleteSession={onDeletePomodoroSession}
       />
-
     </aside>
-  )
-})
+  );
+});

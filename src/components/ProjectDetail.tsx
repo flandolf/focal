@@ -16,6 +16,7 @@ import { FileTree } from "@/components/project/FileTree"
 import type { ListItem } from "@/components/project/FileTree"
 import { SessionList } from "@/components/project/SessionList"
 import { ProjectChecklistPanel } from "@/components/project/ProjectChecklistPanel"
+import { ProjectDependenciesPanel } from "@/components/project/ProjectDependenciesPanel"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
 import { notifyProjectActionError } from "@/components/project/shared"
 
@@ -32,6 +33,10 @@ interface ProjectDetailProps {
   onAddChecklistItem?: (text: string) => void
   onToggleChecklistItem?: (itemId: string) => void
   onRemoveChecklistItem?: (itemId: string) => void
+  onAddDependency?: (dependsOnId: string) => void
+  onRemoveDependency?: (dependsOnId: string) => void
+  onOpenProject?: (projectId: string) => void
+  availableProjects?: Project[]
   onExport?: () => void
   onSaveAsTemplate?: () => void
 }
@@ -40,6 +45,7 @@ export const ProjectDetail = memo(function ProjectDetail({
   project, sessions, onFilesChanged, onOpenSettings, onToggleFinished,
   onSelectSession, onNewSession, onCreateEvents,
   onUpdateNotes, onAddChecklistItem, onToggleChecklistItem, onRemoveChecklistItem,
+  onAddDependency, onRemoveDependency, onOpenProject, availableProjects,
   onExport, onSaveAsTemplate,
 }: ProjectDetailProps) {
   const {
@@ -562,6 +568,7 @@ export const ProjectDetail = memo(function ProjectDetail({
   }
 
   const hasChecklist = onUpdateNotes && onAddChecklistItem && onToggleChecklistItem && onRemoveChecklistItem
+  const hasDependencies = onAddDependency && onRemoveDependency && onOpenProject && availableProjects
 
   return (
     <div className="relative flex h-full flex-col">
@@ -604,6 +611,17 @@ export const ProjectDetail = memo(function ProjectDetail({
           onAddChecklistItem={(text) => onAddChecklistItem(text)}
           onToggleChecklistItem={(itemId) => onToggleChecklistItem(itemId)}
           onRemoveChecklistItem={(itemId) => onRemoveChecklistItem(itemId)}
+        />
+      )}
+
+      {/* Dependencies Panel */}
+      {hasDependencies && (
+        <ProjectDependenciesPanel
+          project={project}
+          availableProjects={availableProjects}
+          onAddDependency={(dependsOnId) => onAddDependency(dependsOnId)}
+          onRemoveDependency={(dependsOnId) => onRemoveDependency(dependsOnId)}
+          onOpenProject={(projectId) => onOpenProject(projectId)}
         />
       )}
 
