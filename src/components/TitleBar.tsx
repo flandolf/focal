@@ -175,8 +175,8 @@ export function TitleBar({ onSearch, onSettings, children }: TitleBarProps) {
       )}
 
       {/* App title — draggable region */}
-      <div className="flex flex-1 items-center justify-center px-4">
-        <span className="text-sm font-medium text-muted-foreground/60">Focal</span>
+      <div data-tauri-drag-region className="flex flex-1 items-center justify-center px-4">
+        <span data-tauri-drag-region className="text-sm font-medium text-muted-foreground/60">Focal</span>
       </div>
 
       {/* Right section: actions on macOS, traffic lights on other platforms */}

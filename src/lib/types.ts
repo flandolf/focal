@@ -135,7 +135,12 @@ export interface SearchResult {
 
 // --- Timetable ---
 
-export type TimetableDayLabel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+/**
+ * The day label for a timetable entry. Historically hardcoded to 1–10 for the
+ * default VCE two-week cycle; the cycle length is now configurable so the label
+ * is a plain positive integer (1..cycleLength).
+ */
+export type TimetableDayLabel = number
 
 export interface TimetablePeriod {
   period: string
@@ -192,7 +197,22 @@ export interface TimetableConfig {
   day1Starts: string // YYYY-MM-DD — the first day of the cycle
   holidays: SchoolHoliday[]
   entries: TimetableEntry[]
-  /** Manual override of the current day label (1–10). When set, takes precedence over the date-based calculation. */
+  /** Total number of days in the cycle. Default 10 (two school weeks, Mon–Fri). */
+  cycleLength?: number
+  /**
+   * Day-label → JS weekday (0=Sun..6=Sat). Size equals `cycleLength`. The default
+   * for cycleLength=10 is [1,2,3,4,5,1,2,3,4,5] (Mon–Fri, then Mon–Fri again).
+   * Lets the user override which calendar day each "Day X" lands on.
+   */
+  dayToWeekday?: number[]
+  /**
+   * When true, Saturday and Sunday count as school days and the cycle can
+   * include weekend day-labels. When false (default), weekends return null
+   * from getDayLabelForDate so the day picker shows "Weekend" instead of
+   * the most recent Friday's day-label.
+   */
+  weekendTimetables?: boolean
+  /** Manual override of the current day label (1..cycleLength). When set, takes precedence over the date-based calculation. */
   currentDayOverride?: TimetableDayLabel | null
   /** View-level display preferences. */
   viewSettings?: TimetableViewSettings

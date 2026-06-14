@@ -220,12 +220,21 @@ export function timetableConfigToRow(config: TimetableConfig, userId: string, de
 }
 
 export function rowToTimetableConfig(row: TimetableConfigRow): TimetableConfig {
+  const cycleLength =
+    typeof row.config.cycleLength === "number" && row.config.cycleLength >= 1 && row.config.cycleLength <= 60
+      ? row.config.cycleLength
+      : 10
   return {
     enabled: row.config.enabled,
     day1Starts: row.config.day1Starts,
     holidays: Array.isArray(row.config.holidays) ? row.config.holidays : [],
     entries: Array.isArray(row.config.entries) ? row.config.entries : [],
-    currentDayOverride: isDayLabel(row.config.currentDayOverride) ? row.config.currentDayOverride : null,
+    cycleLength,
+    dayToWeekday: Array.isArray(row.config.dayToWeekday) ? row.config.dayToWeekday : undefined,
+    weekendTimetables: row.config.weekendTimetables === true,
+    currentDayOverride: isDayLabelInRange(row.config.currentDayOverride, cycleLength)
+      ? row.config.currentDayOverride
+      : null,
   }
 }
 
@@ -276,7 +285,11 @@ function isConfidenceScore(value: unknown): value is ConfidenceScore {
 }
 
 function isDayLabel(value: unknown): value is TimetableDayLabel {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 10
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 60
+}
+
+function isDayLabelInRange(value: unknown, cycleLength: number): value is TimetableDayLabel {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= cycleLength
 }
 
 function isActiveDurations(value: unknown): value is { start: string; end: string }[] {

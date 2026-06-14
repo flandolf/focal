@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useMemo } from "react"
 import {
   AlertCircle,
   Calendar as CalendarIcon,
@@ -8,6 +8,7 @@ import {
   ChevronUp,
   Loader2,
   Plus,
+  RotateCcw,
   Trash2,
   Upload,
   Wand2,
@@ -18,7 +19,17 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { getTimetableConfig, setTimetableConfig, type TimetableConfig } from "@/lib/settings"
+import {
+  defaultDayToWeekday,
+  DEFAULT_CYCLE_LENGTH,
+  DEFAULT_WEEKEND_TIMETABLES,
+  getCycleLength,
+  getDayToWeekday,
+  getTimetableConfig,
+  getWeekendTimetables,
+  setTimetableConfig,
+  type TimetableConfig,
+} from "@/lib/settings"
 import { VCE_SUBJECTS, type TimetableEntry, type TimetableDayLabel } from "@/lib/types"
 import { parseTimetableFromImage } from "@/lib/timetable"
 
@@ -93,9 +104,9 @@ function ImageDropZone({
     <div
       className={cn(
         "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-5 transition-colors",
-        dragging && "border-primary/50 bg-primary/8",
+        dragging && "border-primary/50 bg-primary/10",
         imagePreview
-          ? "border-primary/30 bg-primary/6"
+          ? "border-primary/30 bg-primary/5"
           : error
             ? "border-destructive/30 bg-destructive/5"
             : "border-border/60 bg-muted/20",
@@ -122,9 +133,9 @@ function ImageDropZone({
         </div>
       ) : (
         <>
-          <Upload className="mb-2.5 h-7 w-7 text-muted-foreground/50" />
+          <Upload className="mb-2.5 h-7 w-7 text-muted-foreground/60" />
           <p className="text-sm font-medium text-muted-foreground">Upload timetable photo</p>
-          <p className="mt-0.5 text-xs text-muted-foreground/50">or click to browse</p>
+          <p className="mt-0.5 text-xs text-muted-foreground/60">or click to browse</p>
           <input
             ref={inputRef}
             type="file"
@@ -143,15 +154,32 @@ function ImageDropZone({
 
 // --- Day selector ---
 
-function DaySelect({ value, onChange }: { value: number; onChange: (day: number) => void }) {
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
+
+function DaySelect({
+  value,
+  onChange,
+  cycleLength,
+  dayToWeekday,
+}: {
+  value: number
+  onChange: (day: number) => void
+  cycleLength: number
+  dayToWeekday: number[]
+}) {
   return (
     <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
       <SelectTrigger className="h-7 w-[5.5rem] rounded-md px-2 text-xs font-medium">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-          <SelectItem key={d} value={String(d)}>Day {d}</SelectItem>
+        {Array.from({ length: cycleLength }, (_, i) => i + 1).map((d) => (
+          <SelectItem key={d} value={String(d)}>
+            Day {d}
+            {dayToWeekday[d - 1] !== undefined
+              ? ` · ${WEEKDAY_SHORT[dayToWeekday[d - 1]]}`
+              : ""}
+          </SelectItem>
         ))}
       </SelectContent>
     </Select>
@@ -183,7 +211,7 @@ function HolidayRow({
         onChange={(e) => onUpdate("startDate", e.target.value)}
         className="h-6 w-30 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       />
-      <span className="text-caption text-muted-foreground/40">–</span>
+      <span className="text-caption text-muted-foreground/50" aria-hidden>–</span>
       <input
         type="date"
         value={holiday.endDate}
@@ -193,7 +221,7 @@ function HolidayRow({
       <button
         type="button"
         onClick={onDelete}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:text-foreground"
         aria-label="Remove holiday"
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="m2 2 6 6M8 2l-6 6"/></svg>
@@ -266,7 +294,7 @@ function PeriodEditRow({
         <button
           type="button"
           onClick={onDelete}
-          className="ml-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="ml-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:text-foreground"
           aria-label="Remove period"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="m2 2 6 6M8 2l-6 6"/></svg>
@@ -287,6 +315,8 @@ function EntryCard({
   onDeletePeriod,
   onUpdateDay,
   allSubjects,
+  cycleLength,
+  dayToWeekday,
 }: {
   draft: EntryDraft
   onToggle: () => void
@@ -296,6 +326,8 @@ function EntryCard({
   onDeletePeriod: (index: number) => void
   onUpdateDay: (day: number) => void
   allSubjects: { id: string; name: string; shortCode: string; color: string }[]
+  cycleLength: number
+  dayToWeekday: number[]
 }) {
   const [expanded, setExpanded] = useState(true)
 
@@ -305,7 +337,7 @@ function EntryCard({
         "rounded-xl border transition-colors",
         draft.approved
           ? "border-border/70 bg-background/50"
-          : "border-destructive/25 bg-destructive/4",
+          : "border-destructive/30 bg-destructive/5",
       )}
     >
       {/* Header row */}
@@ -317,23 +349,28 @@ function EntryCard({
             "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
             draft.approved
               ? "border-primary bg-primary text-primary-foreground"
-              : "border-muted-foreground/30",
+              : "border-muted-foreground/50",
           )}
           aria-label={draft.approved ? "Exclude day" : "Include day"}
         >
           {draft.approved && <Check className="h-3 w-3" />}
         </button>
 
-        <DaySelect value={draft.dayLabel} onChange={onUpdateDay} />
+        <DaySelect
+          value={draft.dayLabel}
+          onChange={onUpdateDay}
+          cycleLength={cycleLength}
+          dayToWeekday={dayToWeekday}
+        />
 
-        <span className="ml-auto text-micro tabular-nums text-muted-foreground/60">
+        <span className="ml-auto text-micro tabular-nums text-muted-foreground/70">
           {draft.periods.length} {draft.periods.length === 1 ? "period" : "periods"}
         </span>
 
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-accent"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:text-foreground"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -342,7 +379,7 @@ function EntryCard({
         <button
           type="button"
           onClick={onDelete}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:text-foreground"
           aria-label="Remove day entry"
         >
           <Trash2 className="h-3 w-3" />
@@ -374,6 +411,148 @@ function EntryCard({
   )
 }
 
+// --- Cycle length + day-to-weekday editor ---
+
+function CycleEditor({
+  cycleLength,
+  dayToWeekday,
+  weekendTimetables,
+  onCycleLengthChange,
+  onDayToWeekdayChange,
+  onWeekendTimetablesChange,
+}: {
+  cycleLength: number
+  dayToWeekday: number[]
+  weekendTimetables: boolean
+  onCycleLengthChange: (n: number) => void
+  onDayToWeekdayChange: (mapping: number[]) => void
+  onWeekendTimetablesChange: (enabled: boolean) => void
+}) {
+  const isDefault = useMemo(() => {
+    const def = defaultDayToWeekday(cycleLength, weekendTimetables)
+    if (def.length !== dayToWeekday.length) return false
+    return def.every((d, i) => d === dayToWeekday[i])
+  }, [cycleLength, dayToWeekday, weekendTimetables])
+
+  const handleLengthInput = useCallback(
+    (raw: string) => {
+      const n = parseInt(raw, 10)
+      if (!Number.isFinite(n) || n < 1) return
+      onCycleLengthChange(n)
+    },
+    [onCycleLengthChange],
+  )
+
+  const handleResetDefaults = useCallback(() => {
+    onDayToWeekdayChange(defaultDayToWeekday(cycleLength, weekendTimetables))
+  }, [cycleLength, weekendTimetables, onDayToWeekdayChange])
+
+  const handleDayWeekday = useCallback(
+    (dayIdx: number, weekday: number) => {
+      const next = [...dayToWeekday]
+      next[dayIdx] = weekday
+      onDayToWeekdayChange(next)
+    },
+    [dayToWeekday, onDayToWeekdayChange],
+  )
+
+  return (
+    <div className="space-y-2">
+      {/* Weekend toggle */}
+      <label className="flex items-start gap-2 cursor-pointer rounded-md border border-border/40 bg-background/40 px-2 py-1.5">          <button
+            type="button"
+            onClick={() => onWeekendTimetablesChange(!weekendTimetables)}
+            className={cn(
+              "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+              weekendTimetables
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-muted-foreground/50",
+            )}
+            role="checkbox"
+            aria-checked={weekendTimetables}
+            aria-label="Include weekend timetables"
+          >
+            {weekendTimetables && <Check className="h-3 w-3" />}
+          </button>
+          <span className="flex-1 text-xs leading-snug">
+            <span className="font-medium">Include weekend timetables</span>
+            <span className="mt-0.5 block text-caption text-muted-foreground/70">
+              When off (default), Sat &amp; Sun have no day label. Turn on to give
+              weekend days their own slot in the cycle.
+            </span>
+          </span>
+      </label>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="space-y-0.5">
+          <label className="text-sm font-medium leading-none" htmlFor="cycle-length">
+            Cycle length
+          </label>
+          <p className="text-xs text-muted-foreground/70">
+            How many school days before the cycle repeats. 10 = two school weeks.
+          </p>
+        </div>
+        <Input
+          id="cycle-length"
+          type="number"
+          min={1}
+          max={60}
+          value={cycleLength}
+          onChange={(e) => handleLengthInput(e.target.value)}
+          className="h-7 w-16 text-center text-xs"
+          aria-label="Cycle length in days"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium leading-none">Day → weekday</span>
+          <button
+            type="button"
+            onClick={handleResetDefaults}
+            disabled={isDefault}
+            className="flex h-6 items-center gap-1 rounded-md px-1.5 text-caption text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground focus-visible:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+            title="Reset to Mon–Fri pattern"
+          >
+            <RotateCcw className="h-2.5 w-2.5" />
+            Reset
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground/70">
+          Each Day X falls on this calendar weekday. Used to pick "today" automatically.
+        </p>
+        <div className="grid max-h-44 grid-cols-2 gap-1.5 overflow-y-auto rounded-lg border border-border/50 bg-background/30 p-2 sm:grid-cols-3">
+          {Array.from({ length: cycleLength }, (_, i) => i + 1).map((day, idx) => (
+            <div
+              key={day}
+              className="flex items-center gap-1.5 rounded-md border border-border/40 bg-background/60 px-1.5 py-1"
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted/40 text-caption font-bold tabular-nums text-foreground/80">
+                {day}
+              </span>
+              <Select
+                value={String(dayToWeekday[idx] ?? 1)}
+                onValueChange={(v) => handleDayWeekday(idx, Number(v))}
+              >
+                <SelectTrigger className="h-5 min-w-0 flex-1 rounded border-0 bg-transparent px-1 text-caption shadow-none focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WEEKDAY_SHORT.map((label, i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- Main dialog ---
 
 interface TimetableDialogProps {
@@ -392,6 +571,9 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
   const [saved, setSaved] = useState(false)
 
   const [day1Starts, setDay1Starts] = useState(existingConfig.day1Starts)
+  const [cycleLength, setCycleLength] = useState(() => getCycleLength(existingConfig))
+  const [dayToWeekday, setDayToWeekday] = useState<number[]>(() => [...getDayToWeekday(existingConfig)])
+  const [weekendTimetables, setWeekendTimetables] = useState<boolean>(() => getWeekendTimetables(existingConfig))
   const [holidays, setHolidays] = useState<HolidayDraft[]>(
     existingConfig.holidays.length > 0
       ? existingConfig.holidays.map((h) => ({ id: generateId(), name: h.name, startDate: h.startDate, endDate: h.endDate }))
@@ -409,7 +591,12 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
     setError(null)
     try {
       const result = await parseTimetableFromImage(imagePreview, holidays, day1Starts)
-      const drafts: EntryDraft[] = result.entries.map((e) => ({
+      // Clamp the AI-returned day labels to the configured cycle length so days
+      // past cycleLength don't leak in (e.g. AI returning days 1–10 for an 8-day cycle).
+      const safeEntries = result.entries
+        .filter((e) => e.dayLabel >= 1 && e.dayLabel <= cycleLength)
+        .map((e) => ({ ...e }))
+      const drafts: EntryDraft[] = safeEntries.map((e) => ({
         id: generateId(),
         dayLabel: e.dayLabel,
         periods: e.periods.map((p) => ({
@@ -514,22 +701,29 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
 
   const handleSave = () => {
     const approvedEntries = entries.filter((e) => e.approved)
-    const timetableEntries: TimetableEntry[] = approvedEntries.map((e) => ({
-      dayLabel: e.dayLabel as TimetableDayLabel,
-      periods: e.periods.map((p) => ({
-        period: p.period,
-        subject: p.subject,
-        location: p.location || undefined,
-        startTime: p.startTime,
-        endTime: p.endTime,
-      })),
-    }))
+    // Clamp entries to the configured cycle length so decreasing the cycle
+    // doesn't silently leak dayLabels past the new range on save.
+    const timetableEntries: TimetableEntry[] = approvedEntries
+      .filter((e) => e.dayLabel >= 1 && e.dayLabel <= cycleLength)
+      .map((e) => ({
+        dayLabel: e.dayLabel as TimetableDayLabel,
+        periods: e.periods.map((p) => ({
+          period: p.period,
+          subject: p.subject,
+          location: p.location || undefined,
+          startTime: p.startTime,
+          endTime: p.endTime,
+        })),
+      }))
 
     const config: TimetableConfig = {
       enabled: timetableEntries.length > 0,
       day1Starts,
       holidays: holidays.map((h) => ({ name: h.name, startDate: h.startDate, endDate: h.endDate })),
       entries: timetableEntries,
+      cycleLength,
+      dayToWeekday: [...dayToWeekday],
+      weekendTimetables,
     }
     setTimetableConfig(config)
     window.dispatchEvent(new Event("focal-timetable-updated"))
@@ -560,6 +754,32 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
     }, 150)
   }
 
+  // When cycle length changes, keep dayToWeekday the right length — pad with
+  // the default Mon–Fri pattern, or truncate if shrinking.
+  const handleCycleLengthChange = useCallback((n: number) => {
+    const safe = Math.max(1, Math.min(60, Math.floor(n) || DEFAULT_CYCLE_LENGTH))
+    setCycleLength(safe)
+    setDayToWeekday((prev) => {
+      const def = defaultDayToWeekday(safe, weekendTimetables)
+      if (prev.length === safe) return prev
+      if (prev.length < safe) {
+        return [...prev, ...def.slice(prev.length)]
+      }
+      return prev.slice(0, safe)
+    })
+  }, [weekendTimetables])
+
+  // Toggling weekend timetables rebuilds the default pattern but preserves any
+  // explicit overrides by clamping weekend values (0,6) to Mon (1) when off.
+  const handleWeekendTimetablesChange = useCallback((enabled: boolean) => {
+    setWeekendTimetables(enabled)
+    setDayToWeekday((prev) => {
+      const def = defaultDayToWeekday(cycleLength, enabled)
+      if (enabled) return def
+      return prev.map((d) => (d === 0 || d === 6 ? 1 : d))
+    })
+  }, [cycleLength])
+
   const approvedCount = entries.filter((e) => e.approved).length
 
   return (
@@ -575,7 +795,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
         <DialogBody className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
           {/* Error banner */}
           {error && (
-            <p className="flex items-center gap-2 rounded-lg bg-destructive/8 px-3 py-2 text-xs text-destructive">
+            <p className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               {error}
             </p>
@@ -609,7 +829,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                 <label className="text-sm font-medium leading-none" htmlFor="day1-starts">
                   Day 1 starts
                 </label>
-                <p className="text-xs text-muted-foreground/60">
+                <p className="text-xs text-muted-foreground/70">
                   The date of a past Monday that began Day 1. Cycle advances only on weekdays (Mon–Fri), so Day 6 = Monday of week 2.
                 </p>
                 <input
@@ -621,6 +841,16 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                 />
               </div>
 
+              {/* Cycle length + day-to-weekday mapping */}
+              <CycleEditor
+                cycleLength={cycleLength}
+                dayToWeekday={dayToWeekday}
+                weekendTimetables={weekendTimetables}
+                onCycleLengthChange={handleCycleLengthChange}
+                onDayToWeekdayChange={setDayToWeekday}
+                onWeekendTimetablesChange={handleWeekendTimetablesChange}
+              />
+
               {/* Holidays */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -630,11 +860,11 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                     Add
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground/60">
+                <p className="text-xs text-muted-foreground/70">
                   Periods are hidden on holiday dates.
                 </p>
                 {holidays.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-border/50 bg-muted/15 px-3 py-2 text-xs text-muted-foreground/60">
+                  <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground/70">
                     No holidays added.
                   </p>
                 ) : (
@@ -681,8 +911,8 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                 <div className="space-y-2">
                   {entries.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
-                      <CalendarDays className="mb-3 h-8 w-8 text-muted-foreground/30" />
-                      <p className="text-sm text-muted-foreground/60">No entries parsed. Try a clearer image.</p>
+                      <CalendarDays className="mb-3 h-8 w-8 text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground/70">No entries parsed. Try a clearer image.</p>
                     </div>
                   ) : (
                     entries.map((draft) => (
@@ -696,14 +926,16 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                         onDeletePeriod={(idx) => deletePeriod(draft.id, idx)}
                         onUpdateDay={(day) => updateDay(draft.id, day)}
                         allSubjects={allSubjects}
+                        cycleLength={cycleLength}
+                        dayToWeekday={dayToWeekday}
                       />
                     ))
                   )}
                 </div>
               </ScrollArea>
 
-              {/* Day 1 + holidays inline in review */}
-              <div className="space-y-2 rounded-xl border border-border/60 bg-background/30 p-3">
+              {/* Day 1 + cycle + holidays inline in review */}
+              <div className="space-y-3 rounded-xl border border-border/60 bg-background/30 p-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs font-medium leading-none" htmlFor="review-day1">Day 1</label>
                   <input
@@ -714,21 +946,33 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                     className="h-7 flex-1 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   />
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium leading-none">Holidays</span>
-                  <Button variant="ghost" size="xs" onClick={addHoliday} className="h-5 gap-1 rounded-md text-caption">
-                    <Plus className="h-2.5 w-2.5" />
-                    Add
-                  </Button>
+
+                <CycleEditor
+                  cycleLength={cycleLength}
+                  dayToWeekday={dayToWeekday}
+                  weekendTimetables={weekendTimetables}
+                  onCycleLengthChange={handleCycleLengthChange}
+                  onDayToWeekdayChange={setDayToWeekday}
+                  onWeekendTimetablesChange={handleWeekendTimetablesChange}
+                />
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium leading-none">Holidays</span>
+                    <Button variant="ghost" size="xs" onClick={addHoliday} className="h-5 gap-1 rounded-md text-caption">
+                      <Plus className="h-2.5 w-2.5" />
+                      Add
+                    </Button>
+                  </div>
+                  {holidays.map((h) => (
+                    <HolidayRow
+                      key={h.id}
+                      holiday={h}
+                      onUpdate={(field, value) => updateHoliday(h.id, field, value)}
+                      onDelete={() => deleteHoliday(h.id)}
+                    />
+                  ))}
                 </div>
-                {holidays.map((h) => (
-                  <HolidayRow
-                    key={h.id}
-                    holiday={h}
-                    onUpdate={(field, value) => updateHoliday(h.id, field, value)}
-                    onDelete={() => deleteHoliday(h.id)}
-                  />
-                ))}
               </div>
             </>
           )}
@@ -748,7 +992,7 @@ export function TimetableDialog({ open, onOpenChange, customSubjects = [] }: Tim
                     variant="ghost"
                     size="sm"
                     onClick={handleRemove}
-                    className="h-7 rounded-lg px-2 text-xs text-muted-foreground/70 hover:text-destructive"
+                    className="h-7 rounded-lg px-2 text-xs text-muted-foreground/80 hover:text-destructive focus-visible:text-destructive"
                   >
                     Remove timetable
                   </Button>

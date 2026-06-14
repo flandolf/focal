@@ -164,16 +164,77 @@ export const DEFAULT_VIEW_SETTINGS: TimetableViewSettings = {
   hiddenDays: [],
 }
 
+export const DEFAULT_CYCLE_LENGTH = 10
+
+export const DEFAULT_WEEKEND_TIMETABLES = false
+
+/** Default Mon–Fri weekday pattern for a 10-day cycle (week 1 + week 2). */
+export const DEFAULT_DAY_TO_WEEKDAY_10: number[] = [1, 2, 3, 4, 5, 1, 2, 3, 4, 5]
+
+/**
+ * Build a default dayToWeekday mapping by cycling Mon–Fri (1,2,3,4,5) up to
+ * `cycleLength`. When `weekendTimetables` is true, Sat (6) and Sun (0) are
+ * included in the cycle so weekend day-labels are populated. Ponytail: this
+ * is the default only — users can override per-day in the settings popover.
+ * Upgrade path: per-school custom mappings stored in the cloud table.
+ */
+export function defaultDayToWeekday(
+  cycleLength: number,
+  weekendTimetables: boolean = DEFAULT_WEEKEND_TIMETABLES,
+): number[] {
+  if (!Number.isInteger(cycleLength) || cycleLength < 1) return []
+  const pattern = weekendTimetables ? [1, 2, 3, 4, 5, 6, 0] : [1, 2, 3, 4, 5]
+  const out: number[] = []
+  for (let i = 0; i < cycleLength; i++) out.push(pattern[i % pattern.length])
+  return out
+}
+
 export const DEFAULT_TIMETABLE_CONFIG: TimetableConfig = {
   enabled: false,
   day1Starts: "",
   holidays: [],
   entries: [],
+  cycleLength: DEFAULT_CYCLE_LENGTH,
+  dayToWeekday: [...DEFAULT_DAY_TO_WEEKDAY_10],
+  weekendTimetables: DEFAULT_WEEKEND_TIMETABLES,
   viewSettings: { ...DEFAULT_VIEW_SETTINGS },
 }
 
-function isValidDayLabel(value: unknown): value is TimetableDayLabel {
-  return typeof value === "number" && value >= 1 && value <= 10 && Number.isInteger(value)
+/**
+ * Resolve the effective cycle length for a config. Falls back to the default
+ * (10) when the stored value is missing or invalid.
+ */
+export function getCycleLength(config: Pick<TimetableConfig, "cycleLength">): number {
+  const n = config.cycleLength
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 60) return DEFAULT_CYCLE_LENGTH
+  return n
+}
+
+/**
+ * Resolve the effective dayToWeekday mapping for a config. If the stored array
+ * is the wrong length or contains invalid weekdays, rebuild it from the
+ * default pattern at the right length.
+ */
+export function getDayToWeekday(
+  config: Pick<TimetableConfig, "cycleLength" | "dayToWeekday" | "weekendTimetables">,
+): number[] {
+  const cycleLength = getCycleLength(config)
+  const stored = config.dayToWeekday
+  if (Array.isArray(stored) && stored.length === cycleLength && stored.every((d) => Number.isInteger(d) && d >= 0 && d <= 6)) {
+    return stored
+  }
+  return defaultDayToWeekday(cycleLength, config.weekendTimetables ?? DEFAULT_WEEKEND_TIMETABLES)
+}
+
+/** Resolve the effective weekendTimetables setting. */
+export function getWeekendTimetables(
+  config: Pick<TimetableConfig, "weekendTimetables">,
+): boolean {
+  return config.weekendTimetables === true
+}
+
+function isValidDayLabel(value: unknown, cycleLength: number): value is TimetableDayLabel {
+  return typeof value === "number" && value >= 1 && value <= cycleLength && Number.isInteger(value)
 }
 
 export function getTimetableConfig(): TimetableConfig {
@@ -181,10 +242,19 @@ export function getTimetableConfig(): TimetableConfig {
     const raw = localStorage.getItem("focal-timetable-config")
     if (!raw) return DEFAULT_TIMETABLE_CONFIG
     const parsed = JSON.parse(raw) as Partial<Record<keyof TimetableConfig, unknown>>
+    const cycleLength = getCycleLength({ cycleLength: typeof parsed.cycleLength === "number" ? parsed.cycleLength : undefined })
+    const weekendTimetables = parsed.weekendTimetables === true
+    const dayToWeekday = (() => {
+      if (!Array.isArray(parsed.dayToWeekday)) return defaultDayToWeekday(cycleLength, weekendTimetables)
+      const stored = parsed.dayToWeekday.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+      // If the stored array was for an older cycle length, rebase it to the current one.
+      if (stored.length === cycleLength) return stored
+      return defaultDayToWeekday(cycleLength, weekendTimetables)
+    })()
     const rawEntries = Array.isArray(parsed.entries) ? parsed.entries : []
     const entries = rawEntries
       .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
-      .filter((e) => isValidDayLabel(e.dayLabel))
+      .filter((e) => isValidDayLabel(e.dayLabel, cycleLength))
       .map((e) => ({
         dayLabel: e.dayLabel as TimetableDayLabel,
         periods: Array.isArray(e.periods) ? e.periods : [],
@@ -195,7 +265,10 @@ export function getTimetableConfig(): TimetableConfig {
       day1Starts: typeof parsed.day1Starts === "string" ? parsed.day1Starts : "",
       holidays: Array.isArray(parsed.holidays) ? (parsed.holidays as TimetableConfig["holidays"]) : [],
       entries,
-      currentDayOverride: isValidDayLabel(parsed.currentDayOverride) ? parsed.currentDayOverride : null,
+      cycleLength,
+      dayToWeekday,
+      weekendTimetables,
+      currentDayOverride: isValidDayLabel(parsed.currentDayOverride, cycleLength) ? parsed.currentDayOverride : null,
       viewSettings: rawViewSettings
         ? {
             showAllDays: typeof rawViewSettings.showAllDays === "boolean" ? rawViewSettings.showAllDays : DEFAULT_VIEW_SETTINGS.showAllDays,

@@ -36,6 +36,9 @@ import {
 } from "@/lib/timetable";
 import {
   getTimetableConfig,
+  getCycleLength,
+  getDayToWeekday,
+  getWeekendTimetables,
   setTimetableConfig,
   setTimetableCurrentDayOverride,
 } from "@/lib/settings";
@@ -57,6 +60,31 @@ import type {
 } from "@/lib/types";
 
 // --- Helpers ---
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
+
+function dayLabelsInRange(start: number, count: number, cycleLength: number): TimetableDayLabel[] {
+  const out: TimetableDayLabel[] = []
+  for (let i = 0; i < count; i++) {
+    const label = ((start - 1 + i) % cycleLength) + 1
+    if (label < 1) continue
+    out.push(label as TimetableDayLabel)
+  }
+  return out
+}
+
+function allDayLabels(cycleLength: number): TimetableDayLabel[] {
+  return Array.from({ length: cycleLength }, (_, i) => (i + 1) as TimetableDayLabel)
+}
+
+/** Pick a grid column count that keeps the popover tight for any cycle length. */
+function dayPickerCols(cycleLength: number): string {
+  if (cycleLength <= 4) return "grid-cols-4"
+  if (cycleLength <= 6) return "grid-cols-5"
+  if (cycleLength <= 9) return "grid-cols-5"
+  if (cycleLength <= 12) return "grid-cols-6"
+  return "grid-cols-7"
+}
 
 function timeStringToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
@@ -104,10 +132,14 @@ function ViewSettingsPopover({
   viewSettings,
   onChange,
   isAutoBlock,
+  useBlockModel,
+  cycleLength,
 }: {
   viewSettings: TimetableViewSettings;
   onChange: (updated: Partial<TimetableViewSettings>) => void;
   isAutoBlock: number;
+  useBlockModel: boolean;
+  cycleLength: number;
 }) {
   return (
     <Popover>
@@ -140,12 +172,12 @@ function ViewSettingsPopover({
               )}
               role="checkbox"
               aria-checked={viewSettings.showAllDays}
-              aria-label="Show all 10 days"
+              aria-label={`Show all ${cycleLength} days`}
             >
               {viewSettings.showAllDays && <CheckSquare className="h-3 w-3" />}
             </button>
             <span className="flex-1 text-xs leading-tight">
-              Show all 10 days
+              Show all {cycleLength} days
             </span>
           </label>
         </div>
@@ -217,36 +249,43 @@ function ViewSettingsPopover({
           </label>
         </div>
 
-        {/* Week block section */}
-        <div className="space-y-2">
-          <p className="text-micro font-bold uppercase tracking-wider text-muted-foreground/60">
-            Week block
-          </p>
-          <div className="flex gap-1">
-            {([null, 1, 2] as const).map((block) => (
-              <button
-                key={block === null ? "auto" : `block-${block}`}
-                type="button"
-                onClick={() => onChange({ manualBlock: block })}
-                className={cn(
-                  "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
-                  viewSettings.manualBlock === block
-                    ? "border-primary/30 bg-primary/10 text-primary"
-                    : "border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
-                )}
-                aria-pressed={viewSettings.manualBlock === block}
-              >
-                {block === null
-                  ? "Auto"
-                  : `Block ${String.fromCharCode(64 + block)}`}
-              </button>
-            ))}
+        {/* Week block section — only meaningful for the default 10-day cycle */}
+        {useBlockModel ? (
+          <div className="space-y-2">
+            <p className="text-micro font-bold uppercase tracking-wider text-muted-foreground/60">
+              Week block
+            </p>
+            <div className="flex gap-1">
+              {([null, 1, 2] as const).map((block) => (
+                <button
+                  key={block === null ? "auto" : `block-${block}`}
+                  type="button"
+                  onClick={() => onChange({ manualBlock: block })}
+                  className={cn(
+                    "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
+                    viewSettings.manualBlock === block
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                  )}
+                  aria-pressed={viewSettings.manualBlock === block}
+                >
+                  {block === null
+                    ? "Auto"
+                    : `Block ${String.fromCharCode(64 + block)}`}
+                </button>
+              ))}
+            </div>
+            <p className="text-caption text-muted-foreground/50">
+              Auto = Block {String.fromCharCode(64 + isAutoBlock)} (Day{" "}
+              {isAutoBlock === 1 ? "1–5" : "6–10"})
+            </p>
           </div>
+        ) : (
           <p className="text-caption text-muted-foreground/50">
-            Auto = Block {String.fromCharCode(64 + isAutoBlock)} (Day{" "}
-            {isAutoBlock === 1 ? "1–5" : "6–10"})
+            Week blocks are a 10-day feature — your {cycleLength}-day cycle shows
+            all days at once.
           </p>
-        </div>
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -793,6 +832,7 @@ function DayHeader({
   onEdit,
   onToggleHide,
   onCopyTo,
+  dayToWeekday,
 }: {
   dayLabel: TimetableDayLabel;
   isToday: boolean;
@@ -801,7 +841,9 @@ function DayHeader({
   onEdit: () => void;
   onToggleHide: () => void;
   onCopyTo: (day: TimetableDayLabel) => void;
+  dayToWeekday: number[];
 }) {
+  const weekday = dayToWeekday[dayLabel - 1]
   return (
     <div className="mb-1.5 flex items-center justify-between px-2.5 pt-2.5">
       <div className="flex items-center gap-1">
@@ -824,6 +866,11 @@ function DayHeader({
           )}
         >
           Day {dayLabel}
+          {weekday !== undefined && (
+            <span className="ml-1 text-caption font-normal text-muted-foreground/60">
+              · {WEEKDAY_SHORT[weekday]}
+            </span>
+          )}
         </span>
         {isToday && isDayOverridden && (
           <Pin className="h-2.5 w-2.5 text-primary" aria-label="Pinned" />
@@ -858,25 +905,23 @@ function DayHeader({
             <p className="mb-1 px-1 text-caption font-medium text-muted-foreground/70">
               Copy Day {dayLabel} to…
             </p>
-            <div className="grid grid-cols-5 gap-1">
-              {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as TimetableDayLabel[]).map(
-                (d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => onCopyTo(d)}
-                    disabled={d === dayLabel}
-                    className={cn(
-                      "flex h-7 items-center justify-center rounded border text-xs font-medium transition-colors",
-                      d === dayLabel
-                        ? "border-border/30 bg-muted/30 text-muted-foreground/30 cursor-not-allowed"
-                        : "border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
-                    )}
-                  >
-                    {d}
-                  </button>
-                ),
-              )}
+            <div className={cn("grid gap-1", dayPickerCols(dayToWeekday.length))}>
+              {allDayLabels(dayToWeekday.length).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => onCopyTo(d)}
+                  disabled={d === dayLabel}
+                  className={cn(
+                    "flex h-7 items-center justify-center rounded border text-xs font-medium transition-colors",
+                    d === dayLabel
+                      ? "border-border/30 bg-muted/30 text-muted-foreground/30 cursor-not-allowed"
+                      : "border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                  )}
+                >
+                  {d}
+                </button>
+              ))}
             </div>
           </PopoverContent>
         </Popover>
@@ -907,6 +952,7 @@ function DayTimelineCard({
   use24Hour,
   showLocation,
   showBreaks,
+  dayToWeekday,
   onEditDay,
   onToggleHide,
   onCopyTo,
@@ -924,6 +970,7 @@ function DayTimelineCard({
   use24Hour?: boolean;
   showLocation?: boolean;
   showBreaks?: boolean;
+  dayToWeekday: number[];
   onEditDay: () => void;
   onToggleHide: () => void;
   onCopyTo: (day: TimetableDayLabel) => void;
@@ -973,6 +1020,7 @@ function DayTimelineCard({
         onEdit={onEditDay}
         onToggleHide={onToggleHide}
         onCopyTo={onCopyTo}
+        dayToWeekday={dayToWeekday}
       />
 
       {/* Timeline area */}
@@ -1085,10 +1133,21 @@ export const TimetableView = memo(function TimetableView({
     [config.viewSettings],
   );
 
+  const cycleLength = useMemo(() => getCycleLength(config), [config]);
+  const dayToWeekday = useMemo(() => getDayToWeekday(config), [config]);
+  const weekendTimetables = useMemo(() => getWeekendTimetables(config), [config]);
+  const allDaysList = useMemo(() => allDayLabels(cycleLength), [cycleLength]);
+
   const autoDayLabel = useMemo(() => {
     if (!config.enabled || !config.day1Starts) return null;
-    return getDayLabelForDate(now, config.day1Starts, config.holidays);
-  }, [config, now]);
+    return getDayLabelForDate(
+      now,
+      config.day1Starts,
+      config.holidays,
+      cycleLength,
+      weekendTimetables,
+    );
+  }, [config, now, cycleLength, weekendTimetables]);
 
   const currentDayLabel = useMemo<TimetableDayLabel | null>(() => {
     if (!config.enabled) return null;
@@ -1098,26 +1157,29 @@ export const TimetableView = memo(function TimetableView({
     return autoDayLabel;
   }, [config, autoDayLabel]);
 
+  // The 5+5 block model only makes sense for the default 10-day cycle.
+  // For other cycle lengths, fall back to showing all days.
+  const useBlockModel = cycleLength === 10;
+
   const effectiveBlock = useMemo(() => {
+    if (!useBlockModel) return 1;
     if (viewSettings.manualBlock !== null) return viewSettings.manualBlock;
     const cur = currentDayLabel;
     if (cur === null) return 1;
     return cur <= 5 ? 1 : 2;
-  }, [currentDayLabel, viewSettings.manualBlock]);
+  }, [currentDayLabel, viewSettings.manualBlock, useBlockModel]);
 
-  // If showAllDays, show all 10. Otherwise show only the current block.
+  // If showAllDays (or non-10-day cycle), show all. Otherwise show only the current block.
   const days = useMemo(() => {
     if (!config.enabled || config.entries.length === 0) return [];
-    const startDay = viewSettings.showAllDays
+    const showAll = viewSettings.showAllDays || !useBlockModel;
+    const startDay = showAll
       ? 1
       : effectiveBlock === 1
         ? 1
         : 6;
-    const count = viewSettings.showAllDays ? 10 : 5;
-    return Array.from(
-      { length: count },
-      (_, i) => (startDay + i) as TimetableDayLabel,
-    )
+    const count = showAll ? cycleLength : 5;
+    return dayLabelsInRange(startDay, count, cycleLength)
       .filter((d) => !viewSettings.hiddenDays.includes(d))
       .map((dayLabel) => {
         const entries = getTimetableEntriesForDay(dayLabel, config.entries);
@@ -1126,6 +1188,8 @@ export const TimetableView = memo(function TimetableView({
   }, [
     config,
     effectiveBlock,
+    useBlockModel,
+    cycleLength,
     viewSettings.showAllDays,
     viewSettings.hiddenDays,
   ]);
@@ -1249,12 +1313,14 @@ export const TimetableView = memo(function TimetableView({
   const showDayPicker = config.enabled && !!config.day1Starts;
   const showLiveStatus = showDayPicker && currentDayLabel !== null;
 
-  const blockLabel = viewSettings.showAllDays
-    ? "All 10 days"
+  const currentDayWeekday = currentDayLabel !== null ? dayToWeekday[currentDayLabel - 1] : undefined;
+
+  const blockLabel = viewSettings.showAllDays || !useBlockModel
+    ? `All ${cycleLength} days`
     : `Block ${String.fromCharCode(64 + effectiveBlock)}`;
 
-  const blockDaysLabel = viewSettings.showAllDays
-    ? "Days 1–10"
+  const blockDaysLabel = viewSettings.showAllDays || !useBlockModel
+    ? `Days 1–${cycleLength}`
     : effectiveBlock === 1
       ? "Days 1–5"
       : "Days 6–10";
@@ -1288,14 +1354,14 @@ export const TimetableView = memo(function TimetableView({
                         <button
                           type="button"
                           className={cn(
-                            "inline-flex items-center gap-1 rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring",
+                            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:bg-accent/40",
                             isDayOverridden && "text-primary",
                           )}
                           aria-label="Set current day"
                         >
                           <span className="font-medium">
                             {currentDayLabel !== null
-                              ? `Day ${currentDayLabel}`
+                              ? `Day ${currentDayLabel}${currentDayWeekday !== undefined ? ` · ${WEEKDAY_SHORT[currentDayWeekday]}` : ""}`
                               : "No day"}
                           </span>
                           {isDayOverridden ? (
@@ -1317,37 +1383,44 @@ export const TimetableView = memo(function TimetableView({
                             {isDayOverridden
                               ? "Pinned to a specific cycle day."
                               : autoDayLabel === null
-                                ? "Pick a day to override the holiday auto-detection."
+                                ? weekendTimetables
+                                  ? "Today is a holiday. Pick a day to pin."
+                                  : "Today is a weekend (no class) or a holiday. Pick a day to pin."
                                 : "Pick any day to pin the timetable to it."}
                           </p>
                         </div>
-                        <div className="grid grid-cols-5 gap-1">
-                          {(
-                            [
-                              1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-                            ] as TimetableDayLabel[]
-                          ).map((d) => {
+                        <div className={cn("grid gap-1", dayPickerCols(cycleLength))}>
+                          {allDaysList.map((d) => {
                             const isSelected = currentDayLabel === d;
                             const isAuto = autoDayLabel === d;
+                            const wd = dayToWeekday[d - 1];
                             return (
                               <button
                                 key={d}
                                 type="button"
                                 onClick={() => handleSetDay(d)}
                                 className={cn(
-                                  "relative flex h-8 items-center justify-center rounded-md border text-xs font-semibold transition-colors",
+                                  "relative flex h-9 flex-col items-center justify-center rounded-md border text-xs font-semibold transition-colors",
                                   isSelected
                                     ? "border-primary bg-primary/10 text-primary"
                                     : "border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
                                 )}
                                 aria-pressed={isSelected}
                               >
-                                {d}
+                                <span className="tabular-nums leading-none">{d}</span>
+                                {wd !== undefined && (
+                                  <span className="mt-0.5 text-caption font-normal text-muted-foreground/60 leading-none">
+                                    {WEEKDAY_SHORT[wd]}
+                                  </span>
+                                )}
                                 {isAuto && (
-                                  <span
-                                    className="absolute -bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-muted-foreground/40"
-                                    aria-hidden
-                                  />
+                                  <>
+                                    <span
+                                      className="absolute -bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary/70"
+                                      aria-hidden
+                                    />
+                                    <span className="sr-only">, current cycle day</span>
+                                  </>
                                 )}
                               </button>
                             );
@@ -1372,14 +1445,19 @@ export const TimetableView = memo(function TimetableView({
                         </span>
                         {todayPeriods.length} period
                         {todayPeriods.length !== 1 ? "s" : ""}
+                        {weekendTimetables && (
+                          <span className="ml-1.5 inline-flex items-center gap-1 rounded-sm bg-primary/10 px-1.5 py-px text-caption font-medium text-primary/80">
+                            weekends on
+                          </span>
+                        )}
                       </>
                     )}
                   </p>
-                ) : (
-                  <p className="mt-px text-micro text-muted-foreground">
-                    {blockLabel} · {blockDaysLabel}
-                  </p>
-                )}
+            ) : (
+              <p className="mt-px text-micro text-muted-foreground">
+                {blockLabel} · {blockDaysLabel}
+              </p>
+            )}
               </div>
             </div>
 
@@ -1390,6 +1468,8 @@ export const TimetableView = memo(function TimetableView({
                 isAutoBlock={
                   currentDayLabel === null ? 1 : currentDayLabel <= 5 ? 1 : 2
                 }
+                useBlockModel={useBlockModel}
+                cycleLength={cycleLength}
               />
               <Button
                 variant="outline"
@@ -1439,7 +1519,7 @@ export const TimetableView = memo(function TimetableView({
               </p>
               <p className="mb-3 max-w-xs text-micro text-muted-foreground">
                 Upload a photo of your school timetable and AI will parse it
-                into a native 10-day cycle (Mon–Fri, weekends skipped).
+                into a custom cycle. Default: 10 days (Mon–Fri, then Mon–Fri again).
               </p>
               <Button
                 size="sm"
@@ -1480,10 +1560,10 @@ export const TimetableView = memo(function TimetableView({
 
               {/* Day timeline grid */}
               <motion.div
-                key={`timeline-grid-${viewSettings.showAllDays ? "all" : effectiveBlock}`}
+                key={`timeline-grid-${viewSettings.showAllDays || !useBlockModel ? "all" : effectiveBlock}-${cycleLength}`}
                 className={cn(
                   "grid grid-cols-1 gap-2",
-                  viewSettings.showAllDays
+                  (viewSettings.showAllDays || !useBlockModel) && cycleLength > 5
                     ? "min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5"
                     : "min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5",
                 )}
@@ -1506,6 +1586,7 @@ export const TimetableView = memo(function TimetableView({
                     use24Hour={viewSettings.use24Hour}
                     showLocation={viewSettings.showLocations}
                     showBreaks={viewSettings.showBreaks}
+                    dayToWeekday={dayToWeekday}
                     onEditDay={() => {
                       setEditDayLabel(dayLabel);
                       setEditDayOpen(true);

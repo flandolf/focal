@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
+import { getTimetableConfig, setTimetableConfig, getDayToWeekday } from "@/lib/settings"
 import { type TimetableEntry, type TimetableDayLabel, VCE_SUBJECTS } from "@/lib/types"
 import { getTimetableEntriesForDay } from "@/lib/timetable"
 import { cn, formatTime12 } from "@/lib/utils"
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 
 const PERIOD_NAME_SUGGESTIONS = [
   "Period 1", "Period 2", "Period 3", "Period 4", "Period 5", "Period 6", "Period 7",
@@ -512,13 +514,13 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
       <div className="flex items-start gap-2">
         {/* Index + reorder */}
         <div className="flex shrink-0 flex-col items-center gap-0 pt-0.5">
-          <span className="text-caption font-medium text-muted-foreground/30">{index + 1}</span>
+          <span className="text-caption font-medium text-muted-foreground/50 tabular-nums">{index + 1}</span>
           <div className="flex flex-col gap-0">
             <button
               type="button"
               onClick={() => onMove(-1)}
               disabled={index === 0}
-              className="flex h-3 w-4 items-center justify-center rounded text-muted-foreground/30 hover:text-muted-foreground disabled:opacity-15"
+              className="flex h-3 w-4 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground focus-visible:text-foreground disabled:opacity-30"
               aria-label="Move up"
             >
               <ChevronUp className="h-2.5 w-2.5" />
@@ -527,7 +529,7 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
               type="button"
               onClick={() => onMove(1)}
               disabled={index === total - 1}
-              className="flex h-3 w-4 items-center justify-center rounded text-muted-foreground/30 hover:text-muted-foreground disabled:opacity-15"
+              className="flex h-3 w-4 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground focus-visible:text-foreground disabled:opacity-30"
               aria-label="Move down"
             >
               <ChevronDown className="h-2.5 w-2.5" />
@@ -555,7 +557,7 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
 
           <div className="flex items-center gap-2">
             <TimePicker value={period.startTime} onChange={(v) => onUpdate("startTime", v)} label="Start time" />
-            <span className="text-xs text-muted-foreground/30">–</span>
+            <span className="text-xs text-muted-foreground/50" aria-hidden>–</span>
             <TimePicker value={period.endTime} onChange={(v) => onUpdate("endTime", v)} label="End time" />
 
             <button
@@ -580,7 +582,7 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
           <button
             type="button"
             onClick={onDuplicate}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-accent hover:text-muted-foreground"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground focus-visible:text-foreground"
             aria-label="Duplicate period"
           >
             <Copy className="h-3 w-3" />
@@ -588,7 +590,7 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
           <button
             type="button"
             onClick={onDelete}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-destructive/10 hover:text-destructive"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:text-foreground"
             aria-label="Delete period"
           >
             <Trash2 className="h-3 w-3" />
@@ -598,7 +600,7 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
 
       {/* Break hint */}
       {period.isBreak && !invalid && (
-        <p className="mt-1.5 pl-7 text-caption text-amber-600/60 dark:text-amber-400/50">
+        <p className="mt-1.5 pl-7 text-caption text-amber-800 dark:text-amber-300/90">
           Marked as a break — subject and room are optional.
         </p>
       )}
@@ -730,11 +732,21 @@ export function InlineEditDayDialog({
     onOpenChange(false)
   }, [periods, dayLabel, config, onOpenChange, hasInvalidPeriods])
 
+  const dayToWeekday = getDayToWeekday(config)
+  const weekday = dayToWeekday[dayLabel - 1]
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[calc(100dvh-8rem)] w-[calc(100vw-1rem)] max-w-xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
         <DialogHeader className="shrink-0 border-b px-5 pb-3.5 pt-4">
-          <DialogTitle className="text-base">Edit Day {dayLabel}</DialogTitle>
+          <DialogTitle className="text-base">
+            Edit Day {dayLabel}
+            {weekday !== undefined && (
+              <span className="ml-1.5 text-sm font-normal text-muted-foreground/80">
+                · {WEEKDAY_SHORT[weekday]}
+              </span>
+            )}
+          </DialogTitle>
         </DialogHeader>
 
         <DialogBody className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5">
@@ -750,9 +762,9 @@ export function InlineEditDayDialog({
 
           {/* Empty state */}
           {periods.length === 0 && (
-            <div className="rounded-xl border border-dashed border-border/50 bg-muted/15 px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground/60">No periods.</p>
-              <p className="mt-1 text-xs text-muted-foreground/50">Add a period or save to remove this day.</p>
+            <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground/70">No periods.</p>
+              <p className="mt-1 text-xs text-muted-foreground/60">Add a period or save to remove this day.</p>
             </div>
           )}
 

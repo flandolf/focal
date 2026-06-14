@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getTimetableConfig, setTimetableConfig } from "@/lib/settings"
+import { getTimetableConfig, setTimetableConfig, getCycleLength, getDayToWeekday, getWeekendTimetables } from "@/lib/settings"
 import { aiEditTimetable, type TimetableAiEditDraft, type TimetableAiEditResult } from "@/lib/timetable"
 import { cn } from "@/lib/utils"
 import { VCE_SUBJECTS } from "@/lib/types"
@@ -95,7 +95,7 @@ function AiPeriodRow({
         <button
           type="button"
           onClick={onDelete}
-          className="ml-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="ml-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:text-foreground"
           aria-label="Remove period"
         >
           <Trash2 className="h-3 w-3" />
@@ -107,6 +107,8 @@ function AiPeriodRow({
 
 // --- Day entry card ---
 
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
+
 function AiEntryCard({
   draft,
   duplicate,
@@ -116,6 +118,8 @@ function AiEntryCard({
   onUpdatePeriod,
   onDeletePeriod,
   onAddPeriod,
+  cycleLength,
+  dayToWeekday,
 }: {
   draft: TimetableAiEditDraft & { id: string; approved: boolean }
   duplicate?: boolean
@@ -125,6 +129,8 @@ function AiEntryCard({
   onUpdatePeriod: (periodIdx: number, field: string, value: string) => void
   onDeletePeriod: (periodIdx: number) => void
   onAddPeriod: () => void
+  cycleLength: number
+  dayToWeekday: number[]
 }) {
   const [expanded, setExpanded] = useState(true)
 
@@ -136,7 +142,7 @@ function AiEntryCard({
           ? "border-amber-400/50 bg-amber-50/30 dark:border-amber-800/50 dark:bg-amber-950/20"
           : draft.approved
             ? "border-border/70 bg-background/50"
-            : "border-destructive/25 bg-destructive/4",
+            : "border-destructive/30 bg-destructive/5",
       )}
     >
       {/* Header row */}
@@ -148,7 +154,7 @@ function AiEntryCard({
             "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
             draft.approved
               ? "border-primary bg-primary text-primary-foreground"
-              : "border-muted-foreground/30",
+              : "border-muted-foreground/50",
           )}
           aria-label={draft.approved ? "Exclude day" : "Include day"}
         >
@@ -160,20 +166,25 @@ function AiEntryCard({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-              <SelectItem key={d} value={String(d)}>Day {d}</SelectItem>
+            {Array.from({ length: cycleLength }, (_, i) => i + 1).map((d) => (
+              <SelectItem key={d} value={String(d)}>
+                Day {d}
+                {dayToWeekday[d - 1] !== undefined
+                  ? ` · ${WEEKDAY_SHORT[dayToWeekday[d - 1]]}`
+                  : ""}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        <span className="ml-auto text-micro tabular-nums text-muted-foreground/60">
+        <span className="ml-auto text-micro tabular-nums text-muted-foreground/70">
           {draft.periods.length} {draft.periods.length === 1 ? "period" : "periods"}
         </span>
 
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-accent"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:text-foreground"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -182,7 +193,7 @@ function AiEntryCard({
         <button
           type="button"
           onClick={onDeleteDay}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:text-foreground"
           aria-label="Remove day entry"
         >
           <Trash2 className="h-3 w-3" />
@@ -294,6 +305,10 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
     setEditableDay1(res.day1Starts)
   }, [])
 
+  const cycleLength = getCycleLength(config)
+  const dayToWeekday = getDayToWeekday(config)
+  const weekendTimetables = getWeekendTimetables(config)
+
   const handleGenerate = async () => {
     if (!instruction.trim()) return
     setLoading(true)
@@ -327,8 +342,11 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
     // If multiple entries target the same day, keep the first approved one and discard the rest
     // so we never write two entries with the same dayLabel (which would corrupt the data).
     const approved = editableEntries.filter((e) => e.approved)
+    // Clamp day labels to the configured cycle length so out-of-range labels
+    // returned by the AI don't leak into storage.
+    const inRange = approved.filter((e) => e.dayLabel >= 1 && e.dayLabel <= cycleLength)
     const seen = new Set<TimetableDayLabel>()
-    const deduped = approved.filter((e) => {
+    const deduped = inRange.filter((e) => {
       if (seen.has(e.dayLabel)) return false
       seen.add(e.dayLabel)
       return true
@@ -339,6 +357,9 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
       day1Starts: editableDay1,
       holidays: result?.holidays ?? config.holidays,
       entries,
+      cycleLength,
+      dayToWeekday: [...dayToWeekday],
+      weekendTimetables,
     }
     setTimetableConfig(updated)
     window.dispatchEvent(new Event("focal-timetable-updated"))
@@ -421,7 +442,7 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
         <DialogBody className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
           {/* Error banner */}
           {error && (
-            <p className="flex items-center gap-2 rounded-lg bg-destructive/8 px-3 py-2 text-xs text-destructive">
+            <p className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               {error}
             </p>
@@ -447,7 +468,7 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
                 <label className="text-sm font-medium leading-none" htmlFor="ai-instruction">
                   What would you like to change?
                 </label>
-                <p className="text-xs text-muted-foreground/60">
+                <p className="text-xs text-muted-foreground/70">
                   Describe the changes in natural language. For example: <em>"Swap English and Chemistry on Day 2"</em>,{" "}
                   <em>"Add Maths Methods Period 3 on Day 4"</em>,{" "}
                   <em>"Remove Period 2 from Day 5"</em>.
@@ -477,7 +498,7 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
                       <ul className="mt-1.5 space-y-0.5">
                         {diffSummary.map((change, i) => (
                           <li key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 shrink-0" />
+                            <span className="h-1 w-1 rounded-full bg-muted-foreground/50 shrink-0" />
                             {change}
                           </li>
                         ))}
@@ -506,7 +527,7 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
                   <div className="space-y-2">
                     {editableEntries.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16 text-center">
-                        <p className="text-sm text-muted-foreground/60">No days in the proposed timetable.</p>
+                        <p className="text-sm text-muted-foreground/70">No days in the proposed timetable.</p>
                       </div>
                     ) : (
                       editableEntries.map((draft) => (
@@ -520,6 +541,8 @@ export function TimetableAiEditor({ open, onOpenChange, customSubjects = [] }: T
                           onUpdatePeriod={(idx, field, value) => updatePeriod(draft.id, idx, field, value)}
                           onDeletePeriod={(idx) => deletePeriod(draft.id, idx)}
                           onAddPeriod={() => addPeriod(draft.id)}
+                          cycleLength={cycleLength}
+                          dayToWeekday={dayToWeekday}
                         />
                       ))
                     )}

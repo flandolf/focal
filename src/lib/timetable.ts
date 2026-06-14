@@ -347,9 +347,10 @@ function countWeekdaysBetween(start: Date, end: Date): number {
 }
 
 /**
- * Compute the day label (1–10) for a given date based on the configured day-1 start date.
- * Counts only weekdays (Mon–Fri) — weekends are skipped so day 6 naturally falls on
- * Monday of the following week.
+ * Compute the day label (1..cycleLength) for a given date based on the configured day-1 start date.
+ * When `weekendTimetables` is false (default), weekends (Sat/Sun) are skipped and the function
+ * returns null. When true, all 7 days count toward the cycle so Saturday/Sunday have their own
+ * day-labels according to dayToWeekday.
  * Returns null if the date falls within a holiday period, or before day-1 starts.
  *
  * Uses local-date arithmetic so behaviour is consistent across timezones — VCE schools
@@ -359,6 +360,8 @@ export function getDayLabelForDate(
   date: Date,
   day1Starts: string,
   holidays: SchoolHoliday[],
+  cycleLength: number = 10,
+  weekendTimetables: boolean = false,
 ): TimetableDayLabel | null {
   if (isDateInHoliday(date, holidays)) return null
 
@@ -372,9 +375,16 @@ export function getDayLabelForDate(
   const diffDays = Math.round((dateLocal.getTime() - startLocal.getTime()) / msPerDay)
   if (diffDays < 0) return null
 
-  // Count only weekdays so weekends are skipped
-  const weekdayCount = countWeekdaysBetween(startLocal, dateLocal)
-  return ((weekdayCount % 10) + 1) as TimetableDayLabel
+  // When weekend timetables are off, Sat(6)/Sun(0) are not school days.
+  if (!weekendTimetables && (dateLocal.getDay() === 0 || dateLocal.getDay() === 6)) return null
+
+  // Count school days since day1Starts. When weekend timetables are on, count
+  // every day; otherwise only Mon–Fri.
+  const schoolDayCount = weekendTimetables
+    ? diffDays
+    : countWeekdaysBetween(startLocal, dateLocal)
+  const length = Number.isInteger(cycleLength) && cycleLength >= 1 ? cycleLength : 10
+  return ((schoolDayCount % length) + 1) as TimetableDayLabel
 }
 
 /**
