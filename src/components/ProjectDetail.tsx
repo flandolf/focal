@@ -206,12 +206,12 @@ export const ProjectDetail = memo(function ProjectDetail({
     }
   }, [project.folder_path, selectedSubfolder, loadFiles, onFilesChanged])
 
-  const handleAddFiles = async () => {
+  const handleAddFiles = useCallback(async () => {
     const count = await addFiles(selectedSubfolder === "__root__" ? null : selectedSubfolder)
     if (count) {
       onFilesChanged()
     }
-  }
+  }, [addFiles, selectedSubfolder, onFilesChanged])
 
   const handleCreateFolder = useCallback(async () => {
     try {
@@ -251,7 +251,7 @@ export const ProjectDetail = memo(function ProjectDetail({
     }
   }, [files, project.folder_path, selectedSubfolder, loadFiles, onFilesChanged])
 
-  const handleOpenFolder = async () => {
+  const handleOpenFolder = useCallback(async () => {
     try {
       const projectsDir = await invoke<string>("get_projects_directory")
       const folderPath = selectedSubfolder && selectedSubfolder !== "__root__"
@@ -261,53 +261,53 @@ export const ProjectDetail = memo(function ProjectDetail({
     } catch (e) {
       notifyProjectActionError("Could not open folder", e)
     }
-  }
+  }, [project.folder_path, selectedSubfolder])
 
-  const handleOpenFile = async (file: { path: string }) => {
+  const handleOpenFile = useCallback(async (file: { path: string }) => {
     try {
       await openPath(file.path)
     } catch (e) {
       notifyProjectActionError("Could not open file", e)
     }
-  }
+  }, [])
 
-  const handleRenameFile = async (file: FileInfo, newName: string) => {
+  const handleRenameFile = useCallback(async (file: FileInfo, newName: string) => {
     try {
       await renameFile(file.path, newName)
       onFilesChanged()
     } catch (e) {
       notifyProjectActionError("Could not rename file", e)
     }
-  }
+  }, [renameFile, onFilesChanged])
 
-  const handleRemoveTag = async (file: FileInfo, tag: FileTag) => {
+  const handleRemoveTag = useCallback(async (file: FileInfo, tag: FileTag) => {
     try {
       await removeFileTag(file.path, tag)
       onFilesChanged()
     } catch (e) {
       notifyProjectActionError("Could not remove tag", e)
     }
-  }
+  }, [removeFileTag, onFilesChanged])
 
-  const handleAddTag = async (file: FileInfo, tag: FileTag) => {
+  const handleAddTag = useCallback(async (file: FileInfo, tag: FileTag) => {
     try {
       await addFileTags([file.path], [tag])
       onFilesChanged()
     } catch (e) {
       notifyProjectActionError("Could not add tag", e)
     }
-  }
+  }, [addFileTags, onFilesChanged])
 
-  const handleToggleFavorite = async (file: FileInfo) => {
+  const handleToggleFavorite = useCallback(async (file: FileInfo) => {
     try {
       await toggleFavorite(file.path)
       onFilesChanged()
     } catch (e) {
       notifyProjectActionError("Could not update favorite", e)
     }
-  }
+  }, [toggleFavorite, onFilesChanged])
 
-  const handleShowInFinder = async (file: FileInfo) => {
+  const handleShowInFinder = useCallback(async (file: FileInfo) => {
     try {
       const lastSep = Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\"))
       const parentFolder = lastSep >= 0 ? file.path.substring(0, lastSep) : file.path
@@ -315,17 +315,17 @@ export const ProjectDetail = memo(function ProjectDetail({
     } catch (e) {
       notifyProjectActionError("Could not show file in folder", e)
     }
-  }
+  }, [])
 
-  const handleCopyPath = async (file: FileInfo) => {
+  const handleCopyPath = useCallback(async (file: FileInfo) => {
     try {
       await navigator.clipboard.writeText(file.path)
     } catch (e) {
       notifyProjectActionError("Could not copy path", e)
     }
-  }
+  }, [])
 
-  const handleMoveFile = async (file: FileInfo, destSubfolder: string) => {
+  const handleMoveFile = useCallback(async (file: FileInfo, destSubfolder: string) => {
     try {
       const projectsDir = await invoke<string>("get_projects_directory")
       const destFolder = await join(projectsDir, project.folder_path, destSubfolder)
@@ -334,9 +334,9 @@ export const ProjectDetail = memo(function ProjectDetail({
     } catch (e) {
       notifyProjectActionError("Could not move file", e)
     }
-  }
+  }, [moveFileToFolder, project.folder_path, onFilesChanged])
 
-  const handleBulkTag = async (tag: FileTag) => {
+  const handleBulkTag = useCallback(async (tag: FileTag) => {
     if (selectedFiles.size === 0) return
     try {
       await addFileTags(Array.from(selectedFiles), [tag])
@@ -345,9 +345,9 @@ export const ProjectDetail = memo(function ProjectDetail({
     } catch (e) {
       notifyProjectActionError("Could not tag selected files", e)
     }
-  }
+  }, [addFileTags, selectedFiles, onFilesChanged])
 
-  const handleBulkMove = async (destSubfolder: string) => {
+  const handleBulkMove = useCallback(async (destSubfolder: string) => {
     if (selectedFiles.size === 0) return
     const projectsDir = await invoke<string>("get_projects_directory")
     const destFolder = await join(projectsDir, project.folder_path, destSubfolder)
@@ -373,7 +373,7 @@ export const ProjectDetail = memo(function ProjectDetail({
     if (failed > 0) {
       toast.error(`Could not move ${failed} file${failed === 1 ? "" : "s"}`)
     }
-  }
+  }, [moveFileToFolder, project.folder_path, selectedFiles, onFilesChanged])
 
   const handleFolderTagAll = useCallback(async (folderPath: string, tag: FileTag) => {
     const pathsToTag = files
@@ -553,26 +553,28 @@ export const ProjectDetail = memo(function ProjectDetail({
     return items
   }, [folderItems, filteredFiles, removedFileItems, sortKey, sortAsc])
 
-  const handleFileSelectionChange = (file: FileInfo, selected: boolean) => {
-    const newSelected = new Set(selectedFiles)
-    if (selected) {
-      newSelected.add(file.path)
-    } else {
-      newSelected.delete(file.path)
-    }
-    setSelectedFiles(newSelected)
-  }
+  const handleFileSelectionChange = useCallback((file: FileInfo, selected: boolean) => {
+    setSelectedFiles((prev) => {
+      const newSelected = new Set(prev)
+      if (selected) {
+        newSelected.add(file.path)
+      } else {
+        newSelected.delete(file.path)
+      }
+      return newSelected
+    })
+  }, [setSelectedFiles])
 
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     const allPaths = new Set(filteredFiles.map((f) => f.path))
     setSelectedFiles(allPaths)
-  }
+  }, [filteredFiles])
 
-  const handleClearSelection = () => {
+  const handleClearSelection = useCallback(() => {
     setSelectedFiles(new Set())
-  }
+  }, [])
 
-  const handleDeleteSelected = async () => {
+  const handleDeleteSelected = useCallback(async () => {
     if (selectedFiles.size === 0) return
     const confirmed = await confirmDestructiveAction({
       title: `Delete ${selectedFiles.size} file${selectedFiles.size > 1 ? "s" : ""}?`,
@@ -595,7 +597,7 @@ export const ProjectDetail = memo(function ProjectDetail({
     } catch {
       // toast.promise already surfaces the error
     }
-  }
+  }, [selectedFiles, deleteFiles, onFilesChanged])
 
   const hasChecklist = onUpdateNotes && onAddChecklistItem && onToggleChecklistItem && onRemoveChecklistItem
   const hasDependencies = onAddDependency && onRemoveDependency && onOpenProject && availableProjects

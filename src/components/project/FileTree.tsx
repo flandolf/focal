@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from "react"
+import { memo, useRef, useCallback, useEffect, useState } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, LayoutList, FolderPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -64,7 +64,7 @@ interface FileTreeProps {
   removedFiles?: FileInfo[]
 }
 
-export function FileTree({
+export const FileTree = memo(function FileTree({
   files,
   loading,
   listItems,
@@ -439,7 +439,7 @@ export function FileTree({
 
     </>
   )
-}
+})
 
 const ESTIMATED_ROW_HEIGHT = 48
 
@@ -462,7 +462,7 @@ interface VirtualFileListProps {
   removedFiles?: FileInfo[]
 }
 
-function VirtualFileList({
+const VirtualFileList = memo(function VirtualFileList({
   listItems,
   selectedFiles,
   onOpenFile,
@@ -680,4 +680,4 @@ function VirtualFileList({
       </div>
     </div>
   )
-}
+})
