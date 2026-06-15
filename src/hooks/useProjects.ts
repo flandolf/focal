@@ -140,30 +140,54 @@ export function useProjects() {
 
   const updateProject = useCallback(async (
     id: string,
-    updates: Partial<Omit<Project, "id" | "created_at" | "folder_path">>
+    updates: Partial<Omit<Project, "id" | "created_at">>
   ) => {
-    const current = projectsRef.current.find((p) => p.id === id)
+    const updated = projectsRef.current.map((p) =>
+      p.id === id
+        ? { ...p, ...updates, updated_at: new Date().toISOString() }
+        : p
+    )
+    await saveProjects(updated)
+    const project = updated.find((p) => p.id === id)
+    if (project) void recordLocalUpsert("projects", project)
+  }, [projectsRef, saveProjects])
 
-    // If the name changed, rename the folder on disk and update folder_path
-    let folderPathOverride: string | undefined
-    if (current && updates.name && updates.name !== current.name) {
-      const sanitised = sanitiseFolderName(updates.name)
-      if (sanitised && sanitised !== current.folder_path) {
-        try {
-          await invoke("rename_project_folder", {
-            oldName: current.folder_path,
-            newName: sanitised,
-          })
-        } catch (e) {
-          console.warn("Failed to rename project folder on disk:", e)
-        }
-      }
-      folderPathOverride = sanitised || current.folder_path
+  const renameProjectFolder = useCallback(async (id: string, newName: string) => {
+    const current = projectsRef.current.find((p) => p.id === id)
+    if (!current) throw new Error("Project not found")
+
+    const sanitised = sanitiseFolderName(newName)
+    if (!sanitised) throw new Error("Invalid folder name")
+    if (sanitised === current.folder_path) return
+
+    try {
+      await invoke("rename_project_folder", {
+        oldName: current.folder_path,
+        newName: sanitised,
+      })
+    } catch (e) {
+      console.warn("Failed to rename project folder on disk:", e)
+      throw e
     }
 
     const updated = projectsRef.current.map((p) =>
       p.id === id
-        ? { ...p, ...updates, ...(folderPathOverride ? { folder_path: folderPathOverride } : {}), updated_at: new Date().toISOString() }
+        ? { ...p, folder_path: sanitised, updated_at: new Date().toISOString() }
+        : p
+    )
+    await saveProjects(updated)
+    const project = updated.find((p) => p.id === id)
+    if (project) void recordLocalUpsert("projects", project)
+  }, [projectsRef, saveProjects])
+
+  const changeProjectFolder = useCallback(async (id: string, newFolderPath: string) => {
+    const current = projectsRef.current.find((p) => p.id === id)
+    if (!current) throw new Error("Project not found")
+    if (newFolderPath === current.folder_path) return
+
+    const updated = projectsRef.current.map((p) =>
+      p.id === id
+        ? { ...p, folder_path: newFolderPath, updated_at: new Date().toISOString() }
         : p
     )
     await saveProjects(updated)
@@ -509,6 +533,8 @@ export function useProjects() {
     error,
     addProject,
     updateProject,
+    renameProjectFolder,
+    changeProjectFolder,
     deleteProject,
     restoreProject,
     duplicateProject,

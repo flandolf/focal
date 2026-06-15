@@ -8,13 +8,14 @@ interface ConfirmActionOptions {
   duration?: number
 }
 
-export function confirmDestructiveAction({
+export function confirmAction({
   title,
   description,
   actionLabel,
-  cancelLabel = "Keep",
+  cancelLabel = "Cancel",
   duration = 10000,
-}: ConfirmActionOptions) {
+  variant = "info",
+}: ConfirmActionOptions & { variant?: "info" | "warning" }) {
   return new Promise<boolean>((resolve) => {
     let settled = false
     const toastId = `confirm-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -26,7 +27,9 @@ export function confirmDestructiveAction({
       resolve(confirmed)
     }
 
-    toast.warning(title, {
+    const toastFn = variant === "warning" ? toast.warning : toast.info
+
+    toastFn(title, {
       id: toastId,
       description,
       duration,
@@ -42,4 +45,14 @@ export function confirmDestructiveAction({
       onAutoClose: () => settle(false),
     })
   })
+}
+
+export function confirmDestructiveAction({
+  title,
+  description,
+  actionLabel,
+  cancelLabel = "Keep",
+  duration = 10000,
+}: ConfirmActionOptions) {
+  return confirmAction({ title, description, actionLabel, cancelLabel, duration, variant: "warning" })
 }

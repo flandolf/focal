@@ -16,8 +16,9 @@ import { useNotionSync } from "@/hooks/useNotionSync"
 import { useSupabaseAuth } from "@/hooks/useSupabaseAuth"
 import { useSupabaseSync } from "@/hooks/useSupabaseSync"
 import { useTheme } from "@/lib/themes"
-import { confirmDestructiveAction } from "@/lib/confirmToast"
+import { confirmDestructiveAction, confirmAction } from "@/lib/confirmToast"
 import { showUndoToast } from "@/lib/undoToast"
+import { sanitiseFolderName } from "@/lib/utils"
 import { getNotionCalendarSettings, getTimetableConfig, getProjectsRootPath } from "@/lib/settings"
 import { isPomodoroSession, getPomodoroDescription, getPomodoroNotes, getPomodoroTitle, POMODORO_DESCRIPTION_PREFIX, getAdjacentPomodoroSession, getUniqueStrings, getUniqueArrayItems } from "@/lib/pomodoro"
 import { deleteNotionPage } from "@/lib/notion/api"
@@ -195,7 +196,7 @@ function App() {
     }
   }, [])
 
-  const { projects, addProject, updateProject, deleteProject, restoreProject, duplicateProject, bulkArchive, bulkUnarchive, bulkFinish, bulkDelete, addChecklistItem, toggleChecklistItem, removeChecklistItem, addDependency, removeDependency, getTemplates, saveAsTemplate, deleteTemplate, loadFromTemplate, scanAndImportProjects, linkFolderAsProject } = useProjects()
+  const { projects, addProject, updateProject, renameProjectFolder, changeProjectFolder, deleteProject, restoreProject, duplicateProject, bulkArchive, bulkUnarchive, bulkFinish, bulkDelete, addChecklistItem, toggleChecklistItem, removeChecklistItem, addDependency, removeDependency, getTemplates, saveAsTemplate, deleteTemplate, loadFromTemplate, scanAndImportProjects, linkFolderAsProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
   const { events, loading: eventsLoading, addEvent, addEvents, updateEvent, updateEvents, deleteEvent, deleteEvents, restoreEvent, restoreEvents, updateAndDeleteEvents, syncEvents } = useEvents()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -578,13 +579,37 @@ function App() {
       isFinished?: boolean
     }
   ) => {
+    const project = projects.find((p) => p.id === id)
+    const nameChanged = project && data.name !== project.name
+
     try {
       await updateProject(id, data)
       toast.success(`Assessment updated`)
+
+      if (nameChanged && project) {
+        const sanitised = sanitiseFolderName(data.name)
+        if (sanitised && sanitised !== project.folder_path) {
+          const confirmed = await confirmAction({
+            title: `Rename folder to "${sanitised}"?`,
+            description: `The folder on disk is currently "${project.folder_path}".`,
+            actionLabel: "Rename",
+            cancelLabel: "Keep",
+            duration: 15000,
+          })
+          if (confirmed) {
+            try {
+              await renameProjectFolder(id, data.name)
+              toast.success("Folder renamed")
+            } catch (e) {
+              toast.error(`Failed to rename folder: ${String(e)}`)
+            }
+          }
+        }
+      }
     } catch (e) {
       toast.error(`Failed to update assessment: ${String(e)}`)
     }
-  }, [updateProject])
+  }, [projects, updateProject, renameProjectFolder])
 
   const handleDeleteProject = useCallback(async (id: string) => {
     const project = projects.find((p) => p.id === id)
@@ -1426,6 +1451,30 @@ function App() {
     }
   }, [selectedProject, selectedProjectSessions])
 
+  const handleChangeProjectFolder = useCallback(async (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId)
+    if (!project) return
+
+    const selected = await open({
+      directory: true,
+      multiple: false,
+    })
+    if (!selected || typeof selected !== "string") return
+
+    try {
+      const folderPath = await invoke<string>("link_folder_as_project", { sourcePath: selected })
+      const existingPaths = new Set(projects.map((p) => p.folder_path))
+      if (existingPaths.has(folderPath) && folderPath !== project.folder_path) {
+        toast.error(`A project for "${folderPath}" already exists`)
+        return
+      }
+      await changeProjectFolder(projectId, folderPath)
+      toast.success(`Folder changed to "${folderPath}"`)
+    } catch (e) {
+      toast.error(`Failed to change folder: ${String(e)}`)
+    }
+  }, [projects, changeProjectFolder])
+
   const handleToggleCollapse = useCallback(() => {
     setSidebarCollapsed((prev) => !prev)
   }, [])
@@ -1700,6 +1749,7 @@ function App() {
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
           onSubmitEdit={handleUpdateProject}
+          onChangeFolder={handleChangeProjectFolder}
           customSubjects={customSubjects}
           availableSubjects={availableSubjects}
         />
