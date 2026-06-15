@@ -121,8 +121,8 @@ export const FileTree = memo(function FileTree({
     const hasFilesElsewhere = files.length > 0
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-5 text-center min-[1200px]:px-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background/35 ring-1 ring-border/50">
-          <FolderOpen className="h-6 w-6 text-muted-foreground/40" />
+        <div className="mb-5">
+          <FolderOpen className="h-10 w-10 text-muted-foreground/25" aria-hidden="true" />
         </div>
         <p className="text-sm font-medium text-foreground mb-1">
           {hasFilesElsewhere ? "This folder is empty" : "No files yet"}

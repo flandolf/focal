@@ -17,10 +17,7 @@ export function EmptyAnalytics({ onNewSession }: EmptyAnalyticsProps) {
       initial="initial"
       animate="animate"
     >
-      <motion.div
-        variants={staggerItem}
-        className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30"
-      >
+      <motion.div variants={staggerItem} className="mb-5">
         <motion.div
           animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
           transition={
@@ -29,7 +26,7 @@ export function EmptyAnalytics({ onNewSession }: EmptyAnalyticsProps) {
               : { duration: 4, repeat: Infinity, ease: "easeInOut" }
           }
         >
-          <BarChart3 className="h-8 w-8 text-muted-foreground/25" />
+          <BarChart3 className="h-10 w-10 text-muted-foreground/25" aria-hidden="true" />
         </motion.div>
       </motion.div>
       <motion.p

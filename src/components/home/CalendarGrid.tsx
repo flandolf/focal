@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import type { KeyboardEvent } from "react"
 import { format, isSameMonth, isToday, parseISO, differenceInDays } from "date-fns"
 import { motion, AnimatePresence, useReducedMotion, useMotionValue } from "framer-motion"
-import { ChevronLeft, ChevronRight, Pencil, CheckCircle2, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Pencil, CheckCircle2, Trash2, CalendarDays } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
@@ -749,7 +749,10 @@ export function CalendarGrid({
                       </button>
                     ))}
                     {allItems.length === 0 && dayMultiDayEvents.length === 0 && (
-                      <p className="px-1.5 text-caption text-muted-foreground/50">No items</p>
+                      <div className="flex flex-col items-center gap-1.5 px-1.5 py-3">
+                        <CalendarDays className="h-8 w-8 text-muted-foreground/25" aria-hidden="true" />
+                        <p className="text-caption text-muted-foreground/50">No items</p>
+                      </div>
                     )}
                   </div>
                 </motion.div>
