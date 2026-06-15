@@ -5,7 +5,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Link } from "lucide-react"
+import { Link, FolderOpen } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { AssessmentForm } from "@/components/AssessmentForm"
 import type { Project, Subject, Unit } from "@/lib/types"
 
@@ -30,6 +31,7 @@ interface ProjectDialogProps {
     isArchived?: boolean
     isFinished?: boolean
   }) => void
+  onChangeFolder?: (projectId: string) => void
   customSubjects?: Subject[]
   availableSubjects?: Subject[]
 }
@@ -40,6 +42,7 @@ export function ProjectDialog({
   onOpenChange,
   onSubmit,
   onSubmitEdit,
+  onChangeFolder,
   customSubjects = [],
   availableSubjects,
 }: ProjectDialogProps) {
@@ -103,6 +106,27 @@ export function ProjectDialog({
           onCancel={() => onOpenChange(false)}
           onSubmit={handleSubmit}
         />
+        {isEditMode && existingProject && (
+          <div className="mt-4 space-y-2">
+            <div className="text-sm font-medium text-muted-foreground">Folder</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-md bg-muted px-2 py-1.5 text-sm font-mono">
+                {existingProject.folder_path}
+              </code>
+              {onChangeFolder && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 shrink-0"
+                  onClick={() => onChangeFolder(existingProject.id)}
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  Change
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

@@ -160,10 +160,10 @@ export function ProjectDependenciesPanel({
                 )
               })}
 
-              {project.dependsOn?.length !== dependencies.length && (
+              {project.dependsOn && project.dependsOn.length !== dependencies.length && (
                 <p className="text-micro text-muted-foreground/50">
-                  {project.dependsOn!.length - dependencies.length} linked
-                  assessment{project.dependsOn!.length - dependencies.length === 1 ? "" : "s"} not found
+                  {project.dependsOn.length - dependencies.length} linked
+                  assessment{project.dependsOn.length - dependencies.length === 1 ? "" : "s"} not found
                   (deleted) — remove to clear.
                 </p>
               )}
