@@ -908,7 +908,7 @@ pub async fn import_folder_to_project(
 }
 
 #[tauri::command]
-pub fn rename_project_folder(old_name: String, new_name: String) -> Result<(), String> {
+pub async fn rename_project_folder(old_name: String, new_name: String) -> Result<(), String> {
     let projects_dir = get_projects_dir()?;
     let old_path = projects_dir.join(&old_name);
     let new_path = projects_dir.join(&new_name);
@@ -926,17 +926,39 @@ pub fn rename_project_folder(old_name: String, new_name: String) -> Result<(), S
         ));
     }
 
-    if let Err(e) = std::fs::rename(&old_path, &new_path) {
-        if !rename_landed_after_error(&old_path, &new_path) {
-            if old_path.exists() {
-                return Err(format!("Failed to rename folder: {}", e));
+    let old_clone = old_path.clone();
+    let new_clone = new_path.clone();
+    let name_for_error = new_name.clone();
+    tokio::task::spawn_blocking(move || {
+        // ponytail: try a fast atomic rename first. On the same filesystem
+        // this moves all files and subdirectories instantly.
+        if let Err(e) = std::fs::rename(&old_clone, &new_clone) {
+            if !rename_landed_after_error(&old_clone, &new_clone) {
+                if old_clone.exists() {
+                    // ponytail: fallback to recursive copy + delete when the OS
+                    // refuses a direct rename (e.g. locked files on Windows).
+                    // This is slower but guarantees all contents move across.
+                    if let Err(copy_err) = copy_dir_recursive(&old_clone, &new_clone) {
+                        return Err(format!(
+                            "Failed to rename folder: {}. Copy fallback also failed: {}",
+                            e, copy_err
+                        ));
+                    }
+                    if let Err(remove_err) = std::fs::remove_dir_all(&old_clone) {
+                        return Err(format!(
+                            "Folder copied to \"{}\" but could not remove old folder: {}. Please delete it manually.",
+                            name_for_error, remove_err
+                        ));
+                    }
+                }
+                // ponytail: src gone after failed rename — filesystem driver already
+                // moved it; treat as success.
             }
-            // ponytail: src gone after failed rename — filesystem driver already
-            // moved it; treat as success.
         }
-    }
-
-    Ok(())
+        Ok(())
+    })
+    .await
+    .map_err(|_| "Blocking task panicked".to_string())?
 }
 
 /// Copy an entire project folder (recursive) within the projects directory.
