@@ -14,8 +14,11 @@ export function useProjectsDirectoryWatcher(
   onChange?: () => void,
 ) {
   const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
   const unwatchPromiseRef = useRef<Promise<(() => void) | undefined> | undefined>(undefined)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   useEffect(() => {
     let cancelled = false
@@ -60,7 +63,7 @@ export function useProjectsDirectoryWatcher(
         clearTimeout(timeout)
       }
       if (unwatchPromiseRef.current) {
-        unwatchPromiseRef.current.then((unwatch) => unwatch?.()).catch(() => {})
+        void unwatchPromiseRef.current.then((unwatch) => unwatch?.())
       }
     }
   }, [projectsRoot])

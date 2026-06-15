@@ -16,7 +16,7 @@ function normaliseSession(raw: unknown): StudySession {
   const meta = safeDateMeta(obj)
   return {
     id: safeString(obj, "id", `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`),
-    projectId: safeStringOpt(obj, "projectId") || undefined,
+    projectId: safeStringOpt(obj, "projectId") ?? undefined,
     subjectIds: Array.isArray(obj.subjectIds) ? obj.subjectIds.filter((id): id is string => typeof id === "string") : [],
     title: safeString(obj, "title", "Study Session"),
     description: safeStringOpt(obj, "description"),

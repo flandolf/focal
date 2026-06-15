@@ -73,6 +73,7 @@ export function useProjectFiles(projectName: string | null) {
     filesRef.current = files
   }, [files])
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const loadFiles = useCallback(async (options?: { silent?: boolean; notifyOnChange?: boolean }) => {
     if (!options?.notifyOnChange) {
       setHasPendingChanges(false)
@@ -89,7 +90,7 @@ export function useProjectFiles(projectName: string | null) {
         silent: pendingOptions.current
           ? (pendingOptions.current.silent === true && options?.silent === true)
           : (options?.silent === true),
-        notifyOnChange: pendingOptions.current?.notifyOnChange || options?.notifyOnChange,
+        notifyOnChange: pendingOptions.current?.notifyOnChange ?? options?.notifyOnChange,
       }
       return
     }

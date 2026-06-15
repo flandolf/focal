@@ -150,7 +150,6 @@ export const AssessmentRow = memo(function AssessmentRow({
   const pressTransition = reduceMotion
     ? { duration: 0 }
     : SIDEBAR_PRESS_TRANSITION;
-  const hoverLift = reduceMotion ? undefined : { scale: 1.025 };
   const tapPress = reduceMotion ? undefined : { scale: 0.96 };
 
   const handleProjectClick = () => {

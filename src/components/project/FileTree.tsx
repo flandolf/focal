@@ -1,4 +1,4 @@
-import { memo, useRef, useCallback, useEffect, useState } from "react"
+import { memo, useRef, useEffect, useState } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, LayoutList, FolderPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -499,7 +499,6 @@ const VirtualFileList = memo(function VirtualFileList({
     })
   }, [listItems])
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: listItems.length,
     getScrollElement: () => parentRef.current,
