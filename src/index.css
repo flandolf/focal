@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/sora";
 
 @custom-variant dark (&:is(.dark *));
@@ -2370,10 +2369,18 @@ html.non-macos {
         0% {
             opacity: 0;
             transform: translateY(-3px);
-            background-color: color-mix(in oklch, var(--primary) 10%, transparent);
+            background-color: color-mix(
+                in oklch,
+                var(--primary) 10%,
+                transparent
+            );
         }
         50% {
-            background-color: color-mix(in oklch, var(--primary) 5%, transparent);
+            background-color: color-mix(
+                in oklch,
+                var(--primary) 5%,
+                transparent
+            );
         }
         100% {
             opacity: 1;
