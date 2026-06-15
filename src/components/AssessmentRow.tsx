@@ -1,0 +1,476 @@
+import { memo } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  CheckCircle2,
+  Copy,
+  Link,
+  MoreHorizontal,
+  Pencil,
+  Star,
+  Archive,
+  Trash2,
+  Timer,
+  Upload,
+  Folder,
+  BookOpen,
+  Languages,
+  Library,
+  Calculator,
+  ChartNoAxesColumn,
+  FlaskConical,
+  Atom,
+  Dna,
+  Brain,
+  Landmark,
+  Map as MapIcon,
+  TrendingUp,
+  BriefcaseBusiness,
+  NotebookPen,
+  CalendarDays,
+  ClipboardList,
+  MapPin,
+  type LucideIcon,
+} from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem as CtxMenuItem,
+  ContextMenuSeparator as CtxMenuSep,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  cn,
+  formatDeadline,
+  isOverdue,
+  getDeadlineTypeInfo,
+  getSubjectById,
+} from "@/lib/utils";
+import type { DeadlineType, Project, StudySession } from "@/lib/types";
+
+const SIDEBAR_PRESS_TRANSITION = {
+  type: "spring",
+  stiffness: 520,
+  damping: 34,
+  mass: 0.65,
+} as const;
+
+const SUBJECT_ICONS: Record<string, LucideIcon> = {
+  eng: BookOpen,
+  "eng-lang": Languages,
+  lit: Library,
+  mm: Calculator,
+  sm: Calculator,
+  gm: ChartNoAxesColumn,
+  chem: FlaskConical,
+  phys: Atom,
+  bio: Dna,
+  psych: Brain,
+  hist: Landmark,
+  geo: MapIcon,
+  econ: TrendingUp,
+  bm: BriefcaseBusiness,
+};
+
+const DEADLINE_ICONS: Record<DeadlineType | "default", LucideIcon> = {
+  sac: NotebookPen,
+  exam: CalendarDays,
+  assignment: ClipboardList,
+  default: MapPin,
+};
+
+function getSidebarProjectIcon(project: Project): LucideIcon {
+  if (project.subjectId && SUBJECT_ICONS[project.subjectId]) {
+    return SUBJECT_ICONS[project.subjectId];
+  }
+  return Folder;
+}
+
+function getSidebarDeadlineIcon(type?: DeadlineType): LucideIcon {
+  return type ? DEADLINE_ICONS[type] : DEADLINE_ICONS.default;
+}
+
+interface AssessmentRowProps {
+  project: Project;
+  isCollapsed: boolean;
+  selectedId: string | null;
+  selectedProjectIds?: Set<string>;
+  onToggleProjectSelection?: (id: string) => void;
+  onSelect: (id: string) => void;
+  fileCounts: Record<string, number>;
+  bumpProjectIds?: Set<string>;
+  onOpenProjectSettings?: (id: string) => void;
+  onDuplicateProject?: (id: string) => void;
+  onToggleFinished?: (id: string) => void;
+  onToggleFavorite?: (id: string) => void;
+  onToggleArchive?: (id: string) => void;
+  onDelete: (id: string) => void;
+  onStartPomodoroSession: (data: {
+    subjectIds: string[];
+    durationSeconds: number;
+    projectId?: string;
+    cycleNumber: number;
+  }) => Promise<StudySession>;
+  onAddFile?: (projectId: string) => void;
+}
+
+export const AssessmentRow = memo(function AssessmentRow({
+  project,
+  isCollapsed,
+  selectedId,
+  selectedProjectIds,
+  onToggleProjectSelection,
+  onSelect,
+  fileCounts,
+  bumpProjectIds,
+  onOpenProjectSettings,
+  onDuplicateProject,
+  onToggleFinished,
+  onToggleFavorite,
+  onToggleArchive,
+  onDelete,
+  onStartPomodoroSession,
+  onAddFile,
+}: AssessmentRowProps) {
+  const reduceMotion = useReducedMotion() === true;
+  const ProjectIcon = getSidebarProjectIcon(project);
+  const subject = getSubjectById(project.subjectId);
+  const deadlineInfo = getDeadlineTypeInfo(project.deadlineType);
+  const DeadlineIcon = getSidebarDeadlineIcon(project.deadlineType);
+  const isMultiSelecting = (selectedProjectIds?.size ?? 0) > 0;
+  const isSelected = selectedProjectIds?.has(project.id) ?? false;
+
+  const pressTransition = reduceMotion
+    ? { duration: 0 }
+    : SIDEBAR_PRESS_TRANSITION;
+  const hoverLift = reduceMotion ? undefined : { scale: 1.025 };
+  const tapPress = reduceMotion ? undefined : { scale: 0.96 };
+
+  const handleProjectClick = () => {
+    if (selectedProjectIds && selectedProjectIds.size > 0 && onToggleProjectSelection) {
+      onToggleProjectSelection(project.id);
+    } else {
+      onSelect(project.id);
+    }
+  };
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <motion.div
+          whileHover={
+            reduceMotion
+              ? undefined
+              : {
+                  x: isCollapsed ? 0 : 2,
+                  scale: isCollapsed ? 1.04 : 1.01,
+                }
+          }
+          whileTap={tapPress}
+          transition={pressTransition}
+          className={cn(
+            "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
+            isCollapsed
+              ? "justify-center px-2 py-1.25"
+              : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
+            selectedId === project.id
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
+              : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+            isSelected && "ring-1 ring-primary/30 bg-sidebar-accent/30",
+            project.isArchived && "opacity-60",
+            project.isFinished && "opacity-70",
+          )}
+          onClick={handleProjectClick}
+        >
+          {/* Checkbox for multi-select */}
+          {!isCollapsed && onToggleProjectSelection && (
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggleProjectSelection(project.id)}
+              onClick={(event) => event.stopPropagation()}
+              className={cn(
+                isMultiSelecting
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-100",
+              )}
+            />
+          )}
+          <span className="relative shrink-0">
+            <span
+              className={cn(
+                "flex items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
+                isCollapsed ? "size-6.5 rounded-xl" : "size-5",
+              )}
+              style={
+                subject
+                  ? {
+                      backgroundColor: subject.color + "14",
+                      color: subject.color,
+                    }
+                  : undefined
+              }
+            >
+              <ProjectIcon
+                className={cn(isCollapsed ? "size-4" : "size-3")}
+                aria-hidden="true"
+              />
+            </span>
+            {project.isLinked && isCollapsed && (
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-primary/90 ring-1 ring-background">
+                <Link className="size-2 text-background" />
+              </span>
+            )}
+          </span>
+          {!isCollapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="flex w-full min-w-0 items-center gap-1">
+                <p className="w-0 min-w-0 flex-1 truncate text-xs font-medium leading-4">
+                  {project.name}
+                </p>
+                <div className="flex shrink-0 items-center gap-1">
+                  {project.isFinished && (
+                    <span className="hidden text-micro font-medium text-green-600 dark:text-green-400 min-[1050px]:inline-flex">
+                      Done
+                    </span>
+                  )}
+                  {project.isLinked && (
+                    <span
+                      className="text-muted-foreground/70"
+                      title="Linked folder"
+                    >
+                      <Link className="size-3" aria-hidden="true" />
+                    </span>
+                  )}
+                </div>
+                {fileCounts[project.id] > 0 && (
+                  <span
+                    className={cn(
+                      "ml-2 text-sm text-muted-foreground tabular-nums shrink-0 max-[900px]:hidden inline-block",
+                      bumpProjectIds?.has(project.id) && "animate-badge-bump",
+                    )}
+                  >
+                    {fileCounts[project.id]}
+                  </span>
+                )}
+              </div>
+              {project.deadline && !project.isFinished && (
+                <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
+                  <span
+                    className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
+                    style={{ color: deadlineInfo.color }}
+                  >
+                    <DeadlineIcon className="size-2.5" aria-hidden="true" />
+                    {deadlineInfo.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "truncate text-micro font-medium select-none",
+                      isOverdue(project.deadline)
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {formatDeadline(project.deadline)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {!isCollapsed && (
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label={`Assessment actions for ${project.name}`}
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {onOpenProjectSettings && (
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.stopPropagation();
+                        onOpenProjectSettings(project.id);
+                      }}
+                    >
+                      <Pencil />
+                      Rename
+                    </DropdownMenuItem>
+                  )}
+                  {onDuplicateProject && (
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.stopPropagation();
+                        onDuplicateProject(project.id);
+                      }}
+                    >
+                      <Copy />
+                      Duplicate
+                    </DropdownMenuItem>
+                  )}
+                  {onToggleFinished && (
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.stopPropagation();
+                        onToggleFinished(project.id);
+                      }}
+                    >
+                      <CheckCircle2
+                        className={cn(
+                          project.isFinished && "text-green-500",
+                        )}
+                      />
+                      {project.isFinished ? "Mark current" : "Mark complete"}
+                    </DropdownMenuItem>
+                  )}
+                  {onToggleFavorite && (
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.stopPropagation();
+                        onToggleFavorite(project.id);
+                      }}
+                    >
+                      <Star
+                        className={cn(
+                          project.isFavorite && "fill-yellow-400 text-yellow-400",
+                        )}
+                      />
+                      {project.isFavorite ? "Unstar" : "Star"}
+                    </DropdownMenuItem>
+                  )}
+                  {onToggleArchive && (
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.stopPropagation();
+                        onToggleArchive(project.id);
+                      }}
+                    >
+                      <Archive />
+                      {project.isArchived ? "Restore" : "Archive"}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={(event) => {
+                      event.stopPropagation();
+                      onDelete(project.id);
+                    }}
+                  >
+                    <Trash2 />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </motion.div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-44">
+        {onOpenProjectSettings && (
+          <CtxMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              onOpenProjectSettings(project.id);
+            }}
+          >
+            <Pencil />
+            Rename
+          </CtxMenuItem>
+        )}
+        <CtxMenuItem
+          onSelect={(event) => {
+            event.stopPropagation();
+            const subjectIds = project.subjectId ? [project.subjectId] : [];
+            void onStartPomodoroSession({
+              subjectIds,
+              durationSeconds: 25 * 60,
+              projectId: project.id,
+              cycleNumber: 0,
+            });
+          }}
+        >
+          <Timer />
+          Start Session
+        </CtxMenuItem>
+        {onAddFile && (
+          <CtxMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              onAddFile(project.id);
+            }}
+          >
+            <Upload />
+            Add File
+          </CtxMenuItem>
+        )}
+        <CtxMenuSep />
+        {onDuplicateProject && (
+          <CtxMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              onDuplicateProject(project.id);
+            }}
+          >
+            <Copy />
+            Duplicate
+          </CtxMenuItem>
+        )}
+        {onToggleFinished && (
+          <CtxMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              onToggleFinished(project.id);
+            }}
+          >
+            <CheckCircle2 />
+            {project.isFinished ? "Mark current" : "Mark complete"}
+          </CtxMenuItem>
+        )}
+        {onToggleFavorite && (
+          <CtxMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              onToggleFavorite(project.id);
+            }}
+          >
+            <Star />
+            {project.isFavorite ? "Unstar" : "Star"}
+          </CtxMenuItem>
+        )}
+        {onToggleArchive && (
+          <CtxMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              onToggleArchive(project.id);
+            }}
+          >
+            <Archive />
+            {project.isArchived ? "Restore" : "Archive"}
+          </CtxMenuItem>
+        )}
+        <CtxMenuSep />
+        <CtxMenuItem
+          variant="destructive"
+          onSelect={(event) => {
+            event.stopPropagation();
+            onDelete(project.id);
+          }}
+        >
+          <Trash2 />
+          Delete
+        </CtxMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+});
