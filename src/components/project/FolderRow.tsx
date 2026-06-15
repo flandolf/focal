@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from "react"
+import { memo, useState, type DragEvent } from "react"
 import { Folder, ChevronRight, Tag } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -36,7 +36,7 @@ interface FolderRowProps {
   onFileDrop?: (filePath: string) => void
 }
 
-export function FolderRow({ name, fileCount, totalFileCount, onClick, onTagAll, isFocused, onFileDrop }: FolderRowProps) {
+function FolderRowInner({ name, fileCount, totalFileCount, onClick, onTagAll, isFocused, onFileDrop }: FolderRowProps) {
   const [showTagMenu, setShowTagMenu] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
 
@@ -205,3 +205,5 @@ export function FolderRow({ name, fileCount, totalFileCount, onClick, onTagAll, 
     </ContextMenu>
   )
 }
+
+export const FolderRow = memo(FolderRowInner)

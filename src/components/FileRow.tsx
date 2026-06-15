@@ -1,5 +1,5 @@
 import { formatFileSize, formatDate } from "@/lib/utils";
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import { memo, useState, useRef, useCallback, useMemo } from "react";
 import type { FileInfo, FileTag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -553,4 +553,4 @@ function FileRowInner({
   );
 }
 
-export const FileRow = React.memo(FileRowInner);
+export const FileRow = memo(FileRowInner);
