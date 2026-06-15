@@ -460,53 +460,56 @@ export const ProjectDetail = memo(function ProjectDetail({
     })
   }, [files, searchQuery, selectedTags, selectedSubfolder])
 
-  const listItems = useMemo(() => {
+  const folderCounts = useMemo(() => {
+    const recursiveCounts = new Map<string, number>()
+    const directCounts = new Map<string, number>()
+    for (const f of files) {
+      if (!f.subfolder) continue
+      const parts = f.subfolder.split("/")
+      let current = ""
+      for (const part of parts) {
+        current = current ? `${current}/${part}` : part
+        recursiveCounts.set(current, (recursiveCounts.get(current) ?? 0) + 1)
+      }
+      directCounts.set(f.subfolder, (directCounts.get(f.subfolder) ?? 0) + 1)
+    }
+    return { recursiveCounts, directCounts }
+  }, [files])
+
+  const folderItems = useMemo(() => {
     const items: ListItem[] = []
-
     const showFolders = !searchQuery && selectedTags.length === 0 && selectedSubfolder !== null
+    if (!showFolders) return items
 
-    if (showFolders) {
-      const recursiveCounts = new Map<string, number>()
-      const directCounts = new Map<string, number>()
+    const { recursiveCounts, directCounts } = folderCounts
+
+    if (selectedSubfolder === "__root__") {
+      for (const folder of firstLevelSubfolders) {
+        const direct = directCounts.get(folder) ?? 0
+        const total = recursiveCounts.get(folder) ?? 0
+        items.push({ type: "folder", name: folder, path: folder, fileCount: direct, totalFileCount: total })
+      }
+    } else if (selectedSubfolder) {
+      const childFolders = new Set<string>()
       for (const f of files) {
-        if (!f.subfolder) continue
-        const parts = f.subfolder.split("/")
-        let current = ""
-        for (const part of parts) {
-          current = current ? `${current}/${part}` : part
-          recursiveCounts.set(current, (recursiveCounts.get(current) ?? 0) + 1)
-        }
-        directCounts.set(f.subfolder, (directCounts.get(f.subfolder) ?? 0) + 1)
-      }
-
-      if (selectedSubfolder === "__root__") {
-        for (const folder of firstLevelSubfolders) {
-          const direct = directCounts.get(folder) ?? 0
-          const total = recursiveCounts.get(folder) ?? 0
-          items.push({ type: "folder", name: folder, path: folder, fileCount: direct, totalFileCount: total })
-        }
-      } else if (selectedSubfolder) {
-        const childFolders = new Set<string>()
-        for (const f of files) {
-          if (f.subfolder?.startsWith(`${selectedSubfolder}/`)) {
-            const relative = f.subfolder.slice(selectedSubfolder.length + 1)
-            const firstPart = relative.split("/")[0]
-            if (firstPart) childFolders.add(firstPart)
-          }
-        }
-        for (const folder of childFolders) {
-          const fullPath = `${selectedSubfolder}/${folder}`
-          const direct = directCounts.get(fullPath) ?? 0
-          const total = recursiveCounts.get(fullPath) ?? 0
-          items.push({ type: "folder", name: folder, path: fullPath, fileCount: direct, totalFileCount: total })
+        if (f.subfolder?.startsWith(`${selectedSubfolder}/`)) {
+          const relative = f.subfolder.slice(selectedSubfolder.length + 1)
+          const firstPart = relative.split("/")[0]
+          if (firstPart) childFolders.add(firstPart)
         }
       }
+      for (const folder of childFolders) {
+        const fullPath = `${selectedSubfolder}/${folder}`
+        const direct = directCounts.get(fullPath) ?? 0
+        const total = recursiveCounts.get(fullPath) ?? 0
+        items.push({ type: "folder", name: folder, path: fullPath, fileCount: direct, totalFileCount: total })
+      }
     }
+    return items
+  }, [files, selectedSubfolder, firstLevelSubfolders, folderCounts, searchQuery, selectedTags])
 
-    for (const file of filteredFiles) {
-      items.push({ type: "file", data: file })
-    }
-
+  const removedFileItems = useMemo(() => {
+    const items: ListItem[] = []
     const currentPaths = new Set(files.map((f) => f.path))
     for (const file of removedFiles) {
       if (currentPaths.has(file.path)) continue
@@ -519,6 +522,15 @@ export const ProjectDetail = memo(function ProjectDetail({
       if (selectedSubfolder && selectedSubfolder !== "__root__" && file.subfolder !== selectedSubfolder) continue
       items.push({ type: "file", data: file, isExiting: true })
     }
+    return items
+  }, [removedFiles, files, searchQuery, selectedTags, selectedSubfolder])
+
+  const listItems = useMemo(() => {
+    const items: ListItem[] = [
+      ...folderItems,
+      ...filteredFiles.map((f) => ({ type: "file" as const, data: f })),
+      ...removedFileItems,
+    ]
 
     items.sort((a, b) => {
       if (a.type !== b.type) {
@@ -539,7 +551,7 @@ export const ProjectDetail = memo(function ProjectDetail({
     })
 
     return items
-  }, [filteredFiles, firstLevelSubfolders, selectedSubfolder, files, searchQuery, selectedTags, removedFiles, sortKey, sortAsc])
+  }, [folderItems, filteredFiles, removedFileItems, sortKey, sortAsc])
 
   const handleFileSelectionChange = (file: FileInfo, selected: boolean) => {
     const newSelected = new Set(selectedFiles)
