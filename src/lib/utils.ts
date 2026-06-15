@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Project, DeadlineType, EventType, StudySession, Subject } from "@/lib/types"
+import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
 export function generateId(): string {
@@ -25,6 +25,67 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+// ---------------------------------------------------------------------------
+// Safe normalization helpers (used by persistence hooks)
+// ---------------------------------------------------------------------------
+
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === "object" && error !== null && "message" in error && typeof (error as { message: unknown }).message === "string") {
+    return (error as { message: string }).message
+  }
+  return String(error)
+}
+
+export function safeString(obj: Record<string, unknown>, key: string, fallback: string): string {
+  const val = obj[key]
+  return typeof val === "string" ? val : fallback
+}
+
+export function safeStringOpt(obj: Record<string, unknown>, key: string): string | undefined {
+  const val = obj[key]
+  return typeof val === "string" ? val : undefined
+}
+
+export function safeBool(obj: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const val = obj[key]
+  return typeof val === "boolean" ? val : fallback
+}
+
+export function safeBoolOpt(obj: Record<string, unknown>, key: string): boolean | undefined {
+  const val = obj[key]
+  return typeof val === "boolean" ? val : undefined
+}
+
+export function safeDateMeta(obj: Record<string, unknown>): { created_at: string; updated_at: string; deleted_at: string | null; last_modified_device_id: string | null } {
+  const created_at = typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString()
+  return {
+    created_at,
+    updated_at: typeof obj.updated_at === "string" ? obj.updated_at : created_at,
+    deleted_at: typeof obj.deleted_at === "string" ? obj.deleted_at : null,
+    last_modified_device_id: typeof obj.last_modified_device_id === "string" ? obj.last_modified_device_id : null,
+  }
+}
+
+export function parseNotionSource(value: unknown): CalendarEvent["source"] | StudySession["source"] {
+  if (typeof value !== "object" || value === null) return undefined
+  const record = value as Record<string, unknown>
+  if (record.type !== "notion" || typeof record.id !== "string") return undefined
+  return {
+    type: "notion",
+    id: record.id,
+    url: typeof record.url === "string" ? record.url : undefined,
+    lastEditedTime: typeof record.lastEditedTime === "string" ? record.lastEditedTime : undefined,
+    kind: record.kind === "event" || record.kind === "session" ? record.kind : undefined,
+    bodyHash: typeof record.bodyHash === "string" ? record.bodyHash : undefined,
+  }
+}
+
+export function safeStringArray(obj: Record<string, unknown>, key: string): string[] | undefined {
+  const val = obj[key]
+  return Array.isArray(val) ? val.filter((v): v is string => typeof v === "string") : undefined
 }
 
 let _customSubjectsCache: Subject[] | null = null

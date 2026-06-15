@@ -5,7 +5,10 @@ import {
   BriefcaseBusiness, Folder,
 } from "lucide-react"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import { cn, getErrorMessage as _getErrorMessage } from "@/lib/utils"
+
+// TODO: Remove this shim after a Vite dev-server restart (cached modules still import from here).
+export const getErrorMessage = _getErrorMessage
 
 export const PROJECT_ICONS: Record<string, LucideIcon> = {
   eng: BookOpen,
@@ -42,10 +45,6 @@ export function getSegmentedButtonClassName(selected: boolean, className?: strin
 }
 
 export const POPOVER_ITEM_BUTTON_CLASS = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35"
-
-export function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
-}
 
 export function notifyProjectActionError(message: string, error: unknown) {
   toast.error(`${message}: ${getErrorMessage(error)}`)

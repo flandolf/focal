@@ -1,3 +1,10 @@
+/**
+ * Bidirectional mappers between local domain objects and Supabase row shapes.
+ * Each sync table has a `toRow` (local → remote) and `fromRow` (remote → local)
+ * pair. Also contains small type guards and ISO-date helpers used by the sync
+ * engine.
+ */
+import { parseNotionSource } from "@/lib/utils"
 import type { CalendarEvent, ConfidenceScore, EventType, Project, StudySession, StudySessionStatus, Subject, TimetableConfig, TimetableDayLabel, Unit, UserSettings } from "@/lib/types"
 import type {
   CustomSubjectRow,
@@ -295,16 +302,3 @@ function isActiveDurations(value: unknown): value is { start: string; end: strin
   })
 }
 
-function parseNotionSource(value: unknown): CalendarEvent["source"] | StudySession["source"] {
-  if (typeof value !== "object" || value === null) return undefined
-  const record = value as Record<string, unknown>
-  if (record.type !== "notion" || typeof record.id !== "string") return undefined
-  return {
-    type: "notion",
-    id: record.id,
-    url: typeof record.url === "string" ? record.url : undefined,
-    lastEditedTime: typeof record.lastEditedTime === "string" ? record.lastEditedTime : undefined,
-    kind: record.kind === "event" || record.kind === "session" ? record.kind : undefined,
-    bodyHash: typeof record.bodyHash === "string" ? record.bodyHash : undefined,
-  }
-}

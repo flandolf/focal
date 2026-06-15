@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import type { Project, ProjectChecklistItem, ProjectTemplate, DeadlineType, Unit } from "@/lib/types"
-import { sanitiseFolderName, generateId, sortProjectsByDeadline } from "@/lib/utils"
+import { sanitiseFolderName, generateId, sortProjectsByDeadline, safeString, safeStringOpt, safeBool, safeBoolOpt, safeDateMeta, safeStringArray } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS } from "@/lib/types"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
@@ -48,32 +48,37 @@ function saveTemplates(templates: ProjectTemplate[]) {
   localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates))
 }
 
+const VALID_UNITS: readonly string[] = ["1", "2", "3", "4"]
+const VALID_DEADLINE_TYPES: readonly string[] = ["sac", "exam", "assignment"]
+
 function normaliseProject(raw: unknown): Project {
   const obj = raw as Record<string, unknown>
+  const meta = safeDateMeta(obj)
   return {
-    id: typeof obj.id === "string" ? obj.id : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-    name: typeof obj.name === "string" ? obj.name : "Untitled",
-    description: typeof obj.description === "string" ? obj.description : undefined,
-    icon: typeof obj.icon === "string" ? obj.icon : undefined,
-    deadline: typeof obj.deadline === "string" ? obj.deadline : undefined,
-    created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
-    updated_at: typeof obj.updated_at === "string" ? obj.updated_at : typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
-    deleted_at: typeof obj.deleted_at === "string" ? obj.deleted_at : null,
-    last_modified_device_id: typeof obj.last_modified_device_id === "string" ? obj.last_modified_device_id : null,
-    folder_path: typeof obj.folder_path === "string" ? obj.folder_path : "unknown",
-    subjectId: typeof obj.subjectId === "string" ? obj.subjectId : undefined,
-    unit: (obj.unit === "1" || obj.unit === "2" || obj.unit === "3" || obj.unit === "4") ? obj.unit : undefined,
-    deadlineType: (obj.deadlineType === "sac" || obj.deadlineType === "exam" || obj.deadlineType === "assignment") ? obj.deadlineType : undefined,
-    examDate: typeof obj.examDate === "string" ? obj.examDate : undefined,
-    isFavorite: typeof obj.isFavorite === "boolean" ? obj.isFavorite : false,
-    isArchived: typeof obj.isArchived === "boolean" ? obj.isArchived : false,
-    isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
-    isLinked: typeof obj.isLinked === "boolean" ? obj.isLinked : undefined,
-    customSubfolders: Array.isArray(obj.customSubfolders) ? obj.customSubfolders.filter((s): s is string => typeof s === "string") : undefined,
-    notes: typeof obj.notes === "string" ? obj.notes : undefined,
-    dependsOn: Array.isArray(obj.dependsOn) ? obj.dependsOn.filter((d): d is string => typeof d === "string") : undefined,
-    templateId: typeof obj.templateId === "string" ? obj.templateId : undefined,
-    checklist: Array.isArray(obj.checklist) ? (obj.checklist as unknown[]).filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && typeof (item as Record<string, unknown>).id === "string" && typeof (item as Record<string, unknown>).text === "string").map((item) => ({ id: item.id as string, text: item.text as string, completed: Boolean(item.completed) })) : undefined,
+    id: safeString(obj, "id", `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`),
+    name: safeString(obj, "name", "Untitled"),
+    description: safeStringOpt(obj, "description"),
+    icon: safeStringOpt(obj, "icon"),
+    deadline: safeStringOpt(obj, "deadline"),
+    folder_path: safeString(obj, "folder_path", "unknown"),
+    subjectId: safeStringOpt(obj, "subjectId"),
+    unit: VALID_UNITS.includes(String(obj.unit)) ? (obj.unit as Unit) : undefined,
+    deadlineType: VALID_DEADLINE_TYPES.includes(String(obj.deadlineType)) ? (obj.deadlineType as DeadlineType) : undefined,
+    examDate: safeStringOpt(obj, "examDate"),
+    isFavorite: safeBool(obj, "isFavorite", false),
+    isArchived: safeBool(obj, "isArchived", false),
+    isFinished: safeBool(obj, "isFinished", false),
+    isLinked: safeBoolOpt(obj, "isLinked"),
+    customSubfolders: safeStringArray(obj, "customSubfolders"),
+    notes: safeStringOpt(obj, "notes"),
+    dependsOn: safeStringArray(obj, "dependsOn"),
+    templateId: safeStringOpt(obj, "templateId"),
+    checklist: Array.isArray(obj.checklist)
+      ? (obj.checklist as unknown[]).filter((item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null && typeof (item as Record<string, unknown>).id === "string" && typeof (item as Record<string, unknown>).text === "string"
+        ).map((item) => ({ id: item.id as string, text: item.text as string, completed: Boolean(item.completed) }))
+      : undefined,
+    ...meta,
   }
 }
 

@@ -1,3 +1,8 @@
+/**
+ * Device-ID generation and persistence. The ID is generated once per install
+ * and stored both in Tauri app-data and localStorage (as a fast cache).
+ * Used by the sync engine to tag local changes with the originating device.
+ */
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 

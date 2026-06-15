@@ -1,3 +1,8 @@
+/**
+ * Persistent on-disk sync queue stored in the Tauri app-data directory.
+ * All writes are serialised behind a single promise lock so concurrent
+ * flush / enqueue paths cannot overwrite each other.
+ */
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { coalesceQueueItem, isSyncTable } from "@/lib/sync/core"

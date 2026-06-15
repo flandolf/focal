@@ -4,6 +4,11 @@ import { watch } from "@tauri-apps/plugin-fs"
 
 export const PROJECTS_DIR_CHANGED_EVENT = "focal-projects-dir-changed"
 
+/** True when running inside a Tauri webview (not a plain browser dev tab). */
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI__" in window
+}
+
 export function useProjectsDirectoryWatcher(
   projectsRoot: string | null,
   onChange?: () => void,
@@ -17,6 +22,8 @@ export function useProjectsDirectoryWatcher(
     let timeout: ReturnType<typeof setTimeout> | null = null
 
     const setup = async () => {
+      // watch is a Tauri-plugin command; it fails gracefully in browser dev mode.
+      if (!isTauri()) return
       try {
         const projectsDir = projectsRoot ?? await invoke<string>("get_projects_directory")
         if (!projectsDir) return
