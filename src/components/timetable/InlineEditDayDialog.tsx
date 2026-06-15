@@ -762,10 +762,10 @@ export function InlineEditDayDialog({
 
           {/* Empty state */}
           {periods.length === 0 && (
-            <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground/70">No periods.</p>
-              <p className="mt-1 text-xs text-muted-foreground/60">Add a period or save to remove this day.</p>
-            </div>
+            <div className="px-4 py-8 text-center">
+            <p className="text-sm text-muted-foreground/70">No periods.</p>
+            <p className="mt-1 text-xs text-muted-foreground/50">Add a period or save to remove this day.</p>
+          </div>
           )}
 
           {/* Period rows */}
