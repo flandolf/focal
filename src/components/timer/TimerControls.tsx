@@ -1,4 +1,5 @@
-import { motion, AnimatePresence } from "framer-motion";
+import type { ReactNode } from "react"
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import {
   BookOpen,
   CheckCircle2,
@@ -7,41 +8,121 @@ import {
   Play,
   Plus,
   SkipForward,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import { MOTION_EASE, pressable } from "@/lib/motion"
 
-const EXTRA_BREAK_MINUTES = 5;
+const EXTRA_BREAK_MINUTES = 5
 
-/* Spring press animation for buttons */
-const springPress = {
-  whileHover: { scale: 1.03 },
-  whileTap: { scale: 0.94 },
-  transition: { type: "spring" as const, stiffness: 520, damping: 30, mass: 0.6 },
-} as const;
-
-/* Icon swap transition */
-const iconTransition = {
-  initial: { opacity: 0, rotate: -12, scale: 0.8 },
+const iconSwapTransition = {
+  initial: { opacity: 0, rotate: -12, scale: 0.85 },
   animate: { opacity: 1, rotate: 0, scale: 1 },
-  exit: { opacity: 0, rotate: 12, scale: 0.8 },
-  transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] as const },
-} as const;
+  exit: { opacity: 0, rotate: 12, scale: 0.85 },
+  transition: { duration: 0.2, ease: MOTION_EASE },
+} as const
+
+type TimerVariant = "footer" | "sidebar"
+type TimerTone = "primary" | "outline" | "ghost"
+type TimerSize = "footer" | "sidebar" | "sidebar-tight"
+
+interface TimerButtonProps {
+  size: TimerSize
+  tone: TimerTone
+  onClick: () => void
+  disabled?: boolean
+  ariaLabel: string
+  icon?: ReactNode
+  children?: ReactNode
+  className?: string
+  reduceMotion: boolean
+}
+
+function TimerButton({
+  size,
+  tone,
+  onClick,
+  disabled = false,
+  ariaLabel,
+  icon,
+  children,
+  className,
+  reduceMotion,
+}: TimerButtonProps) {
+  const isFooter = size === "footer"
+  const toneStyles: Record<TimerTone, string> = {
+    primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+    outline:
+      "border-border bg-background text-foreground hover:bg-muted",
+    ghost:
+      "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+  }
+  const sizeStyles =
+    size === "footer"
+      ? "h-11 gap-2 px-3 text-sm"
+      : size === "sidebar"
+        ? "h-8 gap-1.5 px-2.5 text-control"
+        : "h-8 min-w-0 gap-1.5 px-1.5 text-control"
+  const radiusStyles = isFooter ? "rounded-lg" : "rounded-xl"
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      {...pressable(reduceMotion)}
+      className={cn(
+        "relative inline-flex flex-1 items-center justify-center whitespace-nowrap border font-medium outline-none select-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none",
+        radiusStyles,
+        sizeStyles,
+        toneStyles[tone],
+        className,
+      )}
+    >
+      {icon}
+      {children && <span className="truncate">{children}</span>}
+    </motion.button>
+  )
+}
+
+interface IconSwapProps {
+  running: boolean
+  children: ReactNode
+  className?: string
+}
+
+function IconSwap({ running, children, className }: IconSwapProps) {
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span
+        key={running ? "pause" : "play"}
+        className={cn(
+          "flex items-center justify-center gap-2 motion-reduce:transition-none",
+          className,
+        )}
+        {...iconSwapTransition}
+      >
+        {children}
+      </motion.span>
+    </AnimatePresence>
+  )
+}
 
 interface TimerControlsProps {
-  variant: "sidebar" | "footer";
-  running: boolean;
-  mode: "work" | "break" | "long-break";
-  isStudyOvertime: boolean;
-  canStartFocus: boolean;
-  saving: boolean;
-  hasActiveSession: boolean;
-  timerActionLabel: string;
-  onToggle: () => void;
-  onReturnToBreak: () => void;
-  onFinish: () => void;
-  onSkipBreak: () => void;
-  onStartStudyOvertime: () => void;
-  onMoreBreakTime: () => void;
+  variant: TimerVariant
+  running: boolean
+  mode: "work" | "break" | "long-break"
+  isStudyOvertime: boolean
+  canStartFocus: boolean
+  saving: boolean
+  hasActiveSession: boolean
+  timerActionLabel: string
+  onToggle: () => void
+  onReturnToBreak: () => void
+  onFinish: () => void
+  onSkipBreak: () => void
+  onStartStudyOvertime: () => void
+  onMoreBreakTime: () => void
 }
 
 export function TimerControls({
@@ -60,9 +141,142 @@ export function TimerControls({
   onStartStudyOvertime,
   onMoreBreakTime,
 }: TimerControlsProps) {
-  const toggleIconKey = running ? "pause" : "play";
+  const reduceMotion = useReducedMotion() === true
+  const isFooter = variant === "footer"
+  const sidebarSize: TimerSize = "sidebar"
+  const iconClass = isFooter ? "h-4 w-4" : "h-3 w-3"
+  const toggleDisabled = mode === "work" && !canStartFocus && !running
+  const sidebarSpacing = isFooter ? "" : "mt-1.5"
 
-  if (variant === "footer") {
+  const toggle = (
+    <TimerButton
+      size={isFooter ? "footer" : sidebarSize}
+      tone={running ? "outline" : "primary"}
+      onClick={onToggle}
+      disabled={toggleDisabled}
+      reduceMotion={reduceMotion}
+      ariaLabel={running ? "Pause" : timerActionLabel}
+    >
+      <IconSwap
+        running={running}
+        className={isFooter ? undefined : "gap-1.5"}
+      >
+        {running ? (
+          <Pause className={iconClass} />
+        ) : (
+          <Play className={iconClass} />
+        )}
+        {running ? "Pause" : timerActionLabel}
+      </IconSwap>
+    </TimerButton>
+  )
+
+  const returnToBreak = isStudyOvertime ? (
+    <TimerButton
+      size={isFooter ? "footer" : sidebarSize}
+      tone="primary"
+      onClick={onReturnToBreak}
+      disabled={saving}
+      reduceMotion={reduceMotion}
+      ariaLabel="Return to break"
+      icon={<Coffee className={iconClass} />}
+      className={sidebarSpacing}
+    >
+      Break time!
+    </TimerButton>
+  ) : null
+
+  const finish = !isStudyOvertime && hasActiveSession ? (
+    <TimerButton
+      size={isFooter ? "footer" : sidebarSize}
+      tone={isFooter ? "outline" : "ghost"}
+      onClick={onFinish}
+      disabled={saving}
+      reduceMotion={reduceMotion}
+      ariaLabel="Finish and save session"
+      icon={<CheckCircle2 className={iconClass} />}
+      className={sidebarSpacing}
+    >
+      Finish &amp; save
+    </TimerButton>
+  ) : null
+
+  const secondaryAction = returnToBreak ?? finish
+
+  const breakActions =
+    mode !== "work" && !isStudyOvertime ? (
+      isFooter ? (
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          <TimerButton
+            size="footer"
+            tone="ghost"
+            onClick={onSkipBreak}
+            reduceMotion={reduceMotion}
+            ariaLabel="Skip break"
+            icon={<SkipForward className={iconClass} />}
+          >
+            Skip
+          </TimerButton>
+          <TimerButton
+            size="footer"
+            tone="outline"
+            onClick={onStartStudyOvertime}
+            disabled={!canStartFocus}
+            reduceMotion={reduceMotion}
+            ariaLabel="Start study overtime"
+            icon={<BookOpen className={iconClass} />}
+          >
+            Study overtime
+          </TimerButton>
+          <TimerButton
+            size="footer"
+            tone="outline"
+            onClick={onMoreBreakTime}
+            reduceMotion={reduceMotion}
+            ariaLabel={`Add ${EXTRA_BREAK_MINUTES} more break minutes`}
+            icon={<Plus className={iconClass} />}
+          >
+            {EXTRA_BREAK_MINUTES} min
+          </TimerButton>
+        </div>
+      ) : (
+        <div className="mt-1.5 grid grid-cols-1 gap-1.5 min-[240px]:grid-cols-3">
+          <TimerButton
+            size="sidebar"
+            tone="ghost"
+            onClick={onSkipBreak}
+            reduceMotion={reduceMotion}
+            ariaLabel="Skip break"
+            icon={<SkipForward className={iconClass} />}
+          >
+            Skip
+          </TimerButton>
+          <TimerButton
+            size="sidebar-tight"
+            tone="outline"
+            onClick={onStartStudyOvertime}
+            disabled={!canStartFocus}
+            reduceMotion={reduceMotion}
+            ariaLabel="Start study overtime"
+            icon={<BookOpen className={iconClass} />}
+          >
+            Study
+          </TimerButton>
+          <TimerButton
+            size="sidebar"
+            tone="outline"
+            onClick={onMoreBreakTime}
+            reduceMotion={reduceMotion}
+            ariaLabel={`Add ${EXTRA_BREAK_MINUTES} more break minutes`}
+            icon={<Plus className={iconClass} />}
+          >
+            {EXTRA_BREAK_MINUTES} min
+          </TimerButton>
+        </div>
+      )
+    ) : null
+
+  if (isFooter) {
     return (
       <div
         className={cn(
@@ -71,170 +285,19 @@ export function TimerControls({
         )}
       >
         <div className="flex w-full flex-col gap-2 sm:flex-row">
-          <motion.button
-            onClick={onToggle}
-            disabled={mode === "work" && !canStartFocus && !running}
-            {...springPress}
-            className={cn(
-              "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg text-sm font-medium whitespace-nowrap border outline-none select-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-              running
-                ? "border-border bg-background text-foreground hover:bg-muted"
-                : "bg-primary text-primary-foreground hover:bg-primary/90 border-transparent",
-            )}
-          >
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={toggleIconKey}
-                className="flex items-center justify-center gap-2"
-                {...iconTransition}
-              >
-                {running ? (
-                  <Pause className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                {running ? "Pause" : timerActionLabel}
-              </motion.span>
-            </AnimatePresence>
-          </motion.button>
-          {isStudyOvertime ? (
-            <motion.button
-              onClick={onReturnToBreak}
-              disabled={saving}
-              {...springPress}
-              className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg text-sm font-medium whitespace-nowrap border border-transparent bg-primary text-primary-foreground outline-none select-none transition-colors hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-            >
-              <Coffee className="h-4 w-4" />
-              Break time!
-            </motion.button>
-          ) : (
-            hasActiveSession && (
-              <motion.button
-                onClick={onFinish}
-                disabled={saving}
-                {...springPress}
-                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg text-sm font-medium whitespace-nowrap border border-border bg-background text-foreground outline-none select-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Finish & save
-              </motion.button>
-            )
-          )}
+          {toggle}
+          {secondaryAction}
         </div>
-
-        {mode !== "work" && !isStudyOvertime && (
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-            <motion.button
-              onClick={onSkipBreak}
-              {...springPress}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg text-sm font-medium whitespace-nowrap border border-transparent text-muted-foreground outline-none select-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <SkipForward className="h-4 w-4" />
-              Skip
-            </motion.button>
-            <motion.button
-              onClick={onStartStudyOvertime}
-              disabled={!canStartFocus}
-              {...springPress}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg text-sm font-medium whitespace-nowrap border border-border bg-background text-foreground outline-none select-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-            >
-              <BookOpen className="h-4 w-4" />
-              Study overtime
-            </motion.button>
-            <motion.button
-              onClick={onMoreBreakTime}
-              {...springPress}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg text-sm font-medium whitespace-nowrap border border-border bg-background text-foreground outline-none select-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <Plus className="h-4 w-4" />
-              {EXTRA_BREAK_MINUTES} min
-            </motion.button>
-          </div>
-        )}
+        {breakActions}
       </div>
-    );
+    )
   }
-
-  const sidebarToggleKey = running ? "sidebar-pause" : "sidebar-play";
 
   return (
     <>
-      <motion.button
-        onClick={onToggle}
-        disabled={mode === "work" && !canStartFocus && !running}
-        {...springPress}
-        className={cn(
-          "mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-xl text-caption font-medium whitespace-nowrap border outline-none select-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-          running
-            ? "border-border bg-background text-foreground hover:bg-muted"
-            : "bg-primary text-primary-foreground border-transparent",
-        )}
-      >
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={sidebarToggleKey}
-            className="flex items-center justify-center gap-1.5"
-            {...iconTransition}
-          >
-            {running ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-            {running ? "Pause" : timerActionLabel}
-          </motion.span>
-        </AnimatePresence>
-      </motion.button>
-
-      {isStudyOvertime ? (
-        <motion.button
-          onClick={onReturnToBreak}
-          disabled={saving}
-          {...springPress}
-          className="mt-1.5 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-xl text-control font-medium whitespace-nowrap border border-transparent bg-primary text-primary-foreground outline-none select-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-        >
-          <Coffee className="h-3 w-3" />
-          break time!
-        </motion.button>
-      ) : (
-        hasActiveSession && (
-          <motion.button
-            onClick={onFinish}
-            disabled={saving}
-            {...springPress}
-            className="mt-1.5 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-xl text-control font-medium whitespace-nowrap border border-transparent text-muted-foreground outline-none select-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-          >
-            <CheckCircle2 className="h-3 w-3" />
-            Finish & save
-          </motion.button>
-        )
-      )}
-
-      {mode !== "work" && !isStudyOvertime && (
-        <div className="mt-1.5 grid grid-cols-1 gap-1.5 min-[240px]:grid-cols-3">
-          <motion.button
-            onClick={onSkipBreak}
-            {...springPress}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl text-control font-medium whitespace-nowrap border border-transparent text-muted-foreground outline-none select-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <SkipForward className="h-3 w-3" />
-            Skip
-          </motion.button>
-          <motion.button
-            onClick={onStartStudyOvertime}
-            disabled={!canStartFocus}
-            {...springPress}
-            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-xl px-1.5 text-control font-medium whitespace-nowrap border border-border bg-background text-foreground outline-none select-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-          >
-            <BookOpen className="h-3 w-3" />
-            Study
-          </motion.button>
-          <motion.button
-            onClick={onMoreBreakTime}
-            {...springPress}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl text-control font-medium whitespace-nowrap border border-border bg-background text-foreground outline-none select-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <Plus className="h-3 w-3" />
-            {EXTRA_BREAK_MINUTES} min
-          </motion.button>
-        </div>
-      )}
+      <div className="mt-3">{toggle}</div>
+      {secondaryAction}
+      {breakActions}
     </>
-  );
+  )
 }
