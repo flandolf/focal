@@ -206,28 +206,28 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
                 >
                   <motion.div
                     variants={staggerItem}
-                    className="chart-glow-border relative min-[900px]:col-span-2"
+                    className="relative min-[900px]:col-span-2"
                   >
                     <StudyTimeTrendChart data={filteredTimeTrends} />
                   </motion.div>
-                  <motion.div variants={staggerItem} className="chart-glow-border relative">
+                  <motion.div variants={staggerItem} className="relative">
                     <SubjectBreakdownChart data={filteredBreakdown} />
                   </motion.div>
-                  <motion.div variants={staggerItem} className="chart-glow-border relative">
+                  <motion.div variants={staggerItem} className="relative">
                     <SubjectCompletionChart data={filteredCompletion} />
                   </motion.div>
                   <motion.div
                     variants={staggerItem}
-                    className={cn("chart-glow-border relative", unfiltered && "opacity-65")}
+                    className={cn("relative", unfiltered && "opacity-65")}
                   >
                     <TimeOfDayChart data={data.timeOfDay} />
                   </motion.div>
-                  <motion.div variants={staggerItem} className="chart-glow-border relative">
+                  <motion.div variants={staggerItem} className="relative">
                     <EfficiencyChart data={filteredEfficiency} />
                   </motion.div>
                   <motion.div
                     variants={staggerItem}
-                    className="chart-glow-border relative min-[900px]:col-span-2"
+                    className="relative min-[900px]:col-span-2"
                   >
                     <ConsistencyHeatmap
                       days={data.consistency.days}
