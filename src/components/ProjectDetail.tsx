@@ -585,18 +585,12 @@ export const ProjectDetail = memo(function ProjectDetail({
     if (!confirmed) return
     const paths = Array.from(selectedFiles)
     try {
-      await toast.promise(
-        deleteFiles(paths),
-        {
-          loading: `Deleting ${paths.length} file${paths.length > 1 ? "s" : ""}...`,
-          success: `Deleted ${paths.length} file${paths.length > 1 ? "s" : ""}`,
-          error: (e) => `Could not delete selected files: ${getErrorMessage(e)}`,
-        },
-      )
+      await deleteFiles(paths)
       setSelectedFiles(new Set())
       onFilesChanged()
-    } catch {
-      // toast.promise already surfaces the error
+      toast.success(`Deleted ${paths.length} file${paths.length > 1 ? "s" : ""}`)
+    } catch (e) {
+      toast.error(`Could not delete selected files: ${getErrorMessage(e)}`)
     }
   }, [selectedFiles, deleteFiles, onFilesChanged])
 

@@ -27,6 +27,12 @@ export function SessionList({
   // Hooks must run unconditionally, before any early return.
   const reduceMotion = useReducedMotion() === true
 
+  const sorted = useMemo(() => [...sessions].sort(
+    (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+  ), [sessions])
+
+  const listVariants = useMemo(() => staggerContainer(0.04, 0.05), [])
+
   if (sessions.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-5 min-[1200px]:px-8">
@@ -46,12 +52,6 @@ export function SessionList({
       </div>
     )
   }
-
-  const sorted = useMemo(() => [...sessions].sort(
-    (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-  ), [sessions])
-
-  const listVariants = useMemo(() => staggerContainer(0.04, 0.05), [])
 
   return (
     <ScrollArea className="flex-1">
