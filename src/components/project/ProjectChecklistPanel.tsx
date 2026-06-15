@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { Check, Plus, Trash2, ChevronDown, ChevronRight, StickyNote } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ export function ProjectChecklistPanel({
   const [notesExpanded, setNotesExpanded] = useState(Boolean(project.notes))
   const [checklistExpanded, setChecklistExpanded] = useState(true)
   const reduceMotion = useReducedMotion() === true
+  const panelVariants = useMemo(() => staggerContainer(0.05, 0.03), [])
 
   const handleAddItem = () => {
     const trimmed = newItemText.trim()
@@ -40,7 +41,7 @@ export function ProjectChecklistPanel({
   return (
     <motion.div
       className="border-b border-border/70"
-      variants={staggerContainer(0.05, 0.03)}
+      variants={panelVariants}
       initial="initial"
       animate="animate"
     >

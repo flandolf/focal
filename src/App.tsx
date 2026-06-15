@@ -8,6 +8,7 @@ import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, pressable as pressabl
 import { Toaster, toast } from "sonner"
 import { FolderOpen } from "lucide-react"
 import { useProjects, type ProjectSortKey } from "@/hooks/useProjects"
+import { useProjectsDirectoryWatcher } from "@/hooks/useProjectsDirectoryWatcher"
 import { useStudySessions } from "@/hooks/useStudySessions"
 import { useEvents } from "@/hooks/useEvents"
 import { useDeadlineNotifications } from "@/hooks/useDeadlineNotifications"
@@ -185,16 +186,19 @@ try {
 }
 
 function App() {
+  const [projectsRoot, setProjectsRoot] = useState(() => getProjectsRootPath())
+
   // Initialize projects directory override from localStorage on startup
   useEffect(() => {
-    const root = getProjectsRootPath()
-    if (root) {
-      invoke("set_projects_directory", { path: root }).catch((e) => {
+    if (projectsRoot) {
+      invoke("set_projects_directory", { path: projectsRoot }).catch((e) => {
         console.error("Failed to set projects directory:", e)
         toast.warning("Your saved projects folder could not be loaded. It may have been moved or deleted.")
       })
     }
-  }, [])
+  }, [projectsRoot])
+
+  useProjectsDirectoryWatcher(projectsRoot)
 
   const { projects, addProject, updateProject, renameProjectFolder, changeProjectFolder, deleteProject, restoreProject, duplicateProject, bulkArchive, bulkUnarchive, bulkFinish, bulkDelete, addChecklistItem, toggleChecklistItem, removeChecklistItem, addDependency, removeDependency, getTemplates, saveAsTemplate, deleteTemplate, loadFromTemplate, scanAndImportProjects, linkFolderAsProject } = useProjects()
   const { sessions, loading: sessionsLoading, addSession, addSessions, updateSession, updateSessions, deleteSession, deleteSessions, restoreSession, restoreSessions, updateAndDeleteSessions, syncSessions: rawSyncSessions } = useStudySessions()
@@ -448,6 +452,43 @@ function App() {
     }
   }, [projects])
 
+  const projectCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  const refreshFileCountForProject = useCallback(async (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId)
+    if (!project) return
+    try {
+      const count = await invoke<number>("get_project_file_count", { projectName: project.folder_path })
+      const prev = prevFileCountsRef.current[projectId]
+      prevFileCountsRef.current = { ...prevFileCountsRef.current, [projectId]: count }
+      setFileCounts((prevCounts) => ({ ...prevCounts, [projectId]: count }))
+      if (prev !== undefined && prev !== count) {
+        setBumpProjectIds((prevBumps) => {
+          const next = new Set(prevBumps)
+          next.add(projectId)
+          return next
+        })
+        if (bumpTimeoutRef.current) clearTimeout(bumpTimeoutRef.current)
+        bumpTimeoutRef.current = setTimeout(() => {
+          bumpTimeoutRef.current = null
+          setBumpProjectIds(new Set())
+        }, 500)
+      }
+    } catch (e) {
+      console.error(`Failed to refresh file count for project ${projectId}:`, e)
+    }
+  }, [projects])
+
+  const debouncedRefreshFileCountForProject = useCallback((projectId: string) => {
+    if (projectCountTimeoutsRef.current[projectId]) {
+      clearTimeout(projectCountTimeoutsRef.current[projectId])
+    }
+    projectCountTimeoutsRef.current[projectId] = setTimeout(() => {
+      delete projectCountTimeoutsRef.current[projectId]
+      void refreshFileCountForProject(projectId)
+    }, 200)
+  }, [refreshFileCountForProject])
+
   // Check for timely study notifications on app load and when planning data changes
   useDeadlineNotifications(projects, events, sessions)
 
@@ -532,12 +573,12 @@ function App() {
         files: selected,
         projectName: project.folder_path,
       })
-      await refreshFileCounts()
+      await refreshFileCountForProject(projectId)
       toast.success(`Added ${selected.length} file${selected.length === 1 ? "" : "s"} to ${project.name}`)
     } catch {
       toast.error("Failed to add files")
     }
-  }, [projects, refreshFileCounts])
+  }, [projects, refreshFileCountForProject])
   const handleResolveConflicts = useCallback((resolutions: Record<string, "local" | "notion" | "skip">) => {
     void resolveConflicts(resolutions)
   }, [resolveConflicts])
@@ -1608,6 +1649,7 @@ function App() {
                     onDismissConflict={(table, rowId) => { dismissConflict(table as SyncTable, rowId) }}
                     onClearConflicts={() => clearConflicts()}
                     onProjectsRootChanged={() => {
+                      setProjectsRoot(getProjectsRootPath())
                       void refreshFileCounts()
                     }}
                     onScanAndImportProjects={scanAndImportProjects}
@@ -1653,7 +1695,7 @@ function App() {
                   <ProjectDetail
                     project={selectedProject}
                     sessions={selectedProjectSessions}
-                    onFilesChanged={refreshFileCounts}
+                    onFilesChanged={() => debouncedRefreshFileCountForProject(selectedProject.id)}
                     onOpenSettings={handleOpenSettings}
                     onToggleFinished={handleToggleFinished}
                     onSelectSession={handleSelectSession}

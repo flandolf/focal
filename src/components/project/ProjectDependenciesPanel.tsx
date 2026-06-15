@@ -26,6 +26,7 @@ export function ProjectDependenciesPanel({
   const [expanded, setExpanded] = useState((project.dependsOn?.length ?? 0) > 0)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState("")
+  const panelVariants = useMemo(() => staggerContainer(0.05, 0.03), [])
 
   const dependencies = useMemo(() => {
     return (project.dependsOn ?? [])
@@ -65,7 +66,7 @@ export function ProjectDependenciesPanel({
   return (
     <motion.div
       className="border-b border-border/70"
-      variants={staggerContainer(0.05, 0.03)}
+      variants={panelVariants}
       initial="initial"
       animate="animate"
     >

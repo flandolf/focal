@@ -18,7 +18,7 @@ import { SessionList } from "@/components/project/SessionList"
 import { ProjectChecklistPanel } from "@/components/project/ProjectChecklistPanel"
 import { ProjectDependenciesPanel } from "@/components/project/ProjectDependenciesPanel"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
-import { notifyProjectActionError } from "@/components/project/shared"
+import { notifyProjectActionError, getErrorMessage } from "@/components/project/shared"
 
 interface ProjectDetailProps {
   project: Project
@@ -354,17 +354,21 @@ export const ProjectDetail = memo(function ProjectDetail({
     const paths = Array.from(selectedFiles)
     let moved = 0
     let failed = 0
+    const toastId = toast.loading(`Moving 0 of ${paths.length} files...`)
     for (const fp of paths) {
       try {
         await moveFileToFolder(fp, destFolder)
         moved++
+        toast.loading(`Moving ${moved} of ${paths.length} files...`, { id: toastId })
       } catch {
         failed++
       }
     }
+    toast.dismiss(toastId)
     if (moved > 0) {
       setSelectedFiles(new Set())
       onFilesChanged()
+      toast.success(`Moved ${moved} file${moved > 1 ? "s" : ""}`)
     }
     if (failed > 0) {
       toast.error(`Could not move ${failed} file${failed === 1 ? "" : "s"}`)
@@ -411,17 +415,24 @@ export const ProjectDetail = memo(function ProjectDetail({
 
   const handleApplyAutoRenames = useCallback(
     async (renames: { filePath: string; newName: string }[]) => {
+      if (renames.length === 0) return
       let failed = 0
-      for (const { filePath, newName } of renames) {
+      const toastId = toast.loading(`Renaming 0 of ${renames.length} files...`)
+      for (let i = 0; i < renames.length; i++) {
+        const { filePath, newName } = renames[i]
         try {
           await renameFile(filePath, newName)
+          toast.loading(`Renaming ${i + 1} of ${renames.length} files...`, { id: toastId })
         } catch {
           failed++
         }
       }
+      toast.dismiss(toastId)
       onFilesChanged()
       if (failed > 0) {
         toast.error(`Could not rename ${failed} file${failed === 1 ? "" : "s"}`)
+      } else {
+        toast.success(`Renamed ${renames.length} file${renames.length > 1 ? "s" : ""}`)
       }
     },
     [renameFile, onFilesChanged],
@@ -559,11 +570,18 @@ export const ProjectDetail = memo(function ProjectDetail({
     if (!confirmed) return
     const paths = Array.from(selectedFiles)
     try {
-      await deleteFiles(paths)
+      await toast.promise(
+        deleteFiles(paths),
+        {
+          loading: `Deleting ${paths.length} file${paths.length > 1 ? "s" : ""}...`,
+          success: `Deleted ${paths.length} file${paths.length > 1 ? "s" : ""}`,
+          error: (e) => `Could not delete selected files: ${getErrorMessage(e)}`,
+        },
+      )
       setSelectedFiles(new Set())
       onFilesChanged()
-    } catch (e) {
-      notifyProjectActionError("Could not delete selected files", e)
+    } catch {
+      // toast.promise already surfaces the error
     }
   }
 

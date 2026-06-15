@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion"
 import { Clock, Calendar, Plus } from "lucide-react"
 import { format, parseISO } from "date-fns"
+import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getSubjectById, getSessionSubjectIds } from "@/lib/utils"
@@ -46,15 +47,17 @@ export function SessionList({
     )
   }
 
-  const sorted = [...sessions].sort(
+  const sorted = useMemo(() => [...sessions].sort(
     (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-  )
+  ), [sessions])
+
+  const listVariants = useMemo(() => staggerContainer(0.04, 0.05), [])
 
   return (
     <ScrollArea className="flex-1">
       <motion.div
         className="space-y-1.5 px-5 py-3 min-[1200px]:px-8"
-        variants={staggerContainer(0.04, 0.05)}
+        variants={listVariants}
         initial="initial"
         animate="animate"
       >
