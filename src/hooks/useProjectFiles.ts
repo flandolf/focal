@@ -2,10 +2,10 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { downloadDir, join } from "@tauri-apps/api/path"
-import { watch } from "@tauri-apps/plugin-fs"
 
 import type { FileInfo, FileTag } from "@/lib/types"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
+import { PROJECTS_DIR_CHANGED_EVENT } from "@/hooks/useProjectsDirectoryWatcher"
 import {
   setFileTags,
   addFileTags,
@@ -86,7 +86,9 @@ export function useProjectFiles(projectName: string | null) {
     // Concurrency guard: queue a reload if one is already in progress
     if (isLoadingFiles.current) {
       pendingOptions.current = {
-        silent: pendingOptions.current?.silent && options?.silent,
+        silent: pendingOptions.current
+          ? (pendingOptions.current.silent === true && options?.silent === true)
+          : (options?.silent === true),
         notifyOnChange: pendingOptions.current?.notifyOnChange || options?.notifyOnChange,
       }
       return
@@ -196,9 +198,20 @@ export function useProjectFiles(projectName: string | null) {
       const targetFolder = subfolder
         ? `${projectName}/${subfolder}`
         : projectName
-      await invoke("move_files_to_project", {
+      const newPaths = await invoke<string[]>("move_files_to_project", {
         files: selected,
         projectName: targetFolder,
+      })
+      const now = Math.floor(Date.now() / 1000)
+      const addedFiles: FileInfo[] = newPaths.map((p) => {
+        const name = p.substring(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1)
+        const lastDot = name.lastIndexOf(".")
+        const ext = lastDot >= 0 ? name.slice(lastDot + 1) : ""
+        return { name, path: p, size: 0, modified: now, extension: ext, subfolder: subfolder ?? undefined }
+      })
+      setFiles((current) => {
+        const existing = new Set(current.map((f) => f.path))
+        return [...current, ...addedFiles.filter((f) => !existing.has(f.path))]
       })
       await loadFiles({ silent: true })
       return selected.length
@@ -313,45 +326,19 @@ export function useProjectFiles(projectName: string | null) {
     return result
   }, [files])
 
-  /** Watch the project directory for external file system changes. */
+  /** Listen for global filesystem changes and reload this project's files. */
   const loadFilesRef = useLatestRef(loadFiles)
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!projectName) return
 
-    let unwatch: (() => void) | undefined
-
-    const setup = async () => {
-      try {
-        const projectsDir = await invoke<string>("get_projects_directory")
-        const projectPath = await join(projectsDir, projectName)
-        unwatch = await watch(
-          projectPath,
-          () => {
-            if (refreshTimeoutRef.current) {
-              clearTimeout(refreshTimeoutRef.current)
-            }
-            refreshTimeoutRef.current = setTimeout(() => {
-              refreshTimeoutRef.current = null
-              void loadFilesRef.current({ silent: true, notifyOnChange: true })
-            }, 200)
-          },
-          { recursive: true },
-        )
-      } catch (e) {
-        console.error("Failed to watch project directory:", e)
-      }
+    const handleDirChange = () => {
+      void loadFilesRef.current({ silent: true, notifyOnChange: true })
     }
 
-    void setup()
-
+    window.addEventListener(PROJECTS_DIR_CHANGED_EVENT, handleDirChange)
     return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current)
-        refreshTimeoutRef.current = null
-      }
-      void unwatch?.()
+      window.removeEventListener(PROJECTS_DIR_CHANGED_EVENT, handleDirChange)
     }
   }, [projectName, loadFilesRef])
 

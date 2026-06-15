@@ -507,41 +507,20 @@ function VirtualFileList({
     overscan: 5,
   })
 
-  const handleOpenFile = useCallback((file: FileInfo) => {
-    onOpenFile(file)
-  }, [onOpenFile])
+  // Refs to avoid re-registering the keyboard listener on every data change
+  const listItemsRef = useRef(listItems)
+  const selectedFilesRef = useRef(selectedFiles)
+  const onOpenFileRef = useRef(onOpenFile)
+  const onFolderClickRef = useRef(onFolderClick)
+  const onFileSelectionChangeRef = useRef(onFileSelectionChange)
+  const onMoveFileRef = useRef(onMoveFile)
 
-  const handleRenameFile = useCallback((file: FileInfo, newName: string) => {
-    onRenameFile(file, newName)
-  }, [onRenameFile])
-
-  const handleRemoveTag = useCallback((file: FileInfo, tag: FileTag) => {
-    onRemoveTag(file, tag)
-  }, [onRemoveTag])
-
-  const handleAddTag = useCallback((file: FileInfo, tag: FileTag) => {
-    onAddTag(file, tag)
-  }, [onAddTag])
-
-  const handleToggleFavorite = useCallback((file: FileInfo) => {
-    onToggleFavorite(file)
-  }, [onToggleFavorite])
-
-  const handleShowInFinder = useCallback((file: FileInfo) => {
-    onShowInFinder(file)
-  }, [onShowInFinder])
-
-  const handleCopyPath = useCallback((file: FileInfo) => {
-    onCopyPath(file)
-  }, [onCopyPath])
-
-  const handleMoveFile = useCallback((file: FileInfo, destSubfolder: string) => {
-    onMoveFile(file, destSubfolder)
-  }, [onMoveFile])
-
-  const handleSelectionChange = useCallback((file: FileInfo, selected: boolean) => {
-    onFileSelectionChange(file, selected)
-  }, [onFileSelectionChange])
+  listItemsRef.current = listItems
+  selectedFilesRef.current = selectedFiles
+  onOpenFileRef.current = onOpenFile
+  onFolderClickRef.current = onFolderClick
+  onFileSelectionChangeRef.current = onFileSelectionChange
+  onMoveFileRef.current = onMoveFile
 
   // Keyboard navigation — uses refs for values that change frequently
   // so the listener is only registered once.
@@ -557,13 +536,14 @@ function VirtualFileList({
         e.target instanceof HTMLTextAreaElement
       )
         return
-      if (listItems.length === 0) return
+      const items = listItemsRef.current
+      if (items.length === 0) return
       const currentFocused = focusedIndexRef.current
 
       if (e.key === "ArrowDown") {
         e.preventDefault()
         setFocusedIndex((prev) => {
-          const next = prev < listItems.length - 1 ? prev + 1 : prev
+          const next = prev < items.length - 1 ? prev + 1 : prev
           virtualizer.scrollToIndex(next, { align: "auto" })
           return next
         })
@@ -575,32 +555,32 @@ function VirtualFileList({
           return next
         })
       } else if (e.key === "Enter") {
-        if (currentFocused >= 0 && currentFocused < listItems.length) {
-          const item = listItems[currentFocused]
+        if (currentFocused >= 0 && currentFocused < items.length) {
+          const item = items[currentFocused]
           if (item.type === "file") {
-            onOpenFile(item.data)
+            onOpenFileRef.current(item.data)
           } else {
-            onFolderClick(item.path)
+            onFolderClickRef.current(item.path)
           }
         }
       } else if (e.key === " ") {
         e.preventDefault()
-        if (currentFocused >= 0 && currentFocused < listItems.length) {
-          const item = listItems[currentFocused]
+        if (currentFocused >= 0 && currentFocused < items.length) {
+          const item = items[currentFocused]
           if (item.type === "file") {
-            onFileSelectionChange(item.data, !selectedFiles.has(item.data.path))
+            onFileSelectionChangeRef.current(item.data, !selectedFilesRef.current.has(item.data.path))
           }
         }
       } else if (e.key === "Home") {
         e.preventDefault()
-        if (listItems.length > 0) {
+        if (items.length > 0) {
           setFocusedIndex(0)
           virtualizer.scrollToIndex(0, { align: "start" })
         }
       } else if (e.key === "End") {
         e.preventDefault()
-        if (listItems.length > 0) {
-          const last = listItems.length - 1
+        if (items.length > 0) {
+          const last = items.length - 1
           setFocusedIndex(last)
           virtualizer.scrollToIndex(last, { align: "end" })
         }
@@ -609,7 +589,7 @@ function VirtualFileList({
 
     el.addEventListener("keydown", onKeyDown)
     return () => el.removeEventListener("keydown", onKeyDown)
-  }, [listItems, onOpenFile, onFolderClick, onFileSelectionChange, selectedFiles, virtualizer])
+  }, [virtualizer])
 
   const items = virtualizer.getVirtualItems()
 
@@ -663,31 +643,31 @@ function VirtualFileList({
                     name={item.name}
                     fileCount={item.fileCount}
                     totalFileCount={item.totalFileCount}
-                    onClick={() => onFolderClick(item.path)}
+                    onClick={() => onFolderClickRef.current(item.path)}
                     onTagAll={onFolderTagAll ? (tag) => onFolderTagAll(item.path, tag) : undefined}
                     isFocused={isFocused}
-                    onFileDrop={(filePath) => {
-                      const fileItem = listItems.find(
+                    onFileDrop={(filePath: string) => {
+                      const fileItem = listItemsRef.current.find(
                         (i) => i.type === "file" && i.data.path === filePath,
                       )
                       if (fileItem?.type === "file") {
-                        onMoveFile(fileItem.data, item.path)
+                        onMoveFileRef.current(fileItem.data, item.path)
                       }
                     }}
                   />
                 ) : (
                   <FileRow
                     file={item.data}
-                    onOpen={handleOpenFile}
-                    onRename={handleRenameFile}
-                    onRemoveTag={handleRemoveTag}
-                    onAddTag={handleAddTag}
-                    onToggleFavorite={handleToggleFavorite}
-                    onShowInFinder={handleShowInFinder}
-                    onCopyPath={handleCopyPath}
-                    onMoveFile={handleMoveFile}
+                    onOpen={onOpenFileRef.current}
+                    onRename={onRenameFile}
+                    onRemoveTag={onRemoveTag}
+                    onAddTag={onAddTag}
+                    onToggleFavorite={onToggleFavorite}
+                    onShowInFinder={onShowInFinder}
+                    onCopyPath={onCopyPath}
+                    onMoveFile={onMoveFileRef.current}
                     isSelected={selectedFiles.has(item.data.path)}
-                    onSelectionChange={handleSelectionChange}
+                    onSelectionChange={onFileSelectionChangeRef.current}
                     subfolders={allSubfolders}
                     selectionMode={selectedFiles.size > 0}
                     isFocused={isFocused}

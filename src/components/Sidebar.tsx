@@ -1,4 +1,4 @@
-import { useState, memo, useCallback, useRef, type ReactNode } from "react";
+import { useState, memo, useCallback, useRef, useMemo, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import {
@@ -350,46 +350,49 @@ export const Sidebar = memo(function Sidebar({
   );
 
   const effectiveSortKey = sortKey ?? "deadline";
-  const sorted = sortProjects(projects, effectiveSortKey, fileCounts);
+  const sorted = useMemo(() => sortProjects(projects, effectiveSortKey, fileCounts), [projects, effectiveSortKey, fileCounts]);
 
-  const filtered = sorted.filter((p) => {
+  const filtered = useMemo(() => sorted.filter((p) => {
     if (filterMode === "favorites")
       return p.isFavorite && !p.isArchived && !p.isFinished;
     if (filterMode === "archived") return p.isArchived;
     if (filterMode === "finished") return p.isFinished && !p.isArchived;
     return !p.isArchived && !p.isFinished;
-  });
+  }), [sorted, filterMode]);
 
-  const favoriteCount = sorted.filter(
-    (p) => p.isFavorite && !p.isArchived && !p.isFinished,
-  ).length;
-  const archivedCount = sorted.filter((p) => p.isArchived).length;
-  const finishedCount = sorted.filter(
-    (p) => p.isFinished && !p.isArchived,
-  ).length;
-  const activeCount = sorted.filter(
-    (p) => !p.isArchived && !p.isFinished,
-  ).length;
-  const subjectGroups = getAssessmentSubjectGroups(filtered);
+  const subjectGroups = useMemo(() => getAssessmentSubjectGroups(filtered), [filtered]);
   const selectedProject = selectedId
     ? projects.find((project) => project.id === selectedId)
     : undefined;
-  const filterItems: {
-    mode: FilterMode;
-    label: string;
-    icon: LucideIcon;
-    count?: number;
-  }[] = [
-    { mode: "active", label: "Current", icon: CircleDot },
-    { mode: "favorites", label: "Starred", icon: Star, count: favoriteCount },
-    { mode: "archived", label: "Archive", icon: Archive, count: archivedCount },
-    {
-      mode: "finished",
-      label: "Done",
-      icon: CheckCircle2,
-      count: finishedCount,
-    },
-  ];
+
+  const { activeCount, filterItems } = useMemo(() => {
+    let favoriteCount = 0;
+    let archivedCount = 0;
+    let finishedCount = 0;
+    let activeCount = 0;
+    for (const p of sorted) {
+      if (p.isArchived) {
+        archivedCount++;
+      } else if (p.isFinished) {
+        finishedCount++;
+      } else {
+        activeCount++;
+        if (p.isFavorite) favoriteCount++;
+      }
+    }
+    const items: {
+      mode: FilterMode;
+      label: string;
+      icon: LucideIcon;
+      count?: number;
+    }[] = [
+      { mode: "active", label: "Current", icon: CircleDot },
+      { mode: "favorites", label: "Starred", icon: Star, count: favoriteCount },
+      { mode: "archived", label: "Archive", icon: Archive, count: archivedCount },
+      { mode: "finished", label: "Done", icon: CheckCircle2, count: finishedCount },
+    ];
+    return { activeCount, filterItems: items };
+  }, [sorted]);
   const pressTransition = reduceMotion
     ? { duration: 0 }
     : SIDEBAR_PRESS_TRANSITION;
@@ -702,7 +705,6 @@ export const Sidebar = memo(function Sidebar({
                           <ContextMenuTrigger asChild>
                             <motion.div
                               key={project.id}
-                              layout
                               variants={staggerItem}
                               whileHover={
                                 reduceMotion

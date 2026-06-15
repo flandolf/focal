@@ -1,4 +1,4 @@
-import { createElement } from "react"
+import { createElement, useMemo } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { Clock, Download, Folder, Bookmark, Link, Settings, FolderUp, Plus, CheckCircle2, RefreshCw, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -50,11 +50,12 @@ export function ProjectHeader({
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
   const projectIcon = getProjectIcon(project.subjectId)
   const reduceMotion = useReducedMotion() === true
+  const headerVariants = useMemo(() => staggerContainer(0.06, 0.04), [])
 
   return (
     <motion.div
       className="border-b border-border/70"
-      variants={staggerContainer(0.06, 0.04)}
+      variants={headerVariants}
       initial="initial"
       animate="animate"
     >
