@@ -66,6 +66,8 @@ export function useProjectFiles(projectName: string | null) {
   const filesRef = useRef<FileInfo[]>([])
   const changedPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const removedFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isLoadingFiles = useRef(false)
+  const pendingOptions = useRef<{ silent?: boolean; notifyOnChange?: boolean } | null>(null)
 
   useEffect(() => {
     filesRef.current = files
@@ -81,6 +83,15 @@ export function useProjectFiles(projectName: string | null) {
       setRemovedFiles([])
       return
     }
+    // Concurrency guard: queue a reload if one is already in progress
+    if (isLoadingFiles.current) {
+      pendingOptions.current = {
+        silent: pendingOptions.current?.silent && options?.silent,
+        notifyOnChange: pendingOptions.current?.notifyOnChange || options?.notifyOnChange,
+      }
+      return
+    }
+    isLoadingFiles.current = true
     if (!options?.silent) setLoading(true)
     try {
       const result = await invoke<FileInfo[]>("get_project_files", {
@@ -131,6 +142,13 @@ export function useProjectFiles(projectName: string | null) {
       setFiles([])
     } finally {
       if (!options?.silent) setLoading(false)
+      isLoadingFiles.current = false
+      // Run any reload that was queued while we were loading
+      if (pendingOptions.current) {
+        const opts = pendingOptions.current
+        pendingOptions.current = null
+        await loadFiles(opts)
+      }
     }
   }, [projectName])
 
@@ -182,10 +200,10 @@ export function useProjectFiles(projectName: string | null) {
         files: selected,
         projectName: targetFolder,
       })
-      await loadFiles()
+      await loadFiles({ silent: true })
       return selected.length
     } catch (e) {
-      await loadFiles()
+      await loadFiles({ silent: true })
       console.error("Failed to move files:", e)
       throw e
     }
@@ -193,7 +211,17 @@ export function useProjectFiles(projectName: string | null) {
 
   const renameFile = useCallback(async (filePath: string, newName: string) => {
     try {
-      await invoke<string>("rename_file", { filePath, newName })
+      const newPath = await invoke<string>("rename_file", { filePath, newName })
+      // Optimistic update
+      setFiles((current) => {
+        const now = Math.floor(Date.now() / 1000)
+        return current.map((f) => {
+          if (f.path !== filePath) return f
+          const lastDot = newName.lastIndexOf(".")
+          const ext = lastDot >= 0 ? newName.slice(lastDot + 1) : ""
+          return { ...f, name: newName, path: newPath, extension: ext, modified: now }
+        })
+      })
       await loadFiles()
     } catch (e) {
       console.error("Failed to rename file:", e)
@@ -203,17 +231,28 @@ export function useProjectFiles(projectName: string | null) {
 
   const moveFileToFolder = useCallback(async (filePath: string, destFolder: string) => {
     try {
-      await invoke<string>("move_file_to_folder", { filePath, destFolder })
+      const newPath = await invoke<string>("move_file_to_folder", { filePath, destFolder })
+      const projectsDir = await invoke<string>("get_projects_directory")
+      const projectPath = (await join(projectsDir, projectName!)).replace(/\\/g, "/")
+      const parent = newPath.substring(0, Math.max(newPath.lastIndexOf("/"), newPath.lastIndexOf("\\")))
+      let subfolder: string | undefined = parent.replace(/\\/g, "/").replace(projectPath, "").replace(/^\/+/, "")
+      if (subfolder === "") subfolder = undefined
+      // Optimistic update
+      setFiles((current) => current.map((f) => {
+        if (f.path !== filePath) return f
+        return { ...f, path: newPath, subfolder }
+      }))
       await loadFiles()
     } catch (e) {
       console.error("Failed to move file:", e)
       throw e
     }
-  }, [loadFiles])
+  }, [projectName, loadFiles])
 
   const deleteFiles = useCallback(async (filePaths: string[]) => {
     try {
       await invoke<number>("delete_files", { filePaths })
+      setFiles((current) => current.filter((f) => !filePaths.includes(f.path)))
       await purgeMetadata(filePaths)
       await loadFiles()
     } catch (e) {

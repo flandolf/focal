@@ -163,13 +163,13 @@ export const ProjectDetail = memo(function ProjectDetail({
               })
                 .then(() => {
                   if (!cancelled) {
-                    void loadFiles()
+                    void loadFiles({ silent: true })
                     onFilesChanged()
                   }
                 })
                 .catch((e) => {
                   if (!cancelled) {
-                    void loadFiles()
+                    void loadFiles({ silent: true })
                     onFilesChanged()
                     notifyProjectActionError(copy ? "Could not copy dropped files" : "Could not move dropped files", e)
                   }
@@ -244,7 +244,7 @@ export const ProjectDetail = memo(function ProjectDetail({
         return
       }
       await invoke("create_project_folder", { projectName: relativePath })
-      await loadFiles()
+      await loadFiles({ silent: true })
       onFilesChanged()
     } catch (e) {
       notifyProjectActionError("Could not create folder", e)
