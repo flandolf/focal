@@ -6,7 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog"
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion"
 import { MOTION_DURATION, MOTION_EASE, REDUCED_TRANSITION, pressable as pressableMotion, staggerContainer, staggerItem } from "@/lib/motion"
 import { Toaster, toast } from "sonner"
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Loader2 } from "lucide-react"
 import { useProjects, type ProjectSortKey } from "@/hooks/useProjects"
 import { useProjectsDirectoryWatcher } from "@/hooks/useProjectsDirectoryWatcher"
 import { useStudySessions } from "@/hooks/useStudySessions"
@@ -66,32 +66,51 @@ function ViewFallback({ label }: { label?: string }) {
       className="flex h-full items-center justify-center px-6"
     >
       <motion.div
-        className="flex w-full max-w-xs flex-col items-center gap-4"
-        initial={{ opacity: 0, y: reduceMotion ? 0 : 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={reduceMotion ? REDUCED_TRANSITION : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
+        className="glass-panel flex w-full max-w-xs flex-col items-center gap-5 overflow-hidden rounded-2xl p-8"
+        variants={staggerContainer(0.05, 0.06)}
+        initial="initial"
+        animate="animate"
       >
-        <div className="flex w-full flex-col gap-2.5">
+        {/* Spinner icon */}
+        <motion.div
+          variants={staggerItem}
+          className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/30"
+        >
           <motion.div
-            className="h-3 w-2/5 rounded-md bg-muted/50"
-            animate={reduceMotion ? undefined : { opacity: [0.45, 0.85, 0.45] }}
+            animate={reduceMotion ? undefined : { rotate: 360 }}
+            transition={reduceMotion ? REDUCED_TRANSITION : { duration: 2.5, repeat: Infinity, ease: "linear" }}
+          >
+            <Loader2 className="h-5 w-5 text-muted-foreground/40" aria-hidden />
+          </motion.div>
+        </motion.div>
+
+        {/* Skeleton bars */}
+        <motion.div variants={staggerItem} className="flex w-full flex-col gap-2.5">
+          <motion.div
+            className="h-3 w-2/5 rounded-md bg-muted/40"
+            animate={reduceMotion ? undefined : { opacity: [0.4, 0.8, 0.4] }}
             transition={reduceMotion ? REDUCED_TRANSITION : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
           />
           <motion.div
-            className="h-2.5 w-full rounded-md bg-muted/35"
-            animate={reduceMotion ? undefined : { opacity: [0.35, 0.7, 0.35] }}
+            className="h-2.5 w-full rounded-md bg-muted/30"
+            animate={reduceMotion ? undefined : { opacity: [0.3, 0.65, 0.3] }}
             transition={reduceMotion ? REDUCED_TRANSITION : { duration: 1.6, repeat: Infinity, ease: "easeInOut", delay: 0.12 }}
           />
           <motion.div
-            className="h-2.5 w-5/6 rounded-md bg-muted/30"
-            animate={reduceMotion ? undefined : { opacity: [0.3, 0.6, 0.3] }}
+            className="h-2.5 w-5/6 rounded-md bg-muted/25"
+            animate={reduceMotion ? undefined : { opacity: [0.25, 0.55, 0.25] }}
             transition={reduceMotion ? REDUCED_TRANSITION : { duration: 1.6, repeat: Infinity, ease: "easeInOut", delay: 0.24 }}
           />
-        </div>
+        </motion.div>
+
+        {/* Label */}
         {label && (
-          <span className="text-caption text-muted-foreground/60">
+          <motion.span
+            variants={staggerItem}
+            className="text-caption text-muted-foreground/60"
+          >
             Loading {label}…
-          </span>
+          </motion.span>
         )}
       </motion.div>
     </div>

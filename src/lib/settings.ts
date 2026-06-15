@@ -1,3 +1,6 @@
+import type { TimetableConfig, TimetableDayLabel, TimetableEntry, TimetableViewSettings } from "@/lib/types"
+export type { TimetableConfig } from "@/lib/types"
+
 const KEYS = {
   apiKey: "focal-openrouter-key",
   model: "focal-openrouter-model",
@@ -40,83 +43,115 @@ export const DEFAULT_NOTION_CALENDAR_SETTINGS: NotionCalendarSettings = {
   completedProperty: "Complete",
   subjectProperty: "Subject",
 }
-export function getApiKey(): string | null {
-  return localStorage.getItem(KEYS.apiKey)
+
+// ---------------------------------------------------------------------------
+// localStorage helpers
+// ---------------------------------------------------------------------------
+
+function getString(key: string): string | null
+function getString(key: string, fallback: string): string
+function getString(key: string, fallback?: string): string | null {
+  return localStorage.getItem(key) ?? fallback ?? null
 }
 
-export function setApiKey(key: string) {
-  localStorage.setItem(KEYS.apiKey, key)
+function setString(key: string, value: string): void {
+  localStorage.setItem(key, value)
+}
+
+function getBool(key: string, defaultValue: boolean): boolean {
+  const val = localStorage.getItem(key)
+  return val === null ? defaultValue : val === "true"
+}
+
+function setBool(key: string, value: boolean): void {
+  localStorage.setItem(key, String(value))
+}
+
+// ---------------------------------------------------------------------------
+// API / model settings
+// ---------------------------------------------------------------------------
+
+export function getApiKey(): string | null {
+  return getString(KEYS.apiKey)
+}
+
+export function setApiKey(key: string): void {
+  setString(KEYS.apiKey, key)
 }
 
 export function getModel(): string {
-  return localStorage.getItem(KEYS.model) ?? DEFAULT_MODEL
+  return getString(KEYS.model, DEFAULT_MODEL)
 }
 
-export function setModel(model: string) {
-  localStorage.setItem(KEYS.model, model)
+export function setModel(model: string): void {
+  setString(KEYS.model, model)
 }
 
 export function getAutoRenameUseFileContent(): boolean {
-  return localStorage.getItem(KEYS.autoRenameUseFileContent) === "true"
+  return getBool(KEYS.autoRenameUseFileContent, false)
 }
 
-export function setAutoRenameUseFileContent(enabled: boolean) {
-  localStorage.setItem(KEYS.autoRenameUseFileContent, String(enabled))
+export function setAutoRenameUseFileContent(enabled: boolean): void {
+  setBool(KEYS.autoRenameUseFileContent, enabled)
 }
 
 export function getAiPlannerUseFileContent(): boolean {
-  return localStorage.getItem(KEYS.aiPlannerUseFileContent) !== "false"
+  return getBool(KEYS.aiPlannerUseFileContent, true)
 }
 
-export function setAiPlannerUseFileContent(enabled: boolean) {
-  localStorage.setItem(KEYS.aiPlannerUseFileContent, String(enabled))
+export function setAiPlannerUseFileContent(enabled: boolean): void {
+  setBool(KEYS.aiPlannerUseFileContent, enabled)
 }
 
 export function getReasoningEffort(): ReasoningEffort {
-  return (localStorage.getItem(KEYS.reasoningEffort) as ReasoningEffort) ?? "medium"
+  return (getString(KEYS.reasoningEffort) as ReasoningEffort | null) ?? "medium"
 }
 
-export function setReasoningEffort(effort: ReasoningEffort) {
-  localStorage.setItem(KEYS.reasoningEffort, effort)
+export function setReasoningEffort(effort: ReasoningEffort): void {
+  setString(KEYS.reasoningEffort, effort)
 }
 
 export function getReasoningMaxTokens(): number {
-  const val = localStorage.getItem(KEYS.reasoningMaxTokens)
+  const val = getString(KEYS.reasoningMaxTokens)
   return val ? parseInt(val, 10) : 8000
 }
 
-export function setReasoningMaxTokens(tokens: number) {
-  localStorage.setItem(KEYS.reasoningMaxTokens, String(tokens))
+export function setReasoningMaxTokens(tokens: number): void {
+  setString(KEYS.reasoningMaxTokens, String(tokens))
 }
 
 export function getReasoningExclude(): boolean {
-  return localStorage.getItem(KEYS.reasoningExclude) === "true"
+  return getBool(KEYS.reasoningExclude, false)
 }
 
-export function setReasoningExclude(exclude: boolean) {
-  localStorage.setItem(KEYS.reasoningExclude, String(exclude))
+export function setReasoningExclude(exclude: boolean): void {
+  setBool(KEYS.reasoningExclude, exclude)
 }
+
+// ---------------------------------------------------------------------------
+// Notion calendar
+// ---------------------------------------------------------------------------
 
 export function getNotionCalendarSettings(): NotionCalendarSettings {
   return {
-    token: localStorage.getItem(KEYS.notionToken) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.token,
-    dataSourceId: localStorage.getItem(KEYS.notionDataSourceId) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.dataSourceId,
-    titleProperty: localStorage.getItem(KEYS.notionTitleProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty,
-    dateProperty: localStorage.getItem(KEYS.notionDateProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty,
-    typeProperty: localStorage.getItem(KEYS.notionTypeProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.typeProperty,
-    completedProperty: localStorage.getItem(KEYS.notionCompletedProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.completedProperty,
-    subjectProperty: localStorage.getItem(KEYS.notionSubjectProperty) ?? DEFAULT_NOTION_CALENDAR_SETTINGS.subjectProperty,
+    token: getString(KEYS.notionToken, ""),
+    dataSourceId: getString(KEYS.notionDataSourceId, ""),
+    titleProperty: getString(KEYS.notionTitleProperty, DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty),
+    dateProperty: getString(KEYS.notionDateProperty, DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty),
+    typeProperty: getString(KEYS.notionTypeProperty, DEFAULT_NOTION_CALENDAR_SETTINGS.typeProperty),
+    completedProperty: getString(KEYS.notionCompletedProperty, DEFAULT_NOTION_CALENDAR_SETTINGS.completedProperty),
+    subjectProperty: getString(KEYS.notionSubjectProperty, DEFAULT_NOTION_CALENDAR_SETTINGS.subjectProperty),
   }
 }
 
-export function setNotionCalendarSettings(settings: NotionCalendarSettings) {
-  localStorage.setItem(KEYS.notionToken, settings.token.trim())
-  localStorage.setItem(KEYS.notionDataSourceId, settings.dataSourceId.trim())
-  localStorage.setItem(KEYS.notionTitleProperty, settings.titleProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty)
-  localStorage.setItem(KEYS.notionDateProperty, settings.dateProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty)
-  localStorage.setItem(KEYS.notionTypeProperty, settings.typeProperty.trim())
-  localStorage.setItem(KEYS.notionCompletedProperty, settings.completedProperty.trim())
-  localStorage.setItem(KEYS.notionSubjectProperty, settings.subjectProperty.trim())
+export function setNotionCalendarSettings(settings: NotionCalendarSettings): void {
+  setString(KEYS.notionToken, settings.token.trim())
+  setString(KEYS.notionDataSourceId, settings.dataSourceId.trim())
+  setString(KEYS.notionTitleProperty, settings.titleProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty)
+  setString(KEYS.notionDateProperty, settings.dateProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty)
+  setString(KEYS.notionTypeProperty, settings.typeProperty.trim())
+  setString(KEYS.notionCompletedProperty, settings.completedProperty.trim())
+  setString(KEYS.notionSubjectProperty, settings.subjectProperty.trim())
 }
 
 /** Notion tokens are local-only; legacy sync flags are cleared and ignored. */
@@ -124,7 +159,7 @@ export function getSyncNotionToken(): boolean {
   return false
 }
 
-export function setSyncNotionToken(_enabled: boolean) {
+export function setSyncNotionToken(_enabled: boolean): void {
   localStorage.removeItem(KEYS.syncNotionToken)
 }
 
@@ -133,20 +168,17 @@ export function getSyncOpenrouterKey(): boolean {
   return false
 }
 
-export function setSyncOpenrouterKey(_enabled: boolean) {
+export function setSyncOpenrouterKey(_enabled: boolean): void {
   localStorage.removeItem(KEYS.syncOpenrouterKey)
 }
 
 export function getProjectsRootPath(): string | null {
-  return localStorage.getItem(KEYS.projectsRootPath)
+  return getString(KEYS.projectsRootPath)
 }
 
-export function setProjectsRootPath(path: string | null) {
-  if (path) {
-    localStorage.setItem(KEYS.projectsRootPath, path)
-  } else {
-    localStorage.removeItem(KEYS.projectsRootPath)
-  }
+export function setProjectsRootPath(path: string | null): void {
+  if (path) setString(KEYS.projectsRootPath, path)
+  else localStorage.removeItem(KEYS.projectsRootPath)
 }
 
 export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; max_tokens?: number; exclude?: boolean } } {
@@ -161,12 +193,9 @@ export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; 
   }
 }
 
-// --- Timetable ---
-
-import type { TimetableConfig, TimetableDayLabel, TimetableEntry } from "@/lib/types"
-export type { TimetableConfig } from "@/lib/types"
-
-import type { TimetableViewSettings } from "@/lib/types"
+// ---------------------------------------------------------------------------
+// Timetable
+// ---------------------------------------------------------------------------
 
 export const DEFAULT_VIEW_SETTINGS: TimetableViewSettings = {
   showAllDays: false,
@@ -260,7 +289,6 @@ export function getTimetableConfig(): TimetableConfig {
     const dayToWeekday = (() => {
       if (!Array.isArray(parsed.dayToWeekday)) return defaultDayToWeekday(cycleLength, weekendTimetables)
       const stored = parsed.dayToWeekday.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6) as number[]
-      // If the stored array was for an older cycle length, rebase it to the current one.
       if (stored.length === cycleLength) return stored
       return defaultDayToWeekday(cycleLength, weekendTimetables)
     })()

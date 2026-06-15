@@ -1,3 +1,8 @@
+/**
+ * Core sync primitives: table definitions, row-ID tracking, merge logic, and
+ * queue coalescing. This module is stateless — all mutable state lives in
+ * engine.ts or queue.ts.
+ */
 import { compareIso } from "@/lib/sync/mappers"
 import type { SyncConflictItem, SyncMeta, SyncOperation, SyncQueueItem, SyncTable } from "@/lib/sync/types"
 import type { UserSettings } from "@/lib/types"

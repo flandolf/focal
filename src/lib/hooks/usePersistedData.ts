@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
 
+/**
+ * Generic hook for reading/writing a JSON array from the Tauri app-data directory.
+ * Normalises each raw row on load, applies an optional post-load filter, and
+ * listens to `focal-sync-data-changed` events so external sync writes are reflected
+ * in React state without reloading the page.
+ */
 interface PersistedDataOptions<T> {
   fileName: string
   normalize: (raw: unknown) => T

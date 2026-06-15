@@ -1,3 +1,8 @@
+/**
+ * Supabase realtime subscriptions for all sync tables. Each table gets its own
+ * channel filtered by `user_id`. Changes are forwarded to the engine's
+ * `applyRealtimeChange` handler. Reconnection triggers a full pull as a safety net.
+ */
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js"
 import type { RemoteRow, SyncTable } from "@/lib/sync/types"
 

@@ -1,9 +1,11 @@
 import { useCallback, useEffect } from "react"
 import type { CalendarEvent, EventType } from "@/lib/types"
-import { generateId } from "@/lib/utils"
+import { generateId, safeString, safeStringOpt, safeBool, safeDateMeta, parseNotionSource } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
+
+const VALID_EVENT_TYPES: readonly string[] = ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"]
 
 function getEventEndTime(event: Pick<CalendarEvent, "startTime" | "endTime">): number {
   const value = event.endTime ?? event.startTime
@@ -28,45 +30,22 @@ function markPastEventsFinished(events: CalendarEvent[], now = Date.now()): Cale
 
 function normaliseEvent(raw: unknown): CalendarEvent {
   const obj = raw as Record<string, unknown>
-  const source = obj.source as Record<string, unknown> | undefined
-  const eventType =
-    obj.eventType === "sac" ||
-    obj.eventType === "exam" ||
-    obj.eventType === "assignment" ||
-    obj.eventType === "event" ||
-    obj.eventType === "homework" ||
-    obj.eventType === "other" ||
-    obj.eventType === "practice-sac"
-      ? obj.eventType
-      : "event"
-
-  const event: CalendarEvent = {
-    id: typeof obj.id === "string" ? obj.id : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-    title: typeof obj.title === "string" ? obj.title : "Untitled Event",
-    description: typeof obj.description === "string" ? obj.description : undefined,
-    startTime: typeof obj.startTime === "string" ? obj.startTime : new Date().toISOString(),
-    endTime: typeof obj.endTime === "string" ? obj.endTime : undefined,
+  const eventType = VALID_EVENT_TYPES.includes(String(obj.eventType)) ? (obj.eventType as EventType) : "event"
+  const meta = safeDateMeta(obj)
+  return {
+    id: safeString(obj, "id", `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`),
+    title: safeString(obj, "title", "Untitled Event"),
+    description: safeStringOpt(obj, "description"),
+    startTime: safeString(obj, "startTime", new Date().toISOString()),
+    endTime: safeStringOpt(obj, "endTime"),
     eventType,
-    subjectId: typeof obj.subjectId === "string" ? obj.subjectId : undefined,
-    location: typeof obj.location === "string" ? obj.location : undefined,
-    isFinished: typeof obj.isFinished === "boolean" ? obj.isFinished : false,
-    finishedAt: typeof obj.finishedAt === "string" ? obj.finishedAt : undefined,
-    source: source?.type === "notion" && typeof source.id === "string"
-      ? {
-        type: "notion",
-        id: source.id,
-        url: typeof source.url === "string" ? source.url : undefined,
-        lastEditedTime: typeof source.lastEditedTime === "string" ? source.lastEditedTime : undefined,
-        kind: source.kind === "event" || source.kind === "session" ? source.kind : undefined,
-        bodyHash: typeof source.bodyHash === "string" ? source.bodyHash : undefined,
-      }
-      : undefined,
-    created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
-    updated_at: typeof obj.updated_at === "string" ? obj.updated_at : typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
-    deleted_at: typeof obj.deleted_at === "string" ? obj.deleted_at : null,
-    last_modified_device_id: typeof obj.last_modified_device_id === "string" ? obj.last_modified_device_id : null,
+    subjectId: safeStringOpt(obj, "subjectId"),
+    location: safeStringOpt(obj, "location"),
+    isFinished: safeBool(obj, "isFinished", false),
+    finishedAt: safeStringOpt(obj, "finishedAt"),
+    source: parseNotionSource(obj.source),
+    ...meta,
   }
-  return event
 }
 
 export function useEvents() {

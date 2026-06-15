@@ -3,7 +3,7 @@ import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
 import { getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
-import { bustSubjectCache } from "@/lib/utils"
+import { bustSubjectCache, getErrorMessage } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
 import { enqueueSyncItem, finishSyncQueueFlush, readSyncQueue, writeSyncQueue } from "@/lib/sync/queue"
@@ -691,14 +691,6 @@ function getErrorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
     ? error.code
     : undefined
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
-    return error.message
-  }
-  return String(error)
 }
 
 function isTransientSyncError(error: unknown): boolean {

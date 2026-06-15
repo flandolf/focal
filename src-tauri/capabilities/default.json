@@ -32,14 +32,21 @@
       ]
     },
     {
-      "identifier": "fs:allow-mkdir",
+      "identifier":    "fs:allow-mkdir",
+    "allow": [
+      {
+        "path": "$APPDATA/**"
+      }
+    ]
+  },    {
+      "identifier": "fs:allow-watch",
       "allow": [
         {
-          "path": "$APPDATA/**"
+          "path": "$HOME/**"
         }
       ]
     },
-    "notification:default",
+  "notification:default",
     "os:default"
   ]
 }

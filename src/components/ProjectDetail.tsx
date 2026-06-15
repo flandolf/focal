@@ -18,7 +18,8 @@ import { SessionList } from "@/components/project/SessionList"
 import { ProjectChecklistPanel } from "@/components/project/ProjectChecklistPanel"
 import { ProjectDependenciesPanel } from "@/components/project/ProjectDependenciesPanel"
 import { AutoRenameButton } from "@/components/AutoRenameButton"
-import { notifyProjectActionError, getErrorMessage } from "@/components/project/shared"
+import { notifyProjectActionError } from "@/components/project/shared"
+import { getErrorMessage } from "@/lib/utils"
 
 interface ProjectDetailProps {
   project: Project

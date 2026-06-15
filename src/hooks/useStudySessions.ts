@@ -1,9 +1,11 @@
 import { useCallback } from "react"
 import type { ConfidenceScore, StudySession } from "@/lib/types"
-import { generateId } from "@/lib/utils"
+import { generateId, safeString, safeStringOpt, safeDateMeta, parseNotionSource } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
+
+const VALID_STATUSES: readonly string[] = ["planned", "in-progress", "completed"]
 
 function isConfidenceScore(value: unknown): value is ConfidenceScore {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
@@ -11,42 +13,29 @@ function isConfidenceScore(value: unknown): value is ConfidenceScore {
 
 function normaliseSession(raw: unknown): StudySession {
   const obj = raw as Record<string, unknown>
+  const meta = safeDateMeta(obj)
   return {
-    id: typeof obj.id === "string" ? obj.id : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-    projectId: typeof obj.projectId === "string" && obj.projectId.length > 0 ? obj.projectId : undefined,
+    id: safeString(obj, "id", `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`),
+    projectId: safeStringOpt(obj, "projectId") || undefined,
     subjectIds: Array.isArray(obj.subjectIds) ? obj.subjectIds.filter((id): id is string => typeof id === "string") : [],
-    title: typeof obj.title === "string" ? obj.title : "Study Session",
-    description: typeof obj.description === "string" ? obj.description : undefined,
-    startTime: typeof obj.startTime === "string" ? obj.startTime : new Date().toISOString(),
-    endTime: typeof obj.endTime === "string" ? obj.endTime : new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    status: (obj.status === "planned" || obj.status === "in-progress" || obj.status === "completed") ? obj.status : "planned",
+    title: safeString(obj, "title", "Study Session"),
+    description: safeStringOpt(obj, "description"),
+    startTime: safeString(obj, "startTime", new Date().toISOString()),
+    endTime: safeString(obj, "endTime", new Date(Date.now() + 60 * 60 * 1000).toISOString()),
+    status: VALID_STATUSES.includes(String(obj.status)) ? (obj.status as StudySession["status"]) : "planned",
     topics: Array.isArray(obj.topics) ? obj.topics : undefined,
-    notes: typeof obj.notes === "string" ? obj.notes : undefined,
+    notes: safeStringOpt(obj, "notes"),
     confidence: isConfidenceScore(obj.confidence) ? obj.confidence : undefined,
-    blockers: typeof obj.blockers === "string" ? obj.blockers : undefined,
-    nextAction: typeof obj.nextAction === "string" ? obj.nextAction : undefined,
-    completedAt: typeof obj.completedAt === "string" ? obj.completedAt : undefined,
-    source: typeof obj.source === "object" && obj.source !== null && (obj.source as Record<string, unknown>).type === "notion" && typeof (obj.source as Record<string, unknown>).id === "string"
-      ? {
-        type: "notion",
-        id: String((obj.source as Record<string, unknown>).id),
-        url: typeof (obj.source as Record<string, unknown>).url === "string" ? String((obj.source as Record<string, unknown>).url) : undefined,
-        lastEditedTime: typeof (obj.source as Record<string, unknown>).lastEditedTime === "string" ? String((obj.source as Record<string, unknown>).lastEditedTime) : undefined,
-        kind: (obj.source as Record<string, unknown>).kind === "event" || (obj.source as Record<string, unknown>).kind === "session"
-          ? (obj.source as Record<string, unknown>).kind as "event" | "session"
-          : undefined,
-        bodyHash: typeof (obj.source as Record<string, unknown>).bodyHash === "string" ? String((obj.source as Record<string, unknown>).bodyHash) : undefined,
-      }
-      : undefined,
+    blockers: safeStringOpt(obj, "blockers"),
+    nextAction: safeStringOpt(obj, "nextAction"),
+    completedAt: safeStringOpt(obj, "completedAt"),
+    source: parseNotionSource(obj.source),
     activeDurations: Array.isArray(obj.activeDurations)
       ? (obj.activeDurations as { start: string; end: string }[]).filter(
           (d) => typeof d.start === "string" && typeof d.end === "string",
         )
       : undefined,
-    created_at: typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
-    updated_at: typeof obj.updated_at === "string" ? obj.updated_at : typeof obj.created_at === "string" ? obj.created_at : new Date().toISOString(),
-    deleted_at: typeof obj.deleted_at === "string" ? obj.deleted_at : null,
-    last_modified_device_id: typeof obj.last_modified_device_id === "string" ? obj.last_modified_device_id : null,
+    ...meta,
   }
 }
 
