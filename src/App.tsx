@@ -1719,7 +1719,6 @@ function App() {
                     onToggleFinished={handleToggleFinished}
                     onSelectSession={handleSelectSession}
                     onNewSession={handleOpenNewSession}
-                    onCreateEvents={handleCreateEvents}
                     onUpdateNotes={handleUpdateNotes}
                     onAddChecklistItem={handleAddChecklistItem}
                     onToggleChecklistItem={handleToggleChecklistItem}

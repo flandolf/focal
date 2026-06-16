@@ -1,5 +1,24 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { LucideIcon } from "lucide-react"
+import {
+  Atom,
+  BookOpen,
+  BookText,
+  Brain,
+  BriefcaseBusiness,
+  Calculator,
+  ChartNoAxesColumn,
+  Dna,
+  Dumbbell,
+  FlaskConical,
+  Globe,
+  Landmark,
+  Languages,
+  Sigma,
+  Tag,
+  TrendingUp,
+} from "lucide-react"
 import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
@@ -140,6 +159,41 @@ export function getSubjectById(id?: string): Subject | undefined {
   return custom
 }
 
+/**
+ * Lucide icon map for every supported VCE subject. Mirrors and extends the
+ * project-icon map so a single helper covers both project headers and other
+ * subject chips/badges. Custom subjects fall back to a generic tag icon so
+ * they look the same regardless of which lucide icon they might later map to.
+ */
+export const SUBJECT_ICONS: Record<string, LucideIcon> = {
+  eng: BookOpen,
+  "eng-lang": Languages,
+  lit: BookText,
+  mm: Calculator,
+  sm: Sigma,
+  gm: ChartNoAxesColumn,
+  csl: Languages,
+  pe: Dumbbell,
+  chem: FlaskConical,
+  phys: Atom,
+  bio: Dna,
+  psych: Brain,
+  hist: Landmark,
+  geo: Globe,
+  econ: TrendingUp,
+  bm: BriefcaseBusiness,
+}
+
+/** Generic lucide icon used when no subject is provided or id is unknown. */
+const SUBJECT_ICON_FALLBACK: LucideIcon = Tag
+
+/** Look up the lucide icon for a subject by id. Falls back to Tag for
+ *  unmapped/custom subjects; never throws. */
+export function getSubjectIcon(subjectId?: string): LucideIcon {
+  if (!subjectId) return SUBJECT_ICON_FALLBACK
+  return SUBJECT_ICONS[subjectId] ?? SUBJECT_ICON_FALLBACK
+}
+
 export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label: string; color: string } {
   switch (type) {
     case "sac":
@@ -215,25 +269,25 @@ const DEADLINE_TYPE_PRIORITY: Record<DeadlineType, number> = {
 export function sortProjectsByDeadline(projects: Project[]): Project[] {
   return [...projects].sort((a, b) => {
     const now = Date.now()
-    
+
     if (!a.deadline && !b.deadline) return 0
     if (!a.deadline) return 1
     if (!b.deadline) return -1
-    
+
     const dateA = new Date(a.deadline).getTime()
     const dateB = new Date(b.deadline).getTime()
-    
+
     const aOverdue = dateA < now
     const bOverdue = dateB < now
-    
+
     if (aOverdue && !bOverdue) return -1
     if (!aOverdue && bOverdue) return 1
-    
+
     const typeA = a.deadlineType ? DEADLINE_TYPE_PRIORITY[a.deadlineType] ?? 4 : 4
     const typeB = b.deadlineType ? DEADLINE_TYPE_PRIORITY[b.deadlineType] ?? 4 : 4
-    
+
     if (typeA !== typeB) return typeA - typeB
-    
+
     return dateA - dateB
   })
 }

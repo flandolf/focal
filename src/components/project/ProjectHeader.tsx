@@ -1,32 +1,52 @@
-import { createElement, useMemo } from "react"
-import { motion, useReducedMotion } from "framer-motion"
-import { Clock, Download, Folder, Bookmark, Link, Settings, FolderUp, Plus, CheckCircle2, RefreshCw, Pencil } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { FileStudyPlannerButton } from "@/components/FileStudyPlannerButton"
-import { formatDeadline, isOverdue, getSubjectById, getDeadlineTypeInfo } from "@/lib/utils"
-import type { CalendarEvent, FileInfo, Project, StudySession } from "@/lib/types"
-import { cn } from "@/lib/utils"
-import { staggerContainer, staggerItem } from "@/lib/motion"
-import { getProjectIcon, getSegmentedButtonClassName } from "./shared"
+import { createElement, useMemo } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  Clock,
+  Download,
+  Folder,
+  Bookmark,
+  Link,
+  Settings,
+  FolderUp,
+  Plus,
+  CheckCircle2,
+  RefreshCw,
+  Pencil,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  formatDeadline,
+  isOverdue,
+  getSubjectById,
+  getDeadlineTypeInfo,
+} from "@/lib/utils";
+import type {
+  Project,
+  StudySession,
+} from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { pressable, staggerContainer, staggerItem } from "@/lib/motion";
+import { getProjectIcon, getSegmentedButtonClassName } from "./shared";
 
 interface ProjectHeaderProps {
-  project: Project
-  sessions: StudySession[]
-  viewMode: "files" | "sessions"
-  onViewModeChange: (mode: "files" | "sessions") => void
-  onOpenSettings: () => void
-  onToggleFinished?: (id: string) => void
-  onOpenFolder: () => void
-  onAddFiles: () => void
-  onRefresh?: () => void
-  hasPendingChanges?: boolean
-  onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
-  onExport?: () => void
-  onSaveAsTemplate?: () => void
-  filteredFiles: FileInfo[]
-  selectedFiles: Set<string>
+  project: Project;
+  sessions: StudySession[];
+  viewMode: "files" | "sessions";
+  onViewModeChange: (mode: "files" | "sessions") => void;
+  onOpenSettings: () => void;
+  onToggleFinished?: (id: string) => void;
+  onOpenFolder: () => void;
+  onAddFiles: () => void;
+  onRefresh?: () => void;
+  hasPendingChanges?: boolean;
+  onExport?: () => void;
+  onSaveAsTemplate?: () => void;
 }
 
 export function ProjectHeader({
@@ -40,178 +60,107 @@ export function ProjectHeader({
   onAddFiles,
   onRefresh,
   hasPendingChanges,
-  onCreateEvents,
   onExport,
   onSaveAsTemplate,
-  filteredFiles,
-  selectedFiles,
 }: ProjectHeaderProps) {
-  const subject = getSubjectById(project.subjectId)
-  const deadlineInfo = getDeadlineTypeInfo(project.deadlineType)
-  const projectIcon = getProjectIcon(project.subjectId)
-  const reduceMotion = useReducedMotion() === true
-  const headerVariants = useMemo(() => staggerContainer(0.06, 0.04), [])
+  const subject = getSubjectById(project.subjectId);
+  const deadlineInfo = getDeadlineTypeInfo(project.deadlineType);
+  const projectIcon = getProjectIcon(project.subjectId);
+  const headerVariants = useMemo(() => staggerContainer(0.06, 0.04), []);
+  const reduceMotion = useReducedMotion() === true;
 
   return (
     <motion.div
-      className="border-b border-border/70"
+      className="border-b border-border/60"
       variants={headerVariants}
       initial="initial"
       animate="animate"
     >
-      <div className="px-5 pb-4 pt-5 min-[1200px]:px-8 min-[1200px]:pb-5 min-[1200px]:pt-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <motion.div variants={staggerItem} className="min-w-0 flex-1">
-            <div className="group flex items-center gap-3 min-[1200px]:gap-3.5">
-              <motion.span
-                whileHover={reduceMotion ? undefined : { scale: 1.05, transition: { type: "spring", stiffness: 480, damping: 28 } }}
-                whileTap={reduceMotion ? undefined : { scale: 0.95 }}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-background/45 shadow-sm"
-                style={subject ? { backgroundColor: subject.color + "14", color: subject.color } : undefined}
-              >
-                {createElement(projectIcon, { className: "h-5 w-5", "aria-hidden": true })}
-              </motion.span>
-              <h2 className="truncate font-heading text-xl font-semibold min-[1200px]:text-2xl">{project.name}</h2>
-              <button
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 min-[1200px]:px-5">
+        {/* Left: icon + title + inline metadata */}
+        <motion.div
+          variants={staggerItem}
+          className="flex min-w-0 items-center gap-2.5"
+        >
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background/45 shadow-sm"
+            style={
+              subject
+                ? {
+                    backgroundColor: subject.color + "14",
+                    color: subject.color,
+                  }
+                : undefined
+            }
+          >
+            {createElement(projectIcon, {
+              className: "h-4 w-4",
+              "aria-hidden": true,
+            })}
+          </span>
+
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="group/left flex min-w-0 items-center gap-1.5">
+              <h2 className="truncate text-base font-medium">{project.name}</h2>
+              <motion.button
                 type="button"
                 onClick={onOpenSettings}
-                className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,background-color] hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                whileHover={reduceMotion ? undefined : { rotate: -14 }}
+                transition={{ type: "spring", stiffness: 520, damping: 24 }}
+                className="flex h-5 w-5 shrink-0 origin-top-right items-center justify-center rounded text-muted-foreground opacity-0 transition-[opacity,background-color] duration-150 hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/left:opacity-100"
                 aria-label={`Rename ${project.name}`}
                 title="Rename"
               >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
+                <Pencil className="h-3 w-3" />
+              </motion.button>
             </div>
-            <p className="mt-1.5 truncate text-caption text-muted-foreground">
-              Files folder / <span className="font-mono">{project.folder_path}</span>
-            </p>
-            {project.description && (
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{project.description}</p>
-            )}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {project.unit && (
-                <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  Unit {project.unit}
-                </span>
-              )}
-              {subject && (
-                <span
-                  className="flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium"
-                  style={{ backgroundColor: subject.color + "14", color: subject.color }}
-                >
-                  {subject.icon} {subject.name}
-                </span>
-              )}
+
+            <div className="hidden items-center gap-1 sm:flex">
               {project.deadline && (
                 <Badge
-                  variant={!project.isFinished && isOverdue(project.deadline) ? "destructive" : "secondary"}
-                  className="gap-1 font-normal"
-                  style={project.deadlineType ? { backgroundColor: deadlineInfo.color + "14", color: deadlineInfo.color, border: 'none' } : undefined}
+                  variant={
+                    !project.isFinished && isOverdue(project.deadline)
+                      ? "destructive"
+                      : "secondary"
+                  }
+                  className="h-4 gap-0.5 border-0 px-1.5 text-[0.6rem] font-normal"
+                  style={
+                    project.deadlineType
+                      ? {
+                          backgroundColor: deadlineInfo.color + "14",
+                          color: deadlineInfo.color,
+                        }
+                      : undefined
+                  }
                 >
                   {deadlineInfo.icon} {formatDeadline(project.deadline)}
                 </Badge>
               )}
               {project.isLinked && (
-                <span className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                  <Link className="h-3 w-3" aria-hidden="true" />
+                <span className="hidden h-4 items-center gap-0.5 rounded bg-primary/10 px-1.5 text-[0.6rem] font-medium text-primary lg:flex">
+                  <Link className="h-2.5 w-2.5" aria-hidden="true" />
                   Linked
                 </span>
               )}
             </div>
-          </motion.div>
-          <motion.div variants={staggerItem} className="flex shrink-0 items-center gap-1.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onOpenSettings}>
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-                <TooltipContent side="bottom">Assessment details</TooltipContent>
-            </Tooltip>
-            {onRefresh && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-lg" onClick={onRefresh}>
-                    <RefreshCw className="h-4 w-4" />
-                    {hasPendingChanges && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {hasPendingChanges ? "External changes detected — click to refresh" : "Refresh files"}
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {onToggleFinished && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg"
-                    onClick={() => onToggleFinished(project.id)}>
-                    <CheckCircle2 className={cn("h-4 w-4", project.isFinished && "text-green-500")} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {project.isFinished ? "Mark as current" : "Mark as complete"}
-                </TooltipContent>
-              </Tooltip>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={onOpenFolder} className="h-8 gap-1.5 rounded-lg bg-background/45">
-                  <FolderUp className="h-4 w-4" />
-                  <span className="max-[950px]:hidden">Open Folder</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Open in Finder</TooltipContent>
-            </Tooltip>
-            {onSaveAsTemplate && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onSaveAsTemplate}>
-                    <Bookmark className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Save as template</TooltipContent>
-              </Tooltip>
-            )}
-            {onExport && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onExport}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Export project</TooltipContent>
-              </Tooltip>
-            )}
-            {onCreateEvents && (
-              <FileStudyPlannerButton
-                project={project}
-                files={filteredFiles}
-                selectedFilePaths={selectedFiles}
-                onCreateEvents={onCreateEvents}
-              />
-            )}
-            <Button size="sm" onClick={onAddFiles} className="h-8 gap-1.5 rounded-lg text-background">
-              <Plus className="h-4 w-4" />
-              <span>Add Files</span>
-            </Button>
-          </motion.div>
-        </div>
-      </div>
+          </div>
+        </motion.div>
 
-      <motion.div
-        variants={staggerItem}
-        className="border-t border-border/30 px-5 py-2 min-[1200px]:px-8"
-      >
-        <div className="flex items-center gap-3">
+        {/* Right: view toggle + actions */}
+        <motion.div
+          variants={staggerItem}
+          className="flex shrink-0 items-center gap-1"
+        >
+          {/* View toggle */}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
             <button
               type="button"
               onClick={() => onViewModeChange("files")}
               aria-pressed={viewMode === "files"}
-              className={getSegmentedButtonClassName(viewMode === "files", "flex items-center gap-1.5")}
+              className={getSegmentedButtonClassName(
+                viewMode === "files",
+                "flex items-center gap-1",
+              )}
             >
               <Folder className="h-3.5 w-3.5" />
               Files
@@ -220,17 +169,183 @@ export function ProjectHeader({
               type="button"
               onClick={() => onViewModeChange("sessions")}
               aria-pressed={viewMode === "sessions"}
-              className={getSegmentedButtonClassName(viewMode === "sessions", "flex items-center gap-1.5")}
+              className={getSegmentedButtonClassName(
+                viewMode === "sessions",
+                "flex items-center gap-1",
+              )}
             >
               <Clock className="h-3.5 w-3.5" />
               Sessions
               {sessions.length > 0 && (
-                <span className="tabular-nums text-micro">{sessions.length}</span>
+                <span className="tabular-nums text-micro">
+                  {sessions.length}
+                </span>
               )}
             </button>
           </div>
-        </div>
-      </motion.div>
+
+          <div className="mx-1 hidden h-4 w-px bg-border/60 sm:block" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-lg"
+                onClick={onOpenSettings}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Assessment details</TooltipContent>
+          </Tooltip>
+
+          {onRefresh && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-8 w-8 rounded-lg"
+                  onClick={onRefresh}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {hasPendingChanges && (
+                    <motion.span
+                      aria-hidden
+                      className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background"
+                      animate={
+                        reduceMotion
+                          ? undefined
+                          : { scale: [1, 1.3, 1], opacity: [1, 0.6, 1] }
+                      }
+                      transition={{
+                        duration: 1.6,
+                        repeat: 3,
+                        ease: "easeOut",
+                      }}
+                    />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {hasPendingChanges
+                  ? "External changes detected — click to refresh"
+                  : "Refresh files"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {onToggleFinished && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg"
+                  onClick={() => onToggleFinished(project.id)}
+                >
+                  <AnimatePresence initial={false}>
+                    <motion.span
+                      key={project.isFinished ? "done" : "todo"}
+                      initial={{
+                        scale: 0.55,
+                        opacity: 0,
+                        rotate: project.isFinished ? -8 : 6,
+                      }}
+                      animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                      exit={{
+                        scale: 0.55,
+                        opacity: 0,
+                        rotate: project.isFinished ? 6 : -8,
+                      }}
+                      transition={
+                        reduceMotion
+                          ? { duration: 0 }
+                          : {
+                              type: "spring",
+                              stiffness: 620,
+                              damping: 30,
+                              mass: 0.5,
+                            }
+                      }
+                      className="flex items-center justify-center"
+                    >
+                      <CheckCircle2
+                        className={cn(
+                          "h-4 w-4",
+                          project.isFinished && "text-green-500",
+                        )}
+                      />
+                    </motion.span>
+                  </AnimatePresence>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {project.isFinished ? "Mark as current" : "Mark as complete"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {onSaveAsTemplate && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg"
+                  onClick={onSaveAsTemplate}
+                >
+                  <Bookmark className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Save as template</TooltipContent>
+            </Tooltip>
+          )}
+
+          {onExport && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg"
+                  onClick={onExport}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Export project</TooltipContent>
+            </Tooltip>
+          )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenFolder}
+                className="h-8 gap-1.5 rounded-lg bg-background/45"
+              >
+                <FolderUp className="h-4 w-4" />
+                <span className="max-[950px]:hidden">Open</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Open in Finder</TooltipContent>
+          </Tooltip>
+
+          <motion.span {...pressable(reduceMotion)} className="inline-flex">
+            <Button
+              size="sm"
+              onClick={onAddFiles}
+              className="h-8 gap-1.5 rounded-lg text-background shadow-[0_1px_0_oklch(0_0_0/0.06)] transition-shadow hover:shadow-[0_2px_4px_oklch(0_0_0/0.10)]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add</span>
+            </Button>
+          </motion.span>
+        </motion.div>
+      </div>
     </motion.div>
-  )
+  );
 }

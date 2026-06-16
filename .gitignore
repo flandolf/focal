@@ -30,3 +30,6 @@ dist-ssr
 .mcp.json
 
 .env
+
+# Windows stray nul artifact (touches history shows untracked `nul` file)
+nul

@@ -305,6 +305,9 @@ export const Sidebar = memo(function Sidebar({
     return items;
   }, [subjectGroups, isCollapsed]);
 
+  // ponytail: TanStack Virtual's useVirtualizer returns non-memoizable functions;
+  // we rely on TanStack Virtual intentionally and accept that React Compiler skips this hook.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: flatItems.length,
     getScrollElement: () => parentRef.current,
