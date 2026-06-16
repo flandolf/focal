@@ -65,29 +65,28 @@ export function ProjectDependenciesPanel({
 
   return (
     <motion.div
-      className="border-b border-border/70"
       variants={panelVariants}
       initial="initial"
       animate="animate"
     >
-      <div className="px-5 py-2 min-[1200px]:px-8 min-[1200px]:py-3">
+      <div className="px-4 pb-2 min-[1200px]:px-5">
         <motion.div variants={staggerItem}>
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            <Link2 className="h-3.5 w-3.5" />
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            <Link2 className="h-3 w-3" />
             Dependencies
             {dependencies.length > 0 && (
-              <span className="text-micro tabular-nums text-muted-foreground/60">
+              <span className="text-caption tabular-nums text-muted-foreground/60">
                 {dependencies.length}
               </span>
             )}
             {unfinishedCount > 0 && (
               <span
-                className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-micro font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10"
+                className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0 text-caption font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10"
                 title={`${unfinishedCount} unfinished ${unfinishedCount === 1 ? "dependency" : "dependencies"}`}
               >
                 <AlertTriangle className="h-3 w-3" />
@@ -96,9 +95,9 @@ export function ProjectDependenciesPanel({
             )}
           </button>
           {expanded && (
-            <div className="mt-1.5 space-y-1 px-1">
+            <div className="mt-1 space-y-0.5 px-1">
               {dependencies.length === 0 && (
-                <p className="py-2 text-sm text-muted-foreground/60">
+                <p className="py-1 text-xs text-muted-foreground/60">
                   No dependencies. Link other assessments that must be done first.
                 </p>
               )}
@@ -112,23 +111,23 @@ export function ProjectDependenciesPanel({
                 return (
                   <div
                     key={dep.id}
-                    className="group flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-muted/40 transition-colors"
+                    className="group flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-muted/40 transition-colors"
                   >
-                    <span className="text-base shrink-0">{dep.icon ?? "📁"}</span>
-                    <div className="min-w-0 flex-1">
+                    <span className="text-sm shrink-1">{dep.icon ?? "📁"}</span>
+                    <div className="min-w-1 flex-1 flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => onOpenProject(dep.id)}
-                        className="flex w-full items-center gap-1.5 text-sm font-medium text-left hover:text-primary transition-colors"
+                        className="flex items-center gap-1 text-xs font-medium text-left hover:text-primary transition-colors"
                       >
                         <span className="truncate">{dep.name}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+                        <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
                       </button>
                       {(subject ?? statusLabel) && (
-                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <div className="hidden sm:flex items-center gap-1">
                           {subject && (
                             <span
-                              className="rounded-md px-1.5 py-0.5 text-micro font-medium"
+                              className="rounded px-1 py-0 text-caption font-medium"
                               style={{ backgroundColor: subject.color + "14", color: subject.color }}
                             >
                               {subject.icon} {subject.shortCode}
@@ -137,7 +136,7 @@ export function ProjectDependenciesPanel({
                           {statusLabel && (
                             <span
                               className={
-                                "rounded-md px-1.5 py-0.5 text-micro font-medium " +
+                                "rounded px-1 py-0 text-caption font-medium " +
                                 (dep.isFinished
                                   ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                                   : "bg-muted-foreground/10 text-muted-foreground/70")
@@ -152,17 +151,17 @@ export function ProjectDependenciesPanel({
                     <button
                       type="button"
                       onClick={() => onRemoveDependency(dep.id)}
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-all hover:text-destructive hover:bg-destructive/10 group-hover:opacity-100"
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-all hover:text-destructive hover:bg-destructive/10 group-hover:opacity-100"
                       aria-label={`Remove dependency ${dep.name}`}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-2.5 w-2.5" />
                     </button>
                   </div>
                 )
               })}
 
               {project.dependsOn && project.dependsOn.length !== dependencies.length && (
-                <p className="text-micro text-muted-foreground/50">
+                <p className="text-caption text-muted-foreground/50">
                   {project.dependsOn.length - dependencies.length} linked
                   assessment{project.dependsOn.length - dependencies.length === 1 ? "" : "s"} not found
                   (deleted) — remove to clear.
@@ -176,9 +175,9 @@ export function ProjectDependenciesPanel({
                     size="sm"
                     variant="ghost"
                     disabled={addableProjects.length === 0}
-                    className="h-7 gap-1 rounded-lg text-xs mt-1"
+                    className="h-6 gap-1 rounded-md text-xs mt-0.5"
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-3 w-3" />
                     Add dependency
                   </Button>
                 </PopoverTrigger>
@@ -193,7 +192,7 @@ export function ProjectDependenciesPanel({
                         placeholder="Search assessments…"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        className="h-8 text-sm mb-2"
+                        className="h-7 text-sm mb-2"
                         autoFocus
                       />
                       <div className="max-h-64 overflow-y-auto -mx-1">
@@ -215,7 +214,7 @@ export function ProjectDependenciesPanel({
                                 <span className="truncate flex-1">{p.name}</span>
                                 {subject && (
                                   <span
-                                    className="rounded-md px-1.5 py-0.5 text-micro font-medium shrink-0"
+                                    className="rounded-md px-1.5 py-0.5 text-micro font-medium shrink-1"
                                     style={{ backgroundColor: subject.color + "14", color: subject.color }}
                                   >
                                     {subject.shortCode}

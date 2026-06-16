@@ -10,7 +10,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event"
 import { useProjectFiles, SORT_COMPARATORS } from "@/hooks/useProjectFiles"
 import { confirmDestructiveAction } from "@/lib/confirmToast"
 import { type FileTag } from "@/lib/types"
-import type { CalendarEvent, Project, FileInfo, StudySession } from "@/lib/types"
+import type { Project, FileInfo, StudySession } from "@/lib/types"
 import { ProjectHeader } from "@/components/project/ProjectHeader"
 import { FileTree } from "@/components/project/FileTree"
 import type { ListItem } from "@/components/project/FileTree"
@@ -29,7 +29,6 @@ interface ProjectDetailProps {
   onToggleFinished?: (id: string) => void
   onSelectSession?: (session: StudySession) => void
   onNewSession?: () => void
-  onCreateEvents?: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
   onUpdateNotes?: (notes: string) => void
   onAddChecklistItem?: (text: string) => void
   onToggleChecklistItem?: (itemId: string) => void
@@ -44,7 +43,7 @@ interface ProjectDetailProps {
 
 export const ProjectDetail = memo(function ProjectDetail({
   project, sessions, onFilesChanged, onOpenSettings, onToggleFinished,
-  onSelectSession, onNewSession, onCreateEvents,
+  onSelectSession, onNewSession,
   onUpdateNotes, onAddChecklistItem, onToggleChecklistItem, onRemoveChecklistItem,
   onAddDependency, onRemoveDependency, onOpenProject, availableProjects,
   onExport, onSaveAsTemplate,
@@ -623,33 +622,32 @@ export const ProjectDetail = memo(function ProjectDetail({
         onAddFiles={handleAddFiles}
         onRefresh={() => loadFiles({ silent: true })}
         hasPendingChanges={hasPendingChanges}
-        onCreateEvents={onCreateEvents}
         onExport={onExport}
         onSaveAsTemplate={onSaveAsTemplate}
-        filteredFiles={filteredFiles}
-        selectedFiles={selectedFiles}
       />
 
-      {/* Notes & Checklist Panel */}
-      {hasChecklist && (
-        <ProjectChecklistPanel
-          project={project}
-          onUpdateNotes={(notes) => onUpdateNotes(notes)}
-          onAddChecklistItem={(text) => onAddChecklistItem(text)}
-          onToggleChecklistItem={(itemId) => onToggleChecklistItem(itemId)}
-          onRemoveChecklistItem={(itemId) => onRemoveChecklistItem(itemId)}
-        />
-      )}
-
-      {/* Dependencies Panel */}
-      {hasDependencies && (
-        <ProjectDependenciesPanel
-          project={project}
-          availableProjects={availableProjects}
-          onAddDependency={(dependsOnId) => onAddDependency(dependsOnId)}
-          onRemoveDependency={(dependsOnId) => onRemoveDependency(dependsOnId)}
-          onOpenProject={(projectId) => onOpenProject(projectId)}
-        />
+      {/* Notes, Checklist & Dependencies — shared bordered container */}
+      {(hasChecklist ?? hasDependencies) && (
+        <div className="border-b border-border/60">
+          {hasChecklist && (
+            <ProjectChecklistPanel
+              project={project}
+              onUpdateNotes={(notes) => onUpdateNotes(notes)}
+              onAddChecklistItem={(text) => onAddChecklistItem(text)}
+              onToggleChecklistItem={(itemId) => onToggleChecklistItem(itemId)}
+              onRemoveChecklistItem={(itemId) => onRemoveChecklistItem(itemId)}
+            />
+          )}
+          {hasDependencies && (
+            <ProjectDependenciesPanel
+              project={project}
+              availableProjects={availableProjects}
+              onAddDependency={(dependsOnId) => onAddDependency(dependsOnId)}
+              onRemoveDependency={(dependsOnId) => onRemoveDependency(dependsOnId)}
+              onOpenProject={(projectId) => onOpenProject(projectId)}
+            />
+          )}
+        </div>
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">

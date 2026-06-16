@@ -5,7 +5,6 @@ const KEYS = {
   apiKey: "focal-openrouter-key",
   model: "focal-openrouter-model",
   autoRenameUseFileContent: "focal-auto-rename-use-file-content",
-  aiPlannerUseFileContent: "focal-ai-planner-use-file-content",
   reasoningEffort: "focal-reasoning-effort",
   reasoningMaxTokens: "focal-reasoning-max-tokens",
   reasoningExclude: "focal-reasoning-exclude",
@@ -93,14 +92,6 @@ export function getAutoRenameUseFileContent(): boolean {
 
 export function setAutoRenameUseFileContent(enabled: boolean): void {
   setBool(KEYS.autoRenameUseFileContent, enabled)
-}
-
-export function getAiPlannerUseFileContent(): boolean {
-  return getBool(KEYS.aiPlannerUseFileContent, true)
-}
-
-export function setAiPlannerUseFileContent(enabled: boolean): void {
-  setBool(KEYS.aiPlannerUseFileContent, enabled)
 }
 
 export function getReasoningEffort(): ReasoningEffort {
