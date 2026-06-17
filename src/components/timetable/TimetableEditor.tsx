@@ -236,7 +236,7 @@ function PeriodEditRow({
   onDelete: () => void
 }) {
   return (
-    <div className="grid grid-cols-[3rem_1fr_5.5rem_5.5rem_auto] items-center gap-2 rounded-lg bg-muted/25 px-2.5 py-1.5">
+    <div className="grid grid-cols-[2rem_minmax(10rem,1.2fr)_minmax(8rem,0.9fr)_auto_minmax(5rem,0.55fr)_auto] items-center gap-2 rounded-lg bg-muted/25 px-2.5 py-1.5 max-[760px]:grid-cols-[2rem_minmax(0,1fr)_auto]">
       <span className="text-center text-caption font-medium text-muted-foreground/50 tabular-nums">{index + 1}</span>
       <input
         type="text"
@@ -256,17 +256,15 @@ function PeriodEditRow({
           ))}
         </SelectContent>
       </Select>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 max-[760px]:col-span-2 max-[760px]:col-start-2">
         <input type="time" value={period.startTime} onChange={(e) => onChange("startTime", e.target.value)} className="h-6 w-[5rem] rounded border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
         <span className="text-muted-foreground/40 text-xs">–</span>
         <input type="time" value={period.endTime} onChange={(e) => onChange("endTime", e.target.value)} className="h-6 w-[5rem] rounded border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
       </div>
-      <div className="flex items-center">
-        <input type="text" value={period.location} onChange={(e) => onChange("location", e.target.value)} placeholder="Rm" className="h-6 w-11 rounded border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
+      <input type="text" value={period.location} onChange={(e) => onChange("location", e.target.value)} placeholder="Room" className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 max-[760px]:col-start-2" />
         <button type="button" onClick={onDelete} className="ml-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive" aria-label="Remove period">
           <X className="h-3 w-3" />
         </button>
-      </div>
     </div>
   )
 }
@@ -587,21 +585,48 @@ export function TimetableEditor({ open, onOpenChange, customSubjects = [] }: Tim
 
   const editingEntries = tab === "photo" ? photoEntries : tab === "ai" && aiResult ? aiResult : manualEntries
   const approvedCount = editingEntries.filter((e) => e.approved).length
+  const showSharedConfig = !saved && !(tab === "ai" && aiResult)
+
+  const sharedConfigPanel = showSharedConfig ? (
+    <aside className="min-h-0 rounded-xl border border-border/60 bg-background/30 p-3 lg:max-h-full lg:overflow-y-auto">
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium leading-none" htmlFor="editor-day1">Day 1 starts</label>
+          <input id="editor-day1" type="date" value={day1Starts} onChange={(e) => setDay1Starts(e.target.value)} className="h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
+        </div>
+        <CycleEditor cycleLength={cycleLength} dayToWeekday={dayToWeekday} weekendTimetables={weekendTimetables} onCycleLengthChange={handleCycleLengthChange} onDayToWeekdayChange={setDayToWeekday} onWeekendTimetablesChange={handleWeekendTimetablesChange} />
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium leading-none">Holidays</span>
+            <Button variant="ghost" size="xs" onClick={addHoliday} className="h-5 gap-1 rounded-md text-caption"><Plus className="h-2.5 w-2.5" />Add</Button>
+          </div>
+          {holidays.map((h) => (
+            <div key={h.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-1.5 rounded-lg border border-border/50 bg-background/40 p-2">
+              <Input placeholder="Name" value={h.name} onChange={(e) => updateHoliday(h.id, "name", e.target.value)} className="h-6 min-w-0 text-xs" />
+              <button type="button" onClick={() => deleteHoliday(h.id)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive" aria-label="Remove holiday"><X className="h-2.5 w-2.5" /></button>
+              <input type="date" value={h.startDate} onChange={(e) => updateHoliday(h.id, "startDate", e.target.value)} className="h-6 min-w-0 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring" />
+              <input type="date" value={h.endDate} onChange={(e) => updateHoliday(h.id, "endDate", e.target.value)} className="h-6 min-w-0 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+  ) : null
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="flex h-[min(92dvh,54rem)] w-[calc(100vw-1rem)] max-w-3xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
-        <DialogHeader className="shrink-0 border-b px-5 pb-3.5 pt-4">
+      <DialogContent className="flex h-[min(92dvh,56rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-6xl">
+        <DialogHeader className="shrink-0 border-b px-5 pb-3.5 pt-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-center lg:gap-5 lg:px-6">
           <DialogTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
             Timetable Editor
           </DialogTitle>
-          <div className="mt-3">
+          <div className="mt-3 lg:mt-0">
             <TabBar active={tab} onChange={setTab} />
           </div>
         </DialogHeader>
 
-        <DialogBody className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+        <DialogBody className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4 lg:overflow-hidden lg:px-6">
           {error && (
             <p className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />{error}
@@ -617,7 +642,11 @@ export function TimetableEditor({ open, onOpenChange, customSubjects = [] }: Tim
               <p className="mt-0.5 text-xs text-muted-foreground/70">{approvedCount} day{approvedCount !== 1 ? "s" : ""}</p>
             </div>
           ) : (
-            <>
+            <div className={cn(
+              "grid min-h-0 flex-1 gap-4",
+              showSharedConfig && "lg:grid-cols-[minmax(0,1fr)_22rem]",
+            )}>
+              <div className="flex min-h-0 flex-col gap-4">
               {/* === MANUAL TAB === */}
               {tab === "manual" && (
                 <>
@@ -630,7 +659,7 @@ export function TimetableEditor({ open, onOpenChange, customSubjects = [] }: Tim
                       <Plus className="h-3.5 w-3.5" />Add day
                     </Button>
                   </div>
-                  <ScrollArea className="min-h-0 flex-1 -mx-5 px-5">
+                  <ScrollArea className="min-h-0 flex-1 -mx-1 px-1">
                     <div className="space-y-2">
                       {manualEntries.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -689,7 +718,7 @@ export function TimetableEditor({ open, onOpenChange, customSubjects = [] }: Tim
                         <p className="text-sm font-medium">Proposed timetable</p>
                         <p className="text-xs text-muted-foreground/70">{aiResult.filter((e) => e.approved).length} of {aiResult.length} days</p>
                       </div>
-                      <ScrollArea className="min-h-0 flex-1 -mx-5 px-5">
+                      <ScrollArea className="min-h-0 flex-1 -mx-1 px-1">
                         <div className="space-y-2">
                           {aiResult.map((draft) => (
                             <EntryCard
@@ -773,7 +802,7 @@ export function TimetableEditor({ open, onOpenChange, customSubjects = [] }: Tim
                         <p className="text-sm font-medium">Review parsed timetable</p>
                         <p className="text-xs text-muted-foreground/70">{photoEntries.filter((e) => e.approved).length} of {photoEntries.length} days</p>
                       </div>
-                      <ScrollArea className="min-h-0 flex-1 -mx-5 px-5">
+                      <ScrollArea className="min-h-0 flex-1 -mx-1 px-1">
                         <div className="space-y-2">
                           {photoEntries.map((draft) => (
                             <EntryCard
@@ -796,37 +825,13 @@ export function TimetableEditor({ open, onOpenChange, customSubjects = [] }: Tim
                   )}
                 </>
               )}
-
-              {/* Shared configuration (hidden in AI review) */}
-              {!(tab === "ai" && aiResult) && (
-                <div className="space-y-3 rounded-xl border border-border/60 bg-background/30 p-3">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium leading-none" htmlFor="editor-day1">Day 1 starts</label>
-                    <input id="editor-day1" type="date" value={day1Starts} onChange={(e) => setDay1Starts(e.target.value)} className="h-7 flex-1 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
-                  </div>
-                  <CycleEditor cycleLength={cycleLength} dayToWeekday={dayToWeekday} weekendTimetables={weekendTimetables} onCycleLengthChange={handleCycleLengthChange} onDayToWeekdayChange={setDayToWeekday} onWeekendTimetablesChange={handleWeekendTimetablesChange} />
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium leading-none">Holidays</span>
-                      <Button variant="ghost" size="xs" onClick={addHoliday} className="h-5 gap-1 rounded-md text-caption"><Plus className="h-2.5 w-2.5" />Add</Button>
-                    </div>
-                    {holidays.map((h) => (
-                      <div key={h.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/40 px-3 py-1.5">
-                        <Input placeholder="Name" value={h.name} onChange={(e) => updateHoliday(h.id, "name", e.target.value)} className="h-6 flex-1 min-w-0 text-xs" />
-                        <input type="date" value={h.startDate} onChange={(e) => updateHoliday(h.id, "startDate", e.target.value)} className="h-6 w-30 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring" />
-                        <span className="text-caption text-muted-foreground/50">–</span>
-                        <input type="date" value={h.endDate} onChange={(e) => updateHoliday(h.id, "endDate", e.target.value)} className="h-6 w-30 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring" />
-                        <button type="button" onClick={() => deleteHoliday(h.id)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+              </div>
+              {sharedConfigPanel}
+            </div>
           )}
         </DialogBody>
 
-        <DialogFooter className="m-0 shrink-0 items-center justify-between gap-3 rounded-none border-t px-5 py-3">
+        <DialogFooter className="m-0 shrink-0 items-center justify-between gap-3 rounded-none border-t px-5 py-3 lg:px-6">
           {saved ? (
             <Button size="sm" onClick={handleClose} className="ml-auto gap-1.5"><Check className="h-4 w-4" />Done</Button>
           ) : tab === "ai" && !aiResult ? (
