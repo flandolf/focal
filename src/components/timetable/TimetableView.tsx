@@ -1,4 +1,12 @@
-import { useState, useMemo, useEffect, useCallback, memo } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useRef,
+  memo,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   Clock,
@@ -57,6 +65,7 @@ import {
   type TimetableDayLabel,
   type Subject,
   type TimetablePeriod,
+  type TimetableEntry,
   type TimetableViewSettings,
 } from "@/lib/types";
 
@@ -76,6 +85,100 @@ function dayLabelsInRange(start: number, count: number, cycleLength: number): Ti
 
 function allDayLabels(cycleLength: number): TimetableDayLabel[] {
   return Array.from({ length: cycleLength }, (_, i) => i + 1)
+}
+
+interface PeriodDragSource {
+  dayLabel: TimetableDayLabel;
+  entryIdx: number;
+  periodIdx: number;
+  period: TimetablePeriod;
+  periodLabel: string;
+  timeLabel: string;
+  color?: string;
+}
+
+interface PeriodDropTarget {
+  dayLabel: TimetableDayLabel;
+  insertIndex: number;
+  yPercent: number;
+}
+
+interface PeriodDragState extends PeriodDragSource {
+  pointerId: number;
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  target: PeriodDropTarget | null;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function findDayEntryIndex(
+  entries: Pick<TimetableEntry, "dayLabel">[],
+  dayLabel: TimetableDayLabel,
+  entryIdx: number,
+): number {
+  let seen = 0;
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].dayLabel !== dayLabel) continue;
+    if (seen === entryIdx) return i;
+    seen++;
+  }
+  return -1;
+}
+
+function sameDragSource(
+  source: Pick<PeriodDragSource, "dayLabel" | "entryIdx" | "periodIdx">,
+  dayLabel: TimetableDayLabel,
+  entryIdx: number,
+  periodIdx: number,
+): boolean {
+  return (
+    source.dayLabel === dayLabel &&
+    source.entryIdx === entryIdx &&
+    source.periodIdx === periodIdx
+  );
+}
+
+function getPeriodDropTarget(
+  clientX: number,
+  clientY: number,
+): PeriodDropTarget | null {
+  const hit = document.elementFromPoint(clientX, clientY);
+  const dayEl = hit?.closest<HTMLElement>("[data-timetable-day]");
+  if (!dayEl) return null;
+
+  const dayLabel = Number(dayEl.dataset.timetableDay);
+  if (!Number.isFinite(dayLabel)) return null;
+
+  const timelineEl =
+    dayEl.querySelector<HTMLElement>("[data-timetable-day-body]") ?? dayEl;
+  const timelineRect = timelineEl.getBoundingClientRect();
+  const yPercent = clampNumber(
+    ((clientY - timelineRect.top) / Math.max(timelineRect.height, 1)) * 100,
+    1,
+    99,
+  );
+
+  const periodEls = Array.from(
+    dayEl.querySelectorAll<HTMLElement>("[data-timetable-period]"),
+  ).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+
+  const insertIndex = periodEls.findIndex((periodEl) => {
+    const rect = periodEl.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2;
+  });
+
+  return {
+    dayLabel,
+    insertIndex: insertIndex === -1 ? periodEls.length : insertIndex,
+    yPercent,
+  };
 }
 
 /** Pick a grid column count that keeps the popover tight for any cycle length. */
@@ -602,6 +705,8 @@ function TimelineBlock({
   onDelete,
   onSavePeriod,
   onMovePeriod,
+  onStartDrag,
+  dragState,
   dayLabel,
   allDayLabels,
   customSubjects,
@@ -620,30 +725,38 @@ function TimelineBlock({
   onDelete: () => void;
   onSavePeriod?: (updated: TimetablePeriod) => void;
   onMovePeriod?: (toDay: TimetableDayLabel) => void;
+  onStartDrag?: (
+    e: ReactPointerEvent<HTMLElement>,
+    source: PeriodDragSource,
+  ) => void;
+  dragState?: PeriodDragState | null;
   dayLabel?: TimetableDayLabel;
   allDayLabels?: TimetableDayLabel[];
   customSubjects?: Subject[];
   entryIdx?: number;
   periodIdx?: number;
 }) {
+  const reduceMotion = useReducedMotion() === true;
   const isBreak = isBreakLabel(period.period);
   const compact = layout.height <= 4.5;
   const markerOnly = layout.height <= 2.5;
   const periodLabel = (subject?.name ?? period.subject) || period.period;
   const timeLabel = `${formatTime(period.startTime, use24Hour ?? false)}-${formatTime(period.endTime, use24Hour ?? false)}`;
 
-  const dragHandle = useCallback((e: React.DragEvent) => {
-    e.dataTransfer.setData(
-      "application/focal-period",
-      JSON.stringify({ dayLabel, entryIdx, periodIdx, period }),
-    );
-    e.dataTransfer.effectAllowed = "move";
-  }, [dayLabel, entryIdx, periodIdx, period]);
-
   const canInlineEdit = !!onSavePeriod && !!onMovePeriod && dayLabel !== undefined && allDayLabels !== undefined;
+  const canDrag = canInlineEdit && entryIdx !== undefined && periodIdx !== undefined && !!onStartDrag;
+  const isDragging =
+    dragState !== undefined &&
+    dragState !== null &&
+    dayLabel !== undefined &&
+    entryIdx !== undefined &&
+    periodIdx !== undefined &&
+    sameDragSource(dragState, dayLabel, entryIdx, periodIdx);
 
   const blockContent = (
-    <div
+    <motion.div
+      layout="position"
+      data-timetable-period
       className={cn(
         "group/block absolute left-9 right-2 overflow-hidden rounded-lg border transition-[background-color,border-color,box-shadow,transform] duration-200",
         isBreak
@@ -655,6 +768,7 @@ function TimelineBlock({
         !isBreak && "hover:border-primary/35 hover:bg-primary/8",
         markerOnly && "rounded-md",
         canInlineEdit && "cursor-pointer",
+        isDragging && "pointer-events-none opacity-25",
       )}
       style={{
         top: `${layout.top}%`,
@@ -664,8 +778,8 @@ function TimelineBlock({
             ? `color-mix(in oklch, ${subject.color} ${isCurrentPeriod ? 16 : 10}%, transparent)`
             : undefined,
       }}
-      draggable={canInlineEdit}
-      onDragStart={canInlineEdit ? dragHandle : undefined}
+      animate={reduceMotion ? undefined : { scale: isDragging ? 0.985 : 1 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
       aria-label={`${periodLabel}, ${timeLabel}`}
       title={`${periodLabel} · ${timeLabel}`}
     >
@@ -735,13 +849,28 @@ function TimelineBlock({
 
       {/* Drag handle + hover actions */}
       <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 rounded-md bg-background/88 p-0.5 opacity-0 ring-1 ring-border/30 backdrop-blur-md transition-all duration-150 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100">
-        {canInlineEdit && (
-          <span
-            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40"
+        {canDrag && dayLabel !== undefined && entryIdx !== undefined && periodIdx !== undefined && (
+          <button
+            type="button"
+            className="flex h-5 w-5 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/45 transition-colors hover:bg-accent hover:text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-ring"
             title="Drag to move"
+            aria-label="Drag period"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onStartDrag(e, {
+                dayLabel,
+                entryIdx,
+                periodIdx,
+                period,
+                periodLabel,
+                timeLabel,
+                color: subject?.color,
+              });
+            }}
           >
             <GripVertical className="h-3 w-3" />
-          </span>
+          </button>
         )}
         <button
           type="button"
@@ -778,7 +907,7 @@ function TimelineBlock({
           />
         </div>
       )}
-    </div>
+    </motion.div>
   );
 
   // Wrap in PeriodEditPopover if inline editing is enabled
@@ -976,6 +1105,8 @@ function DayTimelineCard({
   onSavePeriod,
   onMovePeriod,
   onDropPeriod,
+  onStartPeriodDrag,
+  periodDrag,
   onQuickAdd,
 }: {
   dayLabel: TimetableDayLabel;
@@ -999,7 +1130,12 @@ function DayTimelineCard({
   onDeletePeriod: (entryIdx: number, periodIdx: number) => void;
   onSavePeriod?: (entryIdx: number, periodIdx: number, updated: TimetablePeriod) => void;
   onMovePeriod?: (fromEntryIdx: number, fromPeriodIdx: number, toDay: TimetableDayLabel) => void;
-  onDropPeriod?: (fromDayLabel: TimetableDayLabel, fromEntryIdx: number, fromPeriodIdx: number, period: TimetablePeriod) => void;
+  onDropPeriod?: (source: PeriodDragSource, target: PeriodDropTarget) => void;
+  onStartPeriodDrag?: (
+    e: ReactPointerEvent<HTMLElement>,
+    source: PeriodDragSource,
+  ) => void;
+  periodDrag?: PeriodDragState | null;
   onQuickAdd?: () => void;
 }) {
   const hourMarkers = useMemo(
@@ -1029,53 +1165,20 @@ function DayTimelineCard({
     [filteredPeriods, timelineStart, timelineEnd],
   );
 
-  // Drop zone handlers
-  const [dragOver, setDragOver] = useState(false);
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOver(true);
-  }, []);
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    // Only set false if leaving the card (not entering a child)
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setDragOver(false);
-  }, []);
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-      const raw = e.dataTransfer.getData("application/focal-period");
-      if (!raw) return;
-      try {
-        const data = JSON.parse(raw) as {
-          dayLabel: TimetableDayLabel;
-          entryIdx: number;
-          periodIdx: number;
-          period: TimetablePeriod;
-        };
-        if (data.dayLabel !== dayLabel && onDropPeriod) {
-          onDropPeriod(data.dayLabel, data.entryIdx, data.periodIdx, data.period);
-        }
-      } catch {
-        // ignore malformed data
-      }
-    },
-    [dayLabel, onDropPeriod],
-  );
+  const isDragTarget = periodDrag?.target?.dayLabel === dayLabel;
+  const isDragSourceDay = periodDrag?.dayLabel === dayLabel;
 
   return (
     <motion.div
       variants={staggerItem}
+      data-timetable-day={dayLabel}
       className={cn(
         "group/day glass-panel card-glow relative flex flex-col overflow-hidden rounded-2xl",
         isToday && "active-glow",
         isHidden && "opacity-40",
-        dragOver && "ring-2 ring-primary/40 bg-primary/5",
+        isDragTarget && "ring-2 ring-primary/40 bg-primary/5",
+        isDragSourceDay && !isDragTarget && "ring-1 ring-border/70",
       )}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       <DayHeader
         dayLabel={dayLabel}
@@ -1089,7 +1192,27 @@ function DayTimelineCard({
       />
 
       {/* Timeline area */}
-      <div className="relative min-h-[460px] flex-1 overflow-hidden border-t border-border/35 bg-background/22 px-1.5 pb-2.5 pt-2">
+      <div
+        data-timetable-day-body
+        className="relative min-h-[460px] flex-1 overflow-hidden border-t border-border/35 bg-background/22 px-1.5 pb-2.5 pt-2"
+      >
+        <AnimatePresence>
+          {isDragTarget && periodDrag?.target && onDropPeriod && (
+            <motion.div
+              key="drop-indicator"
+              initial={{ opacity: 0, scaleX: 0.9 }}
+              animate={{
+                opacity: 1,
+                scaleX: 1,
+                top: `${periodDrag.target.yPercent}%`,
+              }}
+              exit={{ opacity: 0, scaleX: 0.9 }}
+              transition={{ duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
+              className="pointer-events-none absolute left-9 right-2 z-20 h-0.5 origin-center rounded-full bg-primary/75 shadow-[0_0_14px_var(--primary)]"
+            />
+          )}
+        </AnimatePresence>
+
         {/* Hour markers and grid lines */}
         {hourMarkers.map((hour) => {
           const minutes = hour * 60;
@@ -1152,6 +1275,8 @@ function DayTimelineCard({
                           onMovePeriod(entryIdx, periodIdx, toDay)
                       : undefined
                   }
+                  onStartDrag={onStartPeriodDrag}
+                  dragState={periodDrag}
                   dayLabel={dayLabel}
                   allDayLabels={allDayLabels}
                   customSubjects={customSubjects}
@@ -1214,6 +1339,12 @@ export const TimetableView = memo(function TimetableView({
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const reduceMotion = useReducedMotion() === true;
+  const [periodDrag, setPeriodDrag] = useState<PeriodDragState | null>(null);
+  const periodDragRef = useRef<PeriodDragState | null>(null);
+
+  useEffect(() => {
+    periodDragRef.current = periodDrag;
+  }, [periodDrag]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -1476,12 +1607,167 @@ export const TimetableView = memo(function TimetableView({
     [config],
   );
 
-  const handleDropPeriod = useCallback(
-    (fromDayLabel: TimetableDayLabel, fromEntryIdx: number, fromPeriodIdx: number, period: TimetablePeriod, toDay: TimetableDayLabel) => {
-      if (fromDayLabel === toDay) return;
-      handleMovePeriod(fromDayLabel, fromEntryIdx, fromPeriodIdx, toDay);
+  const handleReorderPeriod = useCallback(
+    (source: PeriodDragSource, target: PeriodDropTarget) => {
+      const globalEntryIdx = findDayEntryIndex(
+        config.entries,
+        source.dayLabel,
+        source.entryIdx,
+      );
+      if (globalEntryIdx === -1) return;
+
+      const sourceEntry = config.entries[globalEntryIdx];
+      const periodToMove = sourceEntry.periods[source.periodIdx];
+      if (!periodToMove) return;
+
+      const sourcePeriodCount = sourceEntry.periods.length;
+      let newEntries = config.entries.map((entry, index) =>
+        index === globalEntryIdx
+          ? {
+              ...entry,
+              periods: entry.periods.filter((_, i) => i !== source.periodIdx),
+            }
+          : entry,
+      );
+
+      if (sourcePeriodCount === 1) {
+        newEntries = newEntries.filter((_, index) => index !== globalEntryIdx);
+      }
+
+      // ponytail: same-day duplicate entries are technically possible, but this
+      // view already treats the first matching day entry as canonical. If imports
+      // start creating meaningful duplicates, normalize them before drag/drop.
+      const destEntryIdx = newEntries.findIndex(
+        (entry) => entry.dayLabel === target.dayLabel,
+      );
+
+      let insertIndex = target.insertIndex;
+      if (source.dayLabel === target.dayLabel && insertIndex > source.periodIdx) {
+        insertIndex--;
+      }
+
+      if (source.dayLabel === target.dayLabel && insertIndex === source.periodIdx) {
+        return;
+      }
+
+      if (destEntryIdx === -1) {
+        newEntries = [
+          ...newEntries,
+          {
+            dayLabel: target.dayLabel,
+            periods: [{ ...periodToMove }],
+          },
+        ];
+      } else {
+        newEntries = newEntries.map((entry, index) => {
+          if (index !== destEntryIdx) return entry;
+          const periods = [...entry.periods];
+          periods.splice(clampNumber(insertIndex, 0, periods.length), 0, {
+            ...periodToMove,
+          });
+          return { ...entry, periods };
+        });
+      }
+
+      const updatedConfig = {
+        ...config,
+        entries: newEntries,
+        enabled: newEntries.length > 0,
+      };
+      setTimetableConfig(updatedConfig);
+      window.dispatchEvent(new Event("focal-timetable-updated"));
+      setConfig(getTimetableConfig());
     },
-    [handleMovePeriod],
+    [config],
+  );
+
+  const handleStartPeriodDrag = useCallback(
+    (e: ReactPointerEvent<HTMLElement>, source: PeriodDragSource) => {
+      if (e.button !== 0) return;
+      const blockEl = e.currentTarget.closest<HTMLElement>("[data-timetable-period]");
+      if (!blockEl) return;
+
+      const rect = blockEl.getBoundingClientRect();
+      const target = getPeriodDropTarget(e.clientX, e.clientY);
+
+      setPeriodDrag({
+        ...source,
+        pointerId: e.pointerId,
+        x: rect.left,
+        y: rect.top,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+        target,
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const pointerId = periodDrag?.pointerId;
+    if (pointerId === undefined) return;
+
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "grabbing";
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      e.preventDefault();
+
+      const target = getPeriodDropTarget(e.clientX, e.clientY);
+      setPeriodDrag((current) =>
+        current?.pointerId === pointerId
+          ? {
+              ...current,
+              x: e.clientX - current.offsetX,
+              y: e.clientY - current.offsetY,
+              target,
+            }
+          : current,
+      );
+    };
+
+    const finishDrag = (commit: boolean) => {
+      const current = periodDragRef.current;
+      if (commit && current?.target) {
+        handleReorderPeriod(current, current.target);
+      }
+      setPeriodDrag(null);
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      e.preventDefault();
+      finishDrag(true);
+    };
+
+    const handlePointerCancel = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      finishDrag(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp, { passive: false });
+    window.addEventListener("pointercancel", handlePointerCancel);
+
+    return () => {
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+    };
+  }, [periodDrag?.pointerId, handleReorderPeriod]);
+
+  const handleDropPeriod = useCallback(
+    (source: PeriodDragSource, target: PeriodDropTarget) => {
+      handleReorderPeriod(source, target);
+    },
+    [handleReorderPeriod],
   );
 
   const handleQuickAdd = useCallback((dayLabel: TimetableDayLabel) => {
@@ -1778,9 +2064,9 @@ export const TimetableView = memo(function TimetableView({
                     onMovePeriod={(entryIdx, periodIdx, toDay) =>
                       handleMovePeriod(dayLabel, entryIdx, periodIdx, toDay)
                     }
-                    onDropPeriod={(fromDay, fromEntryIdx, fromPeriodIdx, period) =>
-                      handleDropPeriod(fromDay, fromEntryIdx, fromPeriodIdx, period, dayLabel)
-                    }
+                    onDropPeriod={handleDropPeriod}
+                    onStartPeriodDrag={handleStartPeriodDrag}
+                    periodDrag={periodDrag}
                     onQuickAdd={() => handleQuickAdd(dayLabel)}
                   />
                 ))}
@@ -1836,6 +2122,52 @@ export const TimetableView = memo(function TimetableView({
         dayLabel={editDayLabel}
         customSubjects={customSubjects}
       />
+
+      <AnimatePresence>
+        {periodDrag && (
+          <motion.div
+            key="period-drag-ghost"
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.985 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.985 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
+            }
+            className="pointer-events-none fixed left-0 top-0 z-[1000] overflow-hidden rounded-lg border border-primary/40 bg-background/92 px-2 py-1.5 shadow-[0_16px_40px_-18px_var(--primary),0_8px_18px_-12px_oklch(0_0_0_/_0.55)] ring-1 ring-primary/15 backdrop-blur-md"
+            style={{
+              x: periodDrag.x,
+              y: periodDrag.y,
+              width: periodDrag.width,
+              height: periodDrag.height,
+            }}
+          >
+            <div className="flex h-full min-w-0 flex-col justify-center">
+              <div className="flex min-w-0 items-center gap-1.5">
+                {periodDrag.color && (
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: periodDrag.color }}
+                    aria-hidden
+                  />
+                )}
+                <span
+                  className="truncate text-xs font-semibold leading-tight"
+                  style={
+                    periodDrag.color ? { color: periodDrag.color } : undefined
+                  }
+                >
+                  {periodDrag.periodLabel}
+                </span>
+              </div>
+              <span className="mt-0.5 truncate text-caption tabular-nums leading-tight text-muted-foreground/80">
+                {periodDrag.timeLabel}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 });
