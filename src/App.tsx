@@ -938,8 +938,10 @@ function App() {
       toast.success(`Event "${data.title}" added`)
       setEventDialogOpen(false)
       void pushEventChange(created)
+      return true
     } catch (e) {
       toast.error(`Failed to add event: ${String(e)}`)
+      return false
     }
   }, [addEvent, pushEventChange, setEventDialogOpen])
 
@@ -983,20 +985,22 @@ function App() {
       setSelectedEvent(null)
       const { id, ...rest } = data
       void pushEventChange({ ...events.find((e: CalendarEvent) => e.id === id), ...rest } as CalendarEvent)
+      return true
     } catch (e) {
       toast.error(`Failed to update event: ${String(e)}`)
+      return false
     }
   }, [updateEvent, events, pushEventChange, setEventDialogOpen, setSelectedEvent])
 
   const handleDeleteEvent = useCallback(async (id: string) => {
     const event = events.find((item) => item.id === id)
-    if (!event) return
+    if (!event) return false
     const confirmed = await confirmDestructiveAction({
       title: `Delete "${event.title}"?`,
       description: "This event will be removed from your calendar.",
       actionLabel: "Delete",
     })
-    if (!confirmed) return
+    if (!confirmed) return false
     try {
       await deleteEvent(id)
       void deleteNotionPageIfLinked(event.source)
@@ -1010,8 +1014,10 @@ function App() {
       setEventDialogOpen(false)
       setSelectedEvent(null)
       void requestNotionSync(false)
+      return true
     } catch (e) {
       toast.error(`Failed to delete event: ${String(e)}`)
+      return false
     }
   }, [events, deleteEvent, restoreEvent, setEventDialogOpen, setSelectedEvent, requestNotionSync])
 
@@ -1778,7 +1784,19 @@ function App() {
               </motion.div>
             </AnimatePresence>
           </motion.main>
-          <AIAssistantPanel open={aiAssistantOpen} onOpenChange={setAiAssistantOpen} />
+          <AIAssistantPanel
+            open={aiAssistantOpen}
+            onOpenChange={setAiAssistantOpen}
+            sessions={sessions}
+            events={events}
+            projects={projects}
+            subjects={availableSubjects}
+            onCreateSession={handleCreateStudySession}
+            onCreateEvent={handleCreateEvent}
+            onUpdateEvent={handleEditEvent}
+            onDeleteEvent={handleDeleteEvent}
+            contextRefs={{ project: selectedProject }}
+          />
         </div>
         <ProjectDialog
           open={dialogOpen}

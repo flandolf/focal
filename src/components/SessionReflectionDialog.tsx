@@ -61,9 +61,11 @@ export function SessionReflectionDialog({
     if (!open) {
       abortRef.current?.abort()
       abortRef.current = null
+      /* eslint-disable react-hooks/set-state-in-effect */
       setReflection(null)
       setError(null)
       setPending(false)
+      /* eslint-enable react-hooks/set-state-in-effect */
       return
     }
     if (!session) return

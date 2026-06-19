@@ -53,9 +53,11 @@ export function AssessmentBriefingDialog({
     if (!open) {
       abortRef.current?.abort()
       abortRef.current = null
+      /* eslint-disable react-hooks/set-state-in-effect */
       setBriefing(null)
       setError(null)
       setPending(false)
+      /* eslint-enable react-hooks/set-state-in-effect */
       return
     }
 
@@ -117,10 +119,11 @@ export function AssessmentBriefingDialog({
 
     const system = `${VCE_SYSTEM_PREAMBLE}\n\nWrite a tight, actionable assessment briefing using ONLY the data provided below. If a field is empty, leave it empty or write "None"; never invent.\n\n${briefingSnapshot ? `${briefingSnapshot}\n\n` : ""}Rules:\n- Summary sentences: \u226425 words each.\n- focus_topics: 3-5 concrete topic names, \u22644 words each, no duplicates.\n- suggested_sessions: 2-4 study blocks. Title (3-7 words), description (1 sentence, \u226420 words), durationMinutes (30, 45, 60, 75, 90, 120, 150, or 180).\n- readiness: pick exactly one of "Behind", "On track", "Ready", or "Overprepared".\n- blockers: a single short sentence naming the most pressing gap, or "" if there are none (the schema treats it as a string, not null).\n\n${VCE_JSON_FORMAT_GUARD}`
 
+    const projectDescription = project.description?.trim() ?? ""
     const user = `Assessment: ${project.name}
 Subject: ${project.subjectId ? getSubjectById(project.subjectId)?.name ?? project.subjectId : "(unassigned)"}
 Deadline: ${project.deadline ? formatDeadline(project.deadline) : "(none)"}
-Description: ${project.description?.trim() || "(none)"}
+Description: ${projectDescription.length > 0 ? projectDescription : "(none)"}
 
 Recent study sessions (most recent first):
 ${sessionLines || "None"}
@@ -207,6 +210,8 @@ ${subjectLabels || "None"}`
         return "bg-muted text-muted-foreground"
     }
   }
+
+  const blockerText = briefing?.blockers?.trim()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -297,9 +302,9 @@ ${subjectLabels || "None"}`
                 <section className="rounded-xl border border-border/60 bg-background/35 p-4 space-y-2">
                   <h3 className="text-sm font-semibold">Recent progress</h3>
                   <p className="text-sm text-foreground/85">{briefing.recent_progress}</p>
-                  {briefing.blockers && briefing.blockers.trim() && briefing.blockers.trim().toLowerCase() !== "null" && (
+                  {blockerText && blockerText.toLowerCase() !== "null" && (
                     <p className="rounded-lg bg-destructive/8 px-2.5 py-1.5 text-xs text-destructive">
-                      <span className="font-medium">Blocker:</span> {briefing.blockers}
+                      <span className="font-medium">Blocker:</span> {blockerText}
                     </p>
                   )}
                 </section>

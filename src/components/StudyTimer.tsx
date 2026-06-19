@@ -453,12 +453,21 @@ const StudyTimerInner = memo(function StudyTimerInner({
       "(prefers-reduced-motion: reduce)",
     ).matches;
 
+    // ponytail: broadcast focus-state changes so siblings (AI Assistant Panel)
+    // can react without prop-drilling through the Sidebar — same pattern as
+    // `focal-timetable-updated` / `focal-sync-data-changed`.
+    window.dispatchEvent(
+      new CustomEvent("focal-focus-mode-changed", { detail: { active: nextOpen } }),
+    )
+
+    const apply = () => setFocusViewOpen(nextOpen)
+
     if (document.startViewTransition && !reduceMotion) {
-      document.startViewTransition(() => setFocusViewOpen(nextOpen));
+      document.startViewTransition(apply)
       return;
     }
 
-    setFocusViewOpen(nextOpen);
+    apply()
   }, []);
 
   const openFocusView = useCallback(

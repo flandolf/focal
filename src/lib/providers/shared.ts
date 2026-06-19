@@ -175,7 +175,21 @@ export function isUserAbort(e: unknown): boolean {
 
 /** Translate a `ChatMessage` into the OpenAI wire shape. */
 export function toOpenAIChatMessage(message: ChatMessage): Record<string, unknown> {
-  return { role: message.role, content: message.content }
+  return {
+    role: message.role,
+    content: message.content,
+    ...(message.toolName ? { tool_name: message.toolName } : {}),
+    ...(message.toolCalls ? {
+      tool_calls: message.toolCalls.map((call, index) => ({
+        id: call.id ?? `${call.name}-${index}`,
+        type: "function",
+        function: {
+          name: call.name,
+          arguments: JSON.stringify(call.arguments),
+        },
+      })),
+    } : {}),
+  }
 }
 
 // --- JSON-shape validation ----------------------------------------------

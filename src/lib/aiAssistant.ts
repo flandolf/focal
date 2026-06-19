@@ -25,9 +25,11 @@ import {
   getEffectiveModel,
   type ChatCompletionRequest,
   type ChatMessage,
+  type ChatCompletionResult,
   type JsonSchemaSpec,
   type ModelInfo,
   type Provider,
+  type ToolDefinition,
 } from "@/lib/providers"
 import { isUserAbort } from "@/lib/providers/shared"
 import type { Project, StudySession, Subject } from "@/lib/types"
@@ -161,7 +163,7 @@ export function estimateRequestCost(
 
 // --- Conversation primitives --------------------------------------------
 
-export type ChatTurn = { role: "system" | "user" | "assistant"; content: string }
+export type ChatTurn = ChatMessage
 
 /**
  * Single chokepoint for talking to the active provider. Centralising means
@@ -181,6 +183,19 @@ export async function aiChatCompletion(opts: {
   maxTokens?: number
   signal?: AbortSignal
 }): Promise<string> {
+  const result = await aiChatCompletionResult(opts)
+  return result.content
+}
+
+export async function aiChatCompletionResult(opts: {
+  messages: ChatTurn[]
+  model?: string
+  jsonSchema?: JsonSchemaSpec
+  tools?: ToolDefinition[]
+  temperature?: number
+  maxTokens?: number
+  signal?: AbortSignal
+}): Promise<ChatCompletionResult> {
   const provider = getActiveProvider()
   if (!provider.isConfigured()) {
     throw new AiConfigurationError(
@@ -189,15 +204,15 @@ export async function aiChatCompletion(opts: {
   }
   const request: ChatCompletionRequest = {
     model: opts.model ?? getEffectiveModel(),
-    messages: opts.messages as ChatMessage[],
+    messages: opts.messages,
     ...(opts.jsonSchema ? { jsonSchema: opts.jsonSchema } : {}),
+    ...(opts.tools ? { tools: opts.tools } : {}),
     ...(typeof opts.temperature === "number" ? { temperature: opts.temperature } : {}),
     ...(typeof opts.maxTokens === "number" ? { maxTokens: opts.maxTokens } : {}),
     ...(provider.supportsReasoning ? getReasoningConfig().reasoning ?? {} : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   }
-  const result = await provider.chatCompletion(request)
-  return result.content
+  return provider.chatCompletion(request)
 }
 
 /**
@@ -321,7 +336,12 @@ export function buildUserBriefing({
   const upcomingProjects = active
     .filter((project) => {
       const deadlineDate = project.deadline?.slice(0, 10)
-      return deadlineDate !== undefined && deadlineDate >= today
+      if (deadlineDate === undefined || deadlineDate < today) return false
+      const days = Math.round(
+        (new Date(`${deadlineDate}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime())
+        / (24 * 60 * 60 * 1000),
+      )
+      return days <= 14
     })
     .sort((a, b) => (a.deadline ?? "").localeCompare(b.deadline ?? ""))
     .slice(0, 5)

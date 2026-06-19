@@ -13,9 +13,26 @@
  */
 import type { ReasoningEffort } from "@/lib/settings"
 
+export interface ToolCall {
+  id?: string
+  name: string
+  arguments: Record<string, unknown>
+}
+
+export interface ToolDefinition {
+  type: "function"
+  function: {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+  }
+}
+
 export interface ChatMessage {
-  role: "system" | "user" | "assistant"
+  role: "system" | "user" | "assistant" | "tool"
   content: string
+  toolCalls?: ToolCall[]
+  toolName?: string
 }
 
 export interface ReasoningConfig {
@@ -38,6 +55,8 @@ export interface ChatCompletionRequest {
   messages: ChatMessage[]
   /** Optional structured-output schema. Providers translate to their host's mechanism. */
   jsonSchema?: JsonSchemaSpec
+  /** Optional function tools for agent loops. Providers pass these through when supported. */
+  tools?: ToolDefinition[]
   temperature?: number
   maxTokens?: number
   reasoning?: ReasoningConfig
@@ -53,6 +72,8 @@ export interface ChatCompletionRequest {
 export interface ChatCompletionResult {
   /** The model's text output. Callers apply their own validation. */
   content: string
+  /** Tool calls requested by the model, if the provider supports tool calling. */
+  toolCalls?: ToolCall[]
   /**
    * Provider-reported finish reason (e.g. "stop", "length").
    * Useful when callers want to diagnose truncation or host-side stops.
@@ -99,6 +120,8 @@ export interface Provider {
   configFields: ProviderConfigField[]
   /** Whether the host supports the per-request `reasoning` block from `ChatCompletionRequest`. */
   supportsReasoning: boolean
+  /** Whether the host supports model-selected function/tool calls. */
+  supportsToolCalling?: boolean
 
   /** True when every `required` config field is populated. */
   isConfigured(): boolean
