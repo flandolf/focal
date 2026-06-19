@@ -47,6 +47,7 @@
       ]
     },
   "notification:default",
-    "os:default"
+    "os:default",
+    "updater:default"
   ]
 }

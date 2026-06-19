@@ -10,10 +10,15 @@ import {
   FolderDown,
   UserCircle,
   Keyboard,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
+import { check } from "@tauri-apps/plugin-updater";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { confirmAction } from "@/lib/confirmToast";
 import type { ThemeId } from "@/lib/themes";
 import type { Project, Subject } from "@/lib/types";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
@@ -191,10 +196,62 @@ export function SettingsView({
 }: SettingsViewProps) {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("account");
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
   const reduceMotion = useReducedMotion();
   const activeIndex = SECTION_ITEMS.findIndex(
     (item) => item.id === activeSection,
   );
+
+  const handleCheckForUpdates = useCallback(async () => {
+    if (checkingUpdate || installingUpdate) return;
+    setCheckingUpdate(true);
+    try {
+      const update = await check();
+      if (!update) {
+        toast.success("Focal is up to date");
+        return;
+      }
+
+      const install = await confirmAction({
+        title: `Focal ${update.version} is available`,
+        description: update.body ?? "Download and install this update now?",
+        actionLabel: "Install",
+        cancelLabel: "Later",
+        duration: 15000,
+      });
+      if (!install) return;
+
+      setInstallingUpdate(true);
+      let downloaded = 0;
+      let contentLength = 0;
+      const toastId = toast.loading("Downloading update...");
+
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") {
+          downloaded = 0;
+          contentLength = event.data.contentLength ?? 0;
+        }
+        if (event.event === "Progress") {
+          downloaded += event.data.chunkLength;
+          const progress = contentLength
+            ? ` ${Math.round((downloaded / contentLength) * 100)}%`
+            : "";
+          toast.loading(`Downloading update${progress}...`, { id: toastId });
+        }
+        if (event.event === "Finished") {
+          toast.loading("Installing update...", { id: toastId });
+        }
+      });
+
+      toast.success("Update installed. Restart Focal to finish.", { id: toastId });
+    } catch (error) {
+      toast.error(`Update check failed: ${String(error)}`);
+    } finally {
+      setCheckingUpdate(false);
+      setInstallingUpdate(false);
+    }
+  }, [checkingUpdate, installingUpdate]);
 
   const goToSection = useCallback((next: SettingsSection) => {
     setActiveSection(next);
@@ -293,6 +350,23 @@ export function SettingsView({
         <span className="shrink-0 rounded-md border border-border/60 bg-background/40 px-2 py-0.5 font-mono text-caption text-muted-foreground/70 select-none">
           {__APP_VERSION__}
         </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void handleCheckForUpdates()}
+          disabled={checkingUpdate || installingUpdate}
+          className="gap-1.5"
+        >
+          {checkingUpdate || installingUpdate ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          <span className="max-[520px]:hidden">
+            {installingUpdate ? "Installing" : checkingUpdate ? "Checking" : "Update"}
+          </span>
+        </Button>
       </div>
 
       <div className="flex min-h-0 flex-1">

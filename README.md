@@ -54,7 +54,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 | Layer | Tools |
 | --- | --- |
 | Frontend | React 19 · TypeScript (strict) · Tailwind v4 · Radix primitives · Recharts · Framer Motion · Sonner · `lucide-react` · `react-day-picker` · `date-fns` |
-| Desktop shell | Tauri v2 (Rust) — plugins: `fs` (with watcher) · `dialog` · `notification` · `opener` · `shell` · `os` |
+| Desktop shell | Tauri v2 (Rust) — plugins: `fs` (with watcher) · `dialog` · `notification` · `opener` · `shell` · `os` · `updater` |
 | Type & colour | Sora Variable (display) · Geist (UI) · single-accent palette, dark and light modes equally considered |
 | AI | OpenRouter Chat Completions with strict `json_schema` output (Copilot, Auto Rename, Text-to-Events) |
 | Cloud | Optional Supabase Auth + Postgres + Realtime, custom sync engine (queue, conflict resolution, device tracking). Notion integrates separately. |
@@ -120,6 +120,8 @@ make build        # Lint-fix, version bump, Tauri compile, install to /Applicati
 ```
 
 `make` targets: `dev` · `tauri-dev` · `build` · `build-only` · `install` · `lint` · `lint-fix` · `typecheck` · `check` · `clean` · `distclean` · `format` · `bump-version` · `release` · `release-dry-run`. CI ships native bundles for macOS (arm64 + x86_64), Linux, and Windows via the `publish` workflow on push to `main`; built `.app` lands in `src-tauri/target/release/bundle/macos/`.
+
+The release workflow also signs updater artifacts and uploads `latest.json` for Tauri's updater. Keep `TAURI_SIGNING_PRIVATE_KEY` set in GitHub Actions secrets; published GitHub releases are what installed apps check for updates.
 
 ---
 
