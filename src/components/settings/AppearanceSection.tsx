@@ -362,6 +362,11 @@ export function AppearanceSection({
 }: AppearanceSectionProps) {
   const [hovered, setHovered] = useState<ThemeId | null>(null);
   const reduceMotion = useReducedMotion();
+  const shortcutModifier =
+    typeof navigator !== "undefined" &&
+    /mac|iphone|ipad|ipod/i.test(navigator.platform)
+      ? "Cmd"
+      : "Ctrl";
   const displayTheme: ThemeId = hovered ?? theme;
   const displaySwatch = THEME_SWATCHES[displayTheme];
 
@@ -523,8 +528,9 @@ export function AppearanceSection({
           <div className="min-w-0">
             <h2 className="text-sm font-medium">Zoom</h2>
             <p className="mt-0.5 text-caption text-muted-foreground/70 text-wrap-balance">
-              Adjust the overall app scale. Keyboard: Ctrl+= to zoom in, Ctrl+-
-              to zoom out, Ctrl+0 to reset.
+              Adjust the overall app scale. Keyboard: {shortcutModifier}+= to
+              zoom in, {shortcutModifier}+- to zoom out, {shortcutModifier}+0
+              to reset.
             </p>
           </div>
           <span className="shrink-0 rounded-md border border-border/60 bg-background/40 px-2 py-0.5 font-mono text-caption font-medium text-foreground/80 select-none">

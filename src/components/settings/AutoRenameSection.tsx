@@ -304,7 +304,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
               </div>
               <div className="min-w-0">
                 <h2 className="text-sm font-medium leading-tight">Auto Rename</h2>
-                <p className="mt-0.5 truncate text-caption text-muted-foreground/70">
+                <p className="mt-0.5 truncate text-xs text-muted-foreground/70">
                   Generate cleaner filenames across all projects.
                 </p>
               </div>
@@ -371,14 +371,14 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
           />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium leading-tight">Use file content previews</p>
-            <p className="mt-0.5 truncate text-caption text-muted-foreground/65">
+            <p className="mt-0.5 truncate text-xs text-muted-foreground/65">
               Improves suggestions with short text previews.
             </p>
           </div>
         </label>
 
         {!hasProjects && !loading && (
-          <p className="mt-2 text-caption text-muted-foreground/60">
+          <p className="mt-2 text-xs text-muted-foreground/60">
             Create an assessment first to enable renaming.
           </p>
         )}

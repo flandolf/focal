@@ -2290,25 +2290,6 @@ html.non-macos {
         }
     }
 
-    /* Ring overshoot + settle animation for timer state changes */
-    .ring-overshoot {
-        animation: ring-settle 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-    @keyframes ring-settle {
-        0% {
-            stroke-dashoffset: inherit;
-        }
-        45% {
-            stroke-dashoffset: calc(inherit - 18px);
-        }
-        70% {
-            stroke-dashoffset: calc(inherit + 6px);
-        }
-        100% {
-            stroke-dashoffset: inherit;
-        }
-    }
-
     /* Flow pressure — pulsing dot intensity for uninterrupted focus */
     .flow-pressure {
         animation: flow-pulse 3s ease-in-out infinite;
@@ -2599,6 +2580,74 @@ html.non-macos {
     }
 
     /* Chart conic glow border — revealed on hover */
+
+    /*
+     * Arrival + Spotlight utilities — HomeView state-conditional glow.
+     *
+     * These are intentionally SCOPE-GATED, not applied decoratively across
+     * every panel. `halo-urgent` only appears when an overdue / destructive
+     * state is visible. `glass-card-strong` only appears when the calendar
+     * selection toolbar (or another actively-glassy surface) mounts. Quiet
+     * panels use the existing flat `card-glow` (hover-only) without these
+     * tokens, so the surface never reads as "every card identical glass"
+     * (the AI slop trap).
+     */
+
+    .halo-urgent {
+        position: relative;
+    }
+    .halo-urgent::after {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        pointer-events: none;
+        box-shadow:
+            0 0 0 1px color-mix(in oklch, var(--destructive) 42%, transparent),
+            0 0 28px -6px
+                color-mix(in oklch, var(--destructive) 32%, transparent);
+    }
+
+    .dark .halo-urgent::after {
+        box-shadow:
+            0 0 0 1px color-mix(in oklch, var(--destructive) 50%, transparent),
+            0 0 36px -4px
+                color-mix(in oklch, var(--destructive) 28%, transparent),
+            inset 0 0 0 1px oklch(0 0 0 / 0.3);
+    }
+
+    /* Glass card strong — heavy backdrop blur + sharp inner ring used by
+       state-conditional surfaces (currently the EventBatch selection
+       toolbar portal). Brightness is anchored by --popover at 92% to keep
+       contrast with underlying calendar rows without going opaque.
+
+       Shadow composition mirrors `.glass-panel` / `.glass-dialog`: a
+       hardcoded tonal drop (deep, perceptibly dark) layered with a
+       `--primary`-tinted inner glow. The hardcoded layer carries the
+       visual weight across all themes; the color-mix layer rides on top
+       to track each theme's primary hue without per-theme overrides. */
+    .glass-card-strong {
+        background: color-mix(in oklch, var(--popover) 92%, transparent);
+        border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+        box-shadow:
+            0 24px 64px oklch(0.12 0.015 250 / 0.18),
+            0 0 60px -16px
+                color-mix(in oklch, var(--primary) 14%, transparent),
+            inset 0 1px 0 oklch(1 0 0 / 0.06);
+        backdrop-filter: blur(28px) saturate(1.4);
+        -webkit-backdrop-filter: blur(28px) saturate(1.4);
+    }
+
+    .dark .glass-card-strong {
+        background: color-mix(in oklch, var(--popover) 76%, transparent);
+        border-color: color-mix(in oklch, var(--border) 50%, transparent);
+        box-shadow:
+            0 28px 80px oklch(0.07 0.012 258 / 0.5),
+            0 0 60px -16px
+                color-mix(in oklch, var(--primary) 18%, transparent),
+            inset 0 1px 0 oklch(1 0 0 / 0.03);
+    }
+
     @media (prefers-reduced-motion: reduce) {
         .focus-field::before,
         .focus-field::after,

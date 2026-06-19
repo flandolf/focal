@@ -568,6 +568,7 @@ function App() {
     onNewEvent: () => handleOpenNewEvent(),
     onNewSession: () => handleOpenNewSession(),
     onGoHome: handleSelectHome,
+    onGoTimetable: handleSelectTimetable,
     onGoAnalytics: handleSelectAnalytics,
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
     onZoomIn: handleZoomIn,
@@ -1820,6 +1821,12 @@ function App() {
           onSelectProject={handleSelectProject}
           onSelectSession={handleSelectSession}
           onSelectEvent={handleSelectEvent}
+          onNewProject={handleNewProject}
+          onNewSession={() => handleOpenNewSession()}
+          onNewEvent={() => handleOpenNewEvent()}
+          onGoHome={handleSelectHome}
+          onGoTimetable={handleSelectTimetable}
+          onGoAnalytics={handleSelectAnalytics}
           open={searchOpen}
           onOpenChange={setSearchOpen}
         />

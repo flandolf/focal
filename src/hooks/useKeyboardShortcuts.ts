@@ -6,6 +6,7 @@ interface ShortcutHandlers {
   onNewEvent?: () => void
   onNewSession?: () => void
   onGoHome?: () => void
+  onGoTimetable?: () => void
   onGoAnalytics?: () => void
   onToggleSidebar?: () => void
   onZoomIn?: () => void
@@ -87,6 +88,12 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       // H: Go home
       if (key === "h" && !meta && !e.altKey && !e.shiftKey) {
         handlersRef.current.onGoHome?.()
+        return
+      }
+
+      // T: Go timetable
+      if (key === "t" && !meta && !e.altKey && !e.shiftKey) {
+        handlersRef.current.onGoTimetable?.()
         return
       }
 

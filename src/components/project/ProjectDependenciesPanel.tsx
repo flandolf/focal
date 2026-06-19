@@ -138,7 +138,7 @@ export function ProjectDependenciesPanel({
                               className={
                                 "rounded px-1 py-0 text-caption font-medium " +
                                 (dep.isFinished
-                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                  ? "bg-success/15 text-success"
                                   : "bg-muted-foreground/10 text-muted-foreground/70")
                               }
                             >

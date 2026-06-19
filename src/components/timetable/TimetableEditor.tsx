@@ -255,7 +255,7 @@ function CycleEditor({
                 key={day}
                 className="flex items-center gap-1.5 rounded-md border border-border/40 bg-background/60 px-1.5 py-1"
               >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted/40 text-caption font-bold tabular-nums">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted/40 text-caption font-semibold tabular-nums">
                   {day}
                 </span>
                 <Select

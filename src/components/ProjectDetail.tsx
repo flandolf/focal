@@ -319,11 +319,29 @@ export const ProjectDetail = memo(function ProjectDetail({
 
   const handleCopyPath = useCallback(async (file: FileInfo) => {
     try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard access is unavailable")
+      }
       await navigator.clipboard.writeText(file.path)
+      toast.success("Path copied")
     } catch (e) {
       notifyProjectActionError("Could not copy path", e)
     }
   }, [])
+
+  const handleCopySelectedPaths = useCallback(async () => {
+    if (selectedFiles.size === 0) return
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard access is unavailable")
+      }
+      const paths = Array.from(selectedFiles)
+      await navigator.clipboard.writeText(paths.join("\n"))
+      toast.success(`Copied ${paths.length} path${paths.length === 1 ? "" : "s"}`)
+    } catch (e) {
+      notifyProjectActionError("Could not copy selected paths", e)
+    }
+  }, [selectedFiles])
 
   const handleMoveFile = useCallback(async (file: FileInfo, destSubfolder: string) => {
     try {
@@ -696,6 +714,7 @@ export const ProjectDetail = memo(function ProjectDetail({
             onMoveFile={handleMoveFile}
             onBulkTag={handleBulkTag}
             onBulkMove={handleBulkMove}
+            onCopySelectedPaths={handleCopySelectedPaths}
             onSelectAll={handleSelectAll}
             onClearSelection={handleClearSelection}
             onDeleteSelected={handleDeleteSelected}

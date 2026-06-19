@@ -12,6 +12,7 @@ const IS_MACOS = (() => {
     return false
   }
 })()
+const SEARCH_SHORTCUT = IS_MACOS ? "⌘K" : "Ctrl K"
 
 const noop = () => { /* no-op */ }
 
@@ -114,7 +115,7 @@ function AppActions({
             <Search className="h-3.5 w-3.5" />
           </motion.button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" align="end">Search · ⌘K</TooltipContent>
+        <TooltipContent side="bottom" align="end">Search · {SEARCH_SHORTCUT}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>

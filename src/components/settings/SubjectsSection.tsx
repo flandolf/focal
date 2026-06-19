@@ -84,7 +84,7 @@ export function SubjectsSection({
                   "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
                   hidden
                     ? "border-muted-foreground/30 bg-background/40"
-                    : "border-emerald-500/60 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+                    : "border-success/60 bg-success/15 text-success",
                 )}
                 aria-hidden="true"
               >

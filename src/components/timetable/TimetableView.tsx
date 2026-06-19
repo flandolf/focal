@@ -42,6 +42,8 @@ import {
   getDayLabelForDate,
   getTimetableEntriesForDay,
   getCurrentPeriodInfo,
+  isTimetableBreakLabel as isBreakLabel,
+  reorderPeriodsIntoSlots,
 } from "@/lib/timetable";
 import {
   getTimetableConfig,
@@ -71,20 +73,32 @@ import {
 
 // --- Helpers ---
 
-const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
+const WEEKDAY_SHORT = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+] as const;
 
-function dayLabelsInRange(start: number, count: number, cycleLength: number): TimetableDayLabel[] {
-  const out: TimetableDayLabel[] = []
+function dayLabelsInRange(
+  start: number,
+  count: number,
+  cycleLength: number,
+): TimetableDayLabel[] {
+  const out: TimetableDayLabel[] = [];
   for (let i = 0; i < count; i++) {
-    const label = ((start - 1 + i) % cycleLength) + 1
-    if (label < 1) continue
-    out.push(label)
+    const label = ((start - 1 + i) % cycleLength) + 1;
+    if (label < 1) continue;
+    out.push(label);
   }
-  return out
+  return out;
 }
 
 function allDayLabels(cycleLength: number): TimetableDayLabel[] {
-  return Array.from({ length: cycleLength }, (_, i) => i + 1)
+  return Array.from({ length: cycleLength }, (_, i) => i + 1);
 }
 
 interface PeriodDragSource {
@@ -167,7 +181,9 @@ function getPeriodDropTarget(
 
   const periodEls = Array.from(
     dayEl.querySelectorAll<HTMLElement>("[data-timetable-period]"),
-  ).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+  ).sort(
+    (a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top,
+  );
 
   const insertIndex = periodEls.findIndex((periodEl) => {
     const rect = periodEl.getBoundingClientRect();
@@ -183,11 +199,11 @@ function getPeriodDropTarget(
 
 /** Pick a grid column count that keeps the popover tight for any cycle length. */
 function dayPickerCols(cycleLength: number): string {
-  if (cycleLength <= 4) return "grid-cols-4"
-  if (cycleLength <= 6) return "grid-cols-5"
-  if (cycleLength <= 9) return "grid-cols-5"
-  if (cycleLength <= 12) return "grid-cols-6"
-  return "grid-cols-7"
+  if (cycleLength <= 4) return "grid-cols-4";
+  if (cycleLength <= 6) return "grid-cols-5";
+  if (cycleLength <= 9) return "grid-cols-5";
+  if (cycleLength <= 12) return "grid-cols-6";
+  return "grid-cols-7";
 }
 
 function timeStringToMinutes(t: string): number {
@@ -202,6 +218,10 @@ function minutesToTimeString(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function comparePeriodsByStart(a: TimetablePeriod, b: TimetablePeriod): number {
+  return timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime);
+}
+
 function getCurrentPeriodProgress(period: TimetablePeriod, now: Date): number {
   const start = timeStringToMinutes(period.startTime);
   const end = timeStringToMinutes(period.endTime);
@@ -211,19 +231,6 @@ function getCurrentPeriodProgress(period: TimetablePeriod, now: Date): number {
     0,
     Math.min(100, ((currentMin - start) / (end - start)) * 100),
   );
-}
-
-const BREAK_LABELS = new Set([
-  "Recess",
-  "Lunch",
-  "Homeroom",
-  "Assembly",
-  "Form",
-  "Free",
-]);
-
-function isBreakLabel(label: string): boolean {
-  return BREAK_LABELS.has(label);
 }
 
 interface TimetableViewProps {
@@ -337,16 +344,15 @@ function ViewSettingsPopover({
                 </button>
               ))}
             </div>
-            <p className="text-caption text-muted-foreground/50">
+            <p className="text-xs text-muted-foreground/50">
               Auto = Block {String.fromCharCode(64 + isAutoBlock)} (Day{" "}
               {isAutoBlock === 1 ? "1–5" : "6–10"})
             </p>
           </div>
-        ) : (
-          <p className="text-caption text-muted-foreground/50">
-            Week blocks only apply to 10-day cycles — your {cycleLength}-day
-            cycle always shows all days.
-          </p>
+        ) : (            <p className="text-xs text-muted-foreground/50">
+              Week blocks only apply to 10-day cycles — your {cycleLength}-day
+              cycle always shows all days.
+            </p>
         )}
       </PopoverContent>
     </Popover>
@@ -608,7 +614,10 @@ function NextUpHint({
 // --- Timeline helpers ---
 
 function getTimelineRange(
-  days: { dayLabel: TimetableDayLabel; entries: { periods: TimetablePeriod[] }[] }[],
+  days: {
+    dayLabel: TimetableDayLabel;
+    entries: { periods: TimetablePeriod[] }[];
+  }[],
   bufferMinutes = 0,
 ): { start: number; end: number } {
   let minStart = 24 * 60;
@@ -676,7 +685,10 @@ function getPeriodLayouts(
       ? result.get(`${prev.entryIdx}-${prev.periodIdx}`)
       : undefined;
     const top = prevLayout
-      ? Math.max(rawTop, prevLayout.top + prevLayout.height + PERIOD_BLOCK_GAP_PERCENT)
+      ? Math.max(
+          rawTop,
+          prevLayout.top + prevLayout.height + PERIOD_BLOCK_GAP_PERCENT,
+        )
       : rawTop;
     const available = 100 - top;
     const height = Math.max(
@@ -706,6 +718,7 @@ function TimelineBlock({
   onSavePeriod,
   onMovePeriod,
   onStartDrag,
+  onKeyboardReorder,
   dragState,
   dayLabel,
   allDayLabels,
@@ -729,6 +742,7 @@ function TimelineBlock({
     e: ReactPointerEvent<HTMLElement>,
     source: PeriodDragSource,
   ) => void;
+  onKeyboardReorder?: (direction: -1 | 1) => void;
   dragState?: PeriodDragState | null;
   dayLabel?: TimetableDayLabel;
   allDayLabels?: TimetableDayLabel[];
@@ -743,8 +757,16 @@ function TimelineBlock({
   const periodLabel = (subject?.name ?? period.subject) || period.period;
   const timeLabel = `${formatTime(period.startTime, use24Hour ?? false)}-${formatTime(period.endTime, use24Hour ?? false)}`;
 
-  const canInlineEdit = !!onSavePeriod && !!onMovePeriod && dayLabel !== undefined && allDayLabels !== undefined;
-  const canDrag = canInlineEdit && entryIdx !== undefined && periodIdx !== undefined && !!onStartDrag;
+  const canInlineEdit =
+    !!onSavePeriod &&
+    !!onMovePeriod &&
+    dayLabel !== undefined &&
+    allDayLabels !== undefined;
+  const canDrag =
+    canInlineEdit &&
+    entryIdx !== undefined &&
+    periodIdx !== undefined &&
+    !!onStartDrag;
   const isDragging =
     dragState !== undefined &&
     dragState !== null &&
@@ -761,9 +783,9 @@ function TimelineBlock({
         "group/block absolute left-9 right-2 overflow-hidden rounded-lg border transition-[background-color,border-color,box-shadow,transform] duration-200",
         isBreak
           ? "border-dashed border-border/45 bg-muted/28"
-          : "border-border/55 bg-background/62 shadow-[inset_0_1px_0_oklch(1_0_0_/_0.08)] backdrop-blur-sm",
+          : "border-border/55 bg-background/62 shadow-[inset_0_1px_0_oklch(1_0_0/0.08)] backdrop-blur-sm",
         isCurrentPeriod &&
-          "border-primary/45 bg-primary/10 shadow-[0_0_22px_-10px_var(--primary),inset_0_1px_0_oklch(1_0_0_/_0.12)]",
+          "border-primary/45 bg-primary/10 shadow-[0_0_22px_-10px_var(--primary),inset_0_1px_0_oklch(1_0_0/0.12)]",
         isNextPeriod && !isCurrentPeriod && "border-primary/25 bg-primary/5",
         !isBreak && "hover:border-primary/35 hover:bg-primary/8",
         markerOnly && "rounded-md",
@@ -779,7 +801,11 @@ function TimelineBlock({
             : undefined,
       }}
       animate={reduceMotion ? undefined : { scale: isDragging ? 0.985 : 1 }}
-      transition={reduceMotion ? { duration: 0 } : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
+      }
       aria-label={`${periodLabel}, ${timeLabel}`}
       title={`${periodLabel} · ${timeLabel}`}
     >
@@ -831,9 +857,7 @@ function TimelineBlock({
 
         {!compact && !markerOnly && (
           <div className="mt-0.5 flex min-w-0 items-center gap-1 pr-10 text-caption leading-tight text-muted-foreground/75">
-            <span className="tabular-nums">
-              {timeLabel}
-            </span>
+            <span className="tabular-nums">{timeLabel}</span>
             {showLocation && period.location && (
               <>
                 <span className="text-muted-foreground/30">·</span>
@@ -849,29 +873,38 @@ function TimelineBlock({
 
       {/* Drag handle + hover actions */}
       <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 rounded-md bg-background/88 p-0.5 opacity-0 ring-1 ring-border/30 backdrop-blur-md transition-all duration-150 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100">
-        {canDrag && dayLabel !== undefined && entryIdx !== undefined && periodIdx !== undefined && (
-          <button
-            type="button"
-            className="flex h-5 w-5 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/45 transition-colors hover:bg-accent hover:text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-ring"
-            title="Drag to move"
-            aria-label="Drag period"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onStartDrag(e, {
-                dayLabel,
-                entryIdx,
-                periodIdx,
-                period,
-                periodLabel,
-                timeLabel,
-                color: subject?.color,
-              });
-            }}
-          >
-            <GripVertical className="h-3 w-3" />
-          </button>
-        )}
+        {canDrag &&
+          dayLabel !== undefined &&
+          entryIdx !== undefined &&
+          periodIdx !== undefined && (
+            <button
+              type="button"
+              className="flex h-5 w-5 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/45 transition-colors hover:bg-accent hover:text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-ring"
+              title="Drag to move. Use Up or Down when focused."
+              aria-label="Move period"
+              onKeyDown={(e) => {
+                if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                e.preventDefault();
+                e.stopPropagation();
+                onKeyboardReorder?.(e.key === "ArrowUp" ? -1 : 1);
+              }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onStartDrag(e, {
+                  dayLabel,
+                  entryIdx,
+                  periodIdx,
+                  period,
+                  periodLabel,
+                  timeLabel,
+                  color: subject?.color,
+                });
+              }}
+            >
+              <GripVertical className="h-3 w-3" />
+            </button>
+          )}
         <button
           type="button"
           onClick={(e) => {
@@ -946,7 +979,8 @@ function CurrentTimeIndicator({
 }) {
   const currentMin = now.getHours() * 60 + now.getMinutes();
   if (currentMin < timelineStart || currentMin > timelineEnd) return null;
-  const top = ((currentMin - timelineStart) / (timelineEnd - timelineStart)) * 100;
+  const top =
+    ((currentMin - timelineStart) / (timelineEnd - timelineStart)) * 100;
   const stamp24 = `${String(Math.floor(currentMin / 60)).padStart(2, "0")}:${String(currentMin % 60).padStart(2, "0")}`;
 
   return (
@@ -986,7 +1020,7 @@ function DayHeader({
   onCopyTo: (day: TimetableDayLabel) => void;
   dayToWeekday: number[];
 }) {
-  const weekday = dayToWeekday[dayLabel - 1]
+  const weekday = dayToWeekday[dayLabel - 1];
   return (
     <div className="mb-1.5 flex items-center justify-between px-2.5 pt-2.5">
       <div className="flex items-center gap-1">
@@ -1048,7 +1082,9 @@ function DayHeader({
             <p className="mb-1 px-1 text-caption font-medium text-muted-foreground/70">
               Copy Day {dayLabel} to…
             </p>
-            <div className={cn("grid gap-1", dayPickerCols(dayToWeekday.length))}>
+            <div
+              className={cn("grid gap-1", dayPickerCols(dayToWeekday.length))}
+            >
               {allDayLabels(dayToWeekday.length).map((d) => (
                 <button
                   key={d}
@@ -1116,7 +1152,10 @@ function DayTimelineCard({
   isHidden: boolean;
   timelineStart: number;
   timelineEnd: number;
-  todayPeriodInfo: { current: TimetablePeriod | null; next: TimetablePeriod | null };
+  todayPeriodInfo: {
+    current: TimetablePeriod | null;
+    next: TimetablePeriod | null;
+  };
   now: Date;
   use24Hour?: boolean;
   showLocation?: boolean;
@@ -1128,8 +1167,16 @@ function DayTimelineCard({
   onToggleHide: () => void;
   onCopyTo: (day: TimetableDayLabel) => void;
   onDeletePeriod: (entryIdx: number, periodIdx: number) => void;
-  onSavePeriod?: (entryIdx: number, periodIdx: number, updated: TimetablePeriod) => void;
-  onMovePeriod?: (fromEntryIdx: number, fromPeriodIdx: number, toDay: TimetableDayLabel) => void;
+  onSavePeriod?: (
+    entryIdx: number,
+    periodIdx: number,
+    updated: TimetablePeriod,
+  ) => void;
+  onMovePeriod?: (
+    fromEntryIdx: number,
+    fromPeriodIdx: number,
+    toDay: TimetableDayLabel,
+  ) => void;
   onDropPeriod?: (source: PeriodDragSource, target: PeriodDropTarget) => void;
   onStartPeriodDrag?: (
     e: ReactPointerEvent<HTMLElement>,
@@ -1164,6 +1211,13 @@ function DayTimelineCard({
     () => getPeriodLayouts(filteredPeriods, timelineStart, timelineEnd),
     [filteredPeriods, timelineStart, timelineEnd],
   );
+  const sortedVisiblePeriods = useMemo(
+    () =>
+      [...filteredPeriods].sort((a, b) =>
+        comparePeriodsByStart(a.period, b.period),
+      ),
+    [filteredPeriods],
+  );
 
   const isDragTarget = periodDrag?.target?.dayLabel === dayLabel;
   const isDragSourceDay = periodDrag?.dayLabel === dayLabel;
@@ -1194,7 +1248,7 @@ function DayTimelineCard({
       {/* Timeline area */}
       <div
         data-timetable-day-body
-        className="relative min-h-[460px] flex-1 overflow-hidden border-t border-border/35 bg-background/22 px-1.5 pb-2.5 pt-2"
+        className="relative min-h-115 flex-1 overflow-hidden border-t border-border/35 bg-background/22 px-1.5 pb-2.5 pt-2"
       >
         <AnimatePresence>
           {isDragTarget && periodDrag?.target && onDropPeriod && (
@@ -1230,10 +1284,21 @@ function DayTimelineCard({
               <div className="h-px flex-1 bg-border/32" />
             </div>
           );
-        })}            {/* Period blocks */}
+        })}
+        {filteredPeriods.length > 1 && (
+          <div className="pointer-events-none absolute bottom-1.5 right-2 z-10 rounded-md bg-background/72 px-1.5 py-0.5 text-caption text-muted-foreground/55 opacity-0 ring-1 ring-border/25 backdrop-blur-sm transition-opacity group-hover/day:opacity-100 group-focus-within/day:opacity-100">
+            Drag handle or use Up/Down
+          </div>
+        )}
+
+        {/* Period blocks */}
         {filteredPeriods.length > 0 ? (
           <>
             {filteredPeriods.map(({ period, periodIdx, entryIdx }) => {
+              const renderedIndex = sortedVisiblePeriods.findIndex(
+                (item) =>
+                  item.entryIdx === entryIdx && item.periodIdx === periodIdx,
+              );
               const subject = getSubjectById(period.subject);
               const isCurrentPeriod =
                 isToday &&
@@ -1276,6 +1341,45 @@ function DayTimelineCard({
                       : undefined
                   }
                   onStartDrag={onStartPeriodDrag}
+                  onKeyboardReorder={
+                    onDropPeriod && renderedIndex !== -1
+                      ? (direction) => {
+                          const targetIndex =
+                            direction < 0
+                              ? renderedIndex - 1
+                              : renderedIndex + 2;
+                          if (
+                            targetIndex < 0 ||
+                            targetIndex > sortedVisiblePeriods.length
+                          )
+                            return;
+                          onDropPeriod(
+                            {
+                              dayLabel,
+                              entryIdx,
+                              periodIdx,
+                              period,
+                              periodLabel:
+                                (subject?.name ?? period.subject) ||
+                                period.period,
+                              timeLabel: `${formatTime(period.startTime, use24Hour ?? false)}-${formatTime(period.endTime, use24Hour ?? false)}`,
+                              color: subject?.color,
+                            },
+                            {
+                              dayLabel,
+                              insertIndex: targetIndex,
+                              yPercent: clampNumber(
+                                ((renderedIndex + direction + 0.5) /
+                                  Math.max(sortedVisiblePeriods.length, 1)) *
+                                  100,
+                                1,
+                                99,
+                              ),
+                            },
+                          );
+                        }
+                      : undefined
+                  }
                   dragState={periodDrag}
                   dayLabel={dayLabel}
                   allDayLabels={allDayLabels}
@@ -1359,7 +1463,10 @@ export const TimetableView = memo(function TimetableView({
 
   const cycleLength = useMemo(() => getCycleLength(config), [config]);
   const dayToWeekday = useMemo(() => getDayToWeekday(config), [config]);
-  const weekendTimetables = useMemo(() => getWeekendTimetables(config), [config]);
+  const weekendTimetables = useMemo(
+    () => getWeekendTimetables(config),
+    [config],
+  );
   const allDaysList = useMemo(() => allDayLabels(cycleLength), [cycleLength]);
 
   const autoDayLabel = useMemo(() => {
@@ -1397,11 +1504,7 @@ export const TimetableView = memo(function TimetableView({
   const days = useMemo(() => {
     if (!config.enabled || config.entries.length === 0) return [];
     const showAll = viewSettings.showAllDays || !useBlockModel;
-    const startDay = showAll
-      ? 1
-      : effectiveBlock === 1
-        ? 1
-        : 6;
+    const startDay = showAll ? 1 : effectiveBlock === 1 ? 1 : 6;
     const count = showAll ? cycleLength : 5;
     return dayLabelsInRange(startDay, count, cycleLength)
       .filter((d) => !viewSettings.hiddenDays.includes(d))
@@ -1533,7 +1636,12 @@ export const TimetableView = memo(function TimetableView({
   );
 
   const handleUpdatePeriod = useCallback(
-    (dayLabel: TimetableDayLabel, entryIdx: number, periodIdx: number, updated: TimetablePeriod) => {
+    (
+      dayLabel: TimetableDayLabel,
+      entryIdx: number,
+      periodIdx: number,
+      updated: TimetablePeriod,
+    ) => {
       const dayEntryIndices = config.entries
         .map((e, i) => (e.dayLabel === dayLabel ? i : -1))
         .filter((i) => i !== -1);
@@ -1544,7 +1652,9 @@ export const TimetableView = memo(function TimetableView({
         i === globalEntryIdx
           ? {
               ...e,
-              periods: e.periods.map((p, pi) => (pi === periodIdx ? updated : p)),
+              periods: e.periods.map((p, pi) =>
+                pi === periodIdx ? updated : p,
+              ),
             }
           : e,
       );
@@ -1557,7 +1667,12 @@ export const TimetableView = memo(function TimetableView({
   );
 
   const handleMovePeriod = useCallback(
-    (dayLabel: TimetableDayLabel, entryIdx: number, periodIdx: number, toDay: TimetableDayLabel) => {
+    (
+      dayLabel: TimetableDayLabel,
+      entryIdx: number,
+      periodIdx: number,
+      toDay: TimetableDayLabel,
+    ) => {
       if (dayLabel === toDay) return;
 
       const dayEntryIndices = config.entries
@@ -1589,9 +1704,7 @@ export const TimetableView = memo(function TimetableView({
         });
       } else {
         newEntries = newEntries.map((e, i) =>
-          i === destIdx
-            ? { ...e, periods: [...e.periods, periodToMove] }
-            : e,
+          i === destIdx ? { ...e, periods: [...e.periods, periodToMove] } : e,
         );
       }
 
@@ -1620,6 +1733,26 @@ export const TimetableView = memo(function TimetableView({
       const periodToMove = sourceEntry.periods[source.periodIdx];
       if (!periodToMove) return;
 
+      const sourceRenderedIndex =
+        source.dayLabel === target.dayLabel
+          ? getTimetableEntriesForDay(source.dayLabel, config.entries)
+              .flatMap((entry, entryIdx) =>
+                entry.periods.map((period, periodIdx) => ({
+                  period,
+                  entryIdx,
+                  periodIdx,
+                })),
+              )
+              .sort((a, b) => comparePeriodsByStart(a.period, b.period))
+              .filter(
+                ({ period }) =>
+                  viewSettings.showBreaks || !isBreakLabel(period.period),
+              )
+              .findIndex(({ entryIdx, periodIdx }) =>
+                sameDragSource(source, source.dayLabel, entryIdx, periodIdx),
+              )
+          : -1;
+
       const sourcePeriodCount = sourceEntry.periods.length;
       let newEntries = config.entries.map((entry, index) =>
         index === globalEntryIdx
@@ -1642,12 +1775,12 @@ export const TimetableView = memo(function TimetableView({
       );
 
       let insertIndex = target.insertIndex;
-      if (source.dayLabel === target.dayLabel && insertIndex > source.periodIdx) {
+      if (
+        source.dayLabel === target.dayLabel &&
+        sourceRenderedIndex !== -1 &&
+        insertIndex > sourceRenderedIndex
+      ) {
         insertIndex--;
-      }
-
-      if (source.dayLabel === target.dayLabel && insertIndex === source.periodIdx) {
-        return;
       }
 
       if (destEntryIdx === -1) {
@@ -1661,11 +1794,15 @@ export const TimetableView = memo(function TimetableView({
       } else {
         newEntries = newEntries.map((entry, index) => {
           if (index !== destEntryIdx) return entry;
-          const periods = [...entry.periods];
-          periods.splice(clampNumber(insertIndex, 0, periods.length), 0, {
-            ...periodToMove,
-          });
-          return { ...entry, periods };
+          return {
+            ...entry,
+            periods: reorderPeriodsIntoSlots({
+              periods: entry.periods,
+              periodToMove,
+              insertIndex,
+              showBreaks: viewSettings.showBreaks,
+            }),
+          };
         });
       }
 
@@ -1678,13 +1815,15 @@ export const TimetableView = memo(function TimetableView({
       window.dispatchEvent(new Event("focal-timetable-updated"));
       setConfig(getTimetableConfig());
     },
-    [config],
+    [config, viewSettings.showBreaks],
   );
 
   const handleStartPeriodDrag = useCallback(
     (e: ReactPointerEvent<HTMLElement>, source: PeriodDragSource) => {
       if (e.button !== 0) return;
-      const blockEl = e.currentTarget.closest<HTMLElement>("[data-timetable-period]");
+      const blockEl = e.currentTarget.closest<HTMLElement>(
+        "[data-timetable-period]",
+      );
       if (!blockEl) return;
 
       const rect = blockEl.getBoundingClientRect();
@@ -1750,7 +1889,9 @@ export const TimetableView = memo(function TimetableView({
       finishDrag(false);
     };
 
-    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointermove", handlePointerMove, {
+      passive: false,
+    });
     window.addEventListener("pointerup", handlePointerUp, { passive: false });
     window.addEventListener("pointercancel", handlePointerCancel);
 
@@ -1782,17 +1923,20 @@ export const TimetableView = memo(function TimetableView({
   const showDayPicker = config.enabled && !!config.day1Starts;
   const showLiveStatus = showDayPicker && currentDayLabel !== null;
 
-  const currentDayWeekday = currentDayLabel !== null ? dayToWeekday[currentDayLabel - 1] : undefined;
+  const currentDayWeekday =
+    currentDayLabel !== null ? dayToWeekday[currentDayLabel - 1] : undefined;
 
-  const blockLabel = viewSettings.showAllDays || !useBlockModel
-    ? `All ${cycleLength} days`
-    : `Block ${String.fromCharCode(64 + effectiveBlock)}`;
+  const blockLabel =
+    viewSettings.showAllDays || !useBlockModel
+      ? `All ${cycleLength} days`
+      : `Block ${String.fromCharCode(64 + effectiveBlock)}`;
 
-  const blockDaysLabel = viewSettings.showAllDays || !useBlockModel
-    ? `Days 1–${cycleLength}`
-    : effectiveBlock === 1
-      ? "Days 1–5"
-      : "Days 6–10";
+  const blockDaysLabel =
+    viewSettings.showAllDays || !useBlockModel
+      ? `Days 1–${cycleLength}`
+      : effectiveBlock === 1
+        ? "Days 1–5"
+        : "Days 6–10";
 
   return (
     <>
@@ -1858,7 +2002,12 @@ export const TimetableView = memo(function TimetableView({
                                 : "Pick any day to pin the timetable to it."}
                           </p>
                         </div>
-                        <div className={cn("grid gap-1", dayPickerCols(cycleLength))}>
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            dayPickerCols(cycleLength),
+                          )}
+                        >
                           {allDaysList.map((d) => {
                             const isSelected = currentDayLabel === d;
                             const isAuto = autoDayLabel === d;
@@ -1876,7 +2025,9 @@ export const TimetableView = memo(function TimetableView({
                                 )}
                                 aria-pressed={isSelected}
                               >
-                                <span className="tabular-nums leading-none">{d}</span>
+                                <span className="tabular-nums leading-none">
+                                  {d}
+                                </span>
                                 {wd !== undefined && (
                                   <span className="mt-0.5 text-caption font-normal text-muted-foreground/60 leading-none">
                                     {WEEKDAY_SHORT[wd]}
@@ -1888,7 +2039,9 @@ export const TimetableView = memo(function TimetableView({
                                       className="absolute -bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary/70"
                                       aria-hidden
                                     />
-                                    <span className="sr-only">, current cycle day</span>
+                                    <span className="sr-only">
+                                      , current cycle day
+                                    </span>
                                   </>
                                 )}
                               </button>
@@ -1922,11 +2075,11 @@ export const TimetableView = memo(function TimetableView({
                       </>
                     )}
                   </p>
-            ) : (
-              <p className="mt-px text-micro text-muted-foreground">
-                {blockLabel} · {blockDaysLabel}
-              </p>
-            )}
+                ) : (
+                  <p className="mt-px text-micro text-muted-foreground">
+                    {blockLabel} · {blockDaysLabel}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1979,7 +2132,8 @@ export const TimetableView = memo(function TimetableView({
               </p>
               <p className="mb-3 max-w-xs text-micro text-muted-foreground">
                 Upload a photo of your school timetable and AI will parse it
-                into a custom cycle. Default: 10 days (Mon–Fri, then Mon–Fri again).
+                into a custom cycle. Default: 10 days (Mon–Fri, then Mon–Fri
+                again).
               </p>
               <Button
                 size="sm"
@@ -2023,7 +2177,8 @@ export const TimetableView = memo(function TimetableView({
                 key={`timeline-grid-${viewSettings.showAllDays || !useBlockModel ? "all" : effectiveBlock}-${cycleLength}`}
                 className={cn(
                   "grid grid-cols-1 gap-2",
-                  (viewSettings.showAllDays || !useBlockModel) && cycleLength > 5
+                  (viewSettings.showAllDays || !useBlockModel) &&
+                    cycleLength > 5
                     ? "min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5"
                     : "min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5",
                 )}
@@ -2135,7 +2290,7 @@ export const TimetableView = memo(function TimetableView({
                 ? { duration: 0 }
                 : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
             }
-            className="pointer-events-none fixed left-0 top-0 z-[1000] overflow-hidden rounded-lg border border-primary/40 bg-background/92 px-2 py-1.5 shadow-[0_16px_40px_-18px_var(--primary),0_8px_18px_-12px_oklch(0_0_0_/_0.55)] ring-1 ring-primary/15 backdrop-blur-md"
+            className="pointer-events-none fixed left-0 top-0 z-1000 overflow-hidden rounded-lg border border-primary/40 bg-background/92 px-2 py-1.5 shadow-[0_16px_40px_-18px_var(--primary),0_8px_18px_-12px_oklch(0_0_0/0.55)] ring-1 ring-primary/15 backdrop-blur-md"
             style={{
               x: periodDrag.x,
               y: periodDrag.y,
