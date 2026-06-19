@@ -1,6 +1,7 @@
 import { format, parseISO } from "date-fns"
 import { getReasoningConfig } from "@/lib/settings"
 import { getActiveProvider } from "@/lib/providers"
+import { VCE_JSON_FORMAT_GUARD, VCE_SYSTEM_PREAMBLE, buildUserBriefing } from "@/lib/aiAssistant"
 import { getSubjectById, getSessionSubjectIds, getLocalDateValue } from "@/lib/utils"
 import type { CalendarEvent, PriorityItem, PriorityUrgency, Project, StudySession, Subject } from "@/lib/types"
 import type { PrepBalanceItem } from "@/lib/planning"
@@ -153,6 +154,7 @@ export async function generateAssessmentCopilotPlan({
   currentMonth,
   currentDrafts,
   refinement,
+  signal,
 }: {
   projects: Project[]
   sessions: StudySession[]
@@ -164,6 +166,8 @@ export async function generateAssessmentCopilotPlan({
   currentMonth: Date
   currentDrafts?: CopilotSessionDraft[]
   refinement?: string
+  /** Optional cancellation handle. Forwarded to `provider.chatCompletion`. */
+  signal?: AbortSignal
 }): Promise<CopilotResult> {
   const provider = getActiveProvider()
   if (!provider.isConfigured()) {
@@ -178,6 +182,12 @@ export async function generateAssessmentCopilotPlan({
   const projectEnum = ["none", ...projectIds]
   const existingDraftIds = new Set(currentDrafts?.map((draft) => draft.draftId) ?? [])
   const activeProjectById = new Map(activeProjects.map((project) => [project.id, project]))
+
+  // ponytail: grounding snapshot — auto-derived from the student's projects,
+  // sessions, and subject coverage so the model plans around overdue work
+  // and weak topics without us having to hand-curate it per call. Empty
+  // string for brand-new users so the section drops cleanly.
+  const copilotBriefing = buildUserBriefing({ projects, sessions, subjects, today })
 
   const subjectLines = subjects
     .map((subject) => `${subject.id}: ${subject.name} (${subject.shortCode})`)
@@ -241,47 +251,9 @@ export async function generateAssessmentCopilotPlan({
     topics: splitCopilotTopics(draft.topicsInput),
   })).join("\n")
 
-  const systemMessage = `You are an assessment planning copilot for a VCE study app.
+  const systemMessage = `${VCE_SYSTEM_PREAMBLE}\n\n${copilotBriefing ? `${copilotBriefing}\n\n` : ""}Rules:\n- Today is ${today}; use it to resolve relative timing.\n- Create study sessions only. Do not create normal calendar events, deadlines, SACs, exams, assignments, or reminders.\n- Schedule sessions from ${today} through ${planningEnd} unless the user's refinement explicitly asks for another date range.\n- Prefer urgent assessments, weak topics, blockers, low-confidence completed sessions, and low planned prep time.\n- Return 2 to 5 practical study-session drafts.\n- Use 24-hour start_time in HH:mm format.\n- Use durations from 30 to 180 minutes in 15-minute increments.\n- Every session must include at least one concrete subject id in subject_ids.\n- Use project_id when a session clearly supports an existing active assessment; otherwise use "none".\n- If a refinement is provided, treat the current edited drafts as the source of truth and apply ONLY the requested changes \u2014 do not silently rewrite preserved drafts.\n- Keep summary and focus items concise.\n\n${VCE_JSON_FORMAT_GUARD}`
 
-Rules:
-- Today is ${today}; use it to resolve relative timing.
-- Create study sessions only. Do not create normal calendar events, deadlines, SACs, exams, assignments, or reminders.
-- Schedule sessions from ${today} through ${planningEnd} unless the user's refinement explicitly asks for another date range.
-- Prefer urgent assessments, weak topics, blockers, low-confidence completed sessions, and low planned prep time.
-- Return 2 to 5 practical study-session drafts.
-- Use 24-hour start_time in HH:mm format.
-- Use durations from 30 to 180 minutes in 15-minute increments.
-- Every session must include at least one concrete subject id in subject_ids.
-- Use project_id when a session clearly supports an existing active assessment; otherwise use "none".
-- Respect the user's manual edits. If refining, treat the current drafts as source of truth and apply only the requested changes.
-- Keep summary and focus items concise.
-- Respond with strict JSON matching the provided schema only. No prose, no markdown.`
-
-  const userMessage = `${refinement ? `Refinement request:
-"""
-${refinement}
-"""
-
-Current edited drafts:
-${currentDraftLines ?? "None"}
-
-` : ""}Available subjects:
-${subjectLines}
-
-Active assessments:
-${assessmentLines || "None"}
-
-Assessment priority items:
-${priorityLines || "None"}
-
-Prep balance for ${format(currentMonth, "MMMM yyyy")}:
-${prepLines || "None"}
-
-Relevant sessions:
-${sessionLines || "None"}
-
-Upcoming assessment events:
-${eventLines || "None"}`
+  const userMessage = `${refinement ? `Refinement request:\n"""\n${refinement}\n"""\n\nCurrent edited drafts:\n${currentDraftLines ?? "None"}\n\n` : ""}Available subjects:\n${subjectLines}\n\nActive assessments:\n${assessmentLines || "None"}\n\nAssessment priority items:\n${priorityLines || "None"}\n\nPrep balance for ${format(currentMonth, "MMMM yyyy")}:\n${prepLines || "None"}\n\nRelevant sessions:\n${sessionLines || "None"}\n\nUpcoming assessment events:\n${eventLines || "None"}`
 
   const schema = {
     type: "object",
@@ -344,6 +316,7 @@ ${eventLines || "None"}`
     temperature: refinement ? 0.15 : 0.25,
     maxTokens: 2400,
     reasoning,
+    ...(signal ? { signal } : {}),
   })
 
   const parsed = parseCopilotResponse(result.content, subjectIds, projectIds, existingDraftIds)
