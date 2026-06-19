@@ -41,6 +41,13 @@ export interface ChatCompletionRequest {
   temperature?: number
   maxTokens?: number
   reasoning?: ReasoningConfig
+  /**
+   * Caller-supplied cancellation handle. Optional for backwards compatibility —
+   * callers that pre-date cancellation simply omit it. Providers that support
+   * cancelling in-flight HTTP requests will use this; older builds silently
+   * ignore it.
+   */
+  signal?: AbortSignal
 }
 
 export interface ChatCompletionResult {

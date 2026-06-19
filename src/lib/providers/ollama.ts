@@ -68,11 +68,12 @@ async function fetchOllamaModels(base: string): Promise<ModelInfo[]> {
   }))
 }
 
-async function postChat(base: string, body: Record<string, unknown>): Promise<unknown> {
+async function postChat(base: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
   const res = await fetch(`${base}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
   })
   if (!res.ok) {
     const text = await res.text()
@@ -188,9 +189,9 @@ export const ollamaProvider: Provider = {
     const base = resolveBaseUrl()
     if (!req.model) throw new Error("Ollama model not configured")
 
-    const messages = req.jsonSchema ? withJsonOutputInstructions(req.messages, req.jsonSchema) : req.messages
-    let data = await postChat(base, buildRequestBody(req, messages))
-    let parsed = parseOllamaContent(data)
+  const messages = req.jsonSchema ? withJsonOutputInstructions(req.messages, req.jsonSchema) : req.messages
+  let data = await postChat(base, buildRequestBody(req, messages), req.signal)
+  let parsed = parseOllamaContent(data)
     let normalized = req.jsonSchema ? normalizeStructuredJson(parsed.content, req.jsonSchema.schema) : undefined
     let content = normalized?.content ?? parsed.content
 
@@ -210,7 +211,7 @@ export const ollamaProvider: Provider = {
           ...messages,
           { role: "assistant", content: parsed.content },
           { role: "user", content: buildJsonRetryHint(req.jsonSchema.schema, normalized?.presentRootKeys ?? []) },
-        ]))
+        ]), req.signal)
         parsed = parseOllamaContent(data)
         normalized = normalizeStructuredJson(parsed.content, req.jsonSchema.schema)
         content = normalized.content

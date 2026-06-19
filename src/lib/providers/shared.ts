@@ -151,13 +151,26 @@ function findMatchingEnd(text: string, openIndex: number): number {
   return text.length - 1
 }
 
-// --- Chat-message translation -------------------------------------------
+// --- Chat-message translation ------------------------------------------
 
 /** Pull the finish reason out of an OpenAI-shape response choice. */
 export function extractFinishReason(choice: unknown): string | undefined {
   if (typeof choice !== "object" || choice === null) return undefined
   const reason = (choice as { finish_reason?: unknown }).finish_reason
   return typeof reason === "string" ? reason : undefined
+}
+
+/**
+ * Returns true when `e` (or its `cause`) was raised by an `AbortController`
+ * signalling. Accommodates both the modern `DOMException` shape and the
+ * older `AbortError` event shape so callers can use it uniformly against
+ * Ollama / OpenRouter HTTP failures.
+ */
+export function isUserAbort(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false
+  const dom = e as { name?: unknown; cause?: unknown }
+  if (dom.name === "AbortError" || dom.name === "AbortException") return true
+  return isUserAbort(dom.cause)
 }
 
 /** Translate a `ChatMessage` into the OpenAI wire shape. */
