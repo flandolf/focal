@@ -1,4 +1,4 @@
-import { recoverFromModelDrift, validateJsonRootShape } from "../src/lib/providers/shared"
+import { normalizeStructuredJson, recoverFromModelDrift, validateJsonRootShape } from "../src/lib/providers/shared"
 
 function assertJsonEqual(actual: unknown, expected: unknown, message: string): void {
   const actualJson = JSON.stringify(actual)
@@ -47,5 +47,35 @@ assertShapeMatches(wrongSingleRoot, "rewrapped wrong root key should match schem
 
 const alreadyCorrect = { events: [event] }
 assertJsonEqual(recoverFromModelDrift(alreadyCorrect, textEventsSchema).value, alreadyCorrect, "valid events array should be untouched")
+
+const copilotSchema = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    focus_items: { type: "array" },
+    sessions: { type: "array" },
+  },
+  required: ["summary", "focus_items", "sessions"],
+}
+
+const wrappedCopilot = {
+  response: {
+    summary: "Plan the week.",
+    focus_items: [],
+    sessions: [],
+  },
+}
+const unwrappedCopilot = recoverFromModelDrift(wrappedCopilot, copilotSchema).value
+assertJsonEqual(unwrappedCopilot, wrappedCopilot.response, "single object wrapper should be removed")
+const copilotShape = validateJsonRootShape(unwrappedCopilot, copilotSchema)
+if (!copilotShape.matches) {
+  throw new Error(`unwrapped copilot response should match schema root: missing ${copilotShape.missingRootKeys.join(", ") || "(unknown)"}`)
+}
+
+const normalized = normalizeStructuredJson("```json\n{\"events\":{\"event\":{\"title\":\"Methods SAC\"}}}\n```", textEventsSchema)
+if (!normalized.matches || !normalized.recovered) {
+  throw new Error("normalized structured JSON should recover fenced object wrappers")
+}
+assertJsonEqual(JSON.parse(normalized.content), { events: [{ title: "Methods SAC" }] }, "normalized content should be parseable recovered JSON")
 
 console.warn("ollama structured output check passed")

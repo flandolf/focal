@@ -207,8 +207,44 @@ export interface ModelDriftRecovery {
   note: string
 }
 
+export interface NormalizedStructuredJson {
+  content: string
+  matches: boolean
+  recovered: boolean
+  missingRootKeys: string[]
+  presentRootKeys: string[]
+  note: string
+}
+
+export function normalizeStructuredJson(
+  content: string,
+  schema: Record<string, unknown> | undefined,
+): NormalizedStructuredJson {
+  const extracted = extractJsonPayload(content)
+  if (!schema) {
+    return { content: extracted, matches: true, recovered: false, missingRootKeys: [], presentRootKeys: [], note: "" }
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(extracted)
+    const drift = recoverFromModelDrift(parsed, schema)
+    const shape = validateJsonRootShape(drift.value, schema)
+    return {
+      content: shape.matches || drift.recovered ? JSON.stringify(drift.value) : extracted,
+      matches: shape.matches,
+      recovered: drift.recovered,
+      missingRootKeys: shape.missingRootKeys,
+      presentRootKeys: shape.presentRootKeys,
+      note: drift.note,
+    }
+  } catch {
+    return { content: extracted, matches: false, recovered: false, missingRootKeys: [], presentRootKeys: [], note: "" }
+  }
+}
+
 /**
  * Recover from common small-model JSON drift after schema-constrained output:
+ *   - The model wrapped the whole schema object under one unnecessary key.
  *   - The model returned a top-level array and skipped the schema's one array
  *     key. Rewrap as `{ [requiredKey]: [array] }`.
  *   - The model returned a single object for an array property. Wrap it.
@@ -235,6 +271,8 @@ export function recoverFromModelDrift(
   }
   const requiredRaw = Array.isArray(schema.required) ? schema.required as unknown[] : []
   const requiredKeys = requiredRaw.filter((k): k is string => typeof k === "string")
+  const unwrapped = recoverSingleObjectWrapper(value, schema)
+  if (unwrapped.recovered) return unwrapped
   if (requiredKeys.length === 1) {
     const requiredKey = requiredKeys[0]
     const property = properties[requiredKey] as Record<string, unknown> | undefined
@@ -270,6 +308,29 @@ export function recoverFromModelDrift(
     }
   }
   return { value, recovered: false, note: "" }
+}
+
+function recoverSingleObjectWrapper(
+  value: unknown,
+  schema: Record<string, unknown>,
+): ModelDriftRecovery {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { value, recovered: false, note: "" }
+  }
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record)
+  if (keys.length !== 1) return { value, recovered: false, note: "" }
+  const inner = record[keys[0]]
+  if (typeof inner !== "object" || inner === null || Array.isArray(inner)) {
+    return { value, recovered: false, note: "" }
+  }
+  const shape = validateJsonRootShape(inner, schema)
+  if (!shape.matches) return { value, recovered: false, note: "" }
+  return {
+    value: inner,
+    recovered: true,
+    note: `unwrapped unnecessary root key "${keys[0]}"`,
+  }
 }
 
 function recoverSingleArrayProperty(

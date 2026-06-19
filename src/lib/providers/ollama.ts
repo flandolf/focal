@@ -21,10 +21,8 @@ import type {
   ProviderHealthcheck,
 } from "@/lib/providers/types"
 import {
-  extractJsonPayload,
   logLlmExchange,
-  recoverFromModelDrift,
-  validateJsonRootShape,
+  normalizeStructuredJson,
 } from "@/lib/providers/shared"
 
 const DEFAULT_BASE_URL = "http://localhost:11434"
@@ -136,27 +134,17 @@ function parseOllamaContent(data: unknown): { content: string; finishReason: str
   return { content, finishReason }
 }
 
-function normaliseStructuredContent(content: string, schema: Record<string, unknown> | undefined): string {
-  const extracted = extractJsonPayload(content)
-  if (!schema) return extracted
-  try {
-    const parsed: unknown = JSON.parse(extracted)
-    const drift = recoverFromModelDrift(parsed, schema)
-    const shape = validateJsonRootShape(drift.value, schema)
-    return shape.matches || drift.recovered ? JSON.stringify(drift.value) : extracted
-  } catch {
-    return extracted
-  }
-}
-
-function buildJsonRetryHint(schema: Record<string, unknown>): string {
+function buildJsonRetryHint(schema: Record<string, unknown>, presentRootKeys: string[]): string {
   const required = Array.isArray(schema.required)
     ? (schema.required as unknown[]).filter((key): key is string => typeof key === "string")
     : []
   const requiredClause = required.length > 0
     ? ` Include these exact top-level keys: ${required.map((key) => `"${key}"`).join(", ")}.`
     : ""
-  return `Your previous answer did not match the required JSON schema.${requiredClause} Reply again with only the corrected JSON object. No markdown, no prose, no extra wrapper key.`
+  const presentClause = presentRootKeys.length > 0
+    ? ` Your previous top-level keys were: ${presentRootKeys.map((key) => `"${key}"`).join(", ")}.`
+    : ""
+  return `Your previous answer did not match the required JSON schema.${requiredClause}${presentClause} Reply again with only the corrected JSON object. No markdown, no prose, no extra wrapper key.`
 }
 
 export const ollamaProvider: Provider = {
@@ -203,20 +191,11 @@ export const ollamaProvider: Provider = {
     const messages = req.jsonSchema ? withJsonOutputInstructions(req.messages, req.jsonSchema) : req.messages
     let data = await postChat(base, buildRequestBody(req, messages))
     let parsed = parseOllamaContent(data)
-    let content = req.jsonSchema
-      ? normaliseStructuredContent(parsed.content, req.jsonSchema.schema)
-      : parsed.content
+    let normalized = req.jsonSchema ? normalizeStructuredJson(parsed.content, req.jsonSchema.schema) : undefined
+    let content = normalized?.content ?? parsed.content
 
     if (req.jsonSchema) {
-      const shape = (() => {
-        try {
-          return validateJsonRootShape(JSON.parse(content), req.jsonSchema?.schema)
-        } catch {
-          return { matches: false, missingRootKeys: [], presentRootKeys: [] }
-        }
-      })()
-
-      if (!shape.matches) {
+      if (!normalized?.matches) {
         logLlmExchange({
           provider: "ollama",
           model: req.model,
@@ -225,15 +204,16 @@ export const ollamaProvider: Provider = {
           resolvedContent: content,
           toolCallCount: 0,
           ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
-          note: `native JSON-schema response did not match root shape (missing: ${shape.missingRootKeys.join(", ") || "unknown"})`,
+          note: `native JSON-schema response did not match root shape (missing: ${normalized && normalized.missingRootKeys.length > 0 ? normalized.missingRootKeys.join(", ") : "unknown"})`,
         })
         data = await postChat(base, buildRequestBody(req, [
           ...messages,
           { role: "assistant", content: parsed.content },
-          { role: "user", content: buildJsonRetryHint(req.jsonSchema.schema) },
+          { role: "user", content: buildJsonRetryHint(req.jsonSchema.schema, normalized?.presentRootKeys ?? []) },
         ]))
         parsed = parseOllamaContent(data)
-        content = normaliseStructuredContent(parsed.content, req.jsonSchema.schema)
+        normalized = normalizeStructuredJson(parsed.content, req.jsonSchema.schema)
+        content = normalized.content
         logLlmExchange({
           provider: "ollama",
           model: req.model,
@@ -242,7 +222,7 @@ export const ollamaProvider: Provider = {
           resolvedContent: content,
           toolCallCount: 0,
           ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
-          note: "retry after native JSON-schema shape mismatch",
+          note: normalized.note || "retry after native JSON-schema shape mismatch",
         })
       } else {
         logLlmExchange({
@@ -253,7 +233,7 @@ export const ollamaProvider: Provider = {
           resolvedContent: content,
           toolCallCount: 0,
           ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
-          note: "native JSON-schema response matched root shape",
+          note: normalized.note || "native JSON-schema response matched root shape",
         })
       }
     } else {
