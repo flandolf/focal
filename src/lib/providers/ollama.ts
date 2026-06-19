@@ -6,9 +6,9 @@
  * `format: <json schema>`, which constrains the model more reliably than JSON
  * mode, XML prompting, or tool-calling tricks on small local models.
  *
- * Tool calling is intentionally not exposed for Ollama. Most Focal AI features
- * need one valid JSON payload, and 8B local models are more reliable when the
- * task is a single schema-constrained answer rather than a tool loop.
+ * Tool calling is exposed for agent-style flows such as the chat assistant.
+ * Structured-output callers still use `format: <json schema>` because that
+ * remains the shortest path for one valid JSON payload.
  */
 import { getOllamaBaseUrl, getOllamaModel } from "@/lib/settings"
 import type {
@@ -19,6 +19,7 @@ import type {
   ModelInfo,
   Provider,
   ProviderHealthcheck,
+  ToolCall,
 } from "@/lib/providers/types"
 import {
   logLlmExchange,
@@ -39,7 +40,7 @@ interface OllamaTagsEnvelope {
 }
 
 interface OllamaChatResponse {
-  message?: { content?: unknown }
+  message?: { content?: unknown; tool_calls?: unknown }
   done_reason?: string
 }
 
@@ -83,7 +84,21 @@ async function postChat(base: string, body: Record<string, unknown>, signal?: Ab
 }
 
 function toOllamaMessage(message: ChatMessage): Record<string, unknown> {
-  return { role: message.role, content: message.content }
+  return {
+    role: message.role,
+    content: message.content,
+    ...(message.toolName ? { tool_name: message.toolName } : {}),
+    ...(message.toolCalls ? {
+      tool_calls: message.toolCalls.map((call, index) => ({
+        type: "function",
+        function: {
+          index,
+          name: call.name,
+          arguments: call.arguments,
+        },
+      })),
+    } : {}),
+  }
 }
 
 function buildJsonOutputInstruction(spec: JsonSchemaSpec): string {
@@ -119,20 +134,57 @@ function buildRequestBody(req: ChatCompletionRequest, messages: ChatMessage[]): 
     stream: false,
     keep_alive: KEEP_ALIVE,
     ...(req.jsonSchema ? { format: req.jsonSchema.schema } : {}),
+    ...(req.tools ? { tools: req.tools } : {}),
     ...(Object.keys(options).length > 0 ? { options } : {}),
   }
 }
 
-function parseOllamaContent(data: unknown): { content: string; finishReason: string | undefined } {
+function parseToolArguments(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(value)
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {}
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
+function parseOllamaToolCalls(value: unknown): ToolCall[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): ToolCall[] => {
+    if (typeof item !== "object" || item === null) return []
+    const record = item as Record<string, unknown>
+    const fn = record.function
+    if (typeof fn !== "object" || fn === null) return []
+    const fnRecord = fn as Record<string, unknown>
+    if (typeof fnRecord.name !== "string" || !fnRecord.name.trim()) return []
+    const id = typeof record.id === "string" ? record.id : undefined
+    return [{
+      ...(id ? { id } : {}),
+      name: fnRecord.name,
+      arguments: parseToolArguments(fnRecord.arguments),
+    }]
+  })
+}
+
+function parseOllamaContent(data: unknown): { content: string; finishReason: string | undefined; toolCalls: ToolCall[] } {
   const message = (data as OllamaChatResponse)?.message
   if (typeof message !== "object" || message === null) {
     throw new Error("No message in Ollama response")
   }
   const content = typeof message.content === "string" ? message.content : ""
+  const toolCalls = parseOllamaToolCalls(message.tool_calls)
   const finishReason = typeof (data as OllamaChatResponse).done_reason === "string"
     ? (data as OllamaChatResponse).done_reason
     : undefined
-  return { content, finishReason }
+  return { content, finishReason, toolCalls }
 }
 
 function buildJsonRetryHint(schema: Record<string, unknown>, presentRootKeys: string[]): string {
@@ -165,6 +217,7 @@ export const ollamaProvider: Provider = {
     { key: "model", label: "Model", kind: "text", required: true },
   ],
   supportsReasoning: false,
+  supportsToolCalling: true,
 
   isConfigured(): boolean {
     return Boolean(resolveBaseUrl()) && Boolean(getOllamaModel())
@@ -203,7 +256,7 @@ export const ollamaProvider: Provider = {
           requestAttempt: 1,
           rawResponse: data,
           resolvedContent: content,
-          toolCallCount: 0,
+          toolCallCount: parsed.toolCalls.length,
           ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
           note: `native JSON-schema response did not match root shape (missing: ${normalized && normalized.missingRootKeys.length > 0 ? normalized.missingRootKeys.join(", ") : "unknown"})`,
         })
@@ -221,7 +274,7 @@ export const ollamaProvider: Provider = {
           requestAttempt: 2,
           rawResponse: data,
           resolvedContent: content,
-          toolCallCount: 0,
+          toolCallCount: parsed.toolCalls.length,
           ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
           note: normalized.note || "retry after native JSON-schema shape mismatch",
         })
@@ -232,7 +285,7 @@ export const ollamaProvider: Provider = {
           requestAttempt: 1,
           rawResponse: data,
           resolvedContent: content,
-          toolCallCount: 0,
+          toolCallCount: parsed.toolCalls.length,
           ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
           note: normalized.note || "native JSON-schema response matched root shape",
         })
@@ -244,13 +297,14 @@ export const ollamaProvider: Provider = {
         requestAttempt: 1,
         rawResponse: data,
         resolvedContent: content,
-        toolCallCount: 0,
+        toolCallCount: parsed.toolCalls.length,
         ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
       })
     }
 
     return {
       content,
+      ...(parsed.toolCalls.length > 0 ? { toolCalls: parsed.toolCalls } : {}),
       ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
     } satisfies ChatCompletionResult
   },

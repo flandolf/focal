@@ -86,4 +86,6 @@ export type {
   ChatCompletionResult,
   ReasoningConfig,
   JsonSchemaSpec,
+  ToolCall,
+  ToolDefinition,
 } from "@/lib/providers/types"
