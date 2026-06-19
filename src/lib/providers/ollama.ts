@@ -1,68 +1,162 @@
 /**
  * Ollama provider.
  *
- * Uses the OpenAI-compatible endpoint at `<baseUrl>/v1/chat/completions`
- * (default `http://localhost:11434/v1`). The OpenAI compat layer accepts
- * `response_format: { type: "json_object" }` but does NOT enforce OpenRouter-style
- * `json_schema` — so we drop strict schema enforcement and rely on the existing
- * parser validators in `copilot.ts` / `autoRename.ts` to reject malformed JSON.
- * Reasoning tokens are silently ignored (Ollama has no equivalent endpoint knob),
- * so we omit the block entirely.
+ * Uses Ollama's native API (`/api/chat`) instead of the OpenAI-compatible
+ * `/v1/chat/completions` layer. For structured output, native Ollama supports
+ * `format: <json schema>`, which constrains the model more reliably than JSON
+ * mode, XML prompting, or tool-calling tricks on small local models.
+ *
+ * Tool calling is intentionally not exposed for Ollama. Most Focal AI features
+ * need one valid JSON payload, and 8B local models are more reliable when the
+ * task is a single schema-constrained answer rather than a tool loop.
  */
 import { getOllamaBaseUrl, getOllamaModel } from "@/lib/settings"
 import type {
   ChatCompletionRequest,
   ChatCompletionResult,
+  ChatMessage,
+  JsonSchemaSpec,
   ModelInfo,
   Provider,
   ProviderHealthcheck,
 } from "@/lib/providers/types"
+import {
+  extractJsonPayload,
+  logLlmExchange,
+  recoverFromModelDrift,
+  validateJsonRootShape,
+} from "@/lib/providers/shared"
 
-const DEFAULT_BASE_URL = "http://localhost:11434/v1"
+const DEFAULT_BASE_URL = "http://localhost:11434"
+const KEEP_ALIVE = "30m"
 
-interface OllamaModelResponse {
-  id: string
-  created?: number
-  owned_by?: string
+interface OllamaTagModel {
+  name: string
+  model?: string
+  modified_at?: string
 }
 
-interface OllamaModelsEnvelope {
-  data?: OllamaModelResponse[]
-}
-
-interface OllamaChatChoice {
-  message?: { content?: unknown }
+interface OllamaTagsEnvelope {
+  models?: OllamaTagModel[]
 }
 
 interface OllamaChatResponse {
-  choices?: OllamaChatChoice[]
+  message?: { content?: unknown }
+  done_reason?: string
 }
 
-function isOllamaModel(value: unknown): value is OllamaModelResponse {
-  return typeof value === "object" && value !== null && typeof (value as { id?: unknown }).id === "string"
+function isOllamaTagModel(value: unknown): value is OllamaTagModel {
+  return typeof value === "object" && value !== null && typeof (value as { name?: unknown }).name === "string"
 }
 
-/** Normalise a base URL to always end at the OpenAI-compatible `/v1` mount. */
+/** Normalise a base URL to the native Ollama root, accepting older `/v1` settings. */
 function resolveBaseUrl(): string {
   const raw = getOllamaBaseUrl()
   const base = (raw ?? "").trim() || DEFAULT_BASE_URL
-  // Strip every trailing slash so a path like `http://host/proxy/v1/` doesn't
-  // get mistakenly turned into `/v1/v1` by the endsWith check below.
   const trimmed = base.replace(/\/+$/, "")
-  return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
+  return trimmed.endsWith("/v1") ? trimmed.slice(0, -3) : trimmed
 }
 
 async function fetchOllamaModels(base: string): Promise<ModelInfo[]> {
-  const res = await fetch(`${base}/models`)
-  if (!res.ok) throw new Error(`Ollama /v1/models failed (${res.status})`)
+  const res = await fetch(`${base}/api/tags`)
+  if (!res.ok) throw new Error(`Ollama /api/tags failed (${res.status})`)
   const parsed: unknown = await res.json()
-  const envelope = (parsed as OllamaModelsEnvelope)?.data
-  if (!Array.isArray(envelope)) throw new Error("Unexpected Ollama /v1/models response shape")
-  return envelope.filter(isOllamaModel).map((model) => ({
-    id: model.id,
-    name: model.id,
-    supportsStructuredOutput: false,
+  const envelope = (parsed as OllamaTagsEnvelope)?.models
+  if (!Array.isArray(envelope)) throw new Error("Unexpected Ollama /api/tags response shape")
+  return envelope.filter(isOllamaTagModel).map((model) => ({
+    id: model.name,
+    name: model.name,
+    supportsStructuredOutput: true,
   }))
+}
+
+async function postChat(base: string, body: Record<string, unknown>): Promise<unknown> {
+  const res = await fetch(`${base}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Ollama API error (${res.status}): ${text}`)
+  }
+  return res.json()
+}
+
+function toOllamaMessage(message: ChatMessage): Record<string, unknown> {
+  return { role: message.role, content: message.content }
+}
+
+function buildJsonOutputInstruction(spec: JsonSchemaSpec): string {
+  const required = Array.isArray(spec.schema.required)
+    ? (spec.schema.required as unknown[]).filter((key): key is string => typeof key === "string")
+    : []
+  const requiredClause = required.length > 0
+    ? ` Top-level keys: ${required.map((key) => `"${key}"`).join(", ")}.`
+    : ""
+  return `\n\nReturn only JSON matching the supplied schema.${requiredClause} Exact keys, arrays stay arrays, no null, no markdown, no prose.`
+}
+
+function withJsonOutputInstructions(messages: ChatMessage[], spec: JsonSchemaSpec): ChatMessage[] {
+  const instruction = buildJsonOutputInstruction(spec)
+  if (messages.length > 0 && messages[0]?.role === "system") {
+    const head = messages[0]
+    return [
+      { role: "system", content: `${head.content}${instruction}` },
+      ...messages.slice(1),
+    ]
+  }
+  return [{ role: "system", content: instruction.trim() }, ...messages]
+}
+
+function buildRequestBody(req: ChatCompletionRequest, messages: ChatMessage[]): Record<string, unknown> {
+  const options: Record<string, unknown> = {}
+  if (typeof req.temperature === "number") options.temperature = req.temperature
+  if (typeof req.maxTokens === "number") options.num_predict = req.maxTokens
+
+  return {
+    model: req.model,
+    messages: messages.map(toOllamaMessage),
+    stream: false,
+    keep_alive: KEEP_ALIVE,
+    ...(req.jsonSchema ? { format: req.jsonSchema.schema } : {}),
+    ...(Object.keys(options).length > 0 ? { options } : {}),
+  }
+}
+
+function parseOllamaContent(data: unknown): { content: string; finishReason: string | undefined } {
+  const message = (data as OllamaChatResponse)?.message
+  if (typeof message !== "object" || message === null) {
+    throw new Error("No message in Ollama response")
+  }
+  const content = typeof message.content === "string" ? message.content : ""
+  const finishReason = typeof (data as OllamaChatResponse).done_reason === "string"
+    ? (data as OllamaChatResponse).done_reason
+    : undefined
+  return { content, finishReason }
+}
+
+function normaliseStructuredContent(content: string, schema: Record<string, unknown> | undefined): string {
+  const extracted = extractJsonPayload(content)
+  if (!schema) return extracted
+  try {
+    const parsed: unknown = JSON.parse(extracted)
+    const drift = recoverFromModelDrift(parsed, schema)
+    const shape = validateJsonRootShape(drift.value, schema)
+    return shape.matches || drift.recovered ? JSON.stringify(drift.value) : extracted
+  } catch {
+    return extracted
+  }
+}
+
+function buildJsonRetryHint(schema: Record<string, unknown>): string {
+  const required = Array.isArray(schema.required)
+    ? (schema.required as unknown[]).filter((key): key is string => typeof key === "string")
+    : []
+  const requiredClause = required.length > 0
+    ? ` Include these exact top-level keys: ${required.map((key) => `"${key}"`).join(", ")}.`
+    : ""
+  return `Your previous answer did not match the required JSON schema.${requiredClause} Reply again with only the corrected JSON object. No markdown, no prose, no extra wrapper key.`
 }
 
 export const ollamaProvider: Provider = {
@@ -94,7 +188,7 @@ export const ollamaProvider: Provider = {
   async healthcheck(): Promise<ProviderHealthcheck> {
     const base = resolveBaseUrl()
     try {
-      const res = await fetch(`${base}/models`)
+      const res = await fetch(`${base}/api/tags`)
       if (!res.ok) return { ok: false, error: `Ollama responded ${res.status}` }
       return { ok: true }
     } catch (e) {
@@ -106,33 +200,77 @@ export const ollamaProvider: Provider = {
     const base = resolveBaseUrl()
     if (!req.model) throw new Error("Ollama model not configured")
 
-    // ponytail: looser than OpenRouter since Ollama's /v1 compat layer doesn't enforce
-    // json_schema. json_object nudges capable models toward JSON; the post-parse validators
-    // in copilot.ts and autoRename.ts reject malformed payloads regardless.
-    const body: Record<string, unknown> = {
-      model: req.model,
-      messages: req.messages,
-      temperature: req.temperature,
-      max_tokens: req.maxTokens,
-    }
+    const messages = req.jsonSchema ? withJsonOutputInstructions(req.messages, req.jsonSchema) : req.messages
+    let data = await postChat(base, buildRequestBody(req, messages))
+    let parsed = parseOllamaContent(data)
+    let content = req.jsonSchema
+      ? normaliseStructuredContent(parsed.content, req.jsonSchema.schema)
+      : parsed.content
+
     if (req.jsonSchema) {
-      body.response_format = { type: "json_object" }
+      const shape = (() => {
+        try {
+          return validateJsonRootShape(JSON.parse(content), req.jsonSchema?.schema)
+        } catch {
+          return { matches: false, missingRootKeys: [], presentRootKeys: [] }
+        }
+      })()
+
+      if (!shape.matches) {
+        logLlmExchange({
+          provider: "ollama",
+          model: req.model,
+          requestAttempt: 1,
+          rawResponse: data,
+          resolvedContent: content,
+          toolCallCount: 0,
+          ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
+          note: `native JSON-schema response did not match root shape (missing: ${shape.missingRootKeys.join(", ") || "unknown"})`,
+        })
+        data = await postChat(base, buildRequestBody(req, [
+          ...messages,
+          { role: "assistant", content: parsed.content },
+          { role: "user", content: buildJsonRetryHint(req.jsonSchema.schema) },
+        ]))
+        parsed = parseOllamaContent(data)
+        content = normaliseStructuredContent(parsed.content, req.jsonSchema.schema)
+        logLlmExchange({
+          provider: "ollama",
+          model: req.model,
+          requestAttempt: 2,
+          rawResponse: data,
+          resolvedContent: content,
+          toolCallCount: 0,
+          ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
+          note: "retry after native JSON-schema shape mismatch",
+        })
+      } else {
+        logLlmExchange({
+          provider: "ollama",
+          model: req.model,
+          requestAttempt: 1,
+          rawResponse: data,
+          resolvedContent: content,
+          toolCallCount: 0,
+          ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
+          note: "native JSON-schema response matched root shape",
+        })
+      }
+    } else {
+      logLlmExchange({
+        provider: "ollama",
+        model: req.model,
+        requestAttempt: 1,
+        rawResponse: data,
+        resolvedContent: content,
+        toolCallCount: 0,
+        ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
+      })
     }
 
-    const res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`Ollama API error (${res.status}): ${text}`)
-    }
-    const data = (await res.json()) as OllamaChatResponse
-    const content = data.choices?.[0]?.message?.content
-    if (typeof content !== "string") {
-      throw new Error("No content in Ollama response")
-    }
-    return { content }
+    return {
+      content,
+      ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
+    } satisfies ChatCompletionResult
   },
 }

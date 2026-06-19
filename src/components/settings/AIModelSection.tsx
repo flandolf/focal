@@ -572,7 +572,7 @@ export function AIModelSection() {
                 Ollama Server
               </h2>
               <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
-                Point Focal at a running Ollama instance. Default is <code className="font-mono text-[10px]">http://localhost:11434/v1</code> if Ollama is installed locally.
+                Point Focal at a running Ollama instance. Default is <code className="font-mono text-[10px]">http://localhost:11434</code> if Ollama is installed locally.
               </p>
             </div>
             <button
@@ -592,7 +592,7 @@ export function AIModelSection() {
             type="text"
             value={ollamaBaseUrl}
             onChange={(e) => handleOllamaBaseUrlChange(e.target.value)}
-            placeholder="http://localhost:11434/v1"
+            placeholder="http://localhost:11434"
             className="mt-3 h-9 font-mono text-xs"
             aria-label="Ollama server URL"
           />

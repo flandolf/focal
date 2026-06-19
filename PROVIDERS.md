@@ -33,9 +33,9 @@ terms — they never touch `fetch`, bearer headers, or `response_format` quirks.
               ▼                                                     ▼
   ┌────────────────────────────┐               ┌────────────────────────────────┐
   │ src/lib/providers/openrouter│               │    src/lib/providers/ollama     │
-  │  • https://openrouter.ai    │               │  • http://localhost:11434/v1   │
+  │  • https://openrouter.ai    │               │  • http://localhost:11434      │
   │  • Auth: bearer apiKey      │               │  • Auth: optional bearer       │
-  │  • response_format strict   │               │  • response_format json_object │
+  │  • response_format strict   │               │  • native format schema       │
   │  • supportsReasoning: true  │               │  • supportsReasoning: false    │
   └────────────────────────────┘               └────────────────────────────────┘
 ```
@@ -55,7 +55,7 @@ Providers that don't support reasoning ignore it.
 `JsonSchemaSpec` — `{ name, schema, strict? }`. Providers translate this into
 whatever the host uses:
 - OpenRouter → `response_format: { type: "json_schema", ... }` (server enforces)
-- Ollama → `response_format: { type: "json_object" }` (model-side, no schema)
+- Ollama → native `/api/chat` `format: <JSON schema>`
 
 `ModelInfo` — what `listModels()` returns: `{ id, name?, contextLength?, supportsStructuredOutput? }`.
 
@@ -64,12 +64,34 @@ whatever the host uses:
 | Provider   | Default base URL                  | Auth         | Strict JSON schema | Supports reasoning |
 |------------|------------------------------------|--------------|--------------------|--------------------|
 | OpenRouter | `https://openrouter.ai/api/v1`     | bearer key   | yes                | yes                |
-| Ollama     | `http://localhost:11434/v1`        | none         | no (json_object)   | no                 |
+| Ollama     | `http://localhost:11434`           | none         | yes via native `format` | no             |
 
 Default backends and fields rendered in the AI section in Settings come from
 each provider's `configFields` declaration. UI rendering is driven entirely
 by what the provider exposes — no per-provider branching in `AIModelSection.tsx`
 beyond "is this the active one?".
+
+## Structured-output reliability
+
+OpenRouter enforces `response_format: { type: "json_schema", ... }` server-side
+when a `JsonSchemaSpec` is supplied, so a valid response is guaranteed as long
+as the upstream host supports structured outputs. That is why `copilot.ts`,
+`autoRename.ts` and `TextEventPlanner.tsx` keep their hand-rolled parsers
+strict — they reject payloads that look right but reference unknown subjects
+or projects.
+
+Ollama uses the native `/api/chat` endpoint with `format` set to the supplied
+JSON schema. That is the one supported structured-output path for local
+models. We do not use XML prompting or tool-calling loops for structured app
+features; 8B models are more reliable when asked for one schema-constrained
+JSON object.
+
+The provider still performs two small defensive steps:
+
+1. It strips accidental markdown fences or prose with `extractJsonPayload`.
+2. It retries once if the returned object does not match the required root
+   keys. The caller's parser remains the final validator for app-specific ids,
+   dates, and enum values.
 
 ## Adding a new provider
 
@@ -128,8 +150,8 @@ A few conventions:
 - If your host enforces strict JSON schemas (e.g. via `response_format`,
   `guided_json`, etc.), set `supportsStructuredOutput: true` on the returned
   `ModelInfo` and pass `req.jsonSchema`'s `schema` straight through. If the
-  host does best-effort JSON, use `response_format: json_object` (or omit)
-  and lean on the caller's parser for strict validation.
+  host only does best-effort JSON, it is not a good fit for Focal's planning
+  features.
 
 ### 3. Register it
 
@@ -162,7 +184,7 @@ from the user perspective:
 | `focal-ai-provider`          | Active provider id                              |
 | `focal-openrouter-key`       | OpenRouter API key (local-only, never synced)   |
 | `focal-openrouter-model`     | Last selected OpenRouter model id               |
-| `focal-ollama-base-url`      | Ollama OpenAI-compat base URL                   |
+| `focal-ollama-base-url`      | Ollama native API base URL                      |
 | `focal-ollama-model`         | Last selected Ollama tag                        |
 
 Add new keys following the same pattern (`focal-<provider>-<field>`). For
@@ -186,7 +208,8 @@ When adding a provider, run through this list:
 
 - **Strict JSON schema** — does your host enforce it? Set
   `supportsStructuredOutput` accordingly. Tight schemas need to be passed
-  through; loose hosts only need `{ type: "json_object" }`.
+  through. If your host cannot enforce schemas, do not use it for Focal's AI
+  planning features until it can.
 - **Reasoning tokens** — does your host support a `reasoning` block? Set
   `supportsReasoning`. If it doesn't, the UI hides the section automatically,
   and `chatCompletion` should drop the field rather than send it.
@@ -211,6 +234,7 @@ section. Implement it as a cheap GET to whatever root your host exposes
 |--------------------------------------------|--------------------------------------------|
 | Provider interface + types                 | `src/lib/providers/types.ts`               |
 | Individual implementations                 | `src/lib/providers/<id>.ts`                |
+| Shared provider helpers (JSON extract / shape repair / chat mapping) | `src/lib/providers/shared.ts` |
 | Active provider + effective model          | `src/lib/providers/index.ts`               |
 | Provider keys (localStorage)               | `src/lib/settings.ts`                      |
 | Provider UI                                | `src/components/settings/AIModelSection.tsx`|

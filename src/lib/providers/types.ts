@@ -46,6 +46,11 @@ export interface ChatCompletionRequest {
 export interface ChatCompletionResult {
   /** The model's text output. Callers apply their own validation. */
   content: string
+  /**
+   * Provider-reported finish reason (e.g. "stop", "length").
+   * Useful when callers want to diagnose truncation or host-side stops.
+   */
+  finishReason?: string
 }
 
 export interface ModelInfo {

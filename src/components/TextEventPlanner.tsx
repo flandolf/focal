@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getReasoningConfig } from "@/lib/settings"
-import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
+import { getActiveProvider, getEffectiveModel, type ChatMessage } from "@/lib/providers"
 import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
 import type { CalendarEvent, EventType, Project, StudySession, Subject } from "@/lib/types"
 
@@ -34,60 +34,176 @@ const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "even
 const textareaClass = "min-h-20 resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 // --- API / Parsing ---
-function parseTextEventResponse(content: string, subjectIds: string[], projectIds: string[]): TextEventDraft[] {
+
+function readString(record: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return ""
+}
+
+function readStringArray(record: Record<string, unknown>, ...keys: string[]): string[] {
+  for (const key of keys) {
+    const value = record[key]
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+    }
+    if (typeof value === "string" && value.trim()) return [value.trim()]
+  }
+  return []
+}
+
+function readNumber(record: Record<string, unknown>, fallback: number, ...keys: string[]): number {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === "number" && Number.isFinite(value)) return value
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value)
+      if (Number.isFinite(parsed)) return parsed
+    }
+  }
+  return fallback
+}
+
+function keyText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+}
+
+function compactKey(value: string): string {
+  return keyText(value).replace(/\s+/g, "")
+}
+
+function resolveSubjectId(raw: string, subjects: Subject[]): string | undefined {
+  if (!raw || raw.toLowerCase() === "none") return undefined
+  const rawKey = keyText(raw)
+  const rawCompact = compactKey(raw)
+  for (const subject of subjects) {
+    if (
+      subject.id === raw ||
+      keyText(subject.id) === rawKey ||
+      keyText(subject.shortCode) === rawKey ||
+      keyText(subject.name) === rawKey ||
+      compactKey(subject.shortCode) === rawCompact ||
+      compactKey(subject.name) === rawCompact
+    ) {
+      return subject.id
+    }
+  }
+  const fuzzy = subjects.filter((subject) => {
+    const name = keyText(subject.name)
+    const code = keyText(subject.shortCode)
+    return rawKey.length >= 4 && (name.includes(rawKey) || rawKey.includes(name) || code.includes(rawKey))
+  })
+  // ponytail: one unambiguous fuzzy subject match is useful; multiple matches
+  // stay unresolved so we don't attach sessions to the wrong class.
+  return fuzzy.length === 1 ? fuzzy[0].id : undefined
+}
+
+function resolveProjectId(raw: string, projects: Project[]): string | undefined {
+  if (!raw || raw.toLowerCase() === "none") return undefined
+  const rawKey = keyText(raw)
+  const exact = projects.find((project) => project.id === raw || keyText(project.name) === rawKey)
+  if (exact) return exact.id
+  const fuzzy = projects.filter((project) => rawKey.length >= 4 && keyText(project.name).includes(rawKey))
+  return fuzzy.length === 1 ? fuzzy[0].id : undefined
+}
+
+function normaliseDateValue(value: string): string {
+  const trimmed = value.trim()
+  const iso = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(trimmed)
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`
+  const local = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(trimmed)
+  if (local) return `${local[3]}-${local[2].padStart(2, "0")}-${local[1].padStart(2, "0")}`
+  return trimmed
+}
+
+function normaliseTimeValue(value: string): string {
+  const compact = value.trim().toLowerCase().replace(/\s+/g, "")
+  const ampm = /^(\d{1,2})(?::?(\d{2}))?(am|pm)$/.exec(compact)
+  if (ampm) {
+    let hours = Number(ampm[1])
+    const minutes = Number(ampm[2] ?? "00")
+    if (hours === 12) hours = 0
+    if (ampm[3] === "pm") hours += 12
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
+  }
+  const time = /^(\d{1,2})(?::(\d{1,2}))?$/.exec(compact)
+  if (time) {
+    return `${time[1].padStart(2, "0")}:${(time[2] ?? "00").padStart(2, "0")}`
+  }
+  return value.trim()
+}
+
+function coerceItems(parsed: unknown): unknown[] {
+  if (Array.isArray(parsed)) return parsed
+  if (typeof parsed !== "object" || parsed === null) return []
+  const events = (parsed as { events?: unknown }).events
+  // ponytail: 8B local models sometimes return one event object or a bare
+  // array even after schema nudging; accept those shallow shapes here.
+  if (Array.isArray(events)) return events.flat()
+  if (typeof events === "object" && events !== null) return [events]
+  return []
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function parseTextEventResponse(content: string, subjects: Subject[], projects: Project[]): TextEventDraft[] {
   const parsed: unknown = JSON.parse(content)
-  if (typeof parsed !== "object" || parsed === null) {
+  if ((typeof parsed !== "object" || parsed === null) && !Array.isArray(parsed)) {
     throw new Error("Invalid planner response")
   }
 
-  const items = (parsed as { events?: unknown }).events
-  if (!Array.isArray(items)) {
+  const items = coerceItems(parsed)
+  if (items.length === 0) {
     throw new Error("Planner response missing events array")
   }
 
   return items.flatMap((item) => {
     if (typeof item !== "object" || item === null) return []
     const record = item as Record<string, unknown>
-    const title = typeof record.title === "string" ? record.title.trim() : ""
-    const date = typeof record.date === "string" ? record.date.trim() : ""
-    const endDate = typeof record.end_date === "string" ? record.end_date.trim() : undefined
-    const startTime = typeof record.start_time === "string" ? record.start_time.trim() : ""
-    const durationMinutes = typeof record.duration_minutes === "number" ? record.duration_minutes : 60
-    const kind = record.item_type === "session" ? "session" : "event"
-    const eventType = VALID_EVENT_TYPES.has(record.event_type as EventType) ? (record.event_type as EventType) : "event"
-    const subjectId = typeof record.subject_id === "string" && subjectIds.includes(record.subject_id)
-      ? record.subject_id
-      : undefined
-    const subjectIdsForDraft = Array.isArray(record.subject_ids)
-      ? record.subject_ids.filter((id): id is string => typeof id === "string" && subjectIds.includes(id))
+    const title = readString(record, "title", "name")
+    const date = normaliseDateValue(readString(record, "date", "start_date", "startDate"))
+    const endDate = normaliseDateValue(readString(record, "end_date", "endDate")) || undefined
+    const startTime = normaliseTimeValue(readString(record, "start_time", "startTime", "time"))
+    const durationMinutes = readNumber(record, 60, "duration_minutes", "durationMinutes", "duration", "minutes")
+    const itemType = readString(record, "item_type", "itemType", "kind", "type").toLowerCase()
+    const kind = itemType === "session" || itemType === "study" || itemType === "study_session" ? "session" : "event"
+    const rawEventType = readString(record, "event_type", "eventType").toLowerCase()
+    const eventType = VALID_EVENT_TYPES.has(rawEventType as EventType) ? (rawEventType as EventType) : "event"
+    const rawSubjectId = readString(record, "subject_id", "subjectId")
+    const subjectId = resolveSubjectId(rawSubjectId, subjects)
+    const subjectIdsForDraft = readStringArray(record, "subject_ids", "subjectIds", "subjects")
+      .flatMap((id) => {
+        const resolved = resolveSubjectId(id, subjects)
+        return resolved ? [resolved] : []
+      })
+    const resolvedSubjectIds = subjectIdsForDraft.length > 0
+      ? Array.from(new Set(subjectIdsForDraft))
       : subjectId ? [subjectId] : []
-    const projectId = typeof record.project_id === "string" && projectIds.includes(record.project_id)
-      ? record.project_id
-      : undefined
+    const rawProjectId = readString(record, "project_id", "projectId", "assessment_id", "assessmentId")
+    const projectId = resolveProjectId(rawProjectId, projects)
+    const description = readString(record, "description", "notes")
+    const location = readString(record, "location", "place")
+    const topics = readStringArray(record, "topics", "topic")
 
-    if (!title || !date || !startTime) return []
-    if (kind === "session" && subjectIdsForDraft.length === 0) return []
+    if (!title || !date || !startTime || !combineDateAndTime(date, startTime)) return []
+    if (endDate && !combineDateAndTime(endDate, startTime)) return []
+    if (kind === "session" && resolvedSubjectIds.length === 0) return []
 
     return [{
       kind,
       title,
-      description: typeof record.description === "string" && record.description.trim()
-        ? record.description.trim()
-        : undefined,
+      description: description || undefined,
       date,
       endDate: endDate && endDate !== date ? endDate : undefined,
       startTime,
       durationMinutes: Math.min(180, Math.max(15, Math.round(durationMinutes))),
       eventType,
       subjectId,
-      subjectIds: subjectIdsForDraft,
+      subjectIds: resolvedSubjectIds,
       projectId,
-      location: typeof record.location === "string" && record.location.trim()
-        ? record.location.trim()
-        : undefined,
-      topics: Array.isArray(record.topics)
-        ? record.topics.filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0).map((topic) => topic.trim())
-        : undefined,
+      location: location || undefined,
+      topics: topics.length > 0 ? topics : undefined,
       approved: true,
     }]
   })
@@ -107,13 +223,13 @@ async function generateEventsFromText(
   const today = getLocalDateValue(new Date())
   const subjectIds = subjects.map((subject) => subject.id)
   const subjectEnum = ["none", ...subjectIds]
-  const activeProjects = projects.filter((project) => !project.isFinished).slice(0, 40)
+  const activeProjects = projects.filter((project) => !project.isFinished && !project.isArchived).slice(0, 25)
   const projectIds = activeProjects.map((project) => project.id)
   const projectEnum = ["none", ...projectIds]
   const itemTypeEnum = ["event", "session"]
-  const modeRules = `- Use item_type "session" for study blocks, revision plans, homework blocks, practice tasks, or prep work.
-- Use item_type "event" for real calendar events, due dates, SACs, exams, assignments, meetings, or reminders.
-- Use event_type "sac", "exam", "practice-sac", "homework", "other", "assignment" only for real assessment/homework items; use "event" for reminders, meetings, or admin tasks.`
+  const modeRules = `- item_type "session": study blocks, revision, homework blocks, practice tasks, prep work.
+- item_type "event": due dates, SACs, exams, assignments, meetings, reminders, real calendar events.
+- event_type "event" for reminders/meetings/admin; otherwise use the closest schema enum.`
   const subjectLines = subjects
     .map((subject) => `${subject.id}: ${subject.name} (${subject.shortCode})`)
     .join("\n")
@@ -130,21 +246,17 @@ async function generateEventsFromText(
     })
     .join("\n")
 
-  const systemMessage = `You convert pasted school notices, teacher messages, planner notes, and rough text into practical calendar events and study sessions for a VCE student.
+  const systemMessage = `Convert school notices, teacher messages, planner notes, and rough text into VCE calendar items.
 
-Rules:
-- Today is ${today}; use this date to resolve relative dates.
-- Return 1 to 8 useful items.
+Today: ${today}.
+Return 1-8 useful items.
 ${modeRules}
-- Use 24-hour start_time in HH:mm format.
-- Use durations from 15 to 180 minutes. Preserve exact odd durations when the source gives them.
-- If the source text has no time, choose a reasonable after-school time.
-- Use subject_id "none" when the subject is unclear for an event.
-- Study sessions must include at least one concrete subject id in subject_ids.
-- Use project_id when a study session clearly supports an existing active assessment; otherwise use "none".
-- Prefer concise titles that fit in a calendar cell.
-- For events spanning multiple days (e.g. a 3-day camp, multi-day exam block, or week-long event), set end_date to the last day in YYYY-MM-DD format. Omit end_date for single-day events. When end_date is set, start_time applies to the start date and the event continues through end_date.
-- Respond with strict JSON matching the provided schema only. No prose, no markdown.`
+- Dates: YYYY-MM-DD. Times: HH:mm 24-hour. If no time is given, choose after school.
+- Durations: 15-180 minutes; preserve exact source durations.
+- Multi-day events use end_date; single-day events use end_date "".
+- Subjects/projects: choose ids only from the lists. Use subject_id "none" for unclear event subjects and project_id "none" when no assessment matches. Study sessions need at least one subject_ids entry.
+- Output exactly {"events":[...]} with these keys on every item: title, description, item_type, date, end_date, start_time, duration_minutes, event_type, subject_id, subject_ids, project_id, location, topics.
+- Unknown strings use ""; empty arrays use []; never null. No markdown or prose.`
 
   const userMessage = `Available subjects:
 ${subjectLines}
@@ -171,20 +283,20 @@ ${sourceText}
             description: { type: "string" },
             item_type: { type: "string", enum: itemTypeEnum },
             date: { type: "string", description: "YYYY-MM-DD" },
-            end_date: { type: "string", description: "YYYY-MM-DD — end date for multi-day events. Omit or set same as date for single-day events." },
+            end_date: { type: "string", description: "YYYY-MM-DD for multi-day events; empty string for single-day events." },
             start_time: { type: "string", description: "HH:mm in 24-hour time" },
             duration_minutes: { type: "number" },
             event_type: {
               type: "string",
               enum: ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"],
             },
-            subject_id: { type: "string", enum: subjectEnum },
+            subject_id: { type: "string", enum: subjectEnum, description: "One canonical subject id, or none." },
             subject_ids: { type: "array", items: { type: "string", enum: subjectIds } },
-            project_id: { type: "string", enum: projectEnum },
+            project_id: { type: "string", enum: projectEnum, description: "One active assessment id, or none." },
             location: { type: "string" },
             topics: { type: "array", items: { type: "string" } },
           },
-          required: ["title", "description", "item_type", "date", "start_time", "duration_minutes", "event_type", "subject_id", "subject_ids", "project_id", "location", "topics"],
+          required: ["title", "description", "item_type", "date", "end_date", "start_time", "duration_minutes", "event_type", "subject_id", "subject_ids", "project_id", "location", "topics"],
           additionalProperties: false,
         },
       },
@@ -195,19 +307,28 @@ ${sourceText}
 
   const reasoning = getReasoningConfig().reasoning ?? undefined
 
-  const result = await provider.chatCompletion({
+  const baseMessages: ChatMessage[] = [
+    { role: "system", content: systemMessage },
+    { role: "user", content: userMessage },
+  ]
+  const baseRequest = {
     model,
-    messages: [
-      { role: "system", content: systemMessage },
-      { role: "user", content: userMessage },
-    ],
     jsonSchema: { name: "text_calendar_events", strict: true, schema },
-    temperature: 0.2,
-    maxTokens: 1800,
+    temperature: 0.1,
+    maxTokens: 1200,
     reasoning,
+  } as const
+
+  const result = await provider.chatCompletion({
+    ...baseRequest,
+    messages: baseMessages,
   })
 
-  const drafts = parseTextEventResponse(result.content, subjectIds, projectIds)
+  return parseUsableTextEventDrafts(result.content, subjects, activeProjects)
+}
+
+function parseUsableTextEventDrafts(content: string, subjects: Subject[], projects: Project[]): TextEventDraft[] {
+  const drafts = parseTextEventResponse(content, subjects, projects)
 
   if (drafts.length === 0) {
     throw new Error("Planner did not return usable events")
