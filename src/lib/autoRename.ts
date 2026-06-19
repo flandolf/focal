@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core"
 import type { FileInfo } from "@/lib/types"
 import { getReasoningConfig } from "@/lib/settings"
 import { getActiveProvider } from "@/lib/providers"
+import { VCE_JSON_FORMAT_GUARD, VCE_SYSTEM_PREAMBLE } from "@/lib/aiAssistant"
 
 interface StructuredRenameItem {
   original: string
@@ -17,21 +18,21 @@ interface FileContentPreview {
   content: string
 }
 
-const RENAME_SYSTEM_PROMPT = `You are a file-renaming assistant for a VCE (Victorian Certificate of Education) study app. Rename files to be clean, consistent, and descriptive.
+const RENAME_SYSTEM_PROMPT = `${VCE_SYSTEM_PREAMBLE}
+
+You rename student files in a VCE study app. Make filenames clean, consistent, and descriptive.
 
 Rules:
-- Filenames include extensions. Preserve each original extension exactly.
-- Convert underscores, hyphens, and excessive punctuation to spaces.
-- Use Title Case (capitalize each significant word).
-- Remove download artifacts: leading numbers, dates, "(1)", "[Download]", "copy of", etc.
+- Filenames include extensions. Preserve the original extension exactly.
+- Convert underscores, hyphens, and excessive punctuation to spaces. Use Title Case (capitalise each significant word).
+- Strip download artefacts: leading numbers, dates, "(1)", "[Download]", "copy of", etc.
 - Keep meaningful information: subject names, unit numbers, SAC numbers, topic names, and year references.
-- Make names concise but descriptive — aim for 3-7 words before the extension.
-- Collapse multiple spaces into one.
-- Never leave a name empty or just whitespace.
-- If a name is already clean, keep it as-is.
+- Aim for 3-7 words before the extension. If the name is already short and clean, do not artificially pad it.
+- Collapse multiple spaces into one. Never leave a name empty or whitespace-only.
+- When a content preview is provided, USE it to infer a more appropriate subject or topic in the filename.
 - Return one rename item for each original filename provided.
-- If a file has a content preview, use it to infer a more appropriate subject/topic in the filename when helpful.
-- Respond with strict JSON matching the provided schema only. No prose, no markdown.`
+
+${VCE_JSON_FORMAT_GUARD}`
 
 function parseStructuredRenameResponse(content: string): StructuredRenameResponse {
   const parsed: unknown = JSON.parse(content)
@@ -99,6 +100,7 @@ export async function generateRenames(
   files: FileInfo[],
   model: string,
   fileContentPreviews: Map<string, string>,
+  signal?: AbortSignal,
 ): Promise<{ original: string; renamed: string }[]> {
   const provider = getActiveProvider()
   if (!provider.isConfigured()) {
@@ -158,6 +160,7 @@ export async function generateRenames(
     temperature: 0.2,
     maxTokens: 2048,
     reasoning,
+    ...(signal ? { signal } : {}),
   })
 
   const parsedResponse = parseStructuredRenameResponse(result.content)
