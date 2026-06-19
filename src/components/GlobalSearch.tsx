@@ -18,6 +18,7 @@ import {
   Home,
   CalendarDays,
   Plus,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ interface GlobalSearchProps {
   onGoHome?: () => void;
   onGoTimetable?: () => void;
   onGoAnalytics?: () => void;
+  onOpenAiAssistant?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -115,6 +117,7 @@ export function GlobalSearch({
   onGoHome,
   onGoTimetable,
   onGoAnalytics,
+  onOpenAiAssistant,
   open,
   onOpenChange,
 }: GlobalSearchProps) {
@@ -201,6 +204,16 @@ export function GlobalSearch({
           icon: BarChart3,
           run: onGoAnalytics,
         },
+        onOpenAiAssistant && {
+          type: "action" as const,
+          id: "open-ai-assistant",
+          label: "Ask AI Assistant",
+          hint: "Quick answers about studying, planning, or subjects",
+          aliases: ["ai", "assistant", "chat", "ask", "help", "explain"],
+          shortcut: "I",
+          icon: Sparkles,
+          run: onOpenAiAssistant,
+        },
       ];
       return actions.filter((action): action is QuickAction => Boolean(action));
     },
@@ -212,6 +225,7 @@ export function GlobalSearch({
       onNewEvent,
       onNewProject,
       onNewSession,
+      onOpenAiAssistant,
     ],
   );
 

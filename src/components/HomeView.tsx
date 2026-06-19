@@ -17,6 +17,7 @@ import {
   Brain,
   Wand2,
   ArrowRight,
+  Sparkles,
 } from "lucide-react";
 import {
   getDayLabelForDate,
@@ -118,6 +119,7 @@ interface HomeViewProps {
     newStartTime: string,
     newEndTime?: string,
   ) => void;
+  onOpenAiAssistant?: () => void;
 }
 
 export const HomeView = memo(function HomeView({
@@ -139,6 +141,7 @@ export const HomeView = memo(function HomeView({
   onGoTimetable,
   onMoveEvent,
   timetableConfig,
+  onOpenAiAssistant,
 }: HomeViewProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(() =>
@@ -941,6 +944,17 @@ export const HomeView = memo(function HomeView({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {onOpenAiAssistant && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenAiAssistant}
+                  className="h-8 gap-1.5 rounded-xl bg-background/45"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  AI Assistant
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
