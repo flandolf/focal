@@ -414,7 +414,7 @@ export function AssessmentCopilot({
                               )}
                               <span className={cn(
                                 "rounded-md px-1.5 py-0.5 text-micro font-medium",
-                                errors.length > 0 ? "bg-destructive/10 text-destructive" : "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300",
+                                errors.length > 0 ? "bg-destructive/10 text-destructive" : "bg-success/15 text-success",
                               )}>
                                 {errors.length > 0 ? `${errors.length} issue${errors.length === 1 ? "" : "s"}` : "Valid"}
                               </span>

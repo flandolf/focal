@@ -64,7 +64,7 @@ export function ProjectChecklistPanel({
             <StickyNote className="h-3 w-3" />
             Notes
             {project.notes && !notesExpanded && (
-              <span className="text-caption text-muted-foreground/60 truncate max-w-[200px]">
+              <span className="text-caption text-muted-foreground/60 truncate max-w-50">
                 — {project.notes.slice(0, 60)}
                 {project.notes.length > 60 ? "…" : ""}
               </span>
@@ -76,7 +76,7 @@ export function ProjectChecklistPanel({
                 placeholder="Add project notes, links, or reminders…"
                 value={project.notes ?? ""}
                 onChange={(e) => onUpdateNotes(e.target.value)}
-                className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                className="flex min-h-15 w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
               />
             </div>
           )}

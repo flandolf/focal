@@ -1,6 +1,6 @@
 import { memo, useRef, useEffect, useState } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, LayoutList, FolderPlus } from "lucide-react"
+import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight, Loader2, LayoutList, FolderPlus, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -48,6 +48,7 @@ interface FileTreeProps {
   onMoveFile: (file: FileInfo, destSubfolder: string) => void
   onBulkTag: (tag: FileTag) => void
   onBulkMove: (destSubfolder: string) => void
+  onCopySelectedPaths: () => void
   onSelectAll: () => void
   onClearSelection: () => void
   onDeleteSelected: () => void
@@ -96,6 +97,7 @@ export const FileTree = memo(function FileTree({
   onMoveFile,
   onBulkTag,
   onBulkMove,
+  onCopySelectedPaths,
   onSelectAll,
   onClearSelection,
   onDeleteSelected,
@@ -108,6 +110,14 @@ export const FileTree = memo(function FileTree({
   changedPaths,
   removedFiles,
 }: FileTreeProps) {
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const hasActiveFilters = searchQuery.length > 0 || selectedTags.length > 0
+  const clearFilters = () => {
+    setSearchQuery("")
+    setSelectedTags([])
+    searchInputRef.current?.focus()
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -217,12 +227,19 @@ export const FileTree = memo(function FileTree({
           <div className="relative min-w-0 flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
             <Input
+              ref={searchInputRef}
               placeholder="Search files..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-7 rounded-lg bg-background/45 pl-8 text-xs"
             />
           </div>
+          <span className="hidden items-center gap-1 text-caption text-muted-foreground/60 min-[900px]:inline-flex">
+            <kbd className="rounded border border-border/60 bg-background/45 px-1 font-mono text-[10px] text-foreground/70">
+              /
+            </kbd>
+            search
+          </span>
           {searchQuery && (
             <Button variant="ghost" size="sm" onClick={() => setSearchQuery("")} className="h-7 w-7 rounded-lg p-0">
               <X className="h-3.5 w-3.5" />
@@ -263,11 +280,27 @@ export const FileTree = memo(function FileTree({
       {selectedFiles.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-accent/20 px-4 py-2.5 min-[1200px]:gap-3 min-[1200px]:px-8">
           <span className="text-xs font-medium">{selectedFiles.size} selected</span>
-          <Button variant="ghost" size="sm" onClick={onSelectAll} className="h-7 px-2 text-xs">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSelectAll}
+            className="h-7 px-2 text-xs"
+            title="Select all visible files (Ctrl/Cmd+A)"
+          >
             Select All
           </Button>
           <Button variant="ghost" size="sm" onClick={onClearSelection} className="h-7 px-2 text-xs">
             Clear
+          </Button>
+          <span className="hidden items-center gap-1 text-caption text-muted-foreground/60 min-[900px]:inline-flex">
+            <kbd className="rounded border border-border/60 bg-background/45 px-1 font-mono text-[10px] text-foreground/70">
+              Esc
+            </kbd>
+            clears
+          </span>
+          <Button variant="ghost" size="sm" onClick={onCopySelectedPaths} className="h-7 gap-1 px-2 text-xs">
+            <Copy className="h-3 w-3" />
+            Copy Paths
           </Button>
 
           {/* Bulk tag */}
@@ -350,6 +383,22 @@ export const FileTree = memo(function FileTree({
         </div>
       )}
 
+      {listItems.length === 0 && hasActiveFilters ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-12 text-center min-[1200px]:px-8">
+          <Search className="mb-4 h-8 w-8 text-muted-foreground/30" aria-hidden="true" />
+          <p className="mb-1 text-sm font-medium text-foreground">
+            No matching files
+          </p>
+          <p className="mb-5 max-w-64 text-xs leading-relaxed text-muted-foreground">
+            Try a different file name or remove the active tag filters.
+          </p>
+          <Button variant="secondary" size="sm" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        </div>
+      ) : (
+        <>
+
       {/* Column header */}
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border/60 bg-muted/30 text-caption text-muted-foreground min-[1200px]:px-6">
         <div className="w-6 shrink-0" />
@@ -430,12 +479,17 @@ export const FileTree = memo(function FileTree({
         onCopyPath={onCopyPath}
         onMoveFile={onMoveFile}
         onFileSelectionChange={onFileSelectionChange}
+        onSelectAll={onSelectAll}
+        onClearSelection={onClearSelection}
+        onFocusSearch={() => searchInputRef.current?.focus()}
         allSubfolders={allSubfolders}
         onFolderClick={setSelectedSubfolder}
         onFolderTagAll={onFolderTagAll}
         changedPaths={changedPaths}
         removedFiles={removedFiles}
       />
+        </>
+      )}
 
     </>
   )
@@ -455,6 +509,9 @@ interface VirtualFileListProps {
   onCopyPath: (file: FileInfo) => void
   onMoveFile: (file: FileInfo, destFolder: string) => void
   onFileSelectionChange: (file: FileInfo, selected: boolean) => void
+  onSelectAll: () => void
+  onClearSelection: () => void
+  onFocusSearch: () => void
   onFolderTagAll?: (folderPath: string, tag: FileTag) => void
   allSubfolders: string[]
   onFolderClick: (folder: string) => void
@@ -474,6 +531,9 @@ const VirtualFileList = memo(function VirtualFileList({
   onCopyPath,
   onMoveFile,
   onFileSelectionChange,
+  onSelectAll,
+  onClearSelection,
+  onFocusSearch,
   onFolderTagAll,
   allSubfolders,
   onFolderClick,
@@ -513,6 +573,9 @@ const VirtualFileList = memo(function VirtualFileList({
   const onFolderClickRef = useRef(onFolderClick)
   const onFileSelectionChangeRef = useRef(onFileSelectionChange)
   const onMoveFileRef = useRef(onMoveFile)
+  const onSelectAllRef = useRef(onSelectAll)
+  const onClearSelectionRef = useRef(onClearSelection)
+  const onFocusSearchRef = useRef(onFocusSearch)
 
   listItemsRef.current = listItems
   selectedFilesRef.current = selectedFiles
@@ -520,6 +583,9 @@ const VirtualFileList = memo(function VirtualFileList({
   onFolderClickRef.current = onFolderClick
   onFileSelectionChangeRef.current = onFileSelectionChange
   onMoveFileRef.current = onMoveFile
+  onSelectAllRef.current = onSelectAll
+  onClearSelectionRef.current = onClearSelection
+  onFocusSearchRef.current = onFocusSearch
 
   // Keyboard navigation — uses refs for values that change frequently
   // so the listener is only registered once.
@@ -539,7 +605,16 @@ const VirtualFileList = memo(function VirtualFileList({
       if (items.length === 0) return
       const currentFocused = focusedIndexRef.current
 
-      if (e.key === "ArrowDown") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault()
+        onSelectAllRef.current()
+      } else if (e.key === "/") {
+        e.preventDefault()
+        onFocusSearchRef.current()
+      } else if (e.key === "Escape" && selectedFilesRef.current.size > 0) {
+        e.preventDefault()
+        onClearSelectionRef.current()
+      } else if (e.key === "ArrowDown") {
         e.preventDefault()
         setFocusedIndex((prev) => {
           const next = prev < items.length - 1 ? prev + 1 : prev

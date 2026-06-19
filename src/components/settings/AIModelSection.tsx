@@ -198,7 +198,7 @@ function LatencyBar({ latency }: { latency: number | null }) {
   }
   // Map latency to a 0..1 quality score (lower is better). 200ms = full, 5000ms = empty.
   const score = Math.max(0, Math.min(1, 1 - (latency - 200) / 4800))
-  const color = score > 0.7 ? "bg-emerald-500" : score > 0.4 ? "bg-amber-500" : "bg-destructive"
+  const color = score > 0.7 ? "bg-success" : score > 0.4 ? "bg-amber-500" : "bg-destructive"
   return (
     <div className="flex items-center gap-1.5" title={`p50 ${latency.toFixed(0)}ms`}>
       <div className="relative h-1 w-8 overflow-hidden rounded-full bg-foreground/8">
@@ -339,7 +339,7 @@ function CreditsGauge({ credits }: { credits: OpenRouterCredits }) {
               ? "bg-destructive"
               : usedRatio > 0.6
                 ? "bg-amber-500"
-                : "bg-emerald-500",
+                : "bg-success",
           )}
           initial={false}
           animate={{ width: `${usedRatio * 100}%` }}
@@ -512,12 +512,12 @@ export function AIModelSection() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">OpenRouter API Key</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+            <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
               Used for AI file renaming and any features that need a language model.
             </p>
           </div>
           {saved && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-caption font-medium text-emerald-700 dark:text-emerald-400">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/25 bg-success/10 px-1.5 py-0.5 text-caption font-medium text-success">
               <Check className="h-3 w-3" />
               Saved
             </span>
@@ -531,10 +531,9 @@ export function AIModelSection() {
           placeholder="sk-or-..."
           className="mt-3 h-9 font-mono text-xs"
           aria-label="OpenRouter API key"
-        />
-        <p className="mt-2 rounded-lg border border-border/70 bg-background/30 p-2.5 text-caption text-muted-foreground/70">
-          API keys stay on this device and are not synced to your account.
-        </p>
+        />          <p className="mt-2 rounded-lg border border-border/70 bg-background/30 p-2.5 text-xs text-muted-foreground/70">
+            API keys stay on this device and are not synced to your account.
+          </p>
         <div className="mt-2 flex items-center justify-end">
           <a
             href="https://openrouter.ai/keys"
@@ -590,7 +589,7 @@ export function AIModelSection() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">AI Model</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+            <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
               Showing only models that support structured output and file uploads. Latency is live when an API key is set.
             </p>
           </div>
@@ -665,7 +664,7 @@ export function AIModelSection() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">Reasoning Tokens</h2>
-            <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+            <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
               Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
             </p>
           </div>
@@ -752,7 +751,7 @@ export function AIModelSection() {
               />
               <div className="min-w-0">
                 <p className="text-sm">Exclude reasoning from response</p>
-                <p className="mt-0.5 text-caption text-muted-foreground/70">
+                <p className="mt-0.5 text-xs text-muted-foreground/70">
                   Model still uses reasoning internally but will not include it in output.
                 </p>
               </div>

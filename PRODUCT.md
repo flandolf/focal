@@ -9,7 +9,7 @@ Sharp · Fast · Minimal. No-nonsense precision, like a good mechanical pencil o
 ### Aesthetic Direction
 - **Visual tone**: Precision tool aesthetic. Clean lines, intentional whitespace, subtle structure. Think: Muji meets a drafting table. Not playful, not sterile — quietly capable.
 - **Theme**: Both dark and light modes, equally important. System-preference driven with toggle. Dark mode for late-night study sessions; light mode for bright libraries. Both modes must feel equally considered, not one as an afterthought.
-- **Typography**: Sharp, condensed, or mechanical-leaning display font for branding moments (empty state, logo, headers), paired with Geist (already in use) as the workhorse UI font.
+- **Typography**: Sharp, condensed, or mechanical-leaning display font for branding moments (empty state, logo, headers) — Sora Variable in current use (via `@fontsource-variable/sora`) — paired with Geist as the workhorse UI font. Both register through Tailwind v4 `@theme` tokens so type stays consistent across views.
 - **Color**: Muted, intentional palette. The current shadcn neutral is a good base. The accent should be distinctive but restrained — used sparingly to highlight what matters (deadlines, counts, actions). Consider a single color accent (not a rainbow palette).
 - **Motion**: Minimal and purposeful. Faster ingress, no gratuitous animations. Transitions should convey state changes clearly (project selected, file added) without slowing the user down.
 

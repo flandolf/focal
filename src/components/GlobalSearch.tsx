@@ -3,6 +3,7 @@ import {
   useEffect,
   useCallback,
   useId,
+  useMemo,
   useRef,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -13,7 +14,10 @@ import {
   FileText,
   Folder,
   ArrowRight,
+  BarChart3,
+  Home,
   CalendarDays,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +44,12 @@ interface GlobalSearchProps {
   onSelectProject: (id: string) => void;
   onSelectSession: (session: StudySession) => void;
   onSelectEvent: (event: CalendarEvent) => void;
+  onNewProject?: () => void;
+  onNewSession?: () => void;
+  onNewEvent?: () => void;
+  onGoHome?: () => void;
+  onGoTimetable?: () => void;
+  onGoAnalytics?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -58,12 +68,37 @@ const EMPTY_RESULTS: SearchResults = {
   files: [],
 };
 
+type SearchItem =
+  | { type: "project"; data: Project }
+  | { type: "session"; data: StudySession }
+  | { type: "event"; data: CalendarEvent }
+  | { type: "file"; data: SearchResult };
+
+interface QuickAction {
+  type: "action";
+  id: string;
+  label: string;
+  hint: string;
+  aliases: string[];
+  shortcut?: string;
+  icon: typeof Search;
+  run: () => void;
+}
+
 function getTotalResults(results: SearchResults) {
   return (
     results.projects.length +
     results.sessions.length +
     results.events.length +
     results.files.length
+  );
+}
+
+function quickActionMatches(action: QuickAction, lowerQuery: string) {
+  return (
+    action.label.toLowerCase().includes(lowerQuery) ||
+    action.hint.toLowerCase().includes(lowerQuery) ||
+    action.aliases.some((alias) => alias.includes(lowerQuery))
   );
 }
 
@@ -74,6 +109,12 @@ export function GlobalSearch({
   onSelectProject,
   onSelectSession,
   onSelectEvent,
+  onNewProject,
+  onNewSession,
+  onNewEvent,
+  onGoHome,
+  onGoTimetable,
+  onGoAnalytics,
   open,
   onOpenChange,
 }: GlobalSearchProps) {
@@ -91,6 +132,88 @@ export function GlobalSearch({
   const resultListId = `${searchId}-results`;
   const statusId = `${searchId}-status`;
   const getResultId = (index: number) => `${resultListId}-${index}`;
+  const modKeyLabel =
+    typeof navigator !== "undefined" &&
+    /mac|iphone|ipad|ipod/i.test(navigator.platform)
+      ? "⌘"
+      : "Ctrl";
+
+  const quickActions = useMemo<QuickAction[]>(
+    () => {
+      const actions: (QuickAction | undefined)[] = [
+        onNewProject && {
+          type: "action" as const,
+          id: "new-assessment",
+          label: "New assessment",
+          hint: "Create a folder-backed assessment",
+          aliases: ["project", "assignment", "task", "sac", "folder"],
+          shortcut: `${modKeyLabel} N`,
+          icon: Plus,
+          run: onNewProject,
+        },
+        onNewSession && {
+          type: "action" as const,
+          id: "new-session",
+          label: "New study session",
+          hint: "Plan focused study time",
+          aliases: ["study", "focus", "revision", "timer", "pomodoro"],
+          shortcut: `${modKeyLabel} ⇧ S`,
+          icon: FileText,
+          run: onNewSession,
+        },
+        onNewEvent && {
+          type: "action" as const,
+          id: "new-event",
+          label: "New calendar item",
+          hint: "Add a deadline, class, or reminder",
+          aliases: ["calendar", "deadline", "due", "reminder", "schedule"],
+          shortcut: `${modKeyLabel} ⇧ N`,
+          icon: CalendarDays,
+          run: onNewEvent,
+        },
+        onGoHome && {
+          type: "action" as const,
+          id: "go-home",
+          label: "Go to Today",
+          hint: "Review this month's workload",
+          aliases: ["home", "dashboard", "overview", "month", "plan"],
+          shortcut: "H",
+          icon: Home,
+          run: onGoHome,
+        },
+        onGoTimetable && {
+          type: "action" as const,
+          id: "go-timetable",
+          label: "Open timetable",
+          hint: "Check current and upcoming periods",
+          aliases: ["schedule", "classes", "periods", "day", "school"],
+          shortcut: "T",
+          icon: CalendarDays,
+          run: onGoTimetable,
+        },
+        onGoAnalytics && {
+          type: "action" as const,
+          id: "go-analytics",
+          label: "Open analytics",
+          hint: "Review study patterns",
+          aliases: ["stats", "charts", "progress", "reports", "insights"],
+          shortcut: "A",
+          icon: BarChart3,
+          run: onGoAnalytics,
+        },
+      ];
+      return actions.filter((action): action is QuickAction => Boolean(action));
+    },
+    [
+      modKeyLabel,
+      onGoAnalytics,
+      onGoHome,
+      onGoTimetable,
+      onNewEvent,
+      onNewProject,
+      onNewSession,
+    ],
+  );
 
   useEffect(() => {
     if (open) {
@@ -99,10 +222,10 @@ export function GlobalSearch({
       setResults(EMPTY_RESULTS);
       setLoading(false);
       setFileSearchFailed(false);
-      setSelectedIndex(-1);
+      setSelectedIndex(quickActions.length > 0 ? 0 : -1);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [open]);
+  }, [open, quickActions.length]);
 
   const search = useCallback(
     async (
@@ -119,11 +242,14 @@ export function GlobalSearch({
         setResults(EMPTY_RESULTS);
         setLoading(false);
         setFileSearchFailed(false);
-        setSelectedIndex(-1);
+        setSelectedIndex(quickActions.length > 0 ? 0 : -1);
         return;
       }
 
       const lower = trimmed.toLowerCase();
+      const matchedQuickActionCount = quickActions.filter((action) =>
+        quickActionMatches(action, lower),
+      ).length;
 
       const matchedProjects = projs.filter(
         (p) =>
@@ -173,7 +299,9 @@ export function GlobalSearch({
         files: [],
       };
       setResults(immediateResults);
-      setSelectedIndex(getTotalResults(immediateResults) > 0 ? 0 : -1);
+      setSelectedIndex(
+        matchedQuickActionCount + getTotalResults(immediateResults) > 0 ? 0 : -1,
+      );
       setLoading(true);
       setFileSearchFailed(false);
 
@@ -191,7 +319,9 @@ export function GlobalSearch({
           files: fileResults.slice(0, 20),
         };
         setResults(nextResults);
-        setSelectedIndex(getTotalResults(nextResults) > 0 ? 0 : -1);
+        setSelectedIndex(
+          matchedQuickActionCount + getTotalResults(nextResults) > 0 ? 0 : -1,
+        );
       } catch {
         if (searchRequestRef.current !== requestId) return;
 
@@ -203,7 +333,7 @@ export function GlobalSearch({
         }
       }
     },
-    [],
+    [quickActions],
   );
 
   useEffect(() => {
@@ -231,23 +361,31 @@ export function GlobalSearch({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [open, onOpenChange]);
 
-  const totalResults =
-    results.projects.length +
-    results.sessions.length +
-    results.events.length +
-    results.files.length;
-  const allItems = [
+  const trimmedQuery = query.trim();
+  const hasQuery = trimmedQuery.length > 0;
+  const lowerQuery = trimmedQuery.toLowerCase();
+  const visibleQuickActions = hasQuery
+    ? quickActions.filter((action) => quickActionMatches(action, lowerQuery))
+    : quickActions;
+  const actionOffset = visibleQuickActions.length;
+  const resultItems: SearchItem[] = [
     ...results.projects.map((p) => ({ type: "project" as const, data: p })),
     ...results.sessions.map((s) => ({ type: "session" as const, data: s })),
     ...results.events.map((event) => ({ type: "event" as const, data: event })),
     ...results.files.map((f) => ({ type: "file" as const, data: f })),
   ];
-  const hasQuery = query.trim().length > 0;
-  const hasVisibleResults = totalResults > 0;
+  const allItems = [...visibleQuickActions, ...resultItems];
+  const totalItems = allItems.length;
+  const hasVisibleResults = totalItems > 0;
   const activeResultId =
     selectedIndex >= 0 ? getResultId(selectedIndex) : undefined;
 
-  const handleSelect = (item: (typeof allItems)[number]) => {
+  const handleSelect = (item: SearchItem | QuickAction) => {
+    if (item.type === "action") {
+      item.run();
+      onOpenChange(false);
+      return;
+    }
     if (item.type === "project") {
       onSelectProject(item.data.id);
     } else if (item.type === "session") {
@@ -266,13 +404,13 @@ export function GlobalSearch({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (totalResults === 0) return;
-      setSelectedIndex((i) => (i < 0 ? 0 : (i + 1) % totalResults));
+      if (totalItems === 0) return;
+      setSelectedIndex((i) => (i < 0 ? 0 : (i + 1) % totalItems));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (totalResults === 0) return;
+      if (totalItems === 0) return;
       setSelectedIndex((i) =>
-        i < 0 ? totalResults - 1 : (i - 1 + totalResults) % totalResults,
+        i < 0 ? totalItems - 1 : (i - 1 + totalItems) % totalItems,
       );
     } else if (
       e.key === "Enter" &&
@@ -286,7 +424,7 @@ export function GlobalSearch({
 
   useEffect(() => {
     resultRefs.current = [];
-  }, [results]);
+  }, [totalItems]);
 
   useEffect(() => {
     if (selectedIndex >= 0 && selectedIndex < resultRefs.current.length) {
@@ -316,7 +454,11 @@ export function GlobalSearch({
           Search
         </h2>
         <div id={statusId} className="sr-only" aria-live="polite">
-          {loading ? "Searching" : `${totalResults} results`}
+          {loading
+            ? "Searching"
+            : hasQuery
+              ? `${totalItems} results`
+              : `${visibleQuickActions.length} quick actions`}
         </div>
 
         <div className="flex min-h-14 items-center gap-3 border-b px-4">
@@ -325,12 +467,19 @@ export function GlobalSearch({
             ref={inputRef}
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIndex(-1);
+              const nextQuery = e.target.value;
+              const nextLower = nextQuery.trim().toLowerCase();
+              const hasMatchingAction =
+                nextLower.length > 0 &&
+                quickActions.some((action) => quickActionMatches(action, nextLower));
+              setQuery(nextQuery);
+              setSelectedIndex(
+                nextLower ? (hasMatchingAction ? 0 : -1) : quickActions.length > 0 ? 0 : -1,
+              );
             }}
             placeholder="Search assessments, sessions, events, files"
             role="combobox"
-            aria-expanded={hasVisibleResults}
+            aria-expanded={totalItems > 0}
             aria-controls={resultListId}
             aria-activedescendant={activeResultId}
             aria-describedby={statusId}
@@ -343,7 +492,10 @@ export function GlobalSearch({
               variant="ghost"
               size="icon-sm"
               className="shrink-0"
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("");
+                setSelectedIndex(quickActions.length > 0 ? 0 : -1);
+              }}
             >
               <X className="h-3.5 w-3.5" />
               <span className="sr-only">Clear search</span>
@@ -359,6 +511,58 @@ export function GlobalSearch({
               aria-label="Search results"
               className="py-2"
             >
+              {visibleQuickActions.length > 0 && (
+                <div role="group" aria-label="Quick actions">
+                  <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase text-muted-foreground">
+                    Actions
+                  </div>
+                  {visibleQuickActions.map((action, index) => {
+                    const Icon = action.icon;
+                    return (
+                      <button
+                        ref={(el) => {
+                          resultRefs.current[index] = el;
+                        }}
+                        key={action.id}
+                        id={getResultId(index)}
+                        role="option"
+                        aria-selected={selectedIndex === index}
+                        className={cn(
+                          "group flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-accent/45 focus-visible:bg-accent/55 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45",
+                          selectedIndex === index && "bg-accent/80",
+                        )}
+                        onMouseEnter={() => setSelectedIndex(index)}
+                        onClick={() => handleSelect(action)}
+                      >
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary/75">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">
+                            {action.label}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {action.hint}
+                          </span>
+                        </span>
+                        {action.shortcut ? (
+                          <kbd
+                            className={cn(
+                              kbdClass,
+                              "hidden shrink-0 opacity-70 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100 sm:inline-flex",
+                            )}
+                          >
+                            {action.shortcut}
+                          </kbd>
+                        ) : (
+                          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {results.projects.length > 0 && (
                 <div role="group" aria-label="Assessments">
                   <div className="px-4 pb-1 pt-2 text-micro font-semibold uppercase text-muted-foreground">
@@ -366,7 +570,7 @@ export function GlobalSearch({
                   </div>
                   {results.projects.map((project, idx) => {
                     const subject = getSubjectById(project.subjectId);
-                    const globalIdx = idx;
+                    const globalIdx = actionOffset + idx;
                     return (
                       <button
                         ref={(el) => {
@@ -426,7 +630,7 @@ export function GlobalSearch({
                           getSubjectById(subjectId)?.shortCode ?? subjectId,
                       )
                       .join(", ");
-                    const globalIdx = results.projects.length + idx;
+                    const globalIdx = actionOffset + results.projects.length + idx;
                     return (
                       <button
                         ref={(el) => {
@@ -472,7 +676,7 @@ export function GlobalSearch({
                     const subject = getSubjectById(event.subjectId);
                     const eventInfo = getEventTypeInfo(event.eventType);
                     const globalIdx =
-                      results.projects.length + results.sessions.length + idx;
+                      actionOffset + results.projects.length + results.sessions.length + idx;
                     return (
                       <button
                         ref={(el) => {
@@ -535,6 +739,7 @@ export function GlobalSearch({
                   </div>
                   {results.files.map((result, idx) => {
                     const globalIdx =
+                      actionOffset +
                       results.projects.length +
                       results.sessions.length +
                       results.events.length +
@@ -583,16 +788,7 @@ export function GlobalSearch({
           </ScrollArea>
         )}
 
-        {!hasQuery && (
-          <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 py-8 text-center">
-            <Search className="h-4 w-4 text-muted-foreground/55" />
-            <p className="text-sm text-muted-foreground">
-              Start typing to search.
-            </p>
-          </div>
-        )}
-
-        {hasQuery && totalResults === 0 && loading && (
+        {hasQuery && totalItems === 0 && loading && (
           <div className="space-y-2 px-4 py-4" aria-label="Searching">
             {Array.from({ length: 4 }).map((_, index) => (
               <div
@@ -609,7 +805,7 @@ export function GlobalSearch({
           </div>
         )}
 
-        {hasQuery && totalResults === 0 && !loading && (
+        {hasQuery && totalItems === 0 && !loading && (
           <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 py-8 text-center">
             <Search className="h-5 w-5 text-muted-foreground/40" />
             <p className="max-w-72 text-sm text-muted-foreground">
@@ -624,7 +820,7 @@ export function GlobalSearch({
         <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-4 py-2.5 text-micro text-muted-foreground">
           <div className="hidden items-center gap-3 sm:flex">
             <span className="flex items-center gap-1.5">
-              <kbd className={kbdClass}>⌘K</kbd>
+              <kbd className={kbdClass}>{modKeyLabel} K</kbd>
               <span className="text-muted-foreground">toggle</span>
             </span>
             <span className="flex items-center gap-1.5">

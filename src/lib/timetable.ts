@@ -6,6 +6,15 @@ import type { TimetablePeriod } from "@/lib/types"
 
 // --- Types ---
 
+const TIMETABLE_BREAK_LABELS = new Set([
+  "Recess",
+  "Lunch",
+  "Homeroom",
+  "Assembly",
+  "Form",
+  "Free",
+])
+
 export interface TimetableParseDraft {
   dayLabel: TimetableDayLabel
   periods: {
@@ -24,6 +33,23 @@ export interface TimetableParseResult {
 }
 
 // --- Helpers ---
+
+function timeStringToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0
+  return h * 60 + m
+}
+
+function comparePeriodsByStart(a: TimetablePeriod, b: TimetablePeriod): number {
+  return timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime)
+}
+
+function copyPeriodIntoSlot(
+  period: TimetablePeriod,
+  slot: Pick<TimetablePeriod, "startTime" | "endTime">,
+): TimetablePeriod {
+  return { ...period, startTime: slot.startTime, endTime: slot.endTime }
+}
 
 function toLocalDateStr(d: Date): string {
   const y = d.getFullYear()
@@ -54,6 +80,43 @@ function normaliseSubject(rawSubject: string, subjects: string[]): string {
   if (partial) return partial
 
   return trimmed
+}
+
+export function isTimetableBreakLabel(label: string): boolean {
+  return TIMETABLE_BREAK_LABELS.has(label)
+}
+
+export function reorderPeriodsIntoSlots({
+  periods,
+  periodToMove,
+  insertIndex,
+  showBreaks,
+}: {
+  periods: TimetablePeriod[]
+  periodToMove: TimetablePeriod
+  insertIndex: number
+  showBreaks: boolean
+}): TimetablePeriod[] {
+  const sortedPeriods = [...periods].sort(comparePeriodsByStart)
+  const fixedPeriods = showBreaks
+    ? []
+    : sortedPeriods.filter((period) => isTimetableBreakLabel(period.period))
+  const movablePeriods = showBreaks
+    ? sortedPeriods
+    : sortedPeriods.filter((period) => !isTimetableBreakLabel(period.period))
+  const orderedMovablePeriods = [...movablePeriods]
+  orderedMovablePeriods.splice(
+    Math.min(Math.max(insertIndex, 0), orderedMovablePeriods.length),
+    0,
+    { ...periodToMove },
+  )
+  const movableSlots = [...movablePeriods, periodToMove].sort(
+    comparePeriodsByStart,
+  )
+  const retimedMovablePeriods = orderedMovablePeriods.map((period, i) =>
+    copyPeriodIntoSlot(period, movableSlots[i] ?? period),
+  )
+  return [...fixedPeriods, ...retimedMovablePeriods].sort(comparePeriodsByStart)
 }
 
 function parseTimetableResponse(

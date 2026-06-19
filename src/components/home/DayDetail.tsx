@@ -285,7 +285,7 @@ export function DayDetail({
                                 <div className="flex items-start justify-between gap-2">
                                   <p className="min-w-0 truncate text-xs font-medium">{s.title}</p>
                                   {s.status === "completed" && (
-                                    <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
+                                    <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-success/15 text-success">
                                       Done
                                     </span>
                                   )}
@@ -504,7 +504,7 @@ export function DayDetail({
                               >
                                 {eventInfo.label}
                               </span>
-                              <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-emerald-500/12 text-emerald-600 dark:text-emerald-300">
+                              <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-success/15 text-success">
                                 Done
                               </span>
                             </div>

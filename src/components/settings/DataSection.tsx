@@ -294,7 +294,7 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
                       "mt-1.5 text-caption",
                       importResult.error
                         ? "text-destructive"
-                        : "text-emerald-600 dark:text-emerald-400",
+                        : "text-success",
                     )}
                   >
                     {importResult.error
@@ -308,7 +308,7 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
                       "mt-1.5 text-caption",
                       linkResult.error
                         ? "text-destructive"
-                        : "text-emerald-600 dark:text-emerald-400",
+                        : "text-success",
                     )}
                   >
                     {linkResult.error

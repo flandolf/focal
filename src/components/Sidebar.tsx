@@ -459,19 +459,22 @@ export const Sidebar = memo(function Sidebar({
           whileTap={tapPress}
           transition={pressTransition}
           className={cn(
-            "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            "group relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
             homeSelected
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
-          title={isCollapsed ? "Today" : undefined}
+          title={isCollapsed ? "Today (H)" : undefined}
         >
           <Home className="h-4 w-4 shrink-0" />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Today
           </CollapsibleInline>
           <CollapsibleInline show={!isCollapsed} className="ml-auto">
+            <span className="mr-1 hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
+              H
+            </span>
             <span className="rounded-full bg-background/55 px-2 py-0.5 text-caption text-muted-foreground">
               {activeCount}
             </span>
@@ -484,17 +487,22 @@ export const Sidebar = memo(function Sidebar({
           whileTap={tapPress}
           transition={pressTransition}
           className={cn(
-            "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            "group relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
             timetableSelected
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
-          title={isCollapsed ? "Timetable" : undefined}
+          title={isCollapsed ? "Timetable (T)" : undefined}
         >
           <CalendarIcon className="h-4 w-4 shrink-0" />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Timetable
+          </CollapsibleInline>
+          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+            <span className="hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
+              T
+            </span>
           </CollapsibleInline>
         </motion.button>
 
@@ -504,17 +512,22 @@ export const Sidebar = memo(function Sidebar({
           whileTap={tapPress}
           transition={pressTransition}
           className={cn(
-            "relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            "group relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
             analyticsSelected
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
-          title={isCollapsed ? "Analytics" : undefined}
+          title={isCollapsed ? "Analytics (A)" : undefined}
         >
           <BarChart3 className="h-4 w-4 shrink-0" />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Analytics
+          </CollapsibleInline>
+          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+            <span className="hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
+              A
+            </span>
           </CollapsibleInline>
         </motion.button>
 

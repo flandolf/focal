@@ -320,7 +320,7 @@ export function StudySessionDialog({
                 className={cn(
                   "rounded-md border px-2 py-1 text-micro font-semibold uppercase",
                   status === "completed"
-                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                    ? "border-success/30 bg-success/15 text-success"
                     : status === "in-progress"
                       ? "border-primary/30 bg-primary/10 text-primary"
                       : "border-border/70 bg-muted text-muted-foreground"
@@ -590,7 +590,7 @@ export function StudySessionDialog({
                                   </div>
                                 )}
                                 <div className="flex items-center gap-1.5 rounded-lg bg-primary/8 p-1.5">
-                                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-caption font-bold bg-primary/12 text-primary">
+                                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-caption font-semibold bg-primary/12 text-primary">
                                     A{idx + 1}
                                   </span>
                                   <div className="flex items-center gap-1">

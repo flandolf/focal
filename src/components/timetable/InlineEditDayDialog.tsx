@@ -352,7 +352,7 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
             </>
           ) : isCustomLabel ? (
             <>
-              <span className="flex h-2 w-2 shrink-0 items-center justify-center rounded-full bg-muted-foreground/30 text-micro font-bold text-background">✎</span>
+              <span className="flex h-2 w-2 shrink-0 items-center justify-center rounded-full bg-muted-foreground/30 text-micro font-semibold text-background">✎</span>
               <span className="truncate text-muted-foreground/80">{value}</span>
             </>
           ) : (

@@ -161,8 +161,16 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
             <RangeToggle value={range} onChange={setRange} reduceMotion={reduceMotion} />
           </motion.div>
 
-          {/* KPI strip */}
-          <motion.div variants={staggerItem}>
+          {/* KPI strip — chassis pulse is `kpi-breath-glow` (decorative,
+              intentional ambient). The state-conditional layer is
+              `active-glow`, applied only when a subject filter is active
+              so the row reads as "you are looking at filtered totals, not
+              all-time". Without this, the chrome cannot tell a filtered
+              view from an unfiltered one. */}
+          <motion.div
+            variants={staggerItem}
+            className={cn(isFilterActive && "active-glow")}
+          >
             <KpiStrip
               totalMinutes={filteredTotalMinutes}
               dailyAverage={filteredDailyAverage}

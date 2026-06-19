@@ -64,7 +64,7 @@ function StatusPill({ status, online }: { status: SyncStatus; online: boolean })
   }
   const { dot, label } = config[effective]
   return (
-    <span className="inline-flex items-center gap-1.5 text-caption font-medium text-muted-foreground/85">
+    <span className="inline-flex items-center gap-1.5 text-micro font-medium text-muted-foreground/85">
       <span className={cn("h-1.5 w-1.5 rounded-full", dot)} aria-hidden="true" />
       {label}
     </span>
@@ -144,7 +144,7 @@ function WelcomeCard({ configured }: { configured: boolean }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium leading-tight">Sync your work between devices</p>
-          <p className="mt-1 text-caption text-muted-foreground/80 text-wrap-balance">
+          <p className="mt-1 text-xs text-muted-foreground/80 text-wrap-balance">
             Sign in to keep projects, events, and study sessions in lockstep on every machine you use.
             Local-only mode still works without an account.
           </p>
@@ -461,7 +461,7 @@ function ConflictRow({
           <Button
             variant="outline"
             size="xs"
-            className="gap-1 text-caption border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
+            className="gap-1 text-caption border-emerald-500/30 hover:bg-success/15 hover:text-success"
             onClick={() => onKeepLocal(conflict.table, conflict.rowId)}
           >
             <UploadCloud className="h-3 w-3" />
@@ -593,7 +593,7 @@ export function AccountSection({
             <div className="mt-3 flex flex-wrap items-center gap-3 text-caption">
               <span className="text-muted-foreground/65">This sync</span>
               {activity.pulled > 0 && (
-                <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                <span className="inline-flex items-center gap-1 text-success">
                   <Download className="h-3 w-3" />
                   <span className="tabular-nums">{activity.pulled}</span> pulled
                 </span>
@@ -670,7 +670,7 @@ export function AccountSection({
               </div>
 
               {conflictCount > 0 && (
-                <p className="mt-1.5 text-caption text-amber-700/80 dark:text-amber-400/80 text-wrap-balance">
+                <p className="mt-1.5 text-xs text-amber-700/80 dark:text-amber-400/80 text-wrap-balance">
                   Items were modified on this device and another. Choose which version to keep.
                 </p>
               )}
@@ -757,7 +757,7 @@ export function AccountSection({
             </button>
             {showForcePush && (
               <div className="mt-2 space-y-2 rounded-md border border-amber-500/25 bg-amber-500/[0.05] px-3 py-2.5">
-                <p className="text-caption text-amber-700 dark:text-amber-400 text-wrap-balance">
+                <p className="text-xs text-amber-700 dark:text-amber-400 text-wrap-balance">
                   Use these when data on this device is not reaching other devices. Both operations push
                   everything from this machine to Supabase.
                 </p>
