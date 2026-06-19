@@ -40,6 +40,7 @@ import { CustomSubjects } from "@/components/CustomSubjects"
 import { NotionConflictDialog } from "@/components/NotionConflictDialog"
 import { NotionSyncIndicator } from "@/components/NotionSyncIndicator"
 import { SupabaseSyncIndicator } from "@/components/SupabaseSyncIndicator"
+import { AIAssistantPanel } from "@/components/AIAssistantPanel"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { VCE_SUBJECTS, type CalendarEvent, type ConfidenceScore, type EventType, type StudySession, type StudySessionStatus, type Subject } from "@/lib/types"
@@ -239,6 +240,7 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [subjectsOpen, setSubjectsOpen] = useState(false)
+  const [aiAssistantOpen, setAiAssistantOpen] = useState(false)
   const [settingsView, setSettingsView] = useState(false)
   const [analyticsView, setAnalyticsView] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -575,6 +577,8 @@ function App() {
     onZoomOut: handleZoomOut,
     onZoomReset: handleZoomReset,
   })
+
+  const handleOpenAiAssistant = useCallback(() => setAiAssistantOpen(true), [])
 
   const handleAddFileFromSidebar = useCallback(async (projectId: string) => {
     const project = projects.find((p) => p.id === projectId)
@@ -1709,7 +1713,8 @@ function App() {
                     onMergeEvents={handleMergeEvents}
               onMergeStudySessions={handleMergeStudySessions}
               onGoTimetable={handleSelectTimetable}
-              timetableConfig={timetableConfig}
+                    timetableConfig={timetableConfig}
+                    onOpenAiAssistant={handleOpenAiAssistant}
                   />
                 ) : selectedProject ? (
                   <ProjectDetail
@@ -1773,6 +1778,7 @@ function App() {
               </motion.div>
             </AnimatePresence>
           </motion.main>
+          <AIAssistantPanel open={aiAssistantOpen} onOpenChange={setAiAssistantOpen} />
         </div>
         <ProjectDialog
           open={dialogOpen}
@@ -1827,6 +1833,7 @@ function App() {
           onGoHome={handleSelectHome}
           onGoTimetable={handleSelectTimetable}
           onGoAnalytics={handleSelectAnalytics}
+          onOpenAiAssistant={handleOpenAiAssistant}
           open={searchOpen}
           onOpenChange={setSearchOpen}
         />
