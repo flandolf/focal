@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { Wand2, Loader2, X, Check, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { getAutoRenameUseFileContent, setAutoRenameUseFileContent } from "@/lib/settings"
 import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { generateRenames, getFileContentPreviews } from "@/lib/autoRename"
+import { describeAiError } from "@/lib/aiAssistant"
 
 interface RenameEntry {
   file: FileInfo
@@ -34,9 +35,10 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
   const [entries, setEntries] = useState<RenameEntry[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ message: string; hint: string | null } | null>(null)
   const [useFileContent, setUseFileContent] = useState(() => getAutoRenameUseFileContent())
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  const renameAbortRef = useRef<AbortController | null>(null)
   const providerMissing = !getActiveProvider().isConfigured()
 
   const handleOpen = useCallback(() => {
@@ -64,30 +66,49 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
     setSelectedPaths(new Set())
   }, [])
 
+  const cancelRename = useCallback(() => {
+    renameAbortRef.current?.abort()
+    renameAbortRef.current = null
+  }, [])
+
   const handleGenerate = useCallback(async () => {
     const provider = getActiveProvider()
     if (!provider.isConfigured()) {
-      setError(`${provider.displayName} is not configured. Set it in Settings.`)
+      setError({
+        message: `${provider.displayName} is not configured.`,
+        hint: "Open Settings \u2192 AI to choose and configure a provider.",
+      })
       return
     }
     const selectedFiles = files.filter((f) => selectedPaths.has(f.path))
     if (selectedFiles.length === 0) {
-      setError("No files selected. Select at least one file to rename.")
+      setError({ message: "No files selected. Select at least one file to rename.", hint: null })
       return
     }
+    renameAbortRef.current = new AbortController()
     setLoading(true)
     setError(null)
     try {
-      const fileContentPreviews = useFileContent ? await getFileContentPreviews(selectedFiles) : new Map<string, string>()
-      const results = await generateRenames(selectedFiles, getEffectiveModel(), fileContentPreviews)
+      const fileContentPreviews = useFileContent
+        ? await getFileContentPreviews(selectedFiles)
+        : new Map<string, string>()
+      const results = await generateRenames(
+        selectedFiles,
+        getEffectiveModel(),
+        fileContentPreviews,
+        renameAbortRef.current.signal,
+      )
       const newEntries: RenameEntry[] = results.map((r) => {
         const file = selectedFiles.find((f) => f.name === r.original)!
         return { file, newName: r.renamed, approved: r.renamed !== r.original }
       })
       setEntries(newEntries)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      const { message, hint, cancelled } = describeAiError(e)
+      if (cancelled) return
+      setError({ message, hint })
     } finally {
+      renameAbortRef.current = null
       setLoading(false)
     }
   }, [files, selectedPaths, useFileContent])
@@ -111,7 +132,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
     try {
       await onApplyRenames(toApply)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError({ message: describeAiError(e).message, hint: null })
       setApplying(false)
       return
     }
@@ -167,10 +188,15 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
             )}
 
             {error && (
-              <p className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2 flex items-center gap-2">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                {error}
-              </p>
+              <div className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2 flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <div className="min-w-0">
+                  <p>{error.message}</p>
+                  {error.hint && (
+                    <p className="mt-0.5 text-destructive/70">{error.hint}</p>
+                  )}
+                </div>
+              </div>
             )}
 
             <div className="flex shrink-0 items-center justify-between gap-3 rounded-md border px-3 py-2">
@@ -193,6 +219,17 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {loading && (
+                <Button
+                  onClick={cancelRename}
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-xl text-xs"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+              )}
               <Button
                 onClick={handleGenerate}
                 disabled={loading || providerMissing || selectedCount === 0}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useRef } from "react"
 import { addMinutes } from "date-fns"
 import { AlertCircle, CalendarPlus, Check, Loader2, Wand2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { getUrgencyLabel, getUrgencyClassName, type PrepBalanceItem } from "@/li
 import type { CalendarEvent, PriorityItem, Project, StudySession, Subject } from "@/lib/types"
 import { generateAssessmentCopilotPlan, clampCopilotDuration, splitCopilotTopics } from "@/lib/copilot"
 import type { CopilotFocusItem, CopilotSessionDraft } from "@/lib/copilot"
+import { describeAiError } from "@/lib/aiAssistant"
 
 function getCopilotDraftErrors(draft: CopilotSessionDraft, subjectIds: string[], projectIds: string[]): string[] {
   const errors: string[] = []
@@ -58,10 +59,11 @@ export function AssessmentCopilot({
   const [copilotFocusItems, setCopilotFocusItems] = useState<CopilotFocusItem[]>([])
   const [copilotDrafts, setCopilotDrafts] = useState<CopilotSessionDraft[]>([])
   const [copilotChanges, setCopilotChanges] = useState("")
-  const [copilotError, setCopilotError] = useState<string | null>(null)
+  const [copilotError, setCopilotError] = useState<{ message: string; hint: string | null } | null>(null)
   const [copilotLoading, setCopilotLoading] = useState(false)
   const [copilotRefining, setCopilotRefining] = useState(false)
   const [copilotApplying, setCopilotApplying] = useState(false)
+  const copilotAbortRef = useRef<AbortController | null>(null)
 
   const planningSubjectIds = useMemo(() => planningSubjects.map((subject) => subject.id), [planningSubjects])
   const activeProjectIds = useMemo(
@@ -77,13 +79,22 @@ export function AssessmentCopilot({
     [copilotDraftErrors, copilotDrafts],
   )
 
+  const cancelCopilotRequest = useCallback(() => {
+    copilotAbortRef.current?.abort()
+    copilotAbortRef.current = null
+  }, [])
+
   const handleGenerate = async () => {
     const provider = getActiveProvider()
     if (!provider.isConfigured()) {
-      setCopilotError(`${provider.displayName} is not configured. Set it up in Settings.`)
+      setCopilotError({
+        message: `${provider.displayName} is not configured.`,
+        hint: "Open Settings \u2192 AI to choose and configure a provider.",
+      })
       return
     }
 
+    copilotAbortRef.current = new AbortController()
     setCopilotLoading(true)
     setCopilotError(null)
     try {
@@ -96,14 +107,21 @@ export function AssessmentCopilot({
         subjects: planningSubjects,
         model: getEffectiveModel(),
         currentMonth,
+        signal: copilotAbortRef.current.signal,
       })
       setCopilotSummary(result.summary)
       setCopilotFocusItems(result.focusItems)
       setCopilotDrafts(result.sessions)
       setCopilotChanges("")
     } catch (e) {
-      setCopilotError(e instanceof Error ? e.message : String(e))
+      const { message, hint, cancelled } = describeAiError(e)
+      if (cancelled) {
+        // Cancellation isn't an error in the UI — quietly close the spinner.
+        return
+      }
+      setCopilotError({ message, hint })
     } finally {
+      copilotAbortRef.current = null
       setCopilotLoading(false)
     }
   }
@@ -111,18 +129,22 @@ export function AssessmentCopilot({
   const handleRefine = async () => {
     const provider = getActiveProvider()
     if (!provider.isConfigured()) {
-      setCopilotError(`${provider.displayName} is not configured. Set it up in Settings.`)
+      setCopilotError({
+        message: `${provider.displayName} is not configured.`,
+        hint: "Open Settings \u2192 AI to choose and configure a provider.",
+      })
       return
     }
     if (!copilotChanges.trim()) {
-      setCopilotError("Describe the changes you want AI to apply.")
+      setCopilotError({ message: "Describe the changes you want AI to apply.", hint: null })
       return
     }
     if (copilotDrafts.length === 0) {
-      setCopilotError("Generate draft sessions before asking AI to change them.")
+      setCopilotError({ message: "Generate draft sessions before asking AI to change them.", hint: null })
       return
     }
 
+    copilotAbortRef.current = new AbortController()
     setCopilotRefining(true)
     setCopilotError(null)
     try {
@@ -138,6 +160,7 @@ export function AssessmentCopilot({
         currentMonth,
         currentDrafts: copilotDrafts,
         refinement: copilotChanges.trim(),
+        signal: copilotAbortRef.current.signal,
       })
       setCopilotSummary(result.summary)
       setCopilotFocusItems(result.focusItems)
@@ -147,8 +170,11 @@ export function AssessmentCopilot({
       })))
       setCopilotChanges("")
     } catch (e) {
-      setCopilotError(e instanceof Error ? e.message : String(e))
+      const { message, hint, cancelled } = describeAiError(e)
+      if (cancelled) return
+      setCopilotError({ message, hint })
     } finally {
+      copilotAbortRef.current = null
       setCopilotRefining(false)
     }
   }
@@ -187,7 +213,7 @@ export function AssessmentCopilot({
 
   const handleApply = async () => {
     if (approvedValidCopilotDrafts.length === 0) {
-      setCopilotError("Approve at least one valid study-session draft.")
+      setCopilotError({ message: "Approve at least one valid study-session draft.", hint: null })
       return
     }
 
@@ -208,7 +234,7 @@ export function AssessmentCopilot({
     })
 
     if (sessionItems.length === 0) {
-      setCopilotError("The approved drafts could not be converted into study sessions.")
+      setCopilotError({ message: "The approved drafts could not be converted into study sessions.", hint: null })
       return
     }
 
@@ -222,7 +248,7 @@ export function AssessmentCopilot({
       setCopilotDrafts([])
       setCopilotChanges("")
     } catch (e) {
-      setCopilotError(e instanceof Error ? e.message : String(e))
+      setCopilotError({ message: describeAiError(e).message, hint: null })
     } finally {
       setCopilotApplying(false)
     }
@@ -240,10 +266,15 @@ export function AssessmentCopilot({
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 px-5">
           {copilotError && (
-            <p className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              {copilotError}
-            </p>
+            <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0">
+                <p>{copilotError.message}</p>
+                {copilotError.hint && (
+                  <p className="mt-0.5 text-destructive/70">{copilotError.hint}</p>
+                )}
+              </div>
+            </div>
           )}
 
           {!getActiveProvider().isConfigured() && (
@@ -260,15 +291,28 @@ export function AssessmentCopilot({
                 Uses current assessments, sessions, readiness, blockers, and prep balance.
               </p>
             </div>
-            <Button
-              size="sm"
-              onClick={handleGenerate}
-              disabled={copilotLoading || copilotRefining || !getActiveProvider().isConfigured()}
-              className="h-8 gap-1.5 rounded-xl text-background"
-            >
-              {copilotLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {copilotLoading ? "Generating..." : copilotDrafts.length > 0 ? "Regenerate" : "Generate"}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              {(copilotLoading || copilotRefining) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={cancelCopilotRequest}
+                  className="h-8 gap-1.5 rounded-xl text-xs"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={handleGenerate}
+                disabled={copilotLoading || copilotRefining || !getActiveProvider().isConfigured()}
+                className="h-8 gap-1.5 rounded-xl text-background"
+              >
+                {copilotLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                {copilotLoading ? "Generating..." : copilotDrafts.length > 0 ? "Regenerate" : "Generate"}
+              </Button>
+            </div>
           </div>
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(18rem,0.75fr)_minmax(0,1.6fr)]">

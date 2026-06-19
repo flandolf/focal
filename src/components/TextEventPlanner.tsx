@@ -1,12 +1,12 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { addMinutes } from "date-fns"
-import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Square, SquareCheck, Wand2 } from "lucide-react"
+import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Square, SquareCheck, Wand2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { getReasoningConfig } from "@/lib/settings"
-import { getActiveProvider, getEffectiveModel, type ChatMessage } from "@/lib/providers"
+import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
+import { aiChatCompletion, buildUserBriefing, describeAiError, VCE_JSON_FORMAT_GUARD, type ChatTurn } from "@/lib/aiAssistant"
 import type { CalendarEvent, EventType, Project, StudySession, Subject } from "@/lib/types"
 
 // --- Types ---
@@ -214,22 +214,33 @@ async function generateEventsFromText(
   projects: Project[],
   subjects: Subject[],
   model: string,
-
+  signal?: AbortSignal,
 ): Promise<TextEventDraft[]> {
-  const provider = getActiveProvider()
-  if (!provider.isConfigured()) {
-    throw new Error(`${provider.displayName} is not configured. Set it up in Settings.`)
-  }
-  const today = getLocalDateValue(new Date())
-  const subjectIds = subjects.map((subject) => subject.id)
-  const subjectEnum = ["none", ...subjectIds]
+  // ponytail: validation lives in aiChatCompletion; we just compose the
+  // messages here so the chokepoint owns the provider-not-configured case.
+  void getActiveProvider()
+  // ponytail: small local models (7-13B) can't compute "next Tuesday" from
+  // YYYY-MM-DD alone; supplying the weekday anchors their date arithmetic so
+  // they don't have to guess timezone or week boundaries.
+  const todayDate = new Date()
+  const today = getLocalDateValue(todayDate)
+  const todayHuman = todayDate.toLocaleDateString("en-AU", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+  // ponytail: subject ids are listed in the user message below (subjectLines);
+  // no JS-side enum list needed after the schema-side enum was removed.
   const activeProjects = projects.filter((project) => !project.isFinished && !project.isArchived).slice(0, 25)
   const projectIds = activeProjects.map((project) => project.id)
   const projectEnum = ["none", ...projectIds]
   const itemTypeEnum = ["event", "session"]
-  const modeRules = `- item_type "session": study blocks, revision, homework blocks, practice tasks, prep work.
-- item_type "event": due dates, SACs, exams, assignments, meetings, reminders, real calendar events.
-- event_type "event" for reminders/meetings/admin; otherwise use the closest schema enum.`
+  const modeRules = `- item_type "session" (study/prep/revision/homework) vs "event" (SACs/exams/deadlines/meetings/reminders). Default event_type to "event" for admin items; otherwise pick the closest enum.`
+  // ponytail: grounding snapshot — auto-derived active projects + overdue
+  // deadlines so the planner can map extracted events/sessions onto existing
+  // assessments (project_id matches) rather than guessing. Empty for new users.
+  const plannerBriefing = buildUserBriefing({ projects, subjects, sessions: [], today })
   const subjectLines = subjects
     .map((subject) => `${subject.id}: ${subject.name} (${subject.shortCode})`)
     .join("\n")
@@ -246,17 +257,28 @@ async function generateEventsFromText(
     })
     .join("\n")
 
+  // ponytail: small local models collapse on strict 13-key required arrays and
+  // need a concrete example shape; the parser already falls back to ""/[] for
+  // missing optional fields so the schema can stay lax. The one-shot below
+  // is only injected on the Ollama path where it measurably helps 7B-class
+  // models conform to native schema enforcement (OpenRouter's larger models
+  // don't need it and we avoid burning tokens on them).
+  const ollamaOneShot = getActiveProvider().id === "ollama"
+    ? `\n\nExample for input "Maths SAC next Tuesday 2pm, 60 min, prepare 1h revision":\n{"events":[{"title":"Maths SAC","item_type":"event","date":"<actual next Tuesday as YYYY-MM-DD — compute it, do not echo this placeholder>","end_date":"","start_time":"14:00","duration_minutes":60,"event_type":"sac","subject_id":"<one subject id from the list, or 'none'>","subject_ids":[],"description":"","location":"","topics":["chapter 5"],"project_id":"none"}]}`
+    : ""
+
   const systemMessage = `Convert school notices, teacher messages, planner notes, and rough text into VCE calendar items.
 
-Today: ${today}.
-Return 1-8 useful items.
+Today is ${todayHuman} (${today}, ISO YYYY-MM-DD). Use the day-of-week to resolve phrases like "next Tuesday" or "tomorrow" without doing date math.
+${plannerBriefing ? `${plannerBriefing}\n` : ""}Return 1-8 useful items.
 ${modeRules}
-- Dates: YYYY-MM-DD. Times: HH:mm 24-hour. If no time is given, choose after school.
+- Dates: YYYY-MM-DD (ISO). Times: HH:mm 24-hour. If no time is given, choose after school (~15:30).
 - Durations: 15-180 minutes; preserve exact source durations.
-- Multi-day events use end_date; single-day events use end_date "".
-- Subjects/projects: choose ids only from the lists. Use subject_id "none" for unclear event subjects and project_id "none" when no assessment matches. Study sessions need at least one subject_ids entry.
-- Output exactly {"events":[...]} with these keys on every item: title, description, item_type, date, end_date, start_time, duration_minutes, event_type, subject_id, subject_ids, project_id, location, topics.
-- Unknown strings use ""; empty arrays use []; never null. No markdown or prose.`
+- Single-day events use end_date "". Multi-day events set end_date to the inclusive end date.
+- Subjects/projects: choose ids only from the lists. Use subject_id "none" for unclear event subjects and project_id "none" when no assessment matches. subject_ids may include multiple subjects; an empty list is fine for events but study sessions need at least one.
+- Only title, item_type, date, start_time, duration_minutes, event_type are strictly required. All other keys are optional; default to "" or [] when no value applies.
+- Australian input (mention of "next Tuesday", calendar dates like 10/05) reads as DD/MM/YYYY; convert to ISO YYYY-MM-DD in the output.
+${VCE_JSON_FORMAT_GUARD}${ollamaOneShot}`
 
   const userMessage = `Available subjects:
 ${subjectLines}
@@ -290,13 +312,13 @@ ${sourceText}
               type: "string",
               enum: ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"],
             },
-            subject_id: { type: "string", enum: subjectEnum, description: "One canonical subject id, or none." },
-            subject_ids: { type: "array", items: { type: "string", enum: subjectIds } },
+            subject_id: { type: "string", description: "One subject id from the available list above, or 'none'. Approximate names (e.g. \"Maths\") that match a list entry are fine." },
+            subject_ids: { type: "array", items: { type: "string", description: "Subject ids from the available list; empty array when not assignable." } },
             project_id: { type: "string", enum: projectEnum, description: "One active assessment id, or none." },
             location: { type: "string" },
             topics: { type: "array", items: { type: "string" } },
           },
-          required: ["title", "description", "item_type", "date", "end_date", "start_time", "duration_minutes", "event_type", "subject_id", "subject_ids", "project_id", "location", "topics"],
+          required: ["title", "item_type", "date", "start_time", "duration_minutes", "event_type"],
           additionalProperties: false,
         },
       },
@@ -305,26 +327,20 @@ ${sourceText}
     additionalProperties: false,
   } as const
 
-  const reasoning = getReasoningConfig().reasoning ?? undefined
-
-  const baseMessages: ChatMessage[] = [
+  const baseMessages: ChatTurn[] = [
     { role: "system", content: systemMessage },
     { role: "user", content: userMessage },
   ]
-  const baseRequest = {
+  const content = await aiChatCompletion({
     model,
+    messages: baseMessages,
     jsonSchema: { name: "text_calendar_events", strict: true, schema },
     temperature: 0.1,
     maxTokens: 1200,
-    reasoning,
-  } as const
-
-  const result = await provider.chatCompletion({
-    ...baseRequest,
-    messages: baseMessages,
+    ...(signal ? { signal } : {}),
   })
 
-  return parseUsableTextEventDrafts(result.content, subjects, activeProjects)
+  return parseUsableTextEventDrafts(content, subjects, activeProjects)
 }
 
 function parseUsableTextEventDrafts(content: string, subjects: Subject[], projects: Project[]): TextEventDraft[] {
@@ -365,31 +381,50 @@ export function TextEventPlanner({
   const [plannerDrafts, setPlannerDrafts] = useState<TextEventDraft[]>([])
   const [plannerLoading, setPlannerLoading] = useState(false)
   const [plannerApplying, setPlannerApplying] = useState(false)
-  const [plannerError, setPlannerError] = useState<string | null>(null)
+  const [plannerError, setPlannerError] = useState<{ message: string; hint: string | null } | null>(null)
+  const plannerAbortRef = useRef<AbortController | null>(null)
 
   const approvedCount = plannerDrafts.filter((draft) => draft.approved).length
   const hasDrafts = plannerDrafts.length > 0
   const allApproved = hasDrafts && approvedCount === plannerDrafts.length
 
+  const cancelPlannerRequest = useCallback(() => {
+    plannerAbortRef.current?.abort()
+    plannerAbortRef.current = null
+  }, [])
+
   const handleGenerate = useCallback(async () => {
     const provider = getActiveProvider()
     if (!provider.isConfigured()) {
-      setPlannerError(`${provider.displayName} is not configured. Set it up in Settings.`)
+      setPlannerError({
+        message: `${provider.displayName} is not configured.`,
+        hint: "Open Settings \u2192 AI to choose and configure a provider.",
+      })
       return
     }
     if (!plannerText.trim()) {
-      setPlannerError("Paste text to convert into events.")
+      setPlannerError({ message: "Paste text to convert into events.", hint: null })
       return
     }
 
+    plannerAbortRef.current = new AbortController()
     setPlannerLoading(true)
     setPlannerError(null)
     try {
-      const drafts = await generateEventsFromText(plannerText.trim(), projects, planningSubjects, getEffectiveModel())
+      const drafts = await generateEventsFromText(
+        plannerText.trim(),
+        projects,
+        planningSubjects,
+        getEffectiveModel(),
+        plannerAbortRef.current.signal,
+      )
       setPlannerDrafts(drafts)
     } catch (e) {
-      setPlannerError(e instanceof Error ? e.message : String(e))
+      const { message, hint, cancelled } = describeAiError(e)
+      if (cancelled) return
+      setPlannerError({ message, hint })
     } finally {
+      plannerAbortRef.current = null
       setPlannerLoading(false)
     }
   }, [plannerText, projects, planningSubjects])
@@ -448,7 +483,7 @@ export function TextEventPlanner({
     })
 
     if (eventItems.length === 0 && sessionItems.length === 0) {
-      setPlannerError("The generated dates could not be converted into calendar items.")
+      setPlannerError({ message: "The generated dates could not be converted into calendar items.", hint: null })
       return
     }
 
@@ -465,7 +500,7 @@ export function TextEventPlanner({
       setPlannerDrafts([])
       setPlannerText("")
     } catch (e) {
-      setPlannerError(e instanceof Error ? e.message : String(e))
+      setPlannerError({ message: describeAiError(e).message, hint: null })
     } finally {
       setPlannerApplying(false)
     }
@@ -483,10 +518,15 @@ export function TextEventPlanner({
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-4 pb-4">
           {plannerError && (
-            <p className="flex shrink-0 items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              {plannerError}
-            </p>
+            <div className="flex shrink-0 items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0">
+                <p>{plannerError.message}</p>
+                {plannerError.hint && (
+                  <p className="mt-0.5 text-destructive/70">{plannerError.hint}</p>
+                )}
+              </div>
+            </div>
           )}
 
           {apiMissing && (
@@ -517,15 +557,28 @@ export function TextEventPlanner({
                 </span>
               )}
             </div>
-            <Button
-              onClick={handleGenerate}
-              disabled={plannerLoading || !plannerText.trim() || apiMissing}
-              size="sm"
-              className="gap-1.5 text-background"
-            >
-              {plannerLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {plannerLoading ? "Generating..." : "Generate Drafts"}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              {plannerLoading && (
+                <Button
+                  onClick={cancelPlannerRequest}
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-xl text-xs"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+              )}
+              <Button
+                onClick={handleGenerate}
+                disabled={plannerLoading || !plannerText.trim() || apiMissing}
+                size="sm"
+                className="gap-1.5 text-background"
+              >
+                {plannerLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                {plannerLoading ? "Generating..." : "Generate Drafts"}
+              </Button>
+            </div>
           </div>
 
           {hasDrafts && (
