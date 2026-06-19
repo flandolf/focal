@@ -21,7 +21,13 @@
       }
     ],
     "security": {
-      "csp": null
+      // ponytail: Tauri 2.x's empty CSP falls back to `default-src 'self'`,
+      // which blocks the production webview's `fetch()` to Ollama at
+      // http://localhost:11434 (dev mode is permissive; the built bundle is
+      // not). Allow loopback ports so users can point Ollama at any local
+      // port. macOS local networking is permitted via Tauri 2's auto-added
+      // NSAllowsLocalNetworking.
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*"
     }
   },
   "bundle": {
