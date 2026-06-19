@@ -26,7 +26,7 @@ const KEYS = {
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
 const DEFAULT_PROVIDER_ID = "openrouter"
-const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 // ponytail: an empty default lets AIModelSection show the picker for Ollama without
 // committing to a model the user hasn't installed.
 const DEFAULT_OLLAMA_MODEL = ""

@@ -54,7 +54,7 @@ export function setActiveProvider(id: string): void {
   setProvider(next.id)
   if (next.id === ollamaProvider.id) {
     // ponytail: nudge a fresh Ollama install toward the documented base URL.
-    if (!getOllamaBaseUrl()) setOllamaBaseUrl("http://localhost:11434/v1")
+    if (!getOllamaBaseUrl()) setOllamaBaseUrl("http://localhost:11434")
     setOllamaModel("")
     setModel("")
   }

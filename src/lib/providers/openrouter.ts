@@ -6,6 +6,10 @@
  * schema in `ChatCompletionRequest.jsonSchema` is enforced server-side. This is
  * the only provider in the registry that can guarantee schema-validated output,
  * which is why both `copilot.ts` and `autoRename.ts` rely on it.
+ *
+ * Reasoning tokens are configurable via the `reasoning` block, which
+ * OpenRouter translates per host; only Anthropic-style `max_tokens` is set
+ * when a reasoning effort + cap are both requested.
  */
 import { getApiKey, getModel } from "@/lib/settings"
 import type {
@@ -15,6 +19,11 @@ import type {
   Provider,
   ProviderHealthcheck,
 } from "@/lib/providers/types"
+import {
+  extractFinishReason,
+  logLlmExchange,
+  toOpenAIChatMessage,
+} from "@/lib/providers/shared"
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 const OPENROUTER_MODELS_URL = `${OPENROUTER_BASE_URL}/models`
@@ -31,6 +40,15 @@ interface OpenRouterModelResponse {
 
 interface OpenRouterModelsEnvelope {
   data?: OpenRouterModelResponse[]
+}
+
+interface OpenRouterChatChoice {
+  message?: { content?: unknown }
+  finish_reason?: string
+}
+
+interface OpenRouterChatResponse {
+  choices?: OpenRouterChatChoice[]
 }
 
 function supportsStructuredOutput(model: OpenRouterModelResponse): boolean {
@@ -113,10 +131,10 @@ export const openrouterProvider: Provider = {
 
     const body: Record<string, unknown> = {
       model: req.model,
-      messages: req.messages,
-      temperature: req.temperature,
-      max_tokens: req.maxTokens,
+      messages: req.messages.map(toOpenAIChatMessage),
       provider: { require_parameters: true },
+      ...(typeof req.temperature === "number" ? { temperature: req.temperature } : {}),
+      ...(typeof req.maxTokens === "number" ? { max_tokens: req.maxTokens } : {}),
     }
     if (req.jsonSchema) {
       body.response_format = {
@@ -135,7 +153,6 @@ export const openrouterProvider: Provider = {
         ...(req.reasoning.exclude ? { exclude: true } : {}),
       }
     }
-
     const res = await fetch(OPENROUTER_CHAT_URL, {
       method: "POST",
       headers: {
@@ -149,12 +166,26 @@ export const openrouterProvider: Provider = {
       throw new Error(`OpenRouter API error (${res.status}): ${text}`)
     }
     const data: unknown = await res.json()
-    const content = (
-      data as { choices?: { message?: { content?: unknown } }[] }
-    ).choices?.[0]?.message?.content
-    if (typeof content !== "string") {
+    const choice = (data as OpenRouterChatResponse)?.choices?.[0]
+    if (!choice) throw new Error("OpenRouter response missing choices[0]")
+    const message = choice.message
+    if (typeof message !== "object" || message === null) {
       throw new Error("No structured content in OpenRouter response")
     }
-    return { content }
+    const content = typeof message.content === "string" ? message.content : ""
+    const finishReason = extractFinishReason(choice) ?? choice.finish_reason
+    logLlmExchange({
+      provider: "openrouter",
+      model: req.model,
+      requestAttempt: 1,
+      rawResponse: data,
+      resolvedContent: content,
+      toolCallCount: 0,
+      ...(finishReason ? { finishReason } : {}),
+    })
+    return {
+      content,
+      ...(finishReason ? { finishReason } : {}),
+    } satisfies ChatCompletionResult
   },
 }
