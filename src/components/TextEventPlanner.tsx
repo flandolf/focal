@@ -4,7 +4,8 @@ import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Square, Sq
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
+import { getReasoningConfig } from "@/lib/settings"
+import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
 import type { CalendarEvent, EventType, Project, StudySession, Subject } from "@/lib/types"
 
@@ -96,10 +97,13 @@ async function generateEventsFromText(
   sourceText: string,
   projects: Project[],
   subjects: Subject[],
-  apiKey: string,
   model: string,
 
 ): Promise<TextEventDraft[]> {
+  const provider = getActiveProvider()
+  if (!provider.isConfigured()) {
+    throw new Error(`${provider.displayName} is not configured. Set it up in Settings.`)
+  }
   const today = getLocalDateValue(new Date())
   const subjectIds = subjects.map((subject) => subject.id)
   const subjectEnum = ["none", ...subjectIds]
@@ -126,18 +130,7 @@ async function generateEventsFromText(
     })
     .join("\n")
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "system",
-          content: `You convert pasted school notices, teacher messages, planner notes, and rough text into practical calendar events and study sessions for a VCE student.
+  const systemMessage = `You convert pasted school notices, teacher messages, planner notes, and rough text into practical calendar events and study sessions for a VCE student.
 
 Rules:
 - Today is ${today}; use this date to resolve relative dates.
@@ -150,11 +143,10 @@ ${modeRules}
 - Study sessions must include at least one concrete subject id in subject_ids.
 - Use project_id when a study session clearly supports an existing active assessment; otherwise use "none".
 - Prefer concise titles that fit in a calendar cell.
-- For events spanning multiple days (e.g. a 3-day camp, multi-day exam block, or week-long event), set end_date to the last day in YYYY-MM-DD format. Omit end_date for single-day events. When end_date is set, start_time applies to the start date and the event continues through end_date.`,
-        },
-        {
-          role: "user",
-          content: `Available subjects:
+- For events spanning multiple days (e.g. a 3-day camp, multi-day exam block, or week-long event), set end_date to the last day in YYYY-MM-DD format. Omit end_date for single-day events. When end_date is set, start_time applies to the start date and the event continues through end_date.
+- Respond with strict JSON matching the provided schema only. No prose, no markdown.`
+
+  const userMessage = `Available subjects:
 ${subjectLines}
 
 Existing active assessments for context:
@@ -163,90 +155,59 @@ ${assessmentLines || "None"}
 Text to convert:
 """
 ${sourceText}
-"""`,
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "text_calendar_events",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              events: {
-                type: "array",
-                minItems: 1,
-                maxItems: 8,
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string" },
-                    description: { type: "string" },
-                    item_type: {
-                      type: "string",
-                      enum: itemTypeEnum,
-                    },
-                    date: { type: "string", description: "YYYY-MM-DD" },
-                    end_date: { type: "string", description: "YYYY-MM-DD — end date for multi-day events. Omit or set same as date for single-day events." },
-                    start_time: { type: "string", description: "HH:mm in 24-hour time" },
-                    duration_minutes: { type: "number" },
-                    event_type: {
-                      type: "string",
-                      enum: ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"],
-                    },
-                    subject_id: {
-                      type: "string",
-                      enum: subjectEnum,
-                    },
-                    subject_ids: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                        enum: subjectIds,
-                      },
-                    },
-                    project_id: {
-                      type: "string",
-                      enum: projectEnum,
-                    },
-                    location: { type: "string" },
-                    topics: {
-                      type: "array",
-                      items: { type: "string" },
-                    },
-                  },
-                  required: ["title", "description", "item_type", "date", "start_time", "duration_minutes", "event_type", "subject_id", "subject_ids", "project_id", "location", "topics"],
-                  additionalProperties: false,
-                },
-              },
+"""`
+
+  const schema = {
+    type: "object",
+    properties: {
+      events: {
+        type: "array",
+        minItems: 1,
+        maxItems: 8,
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+            item_type: { type: "string", enum: itemTypeEnum },
+            date: { type: "string", description: "YYYY-MM-DD" },
+            end_date: { type: "string", description: "YYYY-MM-DD — end date for multi-day events. Omit or set same as date for single-day events." },
+            start_time: { type: "string", description: "HH:mm in 24-hour time" },
+            duration_minutes: { type: "number" },
+            event_type: {
+              type: "string",
+              enum: ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"],
             },
-            required: ["events"],
-            additionalProperties: false,
+            subject_id: { type: "string", enum: subjectEnum },
+            subject_ids: { type: "array", items: { type: "string", enum: subjectIds } },
+            project_id: { type: "string", enum: projectEnum },
+            location: { type: "string" },
+            topics: { type: "array", items: { type: "string" } },
           },
+          required: ["title", "description", "item_type", "date", "start_time", "duration_minutes", "event_type", "subject_id", "subject_ids", "project_id", "location", "topics"],
+          additionalProperties: false,
         },
       },
-      provider: {
-        require_parameters: true,
-      },
-      temperature: 0.2,
-      max_tokens: 1800,
-      ...getReasoningConfig(),
-    }),
+    },
+    required: ["events"],
+    additionalProperties: false,
+  } as const
+
+  const reasoning = getReasoningConfig().reasoning ?? undefined
+
+  const result = await provider.chatCompletion({
+    model,
+    messages: [
+      { role: "system", content: systemMessage },
+      { role: "user", content: userMessage },
+    ],
+    jsonSchema: { name: "text_calendar_events", strict: true, schema },
+    temperature: 0.2,
+    maxTokens: 1800,
+    reasoning,
   })
 
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`OpenRouter API error (${response.status}): ${text}`)
-  }
-
-  const data = await response.json() as { choices?: { message?: { content?: unknown } }[] }
-  const content = data.choices?.[0]?.message?.content
-  if (typeof content !== "string") {
-    throw new Error("No structured content in OpenRouter response")
-  }
-
-  const drafts = parseTextEventResponse(content, subjectIds, projectIds)
+  const drafts = parseTextEventResponse(result.content, subjectIds, projectIds)
 
   if (drafts.length === 0) {
     throw new Error("Planner did not return usable events")
@@ -290,9 +251,9 @@ export function TextEventPlanner({
   const allApproved = hasDrafts && approvedCount === plannerDrafts.length
 
   const handleGenerate = useCallback(async () => {
-    const key = getApiKey()
-    if (!key) {
-      setPlannerError("OpenRouter API key not configured. Set it in Settings.")
+    const provider = getActiveProvider()
+    if (!provider.isConfigured()) {
+      setPlannerError(`${provider.displayName} is not configured. Set it up in Settings.`)
       return
     }
     if (!plannerText.trim()) {
@@ -303,7 +264,7 @@ export function TextEventPlanner({
     setPlannerLoading(true)
     setPlannerError(null)
     try {
-      const drafts = await generateEventsFromText(plannerText.trim(), projects, planningSubjects, key, getModel())
+      const drafts = await generateEventsFromText(plannerText.trim(), projects, planningSubjects, getEffectiveModel())
       setPlannerDrafts(drafts)
     } catch (e) {
       setPlannerError(e instanceof Error ? e.message : String(e))
@@ -389,7 +350,7 @@ export function TextEventPlanner({
     }
   }, [onCreateEvents, onCreateStudySessions, plannerDrafts, onOpenChange])
 
-  const apiMissing = !getApiKey()
+  const apiMissing = !getActiveProvider().isConfigured()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -410,7 +371,7 @@ export function TextEventPlanner({
           {apiMissing && (
             <p className="flex shrink-0 items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              OpenRouter API key not configured. Go to Settings to set it up.
+              {`${getActiveProvider().displayName} is not configured. Go to Settings to set it up.`}
             </p>
           )}
 

@@ -1,5 +1,6 @@
 import { format, parseISO } from "date-fns"
 import { getReasoningConfig } from "@/lib/settings"
+import { getActiveProvider } from "@/lib/providers"
 import { getSubjectById, getSessionSubjectIds, getLocalDateValue } from "@/lib/utils"
 import type { CalendarEvent, PriorityItem, PriorityUrgency, Project, StudySession, Subject } from "@/lib/types"
 import type { PrepBalanceItem } from "@/lib/planning"
@@ -148,7 +149,6 @@ export async function generateAssessmentCopilotPlan({
   priorityItems,
   prepBalanceItems,
   subjects,
-  apiKey,
   model,
   currentMonth,
   currentDrafts,
@@ -160,12 +160,16 @@ export async function generateAssessmentCopilotPlan({
   priorityItems: PriorityItem[]
   prepBalanceItems: PrepBalanceItem[]
   subjects: Subject[]
-  apiKey: string
   model: string
   currentMonth: Date
   currentDrafts?: CopilotSessionDraft[]
   refinement?: string
 }): Promise<CopilotResult> {
+  const provider = getActiveProvider()
+  if (!provider.isConfigured()) {
+    throw new Error(`${provider.displayName} is not configured. Set it up in Settings.`)
+  }
+
   const today = getLocalDateValue(new Date())
   const planningEnd = getLocalDateValue(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000))
   const subjectIds = subjects.map((subject) => subject.id)
@@ -237,18 +241,7 @@ export async function generateAssessmentCopilotPlan({
     topics: splitCopilotTopics(draft.topicsInput),
   })).join("\n")
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "system",
-          content: `You are an assessment planning copilot for a VCE study app.
+  const systemMessage = `You are an assessment planning copilot for a VCE study app.
 
 Rules:
 - Today is ${today}; use it to resolve relative timing.
@@ -261,11 +254,10 @@ Rules:
 - Every session must include at least one concrete subject id in subject_ids.
 - Use project_id when a session clearly supports an existing active assessment; otherwise use "none".
 - Respect the user's manual edits. If refining, treat the current drafts as source of truth and apply only the requested changes.
-- Keep summary and focus items concise.`,
-        },
-        {
-          role: "user",
-          content: `${refinement ? `Refinement request:
+- Keep summary and focus items concise.
+- Respond with strict JSON matching the provided schema only. No prose, no markdown.`
+
+  const userMessage = `${refinement ? `Refinement request:
 """
 ${refinement}
 """
@@ -289,87 +281,74 @@ Relevant sessions:
 ${sessionLines || "None"}
 
 Upcoming assessment events:
-${eventLines || "None"}`,
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "assessment_copilot_plan",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              summary: { type: "string" },
-              focus_items: {
-                type: "array",
-                minItems: 0,
-                maxItems: 5,
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string" },
-                    reason: { type: "string" },
-                    urgency: { type: "string", enum: ["critical", "high", "medium", "low"] },
-                    project_id: { type: "string", enum: projectEnum },
-                    subject_ids: { type: "array", items: { type: "string", enum: subjectIds } },
-                    next_action: { type: "string" },
-                  },
-                  required: ["title", "reason", "urgency", "project_id", "subject_ids", "next_action"],
-                  additionalProperties: false,
-                },
-              },
-              sessions: {
-                type: "array",
-                minItems: 2,
-                maxItems: 5,
-                items: {
-                  type: "object",
-                  properties: {
-                    draft_id: { type: "string" },
-                    title: { type: "string" },
-                    description: { type: "string" },
-                    notes: { type: "string" },
-                    date: { type: "string", description: "YYYY-MM-DD" },
-                    start_time: { type: "string", description: "HH:mm in 24-hour time" },
-                    duration_minutes: { type: "number" },
-                    project_id: { type: "string", enum: projectEnum },
-                    subject_ids: { type: "array", items: { type: "string", enum: subjectIds } },
-                    topics: { type: "array", items: { type: "string" } },
-                  },
-                  required: ["draft_id", "title", "description", "notes", "date", "start_time", "duration_minutes", "project_id", "subject_ids", "topics"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["summary", "focus_items", "sessions"],
-            additionalProperties: false,
+${eventLines || "None"}`
+
+  const schema = {
+    type: "object",
+    properties: {
+      summary: { type: "string" },
+      focus_items: {
+        type: "array",
+        minItems: 0,
+        maxItems: 5,
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            reason: { type: "string" },
+            urgency: { type: "string", enum: ["critical", "high", "medium", "low"] },
+            project_id: { type: "string", enum: projectEnum },
+            subject_ids: { type: "array", items: { type: "string", enum: subjectIds } },
+            next_action: { type: "string" },
           },
+          required: ["title", "reason", "urgency", "project_id", "subject_ids", "next_action"],
+          additionalProperties: false,
         },
       },
-      provider: {
-        require_parameters: true,
+      sessions: {
+        type: "array",
+        minItems: 2,
+        maxItems: 5,
+        items: {
+          type: "object",
+          properties: {
+            draft_id: { type: "string" },
+            title: { type: "string" },
+            description: { type: "string" },
+            notes: { type: "string" },
+            date: { type: "string", description: "YYYY-MM-DD" },
+            start_time: { type: "string", description: "HH:mm in 24-hour time" },
+            duration_minutes: { type: "number" },
+            project_id: { type: "string", enum: projectEnum },
+            subject_ids: { type: "array", items: { type: "string", enum: subjectIds } },
+            topics: { type: "array", items: { type: "string" } },
+          },
+          required: ["draft_id", "title", "description", "notes", "date", "start_time", "duration_minutes", "project_id", "subject_ids", "topics"],
+          additionalProperties: false,
+        },
       },
-      temperature: refinement ? 0.15 : 0.25,
-      max_tokens: 2400,
-      ...getReasoningConfig(),
-    }),
+    },
+    required: ["summary", "focus_items", "sessions"],
+    additionalProperties: false,
+  } as const
+
+  const reasoning = getReasoningConfig().reasoning ?? undefined
+
+  const result = await provider.chatCompletion({
+    model,
+    messages: [
+      { role: "system", content: systemMessage },
+      { role: "user", content: userMessage },
+    ],
+    jsonSchema: { name: "assessment_copilot_plan", strict: true, schema },
+    temperature: refinement ? 0.15 : 0.25,
+    maxTokens: 2400,
+    reasoning,
   })
 
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`OpenRouter API error (${response.status}): ${text}`)
-  }
-
-  const data = await response.json() as { choices?: { message?: { content?: unknown } }[] }
-  const content = data.choices?.[0]?.message?.content
-  if (typeof content !== "string") {
-    throw new Error("No structured content in OpenRouter response")
-  }
-
-  const result = parseCopilotResponse(content, subjectIds, projectIds, existingDraftIds)
-  if (result.sessions.length === 0) {
+  const parsed = parseCopilotResponse(result.content, subjectIds, projectIds, existingDraftIds)
+  if (parsed.sessions.length === 0) {
     throw new Error("Copilot did not return usable study sessions")
   }
-  return result
+  return parsed
 }

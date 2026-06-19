@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getApiKey, getModel } from "@/lib/settings"
+import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { getSubjectById, cn, combineDateAndTime } from "@/lib/utils"
 import { getUrgencyLabel, getUrgencyClassName, type PrepBalanceItem } from "@/lib/planning"
 import type { CalendarEvent, PriorityItem, Project, StudySession, Subject } from "@/lib/types"
@@ -78,9 +78,9 @@ export function AssessmentCopilot({
   )
 
   const handleGenerate = async () => {
-    const key = getApiKey()
-    if (!key) {
-      setCopilotError("OpenRouter API key not configured. Set it in Settings.")
+    const provider = getActiveProvider()
+    if (!provider.isConfigured()) {
+      setCopilotError(`${provider.displayName} is not configured. Set it up in Settings.`)
       return
     }
 
@@ -94,8 +94,7 @@ export function AssessmentCopilot({
         priorityItems,
         prepBalanceItems,
         subjects: planningSubjects,
-        apiKey: key,
-        model: getModel(),
+        model: getEffectiveModel(),
         currentMonth,
       })
       setCopilotSummary(result.summary)
@@ -110,9 +109,9 @@ export function AssessmentCopilot({
   }
 
   const handleRefine = async () => {
-    const key = getApiKey()
-    if (!key) {
-      setCopilotError("OpenRouter API key not configured. Set it in Settings.")
+    const provider = getActiveProvider()
+    if (!provider.isConfigured()) {
+      setCopilotError(`${provider.displayName} is not configured. Set it up in Settings.`)
       return
     }
     if (!copilotChanges.trim()) {
@@ -135,8 +134,7 @@ export function AssessmentCopilot({
         priorityItems,
         prepBalanceItems,
         subjects: planningSubjects,
-        apiKey: key,
-        model: getModel(),
+        model: getEffectiveModel(),
         currentMonth,
         currentDrafts: copilotDrafts,
         refinement: copilotChanges.trim(),
@@ -248,10 +246,10 @@ export function AssessmentCopilot({
             </p>
           )}
 
-          {!getApiKey() && (
+          {!getActiveProvider().isConfigured() && (
             <p className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              OpenRouter API key not configured. Go to Settings to set it up.
+              {`${getActiveProvider().displayName} is not configured. Go to Settings to set it up.`}
             </p>
           )}
 
@@ -265,7 +263,7 @@ export function AssessmentCopilot({
             <Button
               size="sm"
               onClick={handleGenerate}
-              disabled={copilotLoading || copilotRefining || !getApiKey()}
+              disabled={copilotLoading || copilotRefining || !getActiveProvider().isConfigured()}
               className="h-8 gap-1.5 rounded-xl text-background"
             >
               {copilotLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
@@ -356,7 +354,7 @@ export function AssessmentCopilot({
                   variant="outline"
                   size="sm"
                   onClick={handleRefine}
-                  disabled={copilotRefining || copilotLoading || !copilotChanges.trim() || copilotDrafts.length === 0 || !getApiKey()}
+                  disabled={copilotRefining || copilotLoading || !copilotChanges.trim() || copilotDrafts.length === 0 || !getActiveProvider().isConfigured()}
                   className="mt-3 h-8 gap-1.5 rounded-xl"
                 >
                   {copilotRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}

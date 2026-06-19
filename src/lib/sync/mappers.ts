@@ -272,6 +272,9 @@ export function rowToUserSettings(row: UserSettingsRow): UserSettings {
     notion_type_property: row.settings.notion_type_property ?? "Type",
     notion_completed_property: row.settings.notion_completed_property ?? "Complete",
     notion_subject_property: row.settings.notion_subject_property ?? "Subject",
+    provider: row.settings.provider,
+    ollama_base_url: row.settings.ollama_base_url,
+    ollama_model: row.settings.ollama_model,
   }
 }
 

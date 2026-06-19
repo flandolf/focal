@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core"
 import type { FileInfo } from "@/lib/types"
 import { getReasoningConfig } from "@/lib/settings"
+import { getActiveProvider } from "@/lib/providers"
 
 interface StructuredRenameItem {
   original: string
@@ -29,7 +30,8 @@ Rules:
 - Never leave a name empty or just whitespace.
 - If a name is already clean, keep it as-is.
 - Return one rename item for each original filename provided.
-- If a file has a content preview, use it to infer a more appropriate subject/topic in the filename when helpful.`
+- If a file has a content preview, use it to infer a more appropriate subject/topic in the filename when helpful.
+- Respond with strict JSON matching the provided schema only. No prose, no markdown.`
 
 function parseStructuredRenameResponse(content: string): StructuredRenameResponse {
   const parsed: unknown = JSON.parse(content)
@@ -95,10 +97,14 @@ export async function getFileContentPreviews(
 
 export async function generateRenames(
   files: FileInfo[],
-  apiKey: string,
   model: string,
   fileContentPreviews: Map<string, string>,
 ): Promise<{ original: string; renamed: string }[]> {
+  const provider = getActiveProvider()
+  if (!provider.isConfigured()) {
+    throw new Error(`${provider.displayName} is not configured. Set it up in Settings.`)
+  }
+
   const fileNames = files.map((f) => f.name)
   const renameRequestLines = files.map((file, index) => {
     const preview = fileContentPreviews.get(file.path)
@@ -109,78 +115,52 @@ export async function generateRenames(
     return `${index + 1}. ${file.name}\nContent preview:\n"""\n${preview}\n"""`
   })
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: RENAME_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Rename these files:\n${renameRequestLines.join("\n\n")}`,
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "file_renames",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              renames: {
-                type: "array",
-                description: "One rename result for each input filename.",
-                items: {
-                  type: "object",
-                  properties: {
-                    original: {
-                      type: "string",
-                      description: "The original filename exactly as provided.",
-                      enum: fileNames,
-                    },
-                    renamed: {
-                      type: "string",
-                      description: "The cleaned filename, keeping the same extension.",
-                    },
-                  },
-                  required: ["original", "renamed"],
-                  additionalProperties: false,
-                },
-              },
+  const schema = {
+    type: "object",
+    properties: {
+      renames: {
+        type: "array",
+        description: "One rename result for each input filename.",
+        items: {
+          type: "object",
+          properties: {
+            original: {
+              type: "string",
+              description: "The original filename exactly as provided.",
+              enum: fileNames,
             },
-            required: ["renames"],
-            additionalProperties: false,
+            renamed: {
+              type: "string",
+              description: "The cleaned filename, keeping the same extension.",
+            },
           },
+          required: ["original", "renamed"],
+          additionalProperties: false,
         },
       },
-      provider: {
-        require_parameters: true,
+    },
+    required: ["renames"],
+    additionalProperties: false,
+  } as const
+
+  const reasoning = getReasoningConfig().reasoning ?? undefined
+
+  const result = await provider.chatCompletion({
+    model,
+    messages: [
+      { role: "system", content: RENAME_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Rename these files:\n${renameRequestLines.join("\n\n")}`,
       },
-      temperature: 0.2,
-      max_tokens: 2048,
-      ...getReasoningConfig(),
-    }),
+    ],
+    jsonSchema: { name: "file_renames", strict: true, schema },
+    temperature: 0.2,
+    maxTokens: 2048,
+    reasoning,
   })
 
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`OpenRouter API error (${response.status}): ${text}`)
-  }
-
-  const data: unknown = await response.json()
-  const content = (
-    data as { choices?: { message?: { content?: string } }[] }
-  ).choices?.[0]?.message?.content
-  if (typeof content !== "string") {
-    throw new Error("No structured content in OpenRouter response")
-  }
-
-  const parsedResponse = parseStructuredRenameResponse(content)
+  const parsedResponse = parseStructuredRenameResponse(result.content)
   const mapping = new Map(
     parsedResponse.renames.map((entry) => [entry.original, normalizeRename(entry.original, entry.renamed)]),
   )

@@ -19,11 +19,13 @@ import { FileTypeIcon } from "@/components/FileTypeIcon"
 import type { Project, FileInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import {
-  getApiKey,
-  getModel,
   getAutoRenameUseFileContent,
   setAutoRenameUseFileContent,
 } from "@/lib/settings"
+import {
+  getActiveProvider,
+  getEffectiveModel,
+} from "@/lib/providers"
 import {
   generateRenames,
   getFileContentPreviews,
@@ -67,16 +69,16 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
   const [entries, setEntries] = useState<RenameEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [showUnchanged, setShowUnchanged] = useState(false)
-  const [model, setModelState] = useState(() => getModel())
+  const [model, setModelState] = useState(() => getEffectiveModel())
   const reduceMotion = useReducedMotion()
 
   useEffect(() => {
-    const handler = () => setModelState(getModel())
+    const handler = () => setModelState(getEffectiveModel())
     window.addEventListener("storage", handler)
     return () => window.removeEventListener("storage", handler)
   }, [])
 
-  const apiKeyMissing = !getApiKey()
+  const providerMissing = !getActiveProvider().isConfigured()
   const hasProjects = projects.length > 0
 
   const handleUseFileContentChange = useCallback((checked: boolean) => {
@@ -85,9 +87,9 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
   }, [])
 
   const handleGenerate = useCallback(async () => {
-    const key = getApiKey()
-    if (!key) {
-      setError("OpenRouter API key not configured. Set it in the AI Model section first.")
+    const provider = getActiveProvider()
+    if (!provider.isConfigured()) {
+      setError(`${provider.displayName} is not configured. Set it in the AI Model section first.`)
       return
     }
     if (!hasProjects) {
@@ -129,8 +131,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
 
       const results = await generateRenames(
         allFiles.map((f) => f.file),
-        key,
-        getModel(),
+        getEffectiveModel(),
         fileContentPreviews,
       )
 
@@ -313,7 +314,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
 
           <Button
             onClick={handleGenerate}
-            disabled={loading || apiKeyMissing || !hasProjects}
+            disabled={loading || providerMissing || !hasProjects}
             size="sm"
             className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
           >
@@ -342,21 +343,21 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
               <span
                 className={cn(
                   "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
-                  apiKeyMissing ? "bg-amber-500" : "bg-emerald-500"
+                  providerMissing ? "bg-amber-500" : "bg-emerald-500"
                 )}
                 aria-hidden="true"
               />
-              <span>API key</span>
+              <span>{getActiveProvider().displayName}</span>
             </div>
             <p
               className={cn(
                 "mt-0.5 truncate text-xs font-medium",
-                apiKeyMissing
+                providerMissing
                   ? "text-amber-600 dark:text-amber-400"
                   : "text-emerald-600 dark:text-emerald-400"
               )}
             >
-              {apiKeyMissing ? "Missing" : "Ready"}
+              {providerMissing ? "Not configured" : "Ready"}
             </p>
           </div>
         </div>
@@ -385,9 +386,9 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
 
         {/* Banners */}
         <AnimatePresence initial={false}>
-          {apiKeyMissing && (
+          {providerMissing && (
             <motion.div
-              key="apikey-missing"
+              key="provider-missing"
               initial={reduceMotion ? false : { opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
@@ -395,7 +396,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
               className="mt-2 flex items-center gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-caption text-amber-700 dark:text-amber-400"
             >
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate">Set your OpenRouter API key in AI Model.</span>
+              <span className="min-w-0 truncate">{`Configure ${getActiveProvider().displayName} in the AI Model section.`}</span>
             </motion.div>
           )}
 

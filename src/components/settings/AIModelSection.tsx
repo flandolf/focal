@@ -1,24 +1,48 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion"
 import { invoke } from "@tauri-apps/api/core"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, ExternalLink, Search, Sparkles, Check, FileText, Brain, HelpCircle } from "lucide-react"
+import {
+  Loader2,
+  ExternalLink,
+  Search,
+  Sparkles,
+  Check,
+  FileText,
+  Brain,
+  HelpCircle,
+  RefreshCw,
+  Server,
+  KeyRound,
+} from "lucide-react"
 import { cn, isRecord } from "@/lib/utils"
-import { getApiKey, setApiKey, getModel, setModel, getReasoningEffort, setReasoningEffort, getReasoningMaxTokens, setReasoningMaxTokens, getReasoningExclude, setReasoningExclude } from "@/lib/settings"
+import {
+  getApiKey,
+  setApiKey,
+  getOllamaBaseUrl,
+  setOllamaBaseUrl,
+  getReasoningEffort,
+  setReasoningEffort,
+  getReasoningMaxTokens,
+  setReasoningMaxTokens,
+  getReasoningExclude,
+  setReasoningExclude,
+} from "@/lib/settings"
+import {
+  getActiveProvider,
+  getEffectiveModel,
+  setEffectiveModel,
+  listProviders,
+  setActiveProvider,
+  ollamaProvider,
+  openrouterProvider,
+  type Provider,
+  type ModelInfo,
+} from "@/lib/providers"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { ReasoningEffort } from "@/lib/settings"
-
-interface OpenRouterModel {
-  id: string
-  name: string
-  context_length: number
-  pricing: { prompt: string; completion: string }
-  created: number
-  architecture?: { input_modalities?: string[] }
-  supported_parameters?: string[]
-}
 
 interface OpenRouterCredits {
   total_credits: number
@@ -35,27 +59,8 @@ interface OpenRouterCreditsWrapper {
   error?: OpenRouterErrorPayload
 }
 
-interface EndpointPercentiles {
-  p50: number
-  p75: number
-  p90: number
-  p99: number
-}
-
-interface ModelEndpoint {
-  latency_last_30m: EndpointPercentiles | null
-  throughput_last_30m: EndpointPercentiles | null
-}
-
-interface EndpointsResponse {
-  data: {
-    endpoints: ModelEndpoint[]
-  }
-}
-
-interface PerfData {
-  latency: number | null
-  throughput: number | null
+interface OpenRouterFetchError extends Error {
+  code?: string
 }
 
 const REASONING_BLURB: Record<ReasoningEffort, string> = {
@@ -65,16 +70,6 @@ const REASONING_BLURB: Record<ReasoningEffort, string> = {
   low: "Light thinking, fast.",
   minimal: "Quick checks, no real planning.",
   none: "No reasoning. Cheapest and fastest.",
-}
-
-function supportsStructuredOutput(model: OpenRouterModel): boolean {
-  const params = model.supported_parameters ?? []
-  return params.includes("structured_outputs")
-}
-
-function supportsFileUploads(model: OpenRouterModel): boolean {
-  const modalities = model.architecture?.input_modalities ?? []
-  return modalities.includes("file")
 }
 
 function isCredits(value: unknown): value is OpenRouterCredits {
@@ -101,32 +96,10 @@ function isCreditsWrapper(value: unknown): value is OpenRouterCreditsWrapper {
   )
 }
 
-interface OpenRouterFetchError extends Error {
-  code?: string
-}
-
 function createOpenRouterError(message: string, code?: string): OpenRouterFetchError {
-  const error: OpenRouterFetchError = new Error(message)
+  const error = new Error(message) as OpenRouterFetchError
   error.code = code
   return error
-}
-
-function getErrorDetails(error: unknown): { code?: string; message: string } {
-  if (error instanceof Error) {
-    const code = isRecord(error) && typeof error.code === "string" ? error.code : undefined
-    return { code, message: error.message }
-  }
-  return { message: String(error) }
-}
-
-async function fetchModels(): Promise<OpenRouterModel[]> {
-  const res = await fetch("https://openrouter.ai/api/v1/models")
-  if (!res.ok) throw new Error("Failed to fetch models")
-  const data: unknown = await res.json()
-  const models = (data as { data?: OpenRouterModel[] }).data ?? []
-  return models
-    .filter((m) => supportsStructuredOutput(m) && supportsFileUploads(m))
-    .sort((a, b) => b.created - a.created)
 }
 
 async function fetchCredits(apiKey: string): Promise<OpenRouterCredits> {
@@ -146,14 +119,10 @@ async function fetchCredits(apiKey: string): Promise<OpenRouterCredits> {
 async function fetchCreditsWithBackend(apiKey: string): Promise<OpenRouterCredits> {
   try {
     const res = await invoke<unknown>("get_credits", { api_key: apiKey })
-    if (isCredits(res)) {
-      return res
-    }
+    if (isCredits(res)) return res
     if (isCreditsWrapper(res)) {
       if (res.data) return res.data
-      if (res.error) {
-        throw createOpenRouterError(res.error.message, res.error.code)
-      }
+      if (res.error) throw createOpenRouterError(res.error.message, res.error.code)
     }
   } catch {
     // ignore and fallback to direct fetch in non-Tauri environments
@@ -161,99 +130,27 @@ async function fetchCreditsWithBackend(apiKey: string): Promise<OpenRouterCredit
   return fetchCredits(apiKey)
 }
 
-async function fetchModelEndpoints(
-  modelId: string,
-  apiKey: string,
-): Promise<PerfData> {
-  const res = await fetch(
-    `https://openrouter.ai/api/v1/models/${modelId}/endpoints`,
-    { headers: { Authorization: `Bearer ${apiKey}` } },
-  )
-  if (!res.ok) return { latency: null, throughput: null }
-  const data: unknown = await res.json()
-  const endpoints = (data as EndpointsResponse).data?.endpoints ?? []
-  let bestLatency = Infinity
-  let bestThroughput = 0
-  for (const ep of endpoints) {
-    const lat = ep.latency_last_30m?.p50
-    const tp = ep.throughput_last_30m?.p50
-    if (lat != null && lat < bestLatency) bestLatency = lat
-    if (tp != null && tp > bestThroughput) bestThroughput = tp
-  }
-  return {
-    latency: bestLatency === Infinity ? null : bestLatency,
-    throughput: bestThroughput === 0 ? null : bestThroughput,
-  }
-}
-
-function formatContextLength(n: number): string {
+function formatContextLength(n: number | undefined): string | null {
+  if (!n) return null
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
   if (n >= 1000) return `${Math.round(n / 1000)}k`
   return String(n)
-}
-
-function LatencyBar({ latency }: { latency: number | null }) {
-  if (latency == null) {
-    return <span className="text-micro text-muted-foreground/35">—</span>
-  }
-  // Map latency to a 0..1 quality score (lower is better). 200ms = full, 5000ms = empty.
-  const score = Math.max(0, Math.min(1, 1 - (latency - 200) / 4800))
-  const color = score > 0.7 ? "bg-success" : score > 0.4 ? "bg-amber-500" : "bg-destructive"
-  return (
-    <div className="flex items-center gap-1.5" title={`p50 ${latency.toFixed(0)}ms`}>
-      <div className="relative h-1 w-8 overflow-hidden rounded-full bg-foreground/8">
-        <div
-          className={cn("absolute inset-y-0 left-0 rounded-full", color)}
-          style={{ width: `${score * 100}%` }}
-        />
-      </div>
-      <span className="text-micro tabular-nums text-muted-foreground/80">
-        {latency < 1000 ? `${latency.toFixed(0)}ms` : `${(latency / 1000).toFixed(1)}s`}
-      </span>
-    </div>
-  )
 }
 
 function ModelRow({
   model,
   isSelected,
   onSelect,
-  apiKey,
-  perfCache,
-  enqueuePerfFetch,
 }: {
-  model: OpenRouterModel
+  model: ModelInfo
   isSelected: boolean
   onSelect: () => void
-  apiKey: string
-  perfCache: Map<string, PerfData>
-  enqueuePerfFetch: (id: string) => void
 }) {
-  const rowRef = useRef<HTMLButtonElement>(null)
-  const perf = perfCache.get(model.id) ?? null
   const reduceMotion = useReducedMotion()
-
-  useEffect(() => {
-    if (perf || !apiKey) return
-    const el = rowRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          observer.disconnect()
-          enqueuePerfFetch(model.id)
-        }
-      },
-      { rootMargin: "200px" },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [model.id, apiKey, perf, enqueuePerfFetch])
-
+  const contextLength = formatContextLength(model.contextLength)
   return (
     <motion.button
       type="button"
-      ref={rowRef}
       onClick={onSelect}
       aria-pressed={isSelected}
       whileHover={reduceMotion ? undefined : { x: 1 }}
@@ -278,18 +175,19 @@ function ModelRow({
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate leading-tight">{model.name}</p>
-        <p className="mt-0.5 flex items-center gap-2 text-micro text-muted-foreground/60">
-          <span className="inline-flex items-center gap-0.5">
-            <Brain className="h-2.5 w-2.5" />
-            {formatContextLength(model.context_length)}
-          </span>
-          <span className="inline-flex items-center gap-0.5">
-            <FileText className="h-2.5 w-2.5" />
-            files
-          </span>
-        </p>
+        {contextLength && (
+          <p className="mt-0.5 flex items-center gap-2 text-micro text-muted-foreground/60">
+            <span className="inline-flex items-center gap-0.5">
+              <Brain className="h-2.5 w-2.5" />
+              {contextLength}
+            </span>
+            <span className="inline-flex items-center gap-0.5">
+              <FileText className="h-2.5 w-2.5" />
+              files
+            </span>
+          </p>
+        )}
       </div>
-      <LatencyBar latency={perf?.latency ?? null} />
     </motion.button>
   )
 }
@@ -350,12 +248,13 @@ function CreditsGauge({ credits }: { credits: OpenRouterCredits }) {
   )
 }
 
-function SelectedModelCard({ modelId, models }: { modelId: string; models: OpenRouterModel[] }) {
+function SelectedModelCard({ modelId, models }: { modelId: string; models: ModelInfo[] }) {
   const reduceMotion = useReducedMotion()
   const model = useMemo(() => models.find((m) => m.id === modelId), [models, modelId])
   if (!model) return null
-  const prompt = parseFloat(model.pricing.prompt)
-  const completion = parseFloat(model.pricing.completion)
+  const prompt = model.pricing ? Number.parseFloat(model.pricing.prompt) : undefined
+  const completion = model.pricing ? Number.parseFloat(model.pricing.completion) : undefined
+  const contextLength = formatContextLength(model.contextLength)
   return (
     <motion.div
       key={modelId}
@@ -370,7 +269,9 @@ function SelectedModelCard({ modelId, models }: { modelId: string; models: OpenR
       <div className="min-w-0 flex-1">
         <p className="truncate text-caption font-medium leading-tight">{model.name}</p>
         <p className="mt-0.5 truncate text-[10px] text-muted-foreground/65">
-          {formatContextLength(model.context_length)} context · ${prompt.toFixed(3)} in · ${completion.toFixed(3)} out
+          {contextLength
+            ? `${contextLength} context · $${prompt?.toFixed(3) ?? "?"} in · $${completion?.toFixed(3) ?? "?"} out`
+            : `Local model tag: ${model.id}`}
         </p>
       </div>
     </motion.div>
@@ -378,8 +279,11 @@ function SelectedModelCard({ modelId, models }: { modelId: string; models: OpenR
 }
 
 export function AIModelSection() {
+  const providers = useMemo(() => listProviders(), [])
+  const [providerId, setProviderIdState] = useState(() => getActiveProvider().id)
   const [key, setKeyState] = useState(() => getApiKey())
-  const [model, setModelState] = useState(() => getModel())
+  const [ollamaBaseUrl, setOllamaBaseUrlState] = useState(() => getOllamaBaseUrl())
+  const [model, setModelState] = useState(() => getEffectiveModel())
   const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => getReasoningEffort())
   const [reasoningMaxTokens, setReasoningMaxTokensState] = useState(() => getReasoningMaxTokens())
   const [reasoningExclude, setReasoningExcludeState] = useState(() => getReasoningExclude())
@@ -389,17 +293,56 @@ export function AIModelSection() {
   const [creditsLoading, setCreditsLoading] = useState(false)
   const [creditsError, setCreditsError] = useState<string | null>(null)
 
-  const [models, setModels] = useState<OpenRouterModel[]>([])
+  const [models, setModels] = useState<ModelInfo[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [modelSearch, setModelSearch] = useState("")
   const [reasoningHelpOpen, setReasoningHelpOpen] = useState(false)
-  const perfCacheRef = useRef(new Map<string, PerfData>())
-  const [, setPerfCacheTick] = useState(0)
-  const perfQueueRef = useRef<string[]>([])
-  const perfInflightRef = useRef(0)
+  const [healthStatus, setHealthStatus] = useState<
+    { status: "idle" | "pending" | "ok" | "error"; error?: string }
+  >({ status: "idle" })
+
+  const activeProvider: Provider = useMemo(
+    () => providers.find((p) => p.id === providerId) ?? providers[0],
+    [providers, providerId],
+  )
+  const isOpenRouter = providerId === openrouterProvider.id
+  const isOllama = providerId === ollamaProvider.id
 
   useEffect(() => {
+    queueMicrotask(() => {
+      setModels([])
+      setModelsLoading(true)
+      setModelsError(null)
+      setHealthStatus({ status: "idle" })
+    })
+    let cancelled = false
+    activeProvider
+      .listModels()
+      .then((items) => {
+        if (cancelled) return
+        setModels(items)
+        setModelsLoading(false)
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        setModelsError(e instanceof Error ? e.message : String(e))
+        setModelsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeProvider])
+
+  useEffect(() => {
+    if (!isOpenRouter) {
+      queueMicrotask(() => {
+        setCredits(null)
+        setCreditsLoading(false)
+        setCreditsError(null)
+      })
+      return
+    }
     if (!key) {
       queueMicrotask(() => {
         setCredits(null)
@@ -414,22 +357,10 @@ export function AIModelSection() {
     let cancelled = false
     fetchCreditsWithBackend(key)
       .then((c) => { if (!cancelled) { setCredits(c); setCreditsError(null) } })
-      .catch((e) => { if (!cancelled) { setCredits(null); setCreditsError(getErrorDetails(e).message) } })
+      .catch((e) => { if (!cancelled) { setCredits(null); setCreditsError(e instanceof Error ? e.message : String(e)) } })
       .finally(() => { if (!cancelled) setCreditsLoading(false) })
     return () => { cancelled = true }
-  }, [key])
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      setModelsLoading(true)
-      setModelsError(null)
-    })
-    let cancelled = false
-    fetchModels()
-      .then((data) => { if (!cancelled) { setModels(data); setModelsLoading(false) } })
-      .catch((e) => { if (!cancelled) { setModelsError(e instanceof Error ? e.message : String(e)); setModelsLoading(false) } })
-    return () => { cancelled = true }
-  }, [])
+  }, [isOpenRouter, key])
 
   const filteredModels = useMemo(() => {
     const q = modelSearch.toLowerCase()
@@ -437,29 +368,13 @@ export function AIModelSection() {
     return models.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))
   }, [models, modelSearch])
 
-  // perfCacheRef is a mutable Map whose mutations trigger re-renders via setPerfCacheTick
-  const perfCacheValue = perfCacheRef.current
-
-  const enqueuePerfFetch = useCallback((id: string) => {
-    if (perfCacheRef.current.has(id)) return
-    perfQueueRef.current.push(id)
-    const run = async () => {
-      if (!key || perfInflightRef.current >= 4) return
-      const next = perfQueueRef.current.shift()
-      if (!next) return
-      perfInflightRef.current++
-      try {
-        const data = await fetchModelEndpoints(next, key)
-        perfCacheRef.current.set(next, data)
-        setPerfCacheTick((t) => t + 1)
-      } finally {
-        perfInflightRef.current--
-        if (perfQueueRef.current.length > 0) void run()
-      }
-    }
-    void run()
-  }, [key])
-
+  const handleProviderChange = useCallback((id: string) => {
+    if (id === providerId) return
+    setProviderIdState(id)
+    setActiveProvider(id)
+    setModelState(getEffectiveModel())
+    notifyUserSettingsChanged()
+  }, [providerId])
 
   const handleKeyChange = useCallback((value: string) => {
     setKeyState(value)
@@ -469,24 +384,45 @@ export function AIModelSection() {
     notifyUserSettingsChanged()
   }, [])
 
-  const handleModelChange = useCallback((value: string) => {
-    setModelState(value)
-    setModel(value)
+  const handleOllamaBaseUrlChange = useCallback((value: string) => {
+    setOllamaBaseUrlState(value)
+    setOllamaBaseUrl(value)
     notifyUserSettingsChanged()
   }, [])
 
-  // eslint-disable-next-line react-hooks/refs
+  const handleModelChange = useCallback((value: string) => {
+    setModelState(value)
+    setEffectiveModel(value)
+    notifyUserSettingsChanged()
+  }, [])
+
+  const handleRefreshModels = useCallback(async () => {
+    setModelsLoading(true)
+    setModelsError(null)
+    try {
+      const items = await activeProvider.listModels()
+      setModels(items)
+    } catch (e) {
+      setModelsError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [activeProvider])
+
+  const handleHealthcheck = useCallback(async () => {
+    setHealthStatus({ status: "pending" })
+    const result = await activeProvider.healthcheck()
+    setHealthStatus(result.ok ? { status: "ok" } : { status: "error", error: result.error })
+  }, [activeProvider])
+
   const modelRows = useMemo(() => filteredModels.map((m) => (
     <ModelRow
       key={m.id}
       model={m}
       isSelected={model === m.id}
       onSelect={() => handleModelChange(m.id)}
-      apiKey={key ?? ""}
-      perfCache={perfCacheValue}
-      enqueuePerfFetch={enqueuePerfFetch}
     />
-  )), [filteredModels, model, key, perfCacheValue, enqueuePerfFetch, handleModelChange])
+  )), [filteredModels, model, handleModelChange])
 
   const handleReasoningEffortChange = useCallback((value: ReasoningEffort) => {
     setReasoningEffortState(value)
@@ -511,88 +447,216 @@ export function AIModelSection() {
       <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-medium">OpenRouter API Key</h2>
+            <h2 className="text-sm font-medium">AI Provider</h2>
             <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
-              Used for AI file renaming and any features that need a language model.
+              Choose where language-model requests go. Switch any time — provider choice syncs across your devices.
             </p>
           </div>
-          {saved && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/25 bg-success/10 px-1.5 py-0.5 text-caption font-medium text-success">
-              <Check className="h-3 w-3" />
-              Saved
-            </span>
-          )}
         </div>
-        <Input
-          id="openrouter-api-key"
-          type="password"
-          value={key ?? ""}
-          onChange={(e) => handleKeyChange(e.target.value)}
-          placeholder="sk-or-..."
-          className="mt-3 h-9 font-mono text-xs"
-          aria-label="OpenRouter API key"
-        />          <p className="mt-2 rounded-lg border border-border/70 bg-background/30 p-2.5 text-xs text-muted-foreground/70">
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {providers.map((provider) => {
+            const selected = provider.id === providerId
+            return (
+              <button
+                key={provider.id}
+                type="button"
+                onClick={() => handleProviderChange(provider.id)}
+                aria-pressed={selected}
+                className={cn(
+                  "flex min-w-0 flex-1 basis-40 flex-col items-start gap-0.5 rounded-lg border bg-background/30 px-3 py-2 text-left text-xs transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  selected ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/30" : "border-border",
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-caption font-semibold">
+                  {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+                  {provider.displayName}
+                </span>
+                <span className="line-clamp-2 text-micro text-muted-foreground/70">
+                  {provider.summary}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      {isOpenRouter && (
+        <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-1.5 text-sm font-medium">
+                <KeyRound className="h-3.5 w-3.5" />
+                OpenRouter API Key
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
+                Used for AI file renaming and any features that need a language model.
+              </p>
+            </div>
+            {saved && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/25 bg-success/10 px-1.5 py-0.5 text-caption font-medium text-success">
+                <Check className="h-3 w-3" />
+                Saved
+              </span>
+            )}
+          </div>
+          <Input
+            id="openrouter-api-key"
+            type="password"
+            value={key ?? ""}
+            onChange={(e) => handleKeyChange(e.target.value)}
+            placeholder="sk-or-..."
+            className="mt-3 h-9 font-mono text-xs"
+            aria-label="OpenRouter API key"
+          />
+          <p className="mt-2 rounded-lg border border-border/70 bg-background/30 p-2.5 text-xs text-muted-foreground/70">
             API keys stay on this device and are not synced to your account.
           </p>
-        <div className="mt-2 flex items-center justify-end">
-          <a
-            href="https://openrouter.ai/keys"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-          >
-            Get a key
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-        <AnimatePresence initial={false}>
-          {key && (
-            <motion.div
-              key="credits"
-              initial={false}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="overflow-hidden"
+          <div className="mt-2 flex items-center justify-end">
+            <a
+              href="https://openrouter.ai/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
             >
-              <div className="mt-3">
-                {creditsLoading ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/30 px-3 py-2.5 text-caption text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Loading credits…
-                  </div>
-                ) : creditsError ? (
-                  <div className="rounded-lg border border-border/60 bg-background/30 px-3 py-2.5">
-                    <p className="text-caption text-destructive">{creditsError}</p>
-                    {creditsError.includes("Management key") && (
-                      <a
-                        href="https://openrouter.ai/settings/keys"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        Create a Management key
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-                ) : credits ? (
-                  <CreditsGauge credits={credits} />
-                ) : null}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
+              Get a key
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+          <AnimatePresence initial={false}>
+            {key && (
+              <motion.div
+                key="credits"
+                initial={false}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="mt-3">
+                  {creditsLoading ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/30 px-3 py-2.5 text-caption text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Loading credits…
+                    </div>
+                  ) : creditsError ? (
+                    <div className="rounded-lg border border-border/60 bg-background/30 px-3 py-2.5">
+                      <p className="text-caption text-destructive">{creditsError}</p>
+                      {creditsError.includes("Management key") && (
+                        <a
+                          href="https://openrouter.ai/settings/keys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                          Create a Management key
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  ) : credits ? (
+                    <CreditsGauge credits={credits} />
+                  ) : null}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+      )}
+
+      {isOllama && (
+        <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-1.5 text-sm font-medium">
+                <Server className="h-3.5 w-3.5" />
+                Ollama Server
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
+                Point Focal at a running Ollama instance. Default is <code className="font-mono text-[10px]">http://localhost:11434/v1</code> if Ollama is installed locally.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleHealthcheck}
+              disabled={healthStatus.status === "pending"}
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/30 px-2.5 text-caption transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+            >
+              {healthStatus.status === "pending"
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <RefreshCw className="h-3 w-3" />}
+              Test connection
+            </button>
+          </div>
+          <Input
+            id="ollama-base-url"
+            type="text"
+            value={ollamaBaseUrl}
+            onChange={(e) => handleOllamaBaseUrlChange(e.target.value)}
+            placeholder="http://localhost:11434/v1"
+            className="mt-3 h-9 font-mono text-xs"
+            aria-label="Ollama server URL"
+          />
+          <div className="mt-2 flex items-center justify-end">
+            <a
+              href="https://ollama.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 text-caption text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+            >
+              Install Ollama
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+          <AnimatePresence initial={false}>
+            {healthStatus.status === "ok" && (
+              <motion.div
+                key="health-ok"
+                initial={{ opacity: 0, y: -2 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-caption text-emerald-700 dark:text-emerald-400"
+              >
+                <Check className="h-3.5 w-3.5 shrink-0" />
+                Connected. {`Found ${models.length} installed model${models.length === 1 ? "" : "s"}.`}
+              </motion.div>
+            )}
+            {healthStatus.status === "error" && (
+              <motion.div
+                key="health-err"
+                initial={{ opacity: 0, y: -2 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-caption text-destructive"
+              >
+                <Server className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0">{healthStatus.error ?? "Could not reach Ollama."} Make sure the server is running and the URL is reachable from this app.</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+      )}
 
       <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">AI Model</h2>
             <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
-              Showing only models that support structured output and file uploads. Latency is live when an API key is set.
+              {isOpenRouter
+                ? "Showing only models that support structured output and file uploads."
+                : "Installed models on the local Ollama server. Use the refresh button to re-query after pulling new models."}
             </p>
           </div>
+          {isOllama && (
+            <button
+              type="button"
+              onClick={handleRefreshModels}
+              disabled={modelsLoading}
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/30 px-2.5 text-caption transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+            >
+              {modelsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Refresh
+            </button>
+          )}
         </div>
         <AnimatePresence initial={false}>
           {model && models.some((m) => m.id === model) && (
@@ -621,14 +685,7 @@ export function AIModelSection() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setModelsError(null)
-                setModelsLoading(true)
-                fetchModels()
-                  .then(setModels)
-                  .catch((e) => setModelsError(e instanceof Error ? e.message : String(e)))
-                  .finally(() => setModelsLoading(false))
-              }}
+              onClick={handleRefreshModels}
               className="mt-1 h-7 text-xs"
             >
               Retry
@@ -649,7 +706,9 @@ export function AIModelSection() {
               <div className="p-1">
                 {filteredModels.length === 0 ? (
                   <p className="py-6 text-center text-xs text-muted-foreground">
-                    No models match your search.
+                    {isOllama
+                      ? "No installed models. Run `ollama pull <model>` and click refresh."
+                      : "No models match your search."}
                   </p>
                 ) : (
                   modelRows
@@ -660,105 +719,109 @@ export function AIModelSection() {
         )}
       </section>
 
-      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-medium">Reasoning Tokens</h2>
-            <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
-              Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setReasoningHelpOpen((v) => !v)}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="What do these levels mean?"
-            aria-expanded={reasoningHelpOpen}
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <AnimatePresence initial={false}>
-          {reasoningHelpOpen && (
-            <motion.div
-              key="help"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="overflow-hidden"
-            >
-              <ul className="mt-3 grid gap-1 rounded-lg border border-border/60 bg-background/30 p-2.5 text-caption">
-                {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
-                  <li key={level} className="flex items-baseline gap-2">
-                    <span className="w-14 shrink-0 font-medium capitalize text-foreground/80">
-                      {level === "xhigh" ? "Max" : level}
-                    </span>
-                    <span className="text-muted-foreground/80">{REASONING_BLURB[level]}</span>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <p className="mt-3 block text-caption text-muted-foreground/70">Effort Level</p>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
+      {activeProvider.supportsReasoning && (
+        <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-sm font-medium">Reasoning Tokens</h2>
+              <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
+                Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
+              </p>
+            </div>
             <button
               type="button"
-              key={level}
-              onClick={() => handleReasoningEffortChange(level)}
-              aria-pressed={reasoningEffort === level}
-              title={REASONING_BLURB[level]}
-              className={cn(
-                "rounded-lg border bg-background/30 px-2.5 py-1 text-xs transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                reasoningEffort === level
-                  ? "border-primary bg-primary/10 text-primary font-medium"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              )}
+              onClick={() => setReasoningHelpOpen((v) => !v)}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="What do these levels mean?"
+              aria-expanded={reasoningHelpOpen}
             >
-              {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
+              <HelpCircle className="h-3.5 w-3.5" />
             </button>
-          ))}
-        </div>
+          </div>
+          <AnimatePresence initial={false}>
+            {reasoningHelpOpen && (
+              <motion.div
+                key="help"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
+              >
+                <ul className="mt-3 grid gap-1 rounded-lg border border-border/60 bg-background/30 p-2.5 text-caption">
+                  {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
+                    <li key={level} className="flex items-baseline gap-2">
+                      <span className="w-14 shrink-0 font-medium capitalize text-foreground/80">
+                        {level === "xhigh" ? "Max" : level}
+                      </span>
+                      <span className="text-muted-foreground/80">{REASONING_BLURB[level]}</span>
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {reasoningEffort !== "none" && (
-          <>
-            <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">
-              Max Tokens (Anthropic models)
-            </label>
-            <div className="mt-1.5 flex items-center gap-2">
-              <input
-                id="reasoning-max-tokens"
-                type="range"
-                min={1024}
-                max={32000}
-                step={1024}
-                value={reasoningMaxTokens}
-                onChange={(e) => handleReasoningMaxTokensChange(Number(e.target.value))}
-                className="flex-1 accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              />
-              <span className="w-12 text-right text-xs tabular-nums text-muted-foreground">{reasoningMaxTokens >= 1000 ? `${(reasoningMaxTokens / 1000).toFixed(1)}k` : reasoningMaxTokens}</span>
-            </div>
+          <p className="mt-3 block text-caption text-muted-foreground/70">Effort Level</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
+              <button
+                type="button"
+                key={level}
+                onClick={() => handleReasoningEffortChange(level)}
+                aria-pressed={reasoningEffort === level}
+                title={REASONING_BLURB[level]}
+                className={cn(
+                  "rounded-lg border bg-background/30 px-2.5 py-1 text-xs transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  reasoningEffort === level
+                    ? "border-primary bg-primary/10 text-primary font-medium"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
+              </button>
+            ))}
+          </div>
 
-            <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
-              <input
-                type="checkbox"
-                checked={reasoningExclude}
-                onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
-                className="h-4 w-4 shrink-0 accent-primary mt-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              />
-              <div className="min-w-0">
-                <p className="text-sm">Exclude reasoning from response</p>
-                <p className="mt-0.5 text-xs text-muted-foreground/70">
-                  Model still uses reasoning internally but will not include it in output.
-                </p>
+          {reasoningEffort !== "none" && (
+            <>
+              <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">
+                Max Tokens (Anthropic models)
+              </label>
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  id="reasoning-max-tokens"
+                  type="range"
+                  min={1024}
+                  max={32000}
+                  step={1024}
+                  value={reasoningMaxTokens}
+                  onChange={(e) => handleReasoningMaxTokensChange(Number(e.target.value))}
+                  className="flex-1 accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <span className="w-12 text-right text-xs tabular-nums text-muted-foreground">
+                  {reasoningMaxTokens >= 1000 ? `${(reasoningMaxTokens / 1000).toFixed(1)}k` : reasoningMaxTokens}
+                </span>
               </div>
-            </label>
-          </>
-        )}
-      </section>
+
+              <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
+                <input
+                  type="checkbox"
+                  checked={reasoningExclude}
+                  onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
+                  className="h-4 w-4 shrink-0 accent-primary mt-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm">Exclude reasoning from response</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground/70">
+                    Model still uses reasoning internally but will not include it in output.
+                  </p>
+                </div>
+              </label>
+            </>
+          )}
+        </section>
+      )}
     </div>
   )
 }
