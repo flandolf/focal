@@ -13,7 +13,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileTypeIcon } from "@/components/FileTypeIcon"
 import type { FileInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { getApiKey, getAutoRenameUseFileContent, setAutoRenameUseFileContent, getModel } from "@/lib/settings"
+import { getAutoRenameUseFileContent, setAutoRenameUseFileContent } from "@/lib/settings"
+import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { generateRenames, getFileContentPreviews } from "@/lib/autoRename"
 
 interface RenameEntry {
@@ -36,7 +37,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
   const [error, setError] = useState<string | null>(null)
   const [useFileContent, setUseFileContent] = useState(() => getAutoRenameUseFileContent())
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
-  const apiKeyMissing = !getApiKey()
+  const providerMissing = !getActiveProvider().isConfigured()
 
   const handleOpen = useCallback(() => {
     setSelectedPaths(new Set(files.map((f) => f.path)))
@@ -64,9 +65,9 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
   }, [])
 
   const handleGenerate = useCallback(async () => {
-    const key = getApiKey()
-    if (!key) {
-      setError("OpenRouter API key not configured. Set it in Settings.")
+    const provider = getActiveProvider()
+    if (!provider.isConfigured()) {
+      setError(`${provider.displayName} is not configured. Set it in Settings.`)
       return
     }
     const selectedFiles = files.filter((f) => selectedPaths.has(f.path))
@@ -78,7 +79,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
     setError(null)
     try {
       const fileContentPreviews = useFileContent ? await getFileContentPreviews(selectedFiles) : new Map<string, string>()
-      const results = await generateRenames(selectedFiles, key, getModel(), fileContentPreviews)
+      const results = await generateRenames(selectedFiles, getEffectiveModel(), fileContentPreviews)
       const newEntries: RenameEntry[] = results.map((r) => {
         const file = selectedFiles.find((f) => f.name === r.original)!
         return { file, newName: r.renamed, approved: r.renamed !== r.original }
@@ -158,9 +159,9 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-5 py-4">
-            {apiKeyMissing && (
+            {providerMissing && (
               <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md px-3 py-2">
-                OpenRouter API key not configured. Go to{" "}
+                {`${getActiveProvider().displayName} is not configured. Go to `}
                 <span className="font-medium">Settings</span> in the sidebar to set it up.
               </p>
             )}
@@ -194,7 +195,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
                 onClick={handleGenerate}
-                disabled={loading || apiKeyMissing || selectedCount === 0}
+                disabled={loading || providerMissing || selectedCount === 0}
                 className="gap-1.5 text-background"
                 size="sm"
               >

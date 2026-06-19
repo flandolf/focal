@@ -2,7 +2,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getModel, getNotionCalendarSettings, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setModel, setNotionCalendarSettings, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
+import { getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache, getErrorMessage } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
@@ -817,6 +817,9 @@ async function pullUserSettings(): Promise<void> {
     if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
     setReasoningMaxTokens(settings.reasoning_max_tokens)
     setReasoningExclude(settings.reasoning_exclude)
+    if (settings.provider) setProvider(settings.provider)
+    if (settings.ollama_base_url) setOllamaBaseUrl(settings.ollama_base_url)
+    if (settings.ollama_model) setOllamaModel(settings.ollama_model)
     const currentNotionSettings = getNotionCalendarSettings()
     setNotionCalendarSettings({
       token: currentNotionSettings.token,
@@ -1263,6 +1266,9 @@ function collectUserSettingsForSync(): UserSettings {
     notion_type_property: notionSettings.typeProperty,
     notion_completed_property: notionSettings.completedProperty,
     notion_subject_property: notionSettings.subjectProperty,
+    provider: getProvider(),
+    ollama_base_url: getOllamaBaseUrl(),
+    ollama_model: getOllamaModel(),
   }
 }
 

@@ -4,6 +4,10 @@ export type { TimetableConfig } from "@/lib/types"
 const KEYS = {
   apiKey: "focal-openrouter-key",
   model: "focal-openrouter-model",
+  // ponytail: provider plumbing — see src/lib/providers/* + PROVIDERS.md.
+  provider: "focal-ai-provider",
+  ollamaBaseUrl: "focal-ollama-base-url",
+  ollamaModel: "focal-ollama-model",
   autoRenameUseFileContent: "focal-auto-rename-use-file-content",
   reasoningEffort: "focal-reasoning-effort",
   reasoningMaxTokens: "focal-reasoning-max-tokens",
@@ -21,6 +25,11 @@ const KEYS = {
 } as const
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
+const DEFAULT_PROVIDER_ID = "openrouter"
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+// ponytail: an empty default lets AIModelSection show the picker for Ollama without
+// committing to a model the user hasn't installed.
+const DEFAULT_OLLAMA_MODEL = ""
 export type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
 
 export interface NotionCalendarSettings {
@@ -84,6 +93,31 @@ export function getModel(): string {
 
 export function setModel(model: string): void {
   setString(KEYS.model, model)
+}
+
+/** Active AI provider id (e.g. 'openrouter', 'ollama'). Defaults to OpenRouter. */
+export function getProvider(): string {
+  return getString(KEYS.provider) ?? DEFAULT_PROVIDER_ID
+}
+
+export function setProvider(id: string): void {
+  setString(KEYS.provider, id)
+}
+
+export function getOllamaBaseUrl(): string {
+  return getString(KEYS.ollamaBaseUrl) ?? DEFAULT_OLLAMA_BASE_URL
+}
+
+export function setOllamaBaseUrl(url: string): void {
+  setString(KEYS.ollamaBaseUrl, url)
+}
+
+export function getOllamaModel(): string {
+  return getString(KEYS.ollamaModel) ?? DEFAULT_OLLAMA_MODEL
+}
+
+export function setOllamaModel(model: string): void {
+  setString(KEYS.ollamaModel, model)
 }
 
 export function getAutoRenameUseFileContent(): boolean {

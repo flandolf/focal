@@ -198,6 +198,10 @@ export interface UserSettings {
   notion_type_property: string
   notion_completed_property: string
   notion_subject_property: string
+  // ponytail: AI provider plumbing — see src/lib/providers/* + PROVIDERS.md.
+  provider?: string
+  ollama_base_url?: string
+  ollama_model?: string
 }
 
 export interface TimetableViewSettings {
