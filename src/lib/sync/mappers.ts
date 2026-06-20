@@ -275,6 +275,8 @@ export function rowToUserSettings(row: UserSettingsRow): UserSettings {
     provider: row.settings.provider,
     ollama_base_url: row.settings.ollama_base_url,
     ollama_model: row.settings.ollama_model,
+    assistant_personality: row.settings.assistant_personality,
+    assistant_custom_instructions: row.settings.assistant_custom_instructions,
   }
 }
 

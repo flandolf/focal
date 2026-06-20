@@ -29,6 +29,7 @@ import {
 import { TRANSITION, staggerContainer, staggerItem } from "@/lib/motion"
 import { cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
 import { showUndoToast } from "@/lib/undoToast"
+import { getAssistantPersonalityInstruction } from "@/lib/settings"
 import { toast } from "sonner"
 import {
   aiChatCompletion,
@@ -120,6 +121,7 @@ const TYPEWRITER_TICK_MS = 16
 interface AiAssistantPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onOpenSettings?: () => void
   sessions?: StudySession[]
   events?: CalendarEvent[]
   projects?: Project[]
@@ -210,6 +212,7 @@ interface Message {
   content: string
   pending?: boolean
   cancelled?: boolean
+  followUps?: string[]
   toolActivity?: {
     name: string
     status: "running" | "done" | "failed"
@@ -224,6 +227,7 @@ interface PersistedMessage {
   id: string
   role: "user" | "assistant"
   content: string
+  followUps?: string[]
 }
 
 function clampAssistantWidth(value: number): number {
@@ -258,7 +262,10 @@ function readPersistedConversation(): Message[] {
       ) {
         return []
       }
-      return [{ id: record.id, role: record.role, content: record.content }]
+      const followUps = Array.isArray(record.followUps)
+        ? record.followUps.filter((item): item is string => typeof item === "string").slice(0, 3)
+        : undefined
+      return [{ id: record.id, role: record.role, content: record.content, followUps }]
     })
   } catch {
     return []
@@ -269,7 +276,7 @@ function writePersistedConversation(messages: Message[]): void {
   try {
     const persistable: PersistedMessage[] = messages
       .filter((m) => !m.pending && !m.cancelled && !m.toolActivity && m.content.length > 1)
-      .map((m) => ({ id: m.id, role: m.role, content: m.content }))
+      .map((m) => ({ id: m.id, role: m.role, content: m.content, followUps: m.followUps }))
     if (persistable.length === 0) {
       localStorage.removeItem(PERSIST_CONVERSATION_KEY)
       return
@@ -288,6 +295,17 @@ function makeId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2)
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function extractFollowUpPrompts(raw: string): { content: string; followUps: string[] } {
+  const followUps: string[] = []
+  const content = raw.replace(/\[\[follow-up:\s*(.+?)\s*\]\]/gi, (_match, prompt: string) => {
+    const value = prompt.trim()
+    if (value && !followUps.includes(value) && followUps.length < 3) followUps.push(value)
+    return ""
+  }).replace(/\n{3,}/g, "\n\n").trim()
+  return { content, followUps }
 }
 
 function projectContextLine(project: Project): string {
@@ -371,6 +389,88 @@ function relativeDeadlineLabel(days: number): string {
   return `in ${days} days`
 }
 
+interface AssistantOverview {
+  title: string
+  detail: string
+  prompt: string
+  hasFocalContext: boolean
+}
+
+function formatPlannedTime(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const remainder = minutes % 60
+  return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildAssistantOverview(
+  projects: Project[] | undefined,
+  sessions: StudySession[] | undefined,
+  today: string,
+  currentProject?: Project | null,
+): AssistantOverview {
+  const nextDeadline = (projects ?? [])
+    .filter((project) => !project.isFinished && !project.isArchived && project.deadline)
+    .sort((a, b) => (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999"))[0]
+  const todayMs = dateOnlyMs(today) ?? 0
+  const nextWeekMs = todayMs + 7 * 24 * 60 * 60 * 1000
+  const planned = (sessions ?? []).filter((session) => {
+    const start = new Date(session.startTime).getTime()
+    return session.status !== "completed" && start >= todayMs && start <= nextWeekMs
+  })
+  const plannedMinutes = planned.reduce((total, session) => {
+    const duration = new Date(session.endTime).getTime() - new Date(session.startTime).getTime()
+    return total + Math.max(0, Math.round(duration / 60_000))
+  }, 0)
+  const plannedDetail = planned.length > 0
+    ? `${planned.length} study block${planned.length === 1 ? "" : "s"} · ${formatPlannedTime(plannedMinutes)} planned for the next 7 days`
+    : "No study blocks planned for the next 7 days"
+
+  if (nextDeadline?.deadline) {
+    const days = daysFromToday(nextDeadline.deadline, today)
+    const timing = days === null
+      ? nextDeadline.deadline.slice(0, 10)
+      : days < 0
+        ? `${Math.abs(days)} day${days === -1 ? "" : "s"} overdue`
+        : relativeDeadlineLabel(days)
+    return {
+      title: days !== null && days < 0
+        ? `${nextDeadline.name} is ${timing}`
+        : `${nextDeadline.name} is due ${timing}`,
+      detail: plannedDetail,
+      prompt: `Help me prepare for "${nextDeadline.name}", due ${nextDeadline.deadline.slice(0, 10)}. Check my current study sessions and suggest the single best next study block.`,
+      hasFocalContext: true,
+    }
+  }
+
+  if (currentProject) {
+    return {
+      title: `Plan the next step for ${currentProject.name}`,
+      detail: plannedDetail,
+      prompt: `I'm working on "${currentProject.name}". Check its details and my current study sessions, then suggest the single best next study block.`,
+      hasFocalContext: true,
+    }
+  }
+
+  const activeProjects = (projects ?? []).filter((project) => !project.isFinished && !project.isArchived)
+  if (activeProjects.length > 0 || planned.length > 0) {
+    return {
+      title: "Turn your current workload into a plan",
+      detail: `${activeProjects.length} active assessment${activeProjects.length === 1 ? "" : "s"} · ${plannedDetail.toLowerCase()}`,
+      prompt: "Review my active assessments and planned study sessions, then suggest the single best next study block.",
+      hasFocalContext: true,
+    }
+  }
+
+  return {
+    title: "Fast answers for the next study decision",
+    detail: "Ask for a concise plan, explanation, or deadline check without leaving the workspace.",
+    prompt: "Help me choose one useful 45-minute study block for today.",
+    hasFocalContext: false,
+  }
+}
+
 function buildSystemMessage(
   contextDay: string,
   providerName: string,
@@ -385,6 +485,8 @@ function buildSystemMessage(
   if (briefing) parts.push(briefing)
   if (calendarContext) parts.push(calendarContext)
   if (contextLine) parts.push(contextLine)
+  parts.push(getAssistantPersonalityInstruction())
+  parts.push(`When a reply has genuinely useful next steps, end with up to 3 clickable follow-up prompts using exactly this syntax: [[follow-up: message]]. The text must be a concise message written in the user's voice that they could send verbatim, such as "Plan those sessions for me". Offer prompts only when the answer naturally branches or a useful action remains. Do not add them to simple factual answers, errors, confirmations, or every reply. Never mention this syntax.`)
   return parts.join("\n\n")
 }
 
@@ -398,6 +500,8 @@ Tool rules:
 - For SAC, exam, assignment, assessment, deadline, due-date, next, or upcoming assessment questions, call list_deadlines before the final answer.
 - If the user asks for "next 3 SACs" or similar, call list_deadlines with query "sac" and range "all_upcoming", then answer from the earliest results.
 - For study-session questions, call list_study_sessions.
+- For workload, prioritization, or "what should I do next?" questions, call get_study_overview.
+- Use create_study_session only when the user explicitly asks to create or schedule a session. Resolve project and subject ids first when needed.
 - For subject ids, call list_subjects when unsure.
 - If you call list_subjects for an assessment-date question, you must still call list_deadlines before answering.
 - For event create/update/delete/read requests, use the event tools. The app confirms destructive deletion.
@@ -573,6 +677,34 @@ const FOCAL_AGENT_TOOLS: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "get_study_overview",
+      description: "Summarize the user's active workload, nearest deadline, and planned study time. Use for prioritization, workload, and 'what should I do next?' questions.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_study_session",
+      description: "Create a Focal study session only when the user explicitly asks to schedule or create one.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          subjectIds: { type: "array", items: { type: "string" }, description: "Subject ids from list_subjects." },
+          projectId: { type: "string", description: "Optional project id from list_projects." },
+          startTime: { type: "string", description: "ISO 8601 datetime." },
+          endTime: { type: "string", description: "ISO 8601 datetime after startTime." },
+          description: { type: "string" },
+          notes: { type: "string" },
+        },
+        required: ["title", "subjectIds", "startTime", "endTime"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_events",
       description: "List Focal calendar events, optionally filtered by query and YYYY-MM-DD date range.",
       parameters: {
@@ -675,6 +807,12 @@ function readOptionalString(record: Record<string, unknown>, key: string): strin
 function readOptionalBoolean(record: Record<string, unknown>, key: string): boolean | undefined {
   const value = record[key]
   return typeof value === "boolean" ? value : undefined
+}
+
+function readOptionalStringArray(record: Record<string, unknown>, key: string): string[] | undefined {
+  const value = record[key]
+  if (!Array.isArray(value)) return undefined
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
 }
 
 function isEventType(value: unknown): value is EventType {
@@ -1116,6 +1254,11 @@ export function executeReadOnlyFocalToolCall(
     return `Study sessions:\n${matches.map((session) => formatSessionLine(session, context.subjects, context.projects)).join("\n")}`
   }
 
+  if (call.name === "get_study_overview") {
+    const overview = buildAssistantOverview(context.projects, context.sessions, context.today)
+    return `Study overview: ${overview.title}. ${overview.detail}.`
+  }
+
   return null
 }
 
@@ -1146,6 +1289,7 @@ function toolDoneText(name: string): string {
 export function AIAssistantPanel({
   open,
   onOpenChange,
+  onOpenSettings,
   sessions,
   events,
   projects,
@@ -1164,6 +1308,7 @@ export function AIAssistantPanel({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const [width, setWidth] = useState<number>(() => readPersistedAssistantWidth())
   const [isDragging, setIsDragging] = useState(false)
@@ -1269,6 +1414,27 @@ export function AIAssistantPanel({
     [events, sessions, contextDay],
   )
 
+  const overview = useMemo(
+    () => buildAssistantOverview(projects, sessions, contextDay, contextRefs?.project),
+    [projects, sessions, contextDay, contextRefs?.project],
+  )
+  const starterPrompts = useMemo(
+    () => overview.hasFocalContext
+      ? SUGGESTED_PROMPTS
+      : [
+          { label: "Choose my next block", prompt: overview.prompt },
+          ...SUGGESTED_PROMPTS.slice(0, 3),
+        ],
+    [overview.hasFocalContext, overview.prompt],
+  )
+  const latestAssistantMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index]
+      if (message.role === "assistant" && !message.toolActivity) return message.id
+    }
+    return null
+  }, [messages])
+
   const pricePerMillionCents = 15
   const showCost = !providerMissing && !providerIsOllama && input.trim().length > 0
   const costDisplay = showCost
@@ -1286,6 +1452,12 @@ export function AIAssistantPanel({
     })
   }, [messages, pending, reduceMotion])
 
+  useEffect(() => {
+    if (!open || providerMissing) return
+    const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [open, providerMissing])
+
   const stopTypewriter = useCallback(() => {
     if (typewriterRef.current?.timeoutId) clearTimeout(typewriterRef.current.timeoutId)
     typewriterRef.current = null
@@ -1299,19 +1471,24 @@ export function AIAssistantPanel({
 
   const animateTypewriter = useCallback(
     (messageId: string, target: string) => {
-      if (reduceMotion || target.length <= TYPEWRITER_CHARS_PER_TICK) {
+      const reply = extractFollowUpPrompts(target)
+      if (reduceMotion || reply.content.length <= TYPEWRITER_CHARS_PER_TICK) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, content: target, pending: false } : m)),
+          prev.map((m) => (m.id === messageId
+            ? { ...m, content: reply.content, followUps: reply.followUps, pending: false }
+            : m)),
         )
         return
       }
-      const initial = target.slice(0, TYPEWRITER_CHARS_PER_TICK)
+      const initial = reply.content.slice(0, TYPEWRITER_CHARS_PER_TICK)
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, content: initial, pending: false } : m)),
+        prev.map((m) => (m.id === messageId
+          ? { ...m, content: initial, followUps: reply.followUps, pending: false }
+          : m)),
       )
       typewriterRef.current = {
         id: messageId,
-        target,
+        target: reply.content,
         current: TYPEWRITER_CHARS_PER_TICK,
         timeoutId: 0,
       }
@@ -1472,9 +1649,40 @@ export function AIAssistantPanel({
         today: contextDay,
       })
       if (readOnlyResult !== null) return readOnlyResult
+      if (toolCall.name === "create_study_session") {
+        if (!onCreateSession) return "Study-session creation is not available here."
+        const { arguments: args } = toolCall
+        const title = readOptionalString(args, "title")
+        const subjectIds = readOptionalStringArray(args, "subjectIds") ?? []
+        const projectId = readOptionalString(args, "projectId")
+        const startTime = readOptionalString(args, "startTime")
+        const endTime = readOptionalString(args, "endTime")
+        if (!title || !isIsoDateTime(startTime) || !isIsoDateTime(endTime)) {
+          return "I need a title, valid start time, and valid end time before I can create that study session."
+        }
+        if (new Date(endTime).getTime() <= new Date(startTime).getTime()) {
+          return "The study session must end after it starts."
+        }
+        if (subjectIds.some((id) => !(subjects ?? []).some((subject) => subject.id === id))) {
+          return "One or more subject ids do not exist, so I did not create the session."
+        }
+        if (projectId && !(projects ?? []).some((project) => project.id === projectId)) {
+          return `Project id "${projectId}" does not exist, so I did not create the session.`
+        }
+        const result = await onCreateSession({
+          title,
+          subjectIds,
+          projectId,
+          startTime,
+          endTime,
+          description: readOptionalString(args, "description"),
+          notes: readOptionalString(args, "notes"),
+        })
+        return result === false ? `I couldn't create **${title}**.` : `Created study session **${title}** for ${startTime}.`
+      }
       return executeEventToolCall(eventToolCallFromNative(toolCall), looseCreate)
     },
-    [contextDay, executeEventToolCall, projects, sessions, subjects],
+    [contextDay, executeEventToolCall, onCreateSession, projects, sessions, subjects],
   )
 
   const runFocalAgent = useCallback(
@@ -1903,6 +2111,11 @@ ${text}`,
     setMessages((prev) => prev.filter((m) => m.id !== messageId))
   }, [])
 
+  const handleOpenAssistantSettings = useCallback(() => {
+    onOpenSettings?.()
+    onOpenChange(false)
+  }, [onOpenChange, onOpenSettings])
+
   const panelTransition = isDragging || reduceMotion
     ? ({ duration: 0 } as const)
     : TRANSITION.view
@@ -1975,9 +2188,23 @@ ${text}`,
                     <CheckCircle2 className="h-3 w-3 shrink-0 text-primary" />
                   )}
                   <span className="truncate text-xs">
-                    {providerMissing ? "Configure AI in Settings" : "Ready for quick study help"}
+                    {providerMissing
+                      ? "AI setup required"
+                      : overview.hasFocalContext
+                        ? "Using your assessments and study plan"
+                        : "Ready for quick study help"}
                   </span>
                 </div>
+                {providerMissing && onOpenSettings && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleOpenAssistantSettings}
+                    className="h-7 w-fit"
+                  >
+                    Configure AI
+                  </Button>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <Tooltip>
@@ -2020,18 +2247,29 @@ ${text}`,
             ref={scrollRef}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3"
           >
-            {messages.length <= 1 ? (
+            {messages.length === 0 ? (
               <div className="flex flex-1 flex-col justify-between gap-5">
                 <div className="pt-2">
                   <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border bg-background/45 text-primary">
                     <Brain className="h-4 w-4" />
                   </div>
                   <p className="max-w-60 text-sm font-semibold leading-snug">
-                    Fast answers for the next study decision.
+                    {overview.title}
                   </p>
                   <p className="mt-1.5 max-w-64 text-xs leading-relaxed text-muted-foreground">
-                    Ask for a concise plan, explanation, or deadline check without leaving the workspace.
+                    {overview.detail}
                   </p>
+                  {overview.hasFocalContext && (
+                    <button
+                      type="button"
+                      onClick={() => void send(overview.prompt)}
+                      disabled={pending || providerMissing}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Wand2 className="h-3 w-3" />
+                      Choose my next block
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-micro font-medium text-muted-foreground">
@@ -2044,7 +2282,7 @@ ${text}`,
                     initial="initial"
                     animate="animate"
                   >
-                    {SUGGESTED_PROMPTS.map(({ label, prompt }) => (
+                    {starterPrompts.map(({ label, prompt }) => (
                       <motion.button
                         key={prompt}
                         type="button"
@@ -2092,6 +2330,9 @@ ${text}`,
                     onDiscardDraft={
                       m.draft ? () => handleDiscardDraft(m.id) : undefined
                     }
+                    onFollowUp={m.id === latestAssistantMessageId
+                      ? (prompt) => void send(prompt)
+                      : undefined}
                   />
                 ))}
               </div>
@@ -2142,11 +2383,16 @@ ${text}`,
               )}
             >
               <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  providerMissing ? "Configure AI in Settings to chat" : "Ask a study question"
+                  providerMissing
+                    ? "Configure AI in Settings to chat"
+                    : contextRefs?.project
+                      ? `Ask about ${contextRefs.project.name}`
+                      : "Ask about deadlines, sessions, or study strategy"
                 }
                 disabled={providerMissing || pending}
                 rows={2}
@@ -2177,6 +2423,11 @@ ${text}`,
                 </Button>
               </div>
             </div>
+            {!providerMissing && (
+              <p className="mt-1.5 px-1 text-micro text-muted-foreground">
+                Enter to send · Shift + Enter for a new line
+              </p>
+            )}
           </form>
         </motion.aside>
       )}
@@ -2298,6 +2549,7 @@ function Bubble({
   onRegenerate,
   onCreateFromDraft,
   onDiscardDraft,
+  onFollowUp,
 }: {
   message: Message
   isCopied: boolean
@@ -2306,6 +2558,7 @@ function Bubble({
   onRegenerate: () => void
   onCreateFromDraft?: () => void
   onDiscardDraft?: () => void
+  onFollowUp?: (prompt: string) => void
 }) {
   const isUser = message.role === "user"
   const reduceMotion = useReducedMotion()
@@ -2374,6 +2627,21 @@ function Bubble({
             onCreate={onCreateFromDraft}
             onDiscard={onDiscardDraft}
           />
+        )}
+
+        {onFollowUp && message.followUps && message.followUps.length > 0 && (
+          <div className="mt-2.5 flex flex-col items-start gap-1.5 border-t border-sidebar-border/70 pt-2.5">
+            {message.followUps.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => onFollowUp(prompt)}
+                className="max-w-full rounded-lg bg-primary/8 px-2 py-1.5 text-left text-xs font-medium leading-snug text-primary transition-colors hover:bg-primary/14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 

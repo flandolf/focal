@@ -31,6 +31,11 @@ import {
   setReasoningMaxTokens,
   getReasoningExclude,
   setReasoningExclude,
+  ASSISTANT_PERSONALITIES,
+  getAssistantPersonality,
+  setAssistantPersonality,
+  getAssistantCustomInstructions,
+  setAssistantCustomInstructions,
 } from "@/lib/settings"
 import {
   getActiveProvider,
@@ -45,7 +50,7 @@ import {
 } from "@/lib/providers"
 import { pullOllamaModel } from "@/lib/providers/ollama"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
-import type { ReasoningEffort } from "@/lib/settings"
+import type { AssistantPersonality, ReasoningEffort } from "@/lib/settings"
 
 interface OpenRouterCredits {
   total_credits: number
@@ -315,6 +320,8 @@ export function AIModelSection() {
   const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => getReasoningEffort())
   const [reasoningMaxTokens, setReasoningMaxTokensState] = useState(() => getReasoningMaxTokens())
   const [reasoningExclude, setReasoningExcludeState] = useState(() => getReasoningExclude())
+  const [assistantPersonality, setAssistantPersonalityState] = useState<AssistantPersonality>(() => getAssistantPersonality())
+  const [assistantCustomInstructions, setAssistantCustomInstructionsState] = useState(() => getAssistantCustomInstructions())
 
   const [saved, setSaved] = useState(false)
   const [credits, setCredits] = useState<OpenRouterCredits | null>(null)
@@ -511,6 +518,18 @@ export function AIModelSection() {
     setReasoningExcludeState(checked)
     setReasoningExclude(checked)
     notifyUserSettingsChanged()
+  }, [])
+
+  const handleAssistantPersonalityChange = useCallback((value: AssistantPersonality) => {
+    setAssistantPersonalityState(value)
+    setAssistantPersonality(value)
+    notifyUserSettingsChanged()
+  }, [])
+
+  const handleAssistantCustomInstructionsChange = useCallback((value: string) => {
+    const bounded = value.slice(0, 500)
+    setAssistantCustomInstructionsState(bounded)
+    setAssistantCustomInstructions(bounded)
   }, [])
 
   return (
@@ -834,6 +853,52 @@ export function AIModelSection() {
             </ScrollArea>
           </>
         )}
+      </section>
+
+      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <div>
+          <h2 className="text-sm font-medium">Assistant personality</h2>
+          <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
+            Choose how the study assistant communicates. Accuracy and tool rules stay the same.
+          </p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Assistant personality">
+          {ASSISTANT_PERSONALITIES.map((option) => {
+            const selected = assistantPersonality === option.id
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => handleAssistantPersonalityChange(option.id)}
+                className={cn(
+                  "min-w-0 flex-1 basis-36 rounded-lg border bg-background/30 px-3 py-2 text-left outline-none transition-colors hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  selected ? "border-primary bg-primary/10 ring-1 ring-primary/30" : "border-border",
+                )}
+              >
+                <span className={cn("block text-xs font-medium", selected && "text-primary")}>{option.label}</span>
+                <span className="mt-0.5 block text-micro leading-relaxed text-muted-foreground/70">{option.description}</span>
+              </button>
+            )
+          })}
+        </div>
+        <label className="mt-4 block text-caption text-muted-foreground/70" htmlFor="assistant-custom-instructions">
+          Additional instructions <span className="text-muted-foreground/50">(optional)</span>
+        </label>
+        <textarea
+          id="assistant-custom-instructions"
+          value={assistantCustomInstructions}
+          maxLength={500}
+          rows={3}
+          onChange={(event) => handleAssistantCustomInstructionsChange(event.target.value)}
+          onBlur={notifyUserSettingsChanged}
+          placeholder="Example: Use Australian English and keep plans under five steps."
+          className="mt-1.5 w-full resize-y rounded-lg border border-input bg-background/55 px-3 py-2 text-xs leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        />
+        <p className="mt-1 text-right text-micro tabular-nums text-muted-foreground/60">
+          {assistantCustomInstructions.length}/500
+        </p>
       </section>
 
       {activeProvider.supportsReasoning && (

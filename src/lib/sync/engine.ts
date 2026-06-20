@@ -2,7 +2,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type ReasoningEffort } from "@/lib/settings"
+import { getAssistantCustomInstructions, getAssistantPersonality, getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setAssistantCustomInstructions, setAssistantPersonality, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type AssistantPersonality, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache, getErrorMessage } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
@@ -820,6 +820,8 @@ async function pullUserSettings(): Promise<void> {
     if (settings.provider) setProvider(settings.provider)
     if (settings.ollama_base_url) setOllamaBaseUrl(settings.ollama_base_url)
     if (settings.ollama_model) setOllamaModel(settings.ollama_model)
+    if (settings.assistant_personality) setAssistantPersonality(settings.assistant_personality as AssistantPersonality)
+    setAssistantCustomInstructions(settings.assistant_custom_instructions ?? "")
     const currentNotionSettings = getNotionCalendarSettings()
     setNotionCalendarSettings({
       token: currentNotionSettings.token,
@@ -1269,6 +1271,8 @@ function collectUserSettingsForSync(): UserSettings {
     provider: getProvider(),
     ollama_base_url: getOllamaBaseUrl(),
     ollama_model: getOllamaModel(),
+    assistant_personality: getAssistantPersonality(),
+    assistant_custom_instructions: getAssistantCustomInstructions(),
   }
 }
 

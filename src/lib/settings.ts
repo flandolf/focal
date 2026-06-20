@@ -12,6 +12,8 @@ const KEYS = {
   reasoningEffort: "focal-reasoning-effort",
   reasoningMaxTokens: "focal-reasoning-max-tokens",
   reasoningExclude: "focal-reasoning-exclude",
+  assistantPersonality: "focal-assistant-personality",
+  assistantCustomInstructions: "focal-assistant-custom-instructions",
   notionToken: "focal-notion-token",
   notionDataSourceId: "focal-notion-data-source-id",
   notionTitleProperty: "focal-notion-title-property",
@@ -31,6 +33,39 @@ const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 // committing to a model the user hasn't installed.
 const DEFAULT_OLLAMA_MODEL = ""
 export type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
+export type AssistantPersonality = "focused" | "encouraging" | "direct" | "socratic"
+
+export const ASSISTANT_PERSONALITIES: readonly {
+  id: AssistantPersonality
+  label: string
+  description: string
+  instruction: string
+}[] = [
+  {
+    id: "focused",
+    label: "Focused",
+    description: "Concise, practical, and calm.",
+    instruction: "Be a focused study coach: concise, practical, calm, and biased toward one clear next action.",
+  },
+  {
+    id: "encouraging",
+    label: "Encouraging",
+    description: "Warm support without empty praise.",
+    instruction: "Be a warm, encouraging study coach. Acknowledge effort specifically, avoid empty praise, and keep advice actionable.",
+  },
+  {
+    id: "direct",
+    label: "Direct",
+    description: "Blunt priorities, minimal padding.",
+    instruction: "Be a direct study coach: lead with the priority, cut padding, and say plainly when a plan is unrealistic.",
+  },
+  {
+    id: "socratic",
+    label: "Socratic",
+    description: "Guide thinking with selective questions.",
+    instruction: "Use a Socratic coaching style when it helps learning: ask one targeted question before explaining, but answer directly when the user needs a fact or action.",
+  },
+] as const
 
 export interface NotionCalendarSettings {
   token: string
@@ -151,6 +186,36 @@ export function getReasoningExclude(): boolean {
 
 export function setReasoningExclude(exclude: boolean): void {
   setBool(KEYS.reasoningExclude, exclude)
+}
+
+export function getAssistantPersonality(): AssistantPersonality {
+  const value = getString(KEYS.assistantPersonality)
+  return ASSISTANT_PERSONALITIES.some((option) => option.id === value)
+    ? value as AssistantPersonality
+    : "focused"
+}
+
+export function setAssistantPersonality(personality: AssistantPersonality): void {
+  setString(KEYS.assistantPersonality, personality)
+}
+
+export function getAssistantCustomInstructions(): string {
+  return getString(KEYS.assistantCustomInstructions, "").slice(0, 500)
+}
+
+export function setAssistantCustomInstructions(instructions: string): void {
+  setString(KEYS.assistantCustomInstructions, instructions.slice(0, 500))
+}
+
+export function getAssistantPersonalityInstruction(): string {
+  const personality = getAssistantPersonality()
+  const preset = ASSISTANT_PERSONALITIES.find((option) => option.id === personality)
+  const custom = getAssistantCustomInstructions().trim()
+  return [
+    preset?.instruction ?? ASSISTANT_PERSONALITIES[0].instruction,
+    custom ? `User's additional style preference: ${custom}` : "",
+    "Style preferences never override factual accuracy, safety, or Focal tool rules.",
+  ].filter(Boolean).join("\n")
 }
 
 // ---------------------------------------------------------------------------

@@ -579,6 +579,10 @@ function App() {
   })
 
   const handleOpenAiAssistant = useCallback(() => setAiAssistantOpen(true), [])
+  const handleOpenAiSettings = useCallback(() => {
+    setSettingsView(true)
+    setAiAssistantOpen(false)
+  }, [])
 
   const handleAddFileFromSidebar = useCallback(async (projectId: string) => {
     const project = projects.find((p) => p.id === projectId)
@@ -1787,6 +1791,7 @@ function App() {
           <AIAssistantPanel
             open={aiAssistantOpen}
             onOpenChange={setAiAssistantOpen}
+            onOpenSettings={handleOpenAiSettings}
             sessions={sessions}
             events={events}
             projects={projects}
