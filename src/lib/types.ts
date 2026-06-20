@@ -202,6 +202,8 @@ export interface UserSettings {
   provider?: string
   ollama_base_url?: string
   ollama_model?: string
+  assistant_personality?: string
+  assistant_custom_instructions?: string
 }
 
 export interface TimetableViewSettings {

@@ -1,8 +1,36 @@
-import { executeReadOnlyFocalToolCall, parseLooseEventCreateRequest } from "../src/components/AIAssistantPanel"
+import { buildAssistantOverview, executeReadOnlyFocalToolCall, extractFollowUpPrompts, parseLooseEventCreateRequest } from "../src/components/AIAssistantPanel"
 
 const draft = parseLooseEventCreateRequest("math methods sac 8 august 1:45pm", "2026-06-19", [
   { id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB" },
 ])
+
+const overview = buildAssistantOverview(
+  [{
+    id: "methods-sac",
+    name: "Methods SAC",
+    deadline: "2026-06-22",
+    created_at: "2026-06-01",
+    folder_path: "methods-sac",
+  }],
+  [{
+    id: "session-1",
+    subjectIds: ["mm"],
+    title: "Methods revision",
+    startTime: "2026-06-20T10:00:00",
+    endTime: "2026-06-20T10:45:00",
+    status: "planned",
+    created_at: "2026-06-01",
+  }],
+  "2026-06-20",
+)
+if (overview.title !== "Methods SAC is due in 2 days") throw new Error(`Unexpected overview title: ${overview.title}`)
+if (!overview.detail.includes("45 min")) throw new Error(`Unexpected overview detail: ${overview.detail}`)
+
+const reply = extractFollowUpPrompts("Start with Methods.\n\n[[follow-up: Plan that session for me]]\n[[follow-up: Show my other deadlines]]")
+if (reply.content !== "Start with Methods.") throw new Error(`Unexpected cleaned reply: ${reply.content}`)
+if (reply.followUps.length !== 2 || reply.followUps[0] !== "Plan that session for me") {
+  throw new Error(`Unexpected follow-ups: ${reply.followUps.join(", ")}`)
+}
 
 if (!draft) throw new Error("expected loose event draft")
 if (draft.title !== "Math Methods SAC") throw new Error(`bad title: ${draft.title}`)
