@@ -10,6 +10,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(commands::ollama::OllamaRequests::default())
         .invoke_handler(tauri::generate_handler![
             commands::files::move_files_to_project,
             commands::files::get_project_files,
@@ -37,6 +38,8 @@ pub fn run() {
             commands::notion::create_notion_calendar_page,
             commands::notion::delete_notion_page,
             commands::notion::update_notion_calendar_page,
+            commands::ollama::ollama_request,
+            commands::ollama::cancel_ollama_request,
             commands::window::window_minimize,
             commands::window::window_maximize,
             commands::window::window_toggle_maximize,

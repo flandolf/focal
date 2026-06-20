@@ -87,6 +87,13 @@ export interface ModelInfo {
   /** Human-friendly display name. Providers always populate this. */
   name: string
   contextLength?: number
+  /** Host-reported model capabilities such as completion, tools, vision, or embedding. */
+  capabilities?: string[]
+  /** Download size for locally installed models. */
+  sizeBytes?: number
+  parameterSize?: string
+  quantization?: string
+  family?: string
   /** Whether the host will enforce a structured-output schema on the response. */
   supportsStructuredOutput?: boolean
   /** Per-token pricing in USD; populated when the host publishes it. */
@@ -107,6 +114,8 @@ export interface ProviderConfigField {
 export interface ProviderHealthcheck {
   ok: boolean
   error?: string
+  version?: string
+  modelCount?: number
 }
 
 export interface Provider {

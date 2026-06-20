@@ -11,6 +11,7 @@
  * remains the shortest path for one valid JSON payload.
  */
 import { getOllamaBaseUrl, getOllamaModel } from "@/lib/settings"
+import { invoke, isTauri } from "@tauri-apps/api/core"
 import type {
   ChatCompletionRequest,
   ChatCompletionResult,
@@ -28,11 +29,18 @@ import {
 
 const DEFAULT_BASE_URL = "http://localhost:11434"
 const KEEP_ALIVE = "30m"
+let requestSequence = 0
 
 interface OllamaTagModel {
   name: string
   model?: string
   modified_at?: string
+  size?: number
+  details?: {
+    family?: string
+    parameter_size?: string
+    quantization_level?: string
+  }
 }
 
 interface OllamaTagsEnvelope {
@@ -44,6 +52,61 @@ interface OllamaChatResponse {
   done_reason?: string
 }
 
+interface OllamaShowResponse {
+  model_info?: Record<string, unknown>
+  capabilities?: unknown
+}
+
+interface OllamaVersionResponse {
+  version?: unknown
+}
+
+interface NativeOllamaResponse {
+  status: number
+  body: string
+}
+
+async function ollamaFetch(
+  base: string,
+  endpoint: "/api/tags" | "/api/chat" | "/api/show" | "/api/version" | "/api/pull",
+  body?: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<Response> {
+  if (!isTauri()) {
+    return fetch(`${base}${endpoint}`, {
+      ...(body ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      } : {}),
+      ...(signal ? { signal } : {}),
+    })
+  }
+
+  signal?.throwIfAborted()
+  const requestId = `ollama-${Date.now()}-${requestSequence++}`
+  const cancel = () => { void invoke("cancel_ollama_request", { requestId }) }
+  signal?.addEventListener("abort", cancel, { once: true })
+
+  try {
+    const response = await invoke<NativeOllamaResponse>("ollama_request", {
+      requestId,
+      baseUrl: base,
+      endpoint,
+      ...(body ? { body } : {}),
+    })
+    return new Response(response.body, {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    })
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? new DOMException("The request was aborted", "AbortError")
+    throw error instanceof Error ? error : new Error(String(error))
+  } finally {
+    signal?.removeEventListener("abort", cancel)
+  }
+}
+
 function isOllamaTagModel(value: unknown): value is OllamaTagModel {
   return typeof value === "object" && value !== null && typeof (value as { name?: unknown }).name === "string"
 }
@@ -53,34 +116,92 @@ function resolveBaseUrl(): string {
   const raw = getOllamaBaseUrl()
   const base = (raw ?? "").trim() || DEFAULT_BASE_URL
   const trimmed = base.replace(/\/+$/, "")
-  return trimmed.endsWith("/v1") ? trimmed.slice(0, -3) : trimmed
+  const normalized = trimmed.endsWith("/v1") ? trimmed.slice(0, -3) : trimmed
+  let url: URL
+  try {
+    url = new URL(normalized)
+  } catch {
+    throw new Error("Ollama server URL is invalid")
+  }
+  if (!/^https?:$/.test(url.protocol)) throw new Error("Ollama server URL must use HTTP or HTTPS")
+  if (url.username || url.password) throw new Error("Ollama server URL must not contain credentials")
+  url.search = ""
+  url.hash = ""
+  return url.toString().replace(/\/$/, "")
+}
+
+async function ollamaError(res: Response, fallback: string): Promise<Error> {
+  const text = await res.text()
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (typeof parsed === "object" && parsed !== null && typeof (parsed as { error?: unknown }).error === "string") {
+      return new Error(`${fallback} (${res.status}): ${(parsed as { error: string }).error}`)
+    }
+  } catch {
+    // Plain-text errors are valid responses from proxies in front of Ollama.
+  }
+  return new Error(`${fallback} (${res.status})${text.trim() ? `: ${text.trim()}` : ""}`)
+}
+
+function modelContextLength(show: OllamaShowResponse): number | undefined {
+  const info = show.model_info
+  if (!info) return undefined
+  const entry = Object.entries(info).find(([key, value]) => key.endsWith(".context_length") && typeof value === "number")
+  return entry?.[1] as number | undefined
+}
+
+async function fetchOllamaModelDetails(base: string, model: OllamaTagModel): Promise<ModelInfo> {
+  const basic: ModelInfo = {
+    id: model.name,
+    name: model.name,
+    sizeBytes: typeof model.size === "number" ? model.size : undefined,
+    parameterSize: model.details?.parameter_size,
+    quantization: model.details?.quantization_level,
+    family: model.details?.family,
+    supportsStructuredOutput: true,
+  }
+  try {
+    const res = await ollamaFetch(base, "/api/show", { model: model.name })
+    if (!res.ok) return basic
+    const show = await res.json() as OllamaShowResponse
+    const capabilities = Array.isArray(show.capabilities)
+      ? show.capabilities.filter((value): value is string => typeof value === "string")
+      : undefined
+    return {
+      ...basic,
+      contextLength: modelContextLength(show),
+      ...(capabilities ? { capabilities } : {}),
+    }
+  } catch {
+    return basic
+  }
 }
 
 async function fetchOllamaModels(base: string): Promise<ModelInfo[]> {
-  const res = await fetch(`${base}/api/tags`)
-  if (!res.ok) throw new Error(`Ollama /api/tags failed (${res.status})`)
+  const res = await ollamaFetch(base, "/api/tags")
+  if (!res.ok) throw await ollamaError(res, "Could not list Ollama models")
   const parsed: unknown = await res.json()
   const envelope = (parsed as OllamaTagsEnvelope)?.models
   if (!Array.isArray(envelope)) throw new Error("Unexpected Ollama /api/tags response shape")
-  return envelope.filter(isOllamaTagModel).map((model) => ({
-    id: model.name,
-    name: model.name,
-    supportsStructuredOutput: true,
-  }))
+  // ponytail: one /api/show per installed model keeps capability and context data
+  // accurate. If large model fleets become common, upgrade to selected-model lazy loading.
+  const models = await Promise.all(envelope.filter(isOllamaTagModel).map((model) => fetchOllamaModelDetails(base, model)))
+  return models.filter((model) => !model.capabilities?.length || model.capabilities.includes("completion"))
 }
 
 async function postChat(base: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
-  const res = await fetch(`${base}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    ...(signal ? { signal } : {}),
-  })
+  const res = await ollamaFetch(base, "/api/chat", body, signal)
   if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Ollama API error (${res.status}): ${text}`)
+    throw await ollamaError(res, "Ollama chat failed")
   }
   return res.json()
+}
+
+export async function pullOllamaModel(model: string, signal?: AbortSignal): Promise<void> {
+  const name = model.trim()
+  if (!name) throw new Error("Enter a model name to pull")
+  const res = await ollamaFetch(resolveBaseUrl(), "/api/pull", { model: name, stream: false }, signal)
+  if (!res.ok) throw await ollamaError(res, "Could not pull Ollama model")
 }
 
 function toOllamaMessage(message: ChatMessage): Record<string, unknown> {
@@ -220,7 +341,11 @@ export const ollamaProvider: Provider = {
   supportsToolCalling: true,
 
   isConfigured(): boolean {
-    return Boolean(resolveBaseUrl()) && Boolean(getOllamaModel())
+    try {
+      return Boolean(resolveBaseUrl()) && Boolean(getOllamaModel())
+    } catch {
+      return false
+    }
   },
 
   async listModels(): Promise<ModelInfo[]> {
@@ -228,11 +353,20 @@ export const ollamaProvider: Provider = {
   },
 
   async healthcheck(): Promise<ProviderHealthcheck> {
-    const base = resolveBaseUrl()
     try {
-      const res = await fetch(`${base}/api/tags`)
-      if (!res.ok) return { ok: false, error: `Ollama responded ${res.status}` }
-      return { ok: true }
+      const base = resolveBaseUrl()
+      const [versionResponse, tagsResponse] = await Promise.all([
+        ollamaFetch(base, "/api/version"),
+        ollamaFetch(base, "/api/tags"),
+      ])
+      if (!tagsResponse.ok) return { ok: false, error: (await ollamaError(tagsResponse, "Ollama model check failed")).message }
+      const version = versionResponse.ok ? await versionResponse.json() as OllamaVersionResponse : undefined
+      const tags = await tagsResponse.json() as OllamaTagsEnvelope
+      return {
+        ok: true,
+        version: typeof version?.version === "string" ? version.version : undefined,
+        modelCount: Array.isArray(tags.models) ? tags.models.filter(isOllamaTagModel).length : 0,
+      }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -242,9 +376,9 @@ export const ollamaProvider: Provider = {
     const base = resolveBaseUrl()
     if (!req.model) throw new Error("Ollama model not configured")
 
-  const messages = req.jsonSchema ? withJsonOutputInstructions(req.messages, req.jsonSchema) : req.messages
-  let data = await postChat(base, buildRequestBody(req, messages), req.signal)
-  let parsed = parseOllamaContent(data)
+    const messages = req.jsonSchema ? withJsonOutputInstructions(req.messages, req.jsonSchema) : req.messages
+    let data = await postChat(base, buildRequestBody(req, messages), req.signal)
+    let parsed = parseOllamaContent(data)
     let normalized = req.jsonSchema ? normalizeStructuredJson(parsed.content, req.jsonSchema.schema) : undefined
     let content = normalized?.content ?? parsed.content
 

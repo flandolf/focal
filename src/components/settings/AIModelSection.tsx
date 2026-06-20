@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion"
 import { invoke } from "@tauri-apps/api/core"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,8 @@ import {
   RefreshCw,
   Server,
   KeyRound,
+  Download,
+  X,
 } from "lucide-react"
 import { cn, isRecord } from "@/lib/utils"
 import {
@@ -41,6 +43,7 @@ import {
   type Provider,
   type ModelInfo,
 } from "@/lib/providers"
+import { pullOllamaModel } from "@/lib/providers/ollama"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { ReasoningEffort } from "@/lib/settings"
 
@@ -137,6 +140,25 @@ function formatContextLength(n: number | undefined): string | null {
   return String(n)
 }
 
+function formatBytes(n: number | undefined): string | null {
+  if (!n || n < 0) return null
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  const index = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1)
+  return `${(n / 1024 ** index).toFixed(index < 3 ? 0 : 1)} ${units[index]}`
+}
+
+function localModelMeta(model: ModelInfo): string[] {
+  if (!model.sizeBytes && !model.parameterSize && !model.quantization && !model.family && !model.capabilities) return []
+  return [
+    model.parameterSize,
+    model.quantization,
+    formatBytes(model.sizeBytes),
+    formatContextLength(model.contextLength) ? `${formatContextLength(model.contextLength)} context` : null,
+    model.capabilities?.includes("tools") ? "tools" : null,
+    model.capabilities?.includes("vision") ? "vision" : null,
+  ].filter((value): value is string => Boolean(value))
+}
+
 function ModelRow({
   model,
   isSelected,
@@ -148,6 +170,7 @@ function ModelRow({
 }) {
   const reduceMotion = useReducedMotion()
   const contextLength = formatContextLength(model.contextLength)
+  const localMeta = localModelMeta(model)
   return (
     <motion.button
       type="button"
@@ -175,7 +198,11 @@ function ModelRow({
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate leading-tight">{model.name}</p>
-        {contextLength && (
+        {localMeta.length > 0 ? (
+          <p className="mt-0.5 truncate text-micro text-muted-foreground/60">
+            {localMeta.join(" · ")}
+          </p>
+        ) : contextLength && (
           <p className="mt-0.5 flex items-center gap-2 text-micro text-muted-foreground/60">
             <span className="inline-flex items-center gap-0.5">
               <Brain className="h-2.5 w-2.5" />
@@ -255,6 +282,7 @@ function SelectedModelCard({ modelId, models }: { modelId: string; models: Model
   const prompt = model.pricing ? Number.parseFloat(model.pricing.prompt) : undefined
   const completion = model.pricing ? Number.parseFloat(model.pricing.completion) : undefined
   const contextLength = formatContextLength(model.contextLength)
+  const localMeta = localModelMeta(model)
   return (
     <motion.div
       key={modelId}
@@ -269,9 +297,9 @@ function SelectedModelCard({ modelId, models }: { modelId: string; models: Model
       <div className="min-w-0 flex-1">
         <p className="truncate text-caption font-medium leading-tight">{model.name}</p>
         <p className="mt-0.5 truncate text-[10px] text-muted-foreground/65">
-          {contextLength
+          {model.pricing && contextLength
             ? `${contextLength} context · $${prompt?.toFixed(3) ?? "?"} in · $${completion?.toFixed(3) ?? "?"} out`
-            : `Local model tag: ${model.id}`}
+            : localMeta.length > 0 ? localMeta.join(" · ") : `Local model tag: ${model.id}`}
         </p>
       </div>
     </motion.div>
@@ -297,9 +325,14 @@ export function AIModelSection() {
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [modelSearch, setModelSearch] = useState("")
+  const [pullName, setPullName] = useState("")
+  const [pullStatus, setPullStatus] = useState<
+    { status: "idle" | "pending" | "ok" | "error"; message?: string }
+  >({ status: "idle" })
+  const pullController = useRef<AbortController | null>(null)
   const [reasoningHelpOpen, setReasoningHelpOpen] = useState(false)
   const [healthStatus, setHealthStatus] = useState<
-    { status: "idle" | "pending" | "ok" | "error"; error?: string }
+    { status: "idle" | "pending" | "ok" | "error"; error?: string; version?: string; modelCount?: number }
   >({ status: "idle" })
 
   const activeProvider: Provider = useMemo(
@@ -310,29 +343,32 @@ export function AIModelSection() {
   const isOllama = providerId === ollamaProvider.id
 
   useEffect(() => {
-    queueMicrotask(() => {
+    let cancelled = false
+    const timeout = setTimeout(() => {
       setModels([])
       setModelsLoading(true)
       setModelsError(null)
       setHealthStatus({ status: "idle" })
-    })
-    let cancelled = false
-    activeProvider
-      .listModels()
-      .then((items) => {
-        if (cancelled) return
-        setModels(items)
-        setModelsLoading(false)
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        setModelsError(e instanceof Error ? e.message : String(e))
-        setModelsLoading(false)
-      })
+      activeProvider
+        .listModels()
+        .then((items) => {
+          if (cancelled) return
+          setModels(items)
+          setModelsLoading(false)
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return
+          setModelsError(e instanceof Error ? e.message : String(e))
+          setModelsLoading(false)
+        })
+    }, isOllama ? 350 : 0)
     return () => {
       cancelled = true
+      clearTimeout(timeout)
     }
-  }, [activeProvider])
+  }, [activeProvider, isOllama, ollamaBaseUrl])
+
+  useEffect(() => () => pullController.current?.abort(), [])
 
   useEffect(() => {
     if (!isOpenRouter) {
@@ -412,8 +448,43 @@ export function AIModelSection() {
   const handleHealthcheck = useCallback(async () => {
     setHealthStatus({ status: "pending" })
     const result = await activeProvider.healthcheck()
-    setHealthStatus(result.ok ? { status: "ok" } : { status: "error", error: result.error })
+    setHealthStatus(result.ok
+      ? { status: "ok", version: result.version, modelCount: result.modelCount }
+      : { status: "error", error: result.error })
   }, [activeProvider])
+
+  const handlePullModel = useCallback(async () => {
+    if (pullStatus.status === "pending") {
+      pullController.current?.abort()
+      return
+    }
+    const name = pullName.trim()
+    if (!name) {
+      setPullStatus({ status: "error", message: "Enter a model name, such as qwen3:8b." })
+      return
+    }
+    const controller = new AbortController()
+    pullController.current = controller
+    setPullStatus({ status: "pending", message: `Pulling ${name}…` })
+    try {
+      await pullOllamaModel(name, controller.signal)
+      const items = await activeProvider.listModels()
+      setModels(items)
+      setModelsError(null)
+      const installed = items.find((item) => item.id === name || item.id === `${name}:latest`)
+      if (installed) handleModelChange(installed.id)
+      setPullName("")
+      setPullStatus({ status: "ok", message: `${installed?.name ?? name} is ready.` })
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setPullStatus({ status: "idle" })
+      } else {
+        setPullStatus({ status: "error", message: error instanceof Error ? error.message : String(error) })
+      }
+    } finally {
+      if (pullController.current === controller) pullController.current = null
+    }
+  }, [activeProvider, handleModelChange, pullName, pullStatus.status])
 
   const modelRows = useMemo(() => filteredModels.map((m) => (
     <ModelRow
@@ -617,7 +688,12 @@ export function AIModelSection() {
                 className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-caption text-emerald-700 dark:text-emerald-400"
               >
                 <Check className="h-3.5 w-3.5 shrink-0" />
-                Connected. {`Found ${models.length} installed model${models.length === 1 ? "" : "s"}.`}
+                <span>
+                  Connected{healthStatus.version ? ` to Ollama ${healthStatus.version}` : ""}.
+                  {typeof healthStatus.modelCount === "number"
+                    ? ` Found ${healthStatus.modelCount} installed model${healthStatus.modelCount === 1 ? "" : "s"}.`
+                    : ""}
+                </span>
               </motion.div>
             )}
             {healthStatus.status === "error" && (
@@ -658,6 +734,47 @@ export function AIModelSection() {
             </button>
           )}
         </div>
+        {isOllama && (
+          <div className="mt-3 rounded-lg border border-border/70 bg-background/30 p-2.5">
+            <div className="flex gap-2">
+              <Input
+                value={pullName}
+                onChange={(event) => {
+                  setPullName(event.target.value)
+                  if (pullStatus.status === "error") setPullStatus({ status: "idle" })
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && pullStatus.status !== "pending") void handlePullModel()
+                }}
+                disabled={pullStatus.status === "pending"}
+                placeholder="Model to pull, e.g. qwen3:8b"
+                className="h-8 min-w-0 font-mono text-xs"
+                aria-label="Ollama model to pull"
+              />
+              <Button
+                type="button"
+                variant={pullStatus.status === "pending" ? "outline" : "default"}
+                size="sm"
+                onClick={() => { void handlePullModel() }}
+                className="h-8 shrink-0 gap-1.5"
+              >
+                {pullStatus.status === "pending"
+                  ? <><X className="h-3.5 w-3.5" /> Cancel</>
+                  : <><Download className="h-3.5 w-3.5" /> Pull model</>}
+              </Button>
+            </div>
+            <p
+              role="status"
+              aria-live="polite"
+              className={cn(
+                "mt-1.5 min-h-4 text-caption",
+                pullStatus.status === "error" ? "text-destructive" : "text-muted-foreground/70",
+              )}
+            >
+              {pullStatus.message ?? "Downloads from the Ollama library to this server."}
+            </p>
+          </div>
+        )}
         <AnimatePresence initial={false}>
           {model && models.some((m) => m.id === model) && (
             <motion.div

@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Moon, Sun, Monitor, Sparkles, Minus, Plus } from "lucide-react";
 import type { ThemeId, ThemeMode } from "@/lib/themes";
 import { cn } from "@/lib/utils";
+import { isMacOS } from "@/lib/platform";
 
 interface AppearanceSectionProps {
   theme: ThemeId;
@@ -362,11 +363,7 @@ export function AppearanceSection({
 }: AppearanceSectionProps) {
   const [hovered, setHovered] = useState<ThemeId | null>(null);
   const reduceMotion = useReducedMotion();
-  const shortcutModifier =
-    typeof navigator !== "undefined" &&
-    /mac|iphone|ipad|ipod/i.test(navigator.platform)
-      ? "Cmd"
-      : "Ctrl";
+  const shortcutModifier = isMacOS ? "Cmd" : "Ctrl";
   const displayTheme: ThemeId = hovered ?? theme;
   const displaySwatch = THEME_SWATCHES[displayTheme];
 

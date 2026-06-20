@@ -56,7 +56,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 | Frontend | React 19 · TypeScript (strict) · Tailwind v4 · Radix primitives · Recharts · Framer Motion · Sonner · `lucide-react` · `react-day-picker` · `date-fns` |
 | Desktop shell | Tauri v2 (Rust) — plugins: `fs` (with watcher) · `dialog` · `notification` · `opener` · `shell` · `os` · `updater` |
 | Type & colour | Sora Variable (display) · Geist (UI) · single-accent palette, dark and light modes equally considered |
-| AI | OpenRouter Chat Completions with strict `json_schema` output (Copilot, Auto Rename, Text-to-Events) |
+| AI | OpenRouter or local Ollama, with structured output and tool calling (Copilot, Auto Rename, Text-to-Events) |
 | Cloud | Optional Supabase Auth + Postgres + Realtime, custom sync engine (queue, conflict resolution, device tracking). Notion integrates separately. |
 
 ---

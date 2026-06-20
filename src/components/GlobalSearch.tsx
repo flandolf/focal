@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { isMacOS } from "@/lib/platform";
 import { FileTypeIcon } from "@/components/FileTypeIcon";
 import {
   formatFileSize,
@@ -135,11 +136,7 @@ export function GlobalSearch({
   const resultListId = `${searchId}-results`;
   const statusId = `${searchId}-status`;
   const getResultId = (index: number) => `${resultListId}-${index}`;
-  const modKeyLabel =
-    typeof navigator !== "undefined" &&
-    /mac|iphone|ipad|ipod/i.test(navigator.platform)
-      ? "⌘"
-      : "Ctrl";
+  const modKeyLabel = isMacOS ? "⌘" : "Ctrl";
 
   const quickActions = useMemo<QuickAction[]>(
     () => {

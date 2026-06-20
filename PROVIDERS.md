@@ -57,7 +57,9 @@ whatever the host uses:
 - OpenRouter → `response_format: { type: "json_schema", ... }` (server enforces)
 - Ollama → native `/api/chat` `format: <JSON schema>`
 
-`ModelInfo` — what `listModels()` returns: `{ id, name?, contextLength?, supportsStructuredOutput? }`.
+`ModelInfo` — what `listModels()` returns. Ollama also supplies local size,
+parameter count, quantization, family, context length, and host-reported
+capabilities from `/api/tags` and `/api/show`.
 
 ## Current providers
 
@@ -92,6 +94,12 @@ The provider still performs two small defensive steps:
 2. It retries once if the returned object does not match the required root
    keys. The caller's parser remains the final validator for app-specific ids,
    dates, and enum values.
+
+The desktop app routes Ollama through a small native Tauri bridge so packaged
+webviews are not blocked by Ollama's CORS policy. Settings can test the server,
+show its version, discover chat-capable installed models, and pull a model from
+the Ollama library without opening a terminal. Pulls use the same cancellation
+path as chat requests.
 
 ## Adding a new provider
 

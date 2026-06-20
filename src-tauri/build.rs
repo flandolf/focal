@@ -1,10 +1,8 @@
-// ponytail: The CSP string in `src-tauri/tauri.conf.json` under
-// `app.security.csp` lets the production webview reach Ollama (and any
-// other localhost LLM server) on http://localhost:11434 / 127.0.0.1.
-// Tauri's default `csp: null` falls back to `default-src 'self'`, which
-// blocks `fetch()` outside `self`. Tauri 2.x auto-adds
-// `NSAllowsLocalNetworking` to macOS Info.plist so the platform layer is
-// fine -- only the webview CSP needs widening.
+// ponytail: The packaged Windows webview has origin `http://tauri.localhost`,
+// which Ollama's default CORS policy rejects. Ollama calls therefore use the
+// small native bridge in `src-tauri/src/commands/ollama.rs`; browser-only
+// development still uses fetch. The CSP keeps loopback fetch available where
+// CORS permits.
 //
 // `tauri_build::build()` rejects strict-JSON-violating comments (no
 // JSONC), so the rationale lives here instead of inline above. If you

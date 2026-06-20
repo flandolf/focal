@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils"
 import { VCE_SUBJECTS, type TimetablePeriod, type TimetableDayLabel, type Subject } from "@/lib/types"
 import { MOTION_DURATION, MOTION_EASE_SNAPPY } from "@/lib/motion"
+import { isMacOS } from "@/lib/platform"
 
 interface PeriodEditPopoverProps {
   period: TimetablePeriod
@@ -305,7 +306,7 @@ export function PeriodEditPopover({
           </div>
 
           <p className="text-caption text-muted-foreground/40 text-center">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to save
+            {isMacOS ? "⌘" : "Ctrl"}+Enter to save
           </p>
         </motion.div>
       </PopoverContent>
