@@ -48,7 +48,7 @@ import {
   type Provider,
   type ModelInfo,
 } from "@/lib/providers"
-import { pullOllamaModel } from "@/lib/providers/ollama"
+import { chooseOllamaModel, pullOllamaModel } from "@/lib/providers/ollama"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { AssistantPersonality, ReasoningEffort } from "@/lib/settings"
 
@@ -361,11 +361,22 @@ export function AIModelSection() {
         .then((items) => {
           if (cancelled) return
           setModels(items)
+          if (isOllama) {
+            setHealthStatus({ status: "ok", modelCount: items.length })
+            const nextModel = chooseOllamaModel(items, getEffectiveModel())
+            if (nextModel) {
+              setModelState(nextModel)
+              setEffectiveModel(nextModel)
+              notifyUserSettingsChanged()
+            }
+          }
           setModelsLoading(false)
         })
         .catch((e: unknown) => {
           if (cancelled) return
-          setModelsError(e instanceof Error ? e.message : String(e))
+          const message = e instanceof Error ? e.message : String(e)
+          setModelsError(message)
+          if (isOllama) setHealthStatus({ status: "error", error: message })
           setModelsLoading(false)
         })
     }, isOllama ? 350 : 0)

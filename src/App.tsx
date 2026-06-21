@@ -899,6 +899,23 @@ function App() {
     }
   }, [sessions, updateSession, pushSessionChange, setSessionDialogOpen, setSelectedSession])
 
+  const handleAiUpdateStudySession = useCallback(async (
+    id: string,
+    updates: Partial<Omit<StudySession, "id" | "created_at">>,
+  ) => {
+    const session = sessions.find((item) => item.id === id)
+    if (!session) return false
+    try {
+      await updateSession(id, updates)
+      toast.success(`Study session "${updates.title ?? session.title}" updated`)
+      void pushSessionChange({ ...session, ...updates })
+      return true
+    } catch (e) {
+      toast.error(`Failed to update study session: ${String(e)}`)
+      return false
+    }
+  }, [sessions, updateSession, pushSessionChange])
+
   const handleDeleteStudySession = useCallback(async (id: string) => {
     const session = sessions.find((s) => s.id === id)
     if (!session) return
@@ -1797,6 +1814,7 @@ function App() {
             projects={projects}
             subjects={availableSubjects}
             onCreateSession={handleCreateStudySession}
+            onUpdateSession={handleAiUpdateStudySession}
             onCreateEvent={handleCreateEvent}
             onUpdateEvent={handleEditEvent}
             onDeleteEvent={handleDeleteEvent}
