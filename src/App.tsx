@@ -977,6 +977,27 @@ function App() {
     }
   }, [addEvents, requestNotionSync])
 
+  const handleImportVcaaEvents = useCallback(async (items: Omit<CalendarEvent, "id" | "created_at">[]) => {
+    const existingBySourceId = new Map(events.flatMap((event) =>
+      event.source?.type === "vcaa" ? [[event.source.id, event] as const] : []))
+    const creates: Omit<CalendarEvent, "id" | "created_at">[] = []
+    const updates: { id: string; updates: Partial<Omit<CalendarEvent, "id" | "created_at">> }[] = []
+    for (const item of items) {
+      const existing = item.source?.type === "vcaa" ? existingBySourceId.get(item.source.id) : undefined
+      if (existing) {
+        updates.push({ id: existing.id, updates: {
+          title: item.title,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          eventType: "exam",
+          subjectId: item.subjectId,
+          source: item.source,
+        } })
+      } else creates.push(item)
+    }
+    await syncEvents(creates, updates)
+  }, [events, syncEvents])
+
   const handleEditEvent = useCallback(async (data: {
     id: string
     title: string
@@ -1734,6 +1755,7 @@ function App() {
                     onNewEvent={handleOpenNewEvent}
                     onNewProject={handleNewProject}
                     onCreateEvents={handleCreateEvents}
+                    onImportVcaaEvents={handleImportVcaaEvents}
                     onCreateStudySessions={handleCreateStudySessions}
                     onDeleteCalendarItems={handleDeleteCalendarItems}
                     onSetCalendarItemsCompleted={handleSetCalendarItemsCompleted}

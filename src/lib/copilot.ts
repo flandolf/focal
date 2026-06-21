@@ -4,7 +4,7 @@ import { getActiveProvider } from "@/lib/providers"
 import { VCE_JSON_FORMAT_GUARD, VCE_SYSTEM_PREAMBLE, buildUserBriefing } from "@/lib/aiAssistant"
 import { getSubjectById, getSessionSubjectIds, getLocalDateValue } from "@/lib/utils"
 import type { CalendarEvent, PriorityItem, PriorityUrgency, Project, StudySession, Subject } from "@/lib/types"
-import type { PrepBalanceItem } from "@/lib/planning"
+import type { AvailableStudyInterval, PrepBalanceItem } from "@/lib/planning"
 
 // --- Types ---
 
@@ -152,6 +152,7 @@ export async function generateAssessmentCopilotPlan({
   subjects,
   model,
   currentMonth,
+  availableIntervals,
   currentDrafts,
   refinement,
   signal,
@@ -164,6 +165,7 @@ export async function generateAssessmentCopilotPlan({
   subjects: Subject[]
   model: string
   currentMonth: Date
+  availableIntervals: AvailableStudyInterval[]
   currentDrafts?: CopilotSessionDraft[]
   refinement?: string
   /** Optional cancellation handle. Forwarded to `provider.chatCompletion`. */
@@ -175,7 +177,7 @@ export async function generateAssessmentCopilotPlan({
   }
 
   const today = getLocalDateValue(new Date())
-  const planningEnd = getLocalDateValue(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000))
+  const planningEnd = getLocalDateValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
   const subjectIds = subjects.map((subject) => subject.id)
   const activeProjects = projects.filter((project) => !project.isArchived && !project.isFinished).slice(0, 40)
   const projectIds = activeProjects.map((project) => project.id)
@@ -250,10 +252,12 @@ export async function generateAssessmentCopilotPlan({
     subject_ids: draft.subjectIds,
     topics: splitCopilotTopics(draft.topicsInput),
   })).join("\n")
+  const availabilityLines = availableIntervals.map((interval) =>
+    `${interval.date}: ${formatCopilotDateTime(interval.startTime)}-${formatCopilotDateTime(interval.endTime)} / ${interval.availableMinutes}m free / ${interval.dailyRemainingMinutes}m daily cap remaining`).join("\n")
 
-  const systemMessage = `${VCE_SYSTEM_PREAMBLE}\n\n${copilotBriefing ? `${copilotBriefing}\n\n` : ""}Rules:\n- Today is ${today}; use it to resolve relative timing.\n- Create study sessions only. Do not create normal calendar events, deadlines, SACs, exams, assignments, or reminders.\n- Schedule sessions from ${today} through ${planningEnd} unless the user's refinement explicitly asks for another date range.\n- Prefer urgent assessments, weak topics, blockers, low-confidence completed sessions, and low planned prep time.\n- Return 2 to 5 practical study-session drafts.\n- Use 24-hour start_time in HH:mm format.\n- Use durations from 30 to 180 minutes in 15-minute increments.\n- Every session must include at least one concrete subject id in subject_ids.\n- Use project_id when a session clearly supports an existing active assessment; otherwise use "none".\n- If a refinement is provided, treat the current edited drafts as the source of truth and apply ONLY the requested changes \u2014 do not silently rewrite preserved drafts.\n- Keep summary and focus items concise.\n\n${VCE_JSON_FORMAT_GUARD}`
+  const systemMessage = `${VCE_SYSTEM_PREAMBLE}\n\n${copilotBriefing ? `${copilotBriefing}\n\n` : ""}Rules:\n- Today is ${today}; use it to resolve relative timing.\n- Create study sessions only. Do not create normal calendar events, deadlines, SACs, exams, assignments, or reminders.\n- Schedule sessions from ${today} through ${planningEnd} unless the user's refinement explicitly asks for another date range.\n- Every draft must fit completely inside one supplied free study interval. Never overlap drafts or exceed that day's remaining cap.\n- Prefer urgent assessments, weak topics, blockers, low-confidence completed sessions, and low planned prep time.\n- Return 2 to 5 practical study-session drafts.\n- Use 24-hour start_time in HH:mm format.\n- Use durations from 30 to 180 minutes in 15-minute increments.\n- Every session must include at least one concrete subject id in subject_ids.\n- Use project_id when a session clearly supports an existing active assessment; otherwise use "none".\n- If a refinement is provided, treat the current edited drafts as the source of truth and apply ONLY the requested changes \u2014 do not silently rewrite preserved drafts.\n- Keep summary and focus items concise.\n\n${VCE_JSON_FORMAT_GUARD}`
 
-  const userMessage = `${refinement ? `Refinement request:\n"""\n${refinement}\n"""\n\nCurrent edited drafts:\n${currentDraftLines ?? "None"}\n\n` : ""}Available subjects:\n${subjectLines}\n\nActive assessments:\n${assessmentLines || "None"}\n\nAssessment priority items:\n${priorityLines || "None"}\n\nPrep balance for ${format(currentMonth, "MMMM yyyy")}:\n${prepLines || "None"}\n\nRelevant sessions:\n${sessionLines || "None"}\n\nUpcoming assessment events:\n${eventLines || "None"}`
+  const userMessage = `${refinement ? `Refinement request:\n"""\n${refinement}\n"""\n\nCurrent edited drafts:\n${currentDraftLines ?? "None"}\n\n` : ""}Free study intervals (the only allowed times):\n${availabilityLines || "None"}\n\nAvailable subjects:\n${subjectLines}\n\nActive assessments:\n${assessmentLines || "None"}\n\nAssessment priority items:\n${priorityLines || "None"}\n\nPrep balance for ${format(currentMonth, "MMMM yyyy")}:\n${prepLines || "None"}\n\nRelevant sessions:\n${sessionLines || "None"}\n\nUpcoming assessment events:\n${eventLines || "None"}`
 
   const schema = {
     type: "object",
