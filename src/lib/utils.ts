@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent } from "@/lib/types"
+import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent, NotionSource } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
 export function generateId(): string {
@@ -57,7 +57,7 @@ export function safeDateMeta(obj: Record<string, unknown>): { created_at: string
   }
 }
 
-export function parseNotionSource(value: unknown): CalendarEvent["source"] | StudySession["source"] {
+export function parseNotionSource(value: unknown): NotionSource | undefined {
   if (typeof value !== "object" || value === null) return undefined
   const record = value as Record<string, unknown>
   if (record.type !== "notion" || typeof record.id !== "string") return undefined
@@ -69,6 +69,20 @@ export function parseNotionSource(value: unknown): CalendarEvent["source"] | Stu
     kind: record.kind === "event" || record.kind === "session" ? record.kind : undefined,
     bodyHash: typeof record.bodyHash === "string" ? record.bodyHash : undefined,
   }
+}
+
+export function parseCalendarEventSource(value: unknown): CalendarEvent["source"] {
+  const notion = parseNotionSource(value)
+  if (notion) return notion
+  if (typeof value !== "object" || value === null) return undefined
+  const record = value as Record<string, unknown>
+  if (
+    record.type !== "vcaa" ||
+    typeof record.id !== "string" ||
+    typeof record.year !== "number" ||
+    typeof record.url !== "string"
+  ) return undefined
+  return { type: "vcaa", id: record.id, year: record.year, url: record.url }
 }
 
 export function safeStringArray(obj: Record<string, unknown>, key: string): string[] | undefined {

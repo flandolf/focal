@@ -39,6 +39,7 @@ pub fn run() {
             commands::ollama::ollama_request,
             commands::ollama::cancel_ollama_request,
             commands::window::window_set_zoom,
+            commands::vcaa::fetch_vcaa_exam_timetable,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

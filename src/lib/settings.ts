@@ -1,4 +1,4 @@
-import type { TimetableConfig, TimetableDayLabel, TimetableEntry, TimetableViewSettings } from "@/lib/types"
+import type { StudyPlanningPreferences, StudyWindow, TimetableConfig, TimetableDayLabel, TimetableEntry, TimetableViewSettings } from "@/lib/types"
 export type { TimetableConfig } from "@/lib/types"
 
 const KEYS = {
@@ -22,6 +22,7 @@ const KEYS = {
   notionCompletedProperty: "focal-notion-completed-property",
   notionSubjectProperty: "focal-notion-subject-property",
   projectsRootPath: "focal-projects-root-path",
+  studyPlanningPreferences: "focal-study-planning-preferences",
 } as const
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
@@ -106,6 +107,41 @@ function getBool(key: string, defaultValue: boolean): boolean {
 
 function setBool(key: string, value: boolean): void {
   localStorage.setItem(key, String(value))
+}
+
+function isStudyWindow(value: unknown): value is StudyWindow {
+  if (typeof value !== "object" || value === null) return false
+  const window = value as Record<string, unknown>
+  return Number.isInteger(window.weekday) && Number(window.weekday) >= 0 && Number(window.weekday) <= 6 &&
+    typeof window.startTime === "string" && /^\d{2}:\d{2}$/.test(window.startTime) &&
+    typeof window.endTime === "string" && /^\d{2}:\d{2}$/.test(window.endTime) &&
+    window.startTime < window.endTime
+}
+
+export const DEFAULT_STUDY_PLANNING_PREFERENCES: StudyPlanningPreferences = {
+  windows: [],
+  dailyCapMinutes: 120,
+}
+
+export function getStudyPlanningPreferences(): StudyPlanningPreferences {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(KEYS.studyPlanningPreferences) ?? "null") as Partial<StudyPlanningPreferences> | null
+    return {
+      windows: Array.isArray(parsed?.windows) ? parsed.windows.filter(isStudyWindow) : [],
+      dailyCapMinutes: typeof parsed?.dailyCapMinutes === "number"
+        ? Math.min(480, Math.max(30, Math.round(parsed.dailyCapMinutes / 15) * 15))
+        : DEFAULT_STUDY_PLANNING_PREFERENCES.dailyCapMinutes,
+    }
+  } catch {
+    return { ...DEFAULT_STUDY_PLANNING_PREFERENCES, windows: [] }
+  }
+}
+
+export function setStudyPlanningPreferences(preferences: StudyPlanningPreferences): void {
+  localStorage.setItem(KEYS.studyPlanningPreferences, JSON.stringify({
+    windows: preferences.windows.filter(isStudyWindow),
+    dailyCapMinutes: Math.min(480, Math.max(30, Math.round(preferences.dailyCapMinutes / 15) * 15)),
+  }))
 }
 
 // ---------------------------------------------------------------------------

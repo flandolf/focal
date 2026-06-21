@@ -18,6 +18,7 @@ import {
   Wand2,
   ArrowRight,
   Sparkles,
+  CalendarSync,
 } from "lucide-react";
 import {
   getDayLabelForDate,
@@ -41,6 +42,7 @@ import {
 } from "@/lib/utils";
 import { AssessmentCopilot } from "@/components/AssessmentCopilot";
 import { TextEventPlanner } from "@/components/TextEventPlanner";
+import { VcaaExamImportDialog } from "@/components/VcaaExamImportDialog";
 import { getPriorityItems } from "@/lib/studyPriority";
 import type { PrepBalanceItem } from "@/lib/planning";
 import type { TimetableConfig } from "@/lib/settings";
@@ -99,6 +101,9 @@ interface HomeViewProps {
   onCreateEvents: (
     events: Omit<CalendarEvent, "id" | "created_at">[],
   ) => Promise<void>;
+  onImportVcaaEvents: (
+    events: Omit<CalendarEvent, "id" | "created_at">[],
+  ) => Promise<void>;
   onCreateStudySessions: (
     sessions: Omit<StudySession, "id" | "status" | "created_at">[],
   ) => Promise<void>;
@@ -133,6 +138,7 @@ export const HomeView = memo(function HomeView({
   onNewEvent,
   onNewProject,
   onCreateEvents,
+  onImportVcaaEvents,
   onCreateStudySessions,
   onDeleteCalendarItems,
   onSetCalendarItemsCompleted,
@@ -155,6 +161,7 @@ export const HomeView = memo(function HomeView({
   const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
   const [eventBatchSaving, setEventBatchSaving] = useState(false);
   const [textPlannerOpen, setTextPlannerOpen] = useState(false);
+  const [vcaaImportOpen, setVcaaImportOpen] = useState(false);
   // arrivaL + Spotlight — single subtle fade + 4px rise on mount, gated on
   // prefers-reduced-motion. The state-conditional halos on the overdue
   // banner / current-period timetable / selection toolbar do the rest.
@@ -962,7 +969,16 @@ export const HomeView = memo(function HomeView({
                 className="h-8 gap-1.5 rounded-xl bg-background/45"
               >
                 <Brain className="h-3.5 w-3.5" />
-                Assessment Copilot
+                Plan my week
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVcaaImportOpen(true)}
+                className="h-8 gap-1.5 rounded-xl bg-background/45"
+              >
+                <CalendarSync className="h-3.5 w-3.5" />
+                Import VCAA exams
               </Button>
               <Button
                 variant="outline"
@@ -1498,6 +1514,7 @@ export const HomeView = memo(function HomeView({
         prepBalanceItems={prepBalanceItems}
         planningSubjects={planningSubjects}
         currentMonth={currentMonth}
+        timetableConfig={timetableConfig}
         onCreateStudySessions={onCreateStudySessions}
       />
 
@@ -1512,6 +1529,14 @@ export const HomeView = memo(function HomeView({
         planningSubjects={planningSubjects}
         onCreateEvents={onCreateEvents}
         onCreateStudySessions={onCreateStudySessions}
+      />
+
+      <VcaaExamImportDialog
+        open={vcaaImportOpen}
+        onOpenChange={setVcaaImportOpen}
+        subjects={planningSubjects}
+        events={events}
+        onImport={onImportVcaaEvents}
       />
 
       {eventBatchToolbar}
