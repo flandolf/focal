@@ -114,7 +114,9 @@ export function describeAiError(e: unknown): AiErrorHint {
   if (lower.includes("network") || lower.includes("failed to fetch") || lower.includes("econnrefused")) {
     return {
       message: raw,
-      hint: "Can't reach the AI server. Check your network and the server URL.",
+      hint: provider.id === "ollama"
+        ? "Make sure Ollama is running, then check its server URL under Settings → AI."
+        : "Can't reach the AI server. Check your network and the server URL.",
       cancelled: false,
     }
   }

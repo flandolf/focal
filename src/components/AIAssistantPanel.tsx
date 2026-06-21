@@ -40,7 +40,7 @@ import {
   VCE_SYSTEM_PREAMBLE,
   type ChatTurn,
 } from "@/lib/aiAssistant"
-import { getActiveProvider, type ToolCall, type ToolDefinition } from "@/lib/providers"
+import { getActiveProvider, getEffectiveModel, type ToolCall, type ToolDefinition } from "@/lib/providers"
 import type { Project, StudySession, CalendarEvent, Subject, EventType } from "@/lib/types"
 
 const SUGGESTED_PROMPTS = [
@@ -49,12 +49,12 @@ const SUGGESTED_PROMPTS = [
     prompt: "Summarise this week's upcoming deadlines in 3 bullet points.",
   },
   {
-    label: "Build a block",
-    prompt: "What's an effective 45-minute Methods study block?",
+    label: "Find a plan gap",
+    prompt: "Compare my upcoming deadlines with planned study sessions. Find the highest-risk gap and suggest one specific study block.",
   },
   {
-    label: "Plan revision",
-    prompt: "Help me plan a revision week for my next SAC.",
+    label: "Improve my plan",
+    prompt: "Review my next 7 days and suggest the single change that would most improve my study plan.",
   },
   {
     label: "Explain a method",
@@ -135,6 +135,10 @@ interface AiAssistantPanelProps {
     description?: string
     notes?: string
   }) => Promise<unknown> | void
+  onUpdateSession?: (
+    id: string,
+    updates: Partial<Omit<StudySession, "id" | "created_at">>,
+  ) => Promise<unknown> | void
   onCreateEvent?: (data: {
     title: string
     startTime: string
@@ -384,6 +388,7 @@ function endOfWeekDate(today: string): string {
 }
 
 function relativeDeadlineLabel(days: number): string {
+  if (days < 0) return `${Math.abs(days)} day${days === -1 ? "" : "s"} overdue`
   if (days === 0) return "today"
   if (days === 1) return "tomorrow"
   return `in ${days} days`
@@ -501,7 +506,9 @@ Tool rules:
 - If the user asks for "next 3 SACs" or similar, call list_deadlines with query "sac" and range "all_upcoming", then answer from the earliest results.
 - For study-session questions, call list_study_sessions.
 - For workload, prioritization, or "what should I do next?" questions, call get_study_overview.
+- Base prioritization on the returned deadline, planned-time, and coverage-gap evidence. Name the evidence briefly, then recommend one concrete next block instead of generic study tips.
 - Use create_study_session only when the user explicitly asks to create or schedule a session. Resolve project and subject ids first when needed.
+- Use update_study_session when the user explicitly asks to reschedule, rename, complete, or edit a study session. Call list_study_sessions first when the session id is unknown; never guess between multiple matches.
 - For subject ids, call list_subjects when unsure.
 - If you call list_subjects for an assessment-date question, you must still call list_deadlines before answering.
 - For event create/update/delete/read requests, use the event tools. The app confirms destructive deletion.
@@ -699,6 +706,32 @@ const FOCAL_AGENT_TOOLS: ToolDefinition[] = [
           notes: { type: "string" },
         },
         required: ["title", "subjectIds", "startTime", "endTime"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_study_session",
+      description: "Reschedule, rename, complete, or edit one existing Focal study session. Identify exactly one session, then provide only changed fields.",
+      parameters: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Existing Focal study-session id when known." },
+          query: { type: "string", description: "Title, subject, or project search hint when id is unknown." },
+          title: { type: "string" },
+          subjectIds: { type: "array", items: { type: "string" }, description: "Subject ids from list_subjects." },
+          projectId: { type: "string", description: "Project id from list_projects." },
+          startTime: { type: "string", description: "ISO 8601 datetime." },
+          endTime: { type: "string", description: "ISO 8601 datetime after startTime." },
+          description: { type: "string" },
+          topics: { type: "array", items: { type: "string" } },
+          notes: { type: "string" },
+          status: { type: "string", enum: ["planned", "in-progress", "completed"] },
+          confidence: { type: "number", enum: [1, 2, 3, 4, 5] },
+          blockers: { type: "string" },
+          nextAction: { type: "string" },
+        },
       },
     },
   },
@@ -1187,6 +1220,147 @@ function formatSessionLine(
   return `- ${session.id}: "${session.title}" (${session.status}) ${session.startTime} to ${session.endTime}; ${subjectLabels}${projectLabel}${confidence}`
 }
 
+type PreparedStudySessionUpdate =
+  | { session: StudySession; updates: Partial<Omit<StudySession, "id" | "created_at">> }
+  | { error: string }
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function prepareStudySessionUpdate(
+  call: ToolCall,
+  context: {
+    sessions?: StudySession[]
+    subjects?: Subject[]
+    projects?: Project[]
+    now?: string
+  },
+): PreparedStudySessionUpdate {
+  const args = call.arguments
+  const sessionId = readOptionalString(args, "sessionId")
+  const query = readOptionalString(args, "query")
+  const candidates = context.sessions ?? []
+  let matches = sessionId
+    ? candidates.filter((session) => session.id === sessionId)
+    : candidates.filter((session) => searchMatches(sessionSearchText(session, context.subjects, context.projects), query))
+  if (!sessionId && query) {
+    const exact = matches.filter((session) => normaliseKey(session.title) === normaliseKey(query))
+    if (exact.length === 1) matches = exact
+  }
+  if (matches.length !== 1) {
+    if (matches.length === 0) return { error: "No matching study session found." }
+    return {
+      error: `More than one study session matches:\n${matches.slice(0, 8).map((session) => formatSessionLine(session, context.subjects, context.projects)).join("\n")}`,
+    }
+  }
+
+  const session = matches[0]
+  const updates: Partial<Omit<StudySession, "id" | "created_at">> = {}
+  const title = readOptionalString(args, "title")
+  const subjectIds = readOptionalStringArray(args, "subjectIds")
+  const projectId = readOptionalString(args, "projectId")
+  const startTime = readOptionalString(args, "startTime")
+  const endTime = readOptionalString(args, "endTime")
+  const status = readOptionalString(args, "status")
+  const confidence = args.confidence
+
+  if (title) updates.title = title
+  if (subjectIds) updates.subjectIds = subjectIds
+  if (projectId) updates.projectId = projectId
+  if (startTime) updates.startTime = startTime
+  if (endTime) updates.endTime = endTime
+  for (const key of ["description", "notes", "blockers", "nextAction"] as const) {
+    const value = readOptionalString(args, key)
+    if (value) updates[key] = value
+  }
+  const topics = readOptionalStringArray(args, "topics")
+  if (topics) updates.topics = topics
+  if (status === "planned" || status === "in-progress" || status === "completed") {
+    updates.status = status
+    updates.completedAt = status === "completed" ? context.now ?? new Date().toISOString() : undefined
+  } else if (status) {
+    return { error: `"${status}" is not a valid study-session status.` }
+  }
+  if (confidence !== undefined) {
+    if (confidence !== 1 && confidence !== 2 && confidence !== 3 && confidence !== 4 && confidence !== 5) {
+      return { error: "Confidence must be a whole number from 1 to 5." }
+    }
+    updates.confidence = confidence
+  }
+
+  if (Object.keys(updates).length === 0) return { error: "No study-session changes were provided." }
+  if (subjectIds?.some((id) => !(context.subjects ?? []).some((subject) => subject.id === id))) {
+    return { error: "One or more subject ids do not exist, so I did not update the session." }
+  }
+  if (projectId && !(context.projects ?? []).some((project) => project.id === projectId)) {
+    return { error: `Project id "${projectId}" does not exist, so I did not update the session.` }
+  }
+  const nextStart = updates.startTime ?? session.startTime
+  const nextEnd = updates.endTime ?? session.endTime
+  if (!isIsoDateTime(nextStart) || !isIsoDateTime(nextEnd)) {
+    return { error: "The updated study-session times were not valid ISO dates." }
+  }
+  if (new Date(nextEnd).getTime() <= new Date(nextStart).getTime()) {
+    return { error: "The study session must end after it starts." }
+  }
+  return { session, updates }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildStudyOverviewToolResult(
+  projects: Project[] | undefined,
+  sessions: StudySession[] | undefined,
+  subjects: Subject[] | undefined,
+  today: string,
+): string {
+  const overview = buildAssistantOverview(projects, sessions, today)
+  const todayMs = dateOnlyMs(today) ?? 0
+  const nextWeekMs = todayMs + 7 * 24 * 60 * 60 * 1000
+  const nextFortnightMs = todayMs + 14 * 24 * 60 * 60 * 1000
+  const nearestDeadlines = (projects ?? [])
+    .filter((project) => !project.isFinished && !project.isArchived && project.deadline)
+    .sort((a, b) => (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999"))
+    .slice(0, 5)
+  const plannedSessions = (sessions ?? [])
+    .filter((session) => {
+      const start = new Date(session.startTime).getTime()
+      return session.status !== "completed" && start >= todayMs && start <= nextWeekMs
+    })
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+    .slice(0, 8)
+  // ponytail: project/subject linkage is a deliberately cheap coverage heuristic.
+  // Upgrade to explicit per-assessment coverage only if sessions gain that relation.
+  const uncovered = nearestDeadlines.filter((project) => {
+    const deadlineMs = project.deadline ? dateOnlyMs(project.deadline) : null
+    if (deadlineMs === null || deadlineMs > nextFortnightMs) return false
+    return !(sessions ?? []).some((session) => {
+      if (session.status === "completed") return false
+      const start = new Date(session.startTime).getTime()
+      if (start < todayMs || start > deadlineMs + 24 * 60 * 60 * 1000 - 1) return false
+      return session.projectId === project.id || Boolean(project.subjectId && session.subjectIds.includes(project.subjectId))
+    })
+  })
+
+  const deadlineEvidence = nearestDeadlines.length > 0
+    ? nearestDeadlines.map((project) => formatProjectLine(project, subjects, today)).join("\n")
+    : "- None"
+  const sessionEvidence = plannedSessions.length > 0
+    ? plannedSessions.map((session) => formatSessionLine(session, subjects, projects)).join("\n")
+    : "- None"
+  const gapEvidence = uncovered.length > 0
+    ? uncovered.map((project) => formatProjectLine(project, subjects, today)).join("\n")
+    : "- None among deadlines in the next 14 days"
+
+  return `Study overview: ${overview.title}. ${overview.detail}.
+
+Nearest active deadlines:
+${deadlineEvidence}
+
+Planned study in the next 7 days:
+${sessionEvidence}
+
+Coverage gaps (no linked planned session before the deadline):
+${gapEvidence}`
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function executeReadOnlyFocalToolCall(
   call: ToolCall,
@@ -1255,8 +1429,7 @@ export function executeReadOnlyFocalToolCall(
   }
 
   if (call.name === "get_study_overview") {
-    const overview = buildAssistantOverview(context.projects, context.sessions, context.today)
-    return `Study overview: ${overview.title}. ${overview.detail}.`
+    return buildStudyOverviewToolResult(context.projects, context.sessions, context.subjects, context.today)
   }
 
   return null
@@ -1295,6 +1468,7 @@ export function AIAssistantPanel({
   projects,
   subjects,
   onCreateSession,
+  onUpdateSession,
   onCreateEvent,
   onUpdateEvent,
   onDeleteEvent,
@@ -1395,9 +1569,11 @@ export function AIAssistantPanel({
 
   const contextDay = useMemo(() => getLocalDateValue(new Date()), [])
 
-  const providerName = getActiveProvider().displayName
-  const providerMissing = !getActiveProvider().isConfigured()
-  const providerIsOllama = getActiveProvider().id === "ollama"
+  const activeProvider = getActiveProvider()
+  const providerName = activeProvider.displayName
+  const providerMissing = !activeProvider.isConfigured()
+  const providerIsOllama = activeProvider.id === "ollama"
+  const activeModel = getEffectiveModel()
 
   const briefing = useMemo(() => {
     if (!projects?.length && !sessions?.length) return ""
@@ -1680,9 +1856,21 @@ export function AIAssistantPanel({
         })
         return result === false ? `I couldn't create **${title}**.` : `Created study session **${title}** for ${startTime}.`
       }
+      if (toolCall.name === "update_study_session") {
+        if (!onUpdateSession) return "Study-session editing is not available here."
+        const prepared = prepareStudySessionUpdate(toolCall, {
+          sessions,
+          subjects,
+          projects,
+        })
+        if ("error" in prepared) return prepared.error
+        const result = await onUpdateSession(prepared.session.id, prepared.updates)
+        const title = prepared.updates.title ?? prepared.session.title
+        return result === false ? `I couldn't update **${title}**.` : `Updated study session **${title}**.`
+      }
       return executeEventToolCall(eventToolCallFromNative(toolCall), looseCreate)
     },
-    [contextDay, executeEventToolCall, onCreateSession, projects, sessions, subjects],
+    [contextDay, executeEventToolCall, onCreateSession, onUpdateSession, projects, sessions, subjects],
   )
 
   const runFocalAgent = useCallback(
@@ -2170,7 +2358,9 @@ ${text}`,
                     <p className="truncate text-micro leading-tight text-muted-foreground">
                       {providerMissing
                         ? `${providerName} needs setup`
-                        : `Answering with ${providerName}`}
+                        : providerIsOllama
+                          ? `${activeModel} · via Ollama`
+                          : `Answering with ${providerName}`}
                     </p>
                   </div>
                 </div>
@@ -2354,6 +2544,15 @@ ${text}`,
                   <p>{error.message}</p>
                   {error.hint && (
                     <p className="mt-0.5 text-destructive/70">{error.hint}</p>
+                  )}
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      onClick={handleOpenAssistantSettings}
+                      className="mt-1.5 rounded-md px-1.5 py-1 font-medium text-destructive underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+                    >
+                      Open AI settings
+                    </button>
                   )}
                 </div>
               </motion.div>
