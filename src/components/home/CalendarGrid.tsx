@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/context-menu";
 import { getSubjectById, getEventTypeInfo, cn } from "@/lib/utils";
 import { getCalendarSessionIndicators } from "@/lib/groupSessions";
-import { hoverLift, staggerContainer, staggerItem } from "@/lib/motion";
+import { hoverLift } from "@/lib/motion";
 import type { CalendarEvent, Project, StudySession } from "@/lib/types";
 
 const CALENDAR_FALLBACK_COLOR = "var(--muted-foreground)";
@@ -507,9 +507,6 @@ export function CalendarGrid({
       {calendarView === "month" && (
         <motion.div
           className="grid grid-cols-7 gap-0 rounded-2xl border border-border/35 bg-background/16"
-          variants={staggerContainer(0.008, 0)}
-          initial="initial"
-          animate="animate"
         >
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
@@ -574,7 +571,6 @@ export function CalendarGrid({
 
             return (
               <motion.div
-                variants={staggerItem}
                 animate={isHovered ? { scale: 1.018 } : { scale: 1 }}
                 role="button"
                 tabIndex={0}
@@ -843,9 +839,6 @@ export function CalendarGrid({
           </div>
           <motion.div
             className="grid grid-cols-7 gap-1"
-            variants={staggerContainer(0.04, 0)}
-            initial="initial"
-            animate="animate"
           >
             {weekDays.map((date) => {
               const dateKey = format(date, "yyyy-MM-dd");
@@ -894,7 +887,6 @@ export function CalendarGrid({
 
               return (
                 <motion.div
-                  variants={staggerItem}
                   animate={isHovered ? { scale: 1.018 } : { scale: 1 }}
                   whileHover={hoverLift(reduceMotion)}
                   key={dateKey}
