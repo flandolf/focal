@@ -7,7 +7,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(commands::ollama::OllamaRequests::default())
@@ -17,7 +16,6 @@ pub fn run() {
             commands::files::get_project_file_count,
             commands::files::create_project_folder,
             commands::files::create_project_with_subfolders,
-            commands::files::get_subject_folder_template,
             commands::files::search_files_all_projects,
             commands::files::delete_files,
             commands::files::rename_file,
@@ -40,10 +38,6 @@ pub fn run() {
             commands::notion::update_notion_calendar_page,
             commands::ollama::ollama_request,
             commands::ollama::cancel_ollama_request,
-            commands::window::window_minimize,
-            commands::window::window_maximize,
-            commands::window::window_toggle_maximize,
-            commands::window::window_close,
             commands::window::window_set_zoom,
         ])
         .run(tauri::generate_context!())

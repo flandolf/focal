@@ -254,10 +254,6 @@ async function enqueueRemoteSoftDelete(table: SyncTable, rowId: string): Promise
   })
 }
 
-export function getSyncSnapshot(): SyncStatusSnapshot {
-  return snapshot
-}
-
 async function runInitialSync(): Promise<void> {
   try {
     emitStatus({ status: "syncing", error: null, details: "Migrating local IDs..." })
@@ -357,11 +353,6 @@ export async function dropQueueItem(table: SyncTable, rowId: string): Promise<vo
   const queue = await readSyncQueue()
   const remaining = queue.filter((item) => !(item.table === table && item.rowId === rowId))
   await writeSyncQueue(remaining)
-}
-
-/** Get the current sync queue for inspection. */
-export async function getSyncQueue(): Promise<SyncQueueItem[]> {
-  return readSyncQueue()
 }
 
 /** Resolve a sync conflict by accepting the remote version. */
@@ -989,10 +980,6 @@ async function applyRemoteRow(table: SyncTable, row: RemoteRow): Promise<void> {
   })
   await writeJsonArray(fileName, merged)
   emitLocalDataChanged(table)
-}
-
-export function getSyncDisabledReason(): string | null {
-  return syncDisabledReason
 }
 
 async function removeLocalRow(table: SyncTable, id: string): Promise<void> {
