@@ -21,8 +21,6 @@ const KEYS = {
   notionTypeProperty: "focal-notion-type-property",
   notionCompletedProperty: "focal-notion-completed-property",
   notionSubjectProperty: "focal-notion-subject-property",
-  syncNotionToken: "focal-sync-notion-token",
-  syncOpenrouterKey: "focal-sync-openrouter-key",
   projectsRootPath: "focal-projects-root-path",
 } as const
 
@@ -242,24 +240,6 @@ export function setNotionCalendarSettings(settings: NotionCalendarSettings): voi
   setString(KEYS.notionTypeProperty, settings.typeProperty.trim())
   setString(KEYS.notionCompletedProperty, settings.completedProperty.trim())
   setString(KEYS.notionSubjectProperty, settings.subjectProperty.trim())
-}
-
-/** Notion tokens are local-only; legacy sync flags are cleared and ignored. */
-export function getSyncNotionToken(): boolean {
-  return false
-}
-
-export function setSyncNotionToken(_enabled: boolean): void {
-  localStorage.removeItem(KEYS.syncNotionToken)
-}
-
-/** OpenRouter API keys are local-only; legacy sync flags are cleared and ignored. */
-export function getSyncOpenrouterKey(): boolean {
-  return false
-}
-
-export function setSyncOpenrouterKey(_enabled: boolean): void {
-  localStorage.removeItem(KEYS.syncOpenrouterKey)
 }
 
 export function getProjectsRootPath(): string | null {

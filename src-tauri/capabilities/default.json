@@ -17,8 +17,6 @@
       ]
     },
     "dialog:default",
-    "shell:default",
-    "shell:allow-open",
     "fs:allow-appdata-read",
     "fs:allow-appdata-read-recursive",
     "fs:allow-appdata-write",
