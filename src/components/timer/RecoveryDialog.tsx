@@ -24,7 +24,7 @@ export function RecoveryDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-xl">
+      <div className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-background p-5">
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
           <Timer className="h-6 w-6 text-primary" />
         </div>

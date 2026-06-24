@@ -22,6 +22,15 @@ export interface AvailableStudyInterval {
   dailyRemainingMinutes: number
 }
 
+export function sumAvailableStudyMinutes(intervals: AvailableStudyInterval[]): number {
+  const minutesByDate = new Map<string, { free: number; cap: number }>()
+  intervals.forEach((interval) => {
+    const current = minutesByDate.get(interval.date) ?? { free: 0, cap: interval.dailyRemainingMinutes }
+    minutesByDate.set(interval.date, { free: current.free + interval.availableMinutes, cap: current.cap })
+  })
+  return Array.from(minutesByDate.values()).reduce((total, day) => total + Math.min(day.free, day.cap), 0)
+}
+
 interface TimeRange {
   start: number
   end: number
@@ -68,10 +77,14 @@ function subtractRanges(window: TimeRange, busy: TimeRange[]): TimeRange[] {
   return free
 }
 
-function durationMinutes(startTime: string, endTime?: string): number {
-  const start = new Date(startTime).getTime()
-  const end = new Date(endTime ?? start + 60 * MINUTE_MS).getTime()
-  return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, Math.round((end - start) / MINUTE_MS)) : 0
+function getSessionRanges(session: StudySession): TimeRange[] {
+  const periods = session.activeDurations?.length
+    ? session.activeDurations
+    : [{ start: session.startTime, end: session.endTime }]
+  return periods.map((period) => ({
+    start: new Date(period.start).getTime(),
+    end: new Date(period.end).getTime(),
+  }))
 }
 
 export function buildAvailableStudyIntervals({
@@ -100,9 +113,13 @@ export function buildAvailableStudyIntervals({
 
     const dayStart = date.getTime()
     const dayEnd = dayStart + DAY_MS
-    const relevantSessions = sessions.filter((session) =>
-      session.status !== "completed" && new Date(session.startTime).getTime() < dayEnd && new Date(session.endTime).getTime() > dayStart)
-    const plannedMinutes = relevantSessions.reduce((total, session) => total + durationMinutes(session.startTime, session.endTime), 0)
+    const relevantSessionRanges = sessions
+      .filter((session) => session.status !== "completed")
+      .flatMap(getSessionRanges)
+      .filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end) && range.start < dayEnd && range.end > dayStart)
+    const plannedMinutes = relevantSessionRanges.reduce((total, range) => (
+      total + Math.round((Math.min(range.end, dayEnd) - Math.max(range.start, dayStart)) / MINUTE_MS)
+    ), 0)
     const dailyRemainingMinutes = Math.max(0, preferences.dailyCapMinutes - plannedMinutes)
     if (dailyRemainingMinutes < 30) continue
 
@@ -112,10 +129,7 @@ export function buildAvailableStudyIntervals({
         // ponytail: untimed events block one hour; add explicit durations if point events become common.
         end: new Date(event.endTime ?? new Date(event.startTime).getTime() + 60 * MINUTE_MS).getTime(),
       })),
-      ...relevantSessions.map((session) => ({
-        start: new Date(session.startTime).getTime(),
-        end: new Date(session.endTime).getTime(),
-      })),
+      ...relevantSessionRanges,
     ].filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end) && range.start < dayEnd && range.end > dayStart)
 
     if (timetableConfig?.enabled) {
