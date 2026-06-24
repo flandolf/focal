@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from "react"
 import { addMinutes } from "date-fns"
-import { AlertCircle, CalendarPlus, Check, Clock, Loader2, Plus, Trash2, Wand2, X } from "lucide-react"
+import { AlertCircle, CalendarPlus, Check, Clock, Loader2, Plus, RotateCcw, Trash2, Wand2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -8,9 +8,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { getSubjectById, cn, combineDateAndTime } from "@/lib/utils"
-import { buildAvailableStudyIntervals, getUrgencyLabel, getUrgencyClassName, validateStudyPlanBlocks, type AvailableStudyInterval, type PrepBalanceItem } from "@/lib/planning"
-import { getStudyPlanningPreferences, setStudyPlanningPreferences } from "@/lib/settings"
+import { buildAvailableStudyIntervals, getUrgencyLabel, getUrgencyClassName, sumAvailableStudyMinutes, validateStudyPlanBlocks, type AvailableStudyInterval, type PrepBalanceItem } from "@/lib/planning"
+import { DEFAULT_STUDY_PLANNING_PREFERENCES, getStudyPlanningPreferences, setStudyPlanningPreferences } from "@/lib/settings"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
+import { confirmAction } from "@/lib/confirmToast"
 import type { CalendarEvent, PriorityItem, Project, StudyPlanningPreferences, StudySession, Subject, TimetableConfig } from "@/lib/types"
 import { generateAssessmentCopilotPlan, clampCopilotDuration, splitCopilotTopics } from "@/lib/copilot"
 import type { CopilotFocusItem, CopilotSessionDraft } from "@/lib/copilot"
@@ -31,6 +32,8 @@ function getCopilotDraftErrors(draft: CopilotSessionDraft, subjectIds: string[],
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const WEEKDAY_PRESET = [1, 2, 3, 4, 5]
+const WEEKEND_PRESET = [6, 0]
 
 function getPlanErrors(drafts: CopilotSessionDraft[], intervals: AvailableStudyInterval[]): string[][] {
   return validateStudyPlanBlocks(drafts.map((draft) => {
@@ -105,6 +108,18 @@ export function AssessmentCopilot({
     () => copilotDrafts.filter((draft) => draft.approved && (copilotDraftErrors.get(draft.draftId)?.length ?? 0) === 0),
     [copilotDraftErrors, copilotDrafts],
   )
+  const availableMinutes = useMemo(
+    () => sumAvailableStudyMinutes(availableIntervals),
+    [availableIntervals],
+  )
+  const availabilityBlocker = useMemo(() => {
+    if (availableIntervals.length > 0) return null
+    if (planningPreferences.windows.length === 0) return "Add a future study window below to enable generation."
+    if (planningPreferences.windows.some((window) => window.startTime >= window.endTime)) {
+      return "Each study window needs an end time after its start time."
+    }
+    return "No free time remains inside these windows after existing sessions, events, your timetable, and daily cap. Adjust a window or increase the cap."
+  }, [availableIntervals.length, planningPreferences.windows])
 
   const cancelCopilotRequest = useCallback(() => {
     copilotAbortRef.current?.abort()
@@ -116,6 +131,48 @@ export function AssessmentCopilot({
     setStudyPlanningPreferences(next)
     notifyUserSettingsChanged()
   }, [])
+
+  const addAvailabilityWindows = useCallback((weekdays: number[]) => {
+    const existingDays = new Set(planningPreferences.windows.map((window) => window.weekday))
+    updatePlanningPreferences({
+      ...planningPreferences,
+      windows: [
+        ...planningPreferences.windows,
+        ...weekdays.filter((weekday) => !existingDays.has(weekday)).map((weekday) => ({
+          weekday,
+          startTime: "16:00",
+          endTime: "18:00",
+        })),
+      ],
+    })
+  }, [planningPreferences, updatePlanningPreferences])
+
+  const addAvailabilityWindow = useCallback(() => {
+    const existingDays = new Set(planningPreferences.windows.map((window) => window.weekday))
+    const weekday = [...WEEKDAY_PRESET, ...WEEKEND_PRESET].find((day) => !existingDays.has(day)) ?? new Date().getDay()
+    updatePlanningPreferences({
+      ...planningPreferences,
+      windows: [...planningPreferences.windows, { weekday, startTime: "16:00", endTime: "18:00" }],
+    })
+  }, [planningPreferences, updatePlanningPreferences])
+
+  const resetAvailability = useCallback(async () => {
+    const confirmed = await confirmAction({
+      title: "Reset study availability?",
+      description: "This removes every reusable study window and restores the two-hour daily cap.",
+      actionLabel: "Reset",
+      cancelLabel: "Keep settings",
+    })
+    if (!confirmed) return
+    updatePlanningPreferences({ ...DEFAULT_STUDY_PLANNING_PREFERENCES, windows: [] })
+  }, [updatePlanningPreferences])
+
+  const setAllDraftApprovals = useCallback((approved: boolean) => {
+    setCopilotDrafts((current) => current.map((draft) => ({
+      ...draft,
+      approved: approved && (copilotDraftErrors.get(draft.draftId)?.length ?? 0) === 0,
+    })))
+  }, [copilotDraftErrors])
 
   const handleGenerate = async () => {
     const provider = getActiveProvider()
@@ -358,6 +415,9 @@ export function AssessmentCopilot({
                 {copilotLoading ? "Generating..." : copilotDrafts.length > 0 ? "Regenerate" : "Generate"}
               </Button>
             </div>
+            {availabilityBlocker && (
+              <p className="w-full text-xs text-warning">{availabilityBlocker}</p>
+            )}
           </div>
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(18rem,0.75fr)_minmax(0,1.6fr)]">
@@ -369,21 +429,33 @@ export function AssessmentCopilot({
                     <h3 className="flex items-center gap-2 text-sm font-semibold"><Clock className="h-3.5 w-3.5 text-muted-foreground" />Study availability</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {availableIntervals.length > 0
-                        ? `${availableIntervals.length} free interval${availableIntervals.length === 1 ? "" : "s"} in the next 7 days`
-                        : "Add a reusable window to enable planning"}
+                        ? `${Math.floor(availableMinutes / 60)}h ${availableMinutes % 60}m free across ${availableIntervals.length} interval${availableIntervals.length === 1 ? "" : "s"}`
+                        : planningPreferences.windows.length === 0
+                          ? "Add a reusable window to enable planning"
+                          : "No usable free intervals in the next 7 days"}
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 gap-1 px-2 text-xs"
-                    onClick={() => updatePlanningPreferences({
-                      ...planningPreferences,
-                      windows: [...planningPreferences.windows, { weekday: new Date().getDay(), startTime: "16:00", endTime: "18:00" }],
-                    })}
-                  >
-                    <Plus className="h-3 w-3" /> Add
+                  <div className="flex items-center gap-1.5">
+                    <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => void resetAvailability()}>
+                      <RotateCcw className="h-3 w-3" /> Reset
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      onClick={addAvailabilityWindow}
+                    >
+                      <Plus className="h-3 w-3" /> Add
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => addAvailabilityWindows(WEEKDAY_PRESET)}>
+                    Add weekday evenings
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => addAvailabilityWindows(WEEKEND_PRESET)}>
+                    Add weekend evenings
                   </Button>
                 </div>
                 <div className="mt-3 space-y-2">
@@ -517,6 +589,16 @@ export function AssessmentCopilot({
                       : "Generated drafts appear here"}
                   </p>
                 </div>
+                {copilotDrafts.length > 0 && (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setAllDraftApprovals(false)}>
+                      Clear
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setAllDraftApprovals(true)}>
+                      Approve valid
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {copilotDrafts.length > 0 ? (

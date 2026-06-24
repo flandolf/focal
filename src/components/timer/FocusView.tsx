@@ -200,7 +200,10 @@ export function FocusView({
   const [sessionIntention, setSessionIntention] = useState("");
 
   useEffect(() => {
-    window.setTimeout(() => resolvedCloseRef.current?.focus(), 0);
+    const focusTimeout = window.setTimeout(
+      () => resolvedCloseRef.current?.focus(),
+      0,
+    );
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -208,6 +211,7 @@ export function FocusView({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
+      window.clearTimeout(focusTimeout);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose, resolvedCloseRef]);
@@ -240,10 +244,13 @@ export function FocusView({
   const focusTicks = Array.from({ length: 32 }, (_, index) => index);
   const orbitTicks = Array.from({ length: 48 }, (_, index) => index);
   const circumference = 2 * Math.PI * 112;
-  const progressPercent = Math.round(progress * 100);
+  const safeProgress = Number.isFinite(progress)
+    ? Math.min(1, Math.max(0, progress))
+    : 0;
+  const progressPercent = Math.round(safeProgress * 100);
   const isFocusMode = mode === "work" || isStudyOvertime;
   const kineticStyle = {
-    "--focus-progress": progress,
+    "--focus-progress": safeProgress,
   } as CSSProperties;
 
   return (
@@ -370,7 +377,7 @@ export function FocusView({
                     aria-hidden="true"
                   >
                     {orbitTicks.map((tick) => {
-                      const isPassed = tick / orbitTicks.length <= progress;
+                      const isPassed = tick / orbitTicks.length <= safeProgress;
                       return (
                         <span
                           key={tick}
@@ -451,7 +458,7 @@ export function FocusView({
                         stroke="currentColor"
                         strokeWidth="8"
                         strokeDasharray={`${circumference}`}
-                        strokeDashoffset={`${circumference * (1 - progress)}`}
+                        strokeDashoffset={`${circumference * (1 - safeProgress)}`}
                         strokeLinecap="round"
                         filter="url(#ring-glow)"
                         className={cn(
@@ -468,7 +475,7 @@ export function FocusView({
                       stroke="currentColor"
                       strokeWidth="10"
                       strokeDasharray={`${circumference}`}
-                      strokeDashoffset={`${circumference * (1 - progress)}`}
+                      strokeDashoffset={`${circumference * (1 - safeProgress)}`}
                       strokeLinecap="round"
                       className={cn(
                         "transition-[stroke-dashoffset] duration-1000 ease-out motion-reduce:transition-none",

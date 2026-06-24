@@ -3544,7 +3544,7 @@ const MARKDOWN_COMPONENTS = {
     ...props
   }: MarkdownProps & React.BlockquoteHTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
-      className="my-1.5 border-l-2 border-primary/35 pl-2 italic text-muted-foreground"
+      className="my-1.5 rounded-md bg-primary/8 px-2.5 py-1.5 italic text-muted-foreground"
       {...props}
     >
       {children}

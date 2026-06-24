@@ -1695,6 +1695,8 @@ function App() {
                     hiddenSubjectIds={hiddenSubjectIds}
                     onToggleSubjectVisibility={handleToggleSubjectVisibility}
                     onShowAllSubjects={handleShowAllSubjects}
+                    events={events}
+                    onImportVcaaEvents={handleImportVcaaEvents}
                     onOpenExport={() => setExportOpen(true)}
                     onOpenSubjects={() => setSubjectsOpen(true)}
                     onSyncNotionCalendar={handleSyncNotionCalendar}
@@ -1755,7 +1757,6 @@ function App() {
                     onNewEvent={handleOpenNewEvent}
                     onNewProject={handleNewProject}
                     onCreateEvents={handleCreateEvents}
-                    onImportVcaaEvents={handleImportVcaaEvents}
                     onCreateStudySessions={handleCreateStudySessions}
                     onDeleteCalendarItems={handleDeleteCalendarItems}
                     onSetCalendarItemsCompleted={handleSetCalendarItemsCompleted}
