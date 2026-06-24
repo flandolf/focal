@@ -119,10 +119,6 @@ function getDurationMinutes(event: CalendarEvent) {
   return String(Math.round(durationMs / (1000 * 60)))
 }
 
-function getEndTimeStr(event: CalendarEvent) {
-  return event.endTime ? format(parseISO(event.endTime), "HH:mm") : undefined
-}
-
 function generateRecurringEvents(
   base: Record<string, unknown>,
   pattern: "weekly" | "biweekly" | "monthly",
@@ -659,7 +655,7 @@ export function EventDialog({
             date: start,
             startTime: format(start, "HH:mm"),
             duration: getDurationMinutes(existingEvent),
-            endTime: getEndTimeStr(existingEvent),
+            endTime: existingEvent.endTime,
             endDate: end && format(end, "yyyy-MM-dd") !== format(start, "yyyy-MM-dd") ? end : undefined,
             isFinished: existingEvent.isFinished,
             finishedAt: existingEvent.finishedAt,

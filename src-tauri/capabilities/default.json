@@ -8,6 +8,9 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
     {
       "identifier": "opener:allow-open-path",
       "allow": [
@@ -17,8 +20,6 @@
       ]
     },
     "dialog:default",
-    "shell:default",
-    "shell:allow-open",
     "fs:allow-appdata-read",
     "fs:allow-appdata-read-recursive",
     "fs:allow-appdata-write",

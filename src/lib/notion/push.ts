@@ -1,4 +1,4 @@
-import type { CalendarEvent, StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, NotionSource, StudySession, Subject } from "@/lib/types"
 import type { NotionCalendarSettings } from "@/lib/settings"
 import type { NotionPage, NotionProperty, SyncCtx, PushTask } from "@/lib/notion/schema"
 import {
@@ -190,7 +190,7 @@ async function updateOrCreatePage(
 }
 
 export interface PushSingleResult {
-  source: NonNullable<CalendarEvent["source"]>
+  source: NotionSource
 }
 
 export async function pushEventToNotion(
@@ -198,6 +198,7 @@ export async function pushEventToNotion(
   event: CalendarEvent,
   subjects: Subject[],
 ): Promise<PushSingleResult | null> {
+  if (event.source?.type === "vcaa") return null
   let schema = getCachedSchema(settings.dataSourceId)
   if (!schema || Object.keys(schema).length === 0) {
     schema = await fetchNotionSchema(settings)
@@ -259,6 +260,7 @@ export function collectEventPushTasks(
 ): PushTask[] {
   const tasks: PushTask[] = []
   for (const event of existingEvents) {
+    if (event.source?.type === "vcaa") continue
     if (event.source?.type === "notion" && event.source.kind === "session") continue
     const isFastPush = fastPushIds?.has(event.id)
     if (!isFastPush && !event.source && ctx.matchedEventIds.has(event.id)) continue

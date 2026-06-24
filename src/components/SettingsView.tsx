@@ -20,7 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { confirmAction } from "@/lib/confirmToast";
 import type { ThemeId } from "@/lib/themes";
-import type { Project, Subject } from "@/lib/types";
+import type { CalendarEvent, Project, Subject } from "@/lib/types";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
 import { SubjectsSection } from "@/components/settings/SubjectsSection";
 import { AIModelSection } from "@/components/settings/AIModelSection";
@@ -28,6 +28,7 @@ import { NotionSection } from "@/components/settings/NotionSection";
 import { AutoRenameSection } from "@/components/settings/AutoRenameSection";
 import { DataSection } from "@/components/settings/DataSection";
 import { AccountSection } from "@/components/settings/AccountSection";
+import { VcaaExamImportSection } from "@/components/settings/VcaaExamImportSection";
 import { retrySync } from "@/lib/sync/engine";
 import type { SyncStatusSnapshot } from "@/lib/sync/types";
 import { viewEnter } from "@/lib/motion";
@@ -54,6 +55,10 @@ interface SettingsViewProps {
   hiddenSubjectIds: string[];
   onToggleSubjectVisibility: (subjectId: string) => void;
   onShowAllSubjects: () => void;
+  events: CalendarEvent[];
+  onImportVcaaEvents: (
+    events: Omit<CalendarEvent, "id" | "created_at">[],
+  ) => Promise<void>;
   onOpenExport?: () => void;
   onOpenSubjects?: () => void;
   onSyncNotionCalendar?: (onProgress: (msg: string) => void) => Promise<{
@@ -165,6 +170,8 @@ export function SettingsView({
   hiddenSubjectIds,
   onToggleSubjectVisibility,
   onShowAllSubjects,
+  events,
+  onImportVcaaEvents,
   onOpenExport,
   onOpenSubjects,
   onSyncNotionCalendar,
@@ -470,13 +477,21 @@ export function SettingsView({
                 )}
 
                 {activeSection === "subjects" && (
-                  <SubjectsSection
-                    subjects={subjects}
-                    hiddenSubjectIds={hiddenSubjectIds}
-                    onToggleSubjectVisibility={onToggleSubjectVisibility}
-                    onShowAllSubjects={onShowAllSubjects}
-                    onOpenSubjects={onOpenSubjects}
-                  />
+                  <div className="space-y-4">
+                    <SubjectsSection
+                      subjects={subjects}
+                      hiddenSubjectIds={hiddenSubjectIds}
+                      onToggleSubjectVisibility={onToggleSubjectVisibility}
+                      onShowAllSubjects={onShowAllSubjects}
+                      onOpenSubjects={onOpenSubjects}
+                    />
+                    <VcaaExamImportSection
+                      subjects={subjects}
+                      hiddenSubjectIds={hiddenSubjectIds}
+                      events={events}
+                      onImport={onImportVcaaEvents}
+                    />
+                  </div>
                 )}
 
                 {activeSection === "ai" && <AIModelSection />}

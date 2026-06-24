@@ -189,6 +189,13 @@ async function fetchOllamaModels(base: string): Promise<ModelInfo[]> {
   return models.filter((model) => !model.capabilities?.length || model.capabilities.includes("completion"))
 }
 
+export function chooseOllamaModel(models: ModelInfo[], currentModel: string): string | null {
+  if (models.length === 0 || models.some((model) => model.id === currentModel)) return null
+  // ponytail: prefer tool support, then trust Ollama's host order. Upgrade to a
+  // local benchmark only if model fleets make the first compatible model a poor default.
+  return (models.find((model) => model.capabilities?.includes("tools")) ?? models[0]).id
+}
+
 async function postChat(base: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
   const res = await ollamaFetch(base, "/api/chat", body, signal)
   if (!res.ok) {

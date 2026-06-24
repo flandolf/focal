@@ -31,38 +31,6 @@ export default defineConfig(() => ({
     },
   },
 
-  build: {
-    rolldownOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return undefined
-          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-")) {
-            return "vendor-charts"
-          }
-          if (id.includes("node_modules/framer-motion") || id.includes("node_modules/motion-")) {
-            return "vendor-motion"
-          }
-          if (id.includes("node_modules/@radix-ui")) {
-            return "vendor-radix"
-          }
-          if (
-            id.includes("node_modules/date-fns") ||
-            id.includes("node_modules/react-day-picker")
-          ) {
-            return "vendor-dates"
-          }
-          if (id.includes("node_modules/lucide-react")) {
-            return "vendor-icons"
-          }
-          if (id.includes("node_modules/react") || id.includes("node_modules/scheduler")) {
-            return "vendor-react"
-          }
-          return "vendor"
-        },
-      },
-    },
-  },
-
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

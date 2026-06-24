@@ -2,7 +2,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getAssistantCustomInstructions, getAssistantPersonality, getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setAssistantCustomInstructions, setAssistantPersonality, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type AssistantPersonality, type ReasoningEffort } from "@/lib/settings"
+import { getAssistantCustomInstructions, getAssistantPersonality, getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getStudyPlanningPreferences, getTimetableConfig, setAssistantCustomInstructions, setAssistantPersonality, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setStudyPlanningPreferences, setTimetableConfig, type AssistantPersonality, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache, getErrorMessage } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
@@ -254,10 +254,6 @@ async function enqueueRemoteSoftDelete(table: SyncTable, rowId: string): Promise
   })
 }
 
-export function getSyncSnapshot(): SyncStatusSnapshot {
-  return snapshot
-}
-
 async function runInitialSync(): Promise<void> {
   try {
     emitStatus({ status: "syncing", error: null, details: "Migrating local IDs..." })
@@ -357,11 +353,6 @@ export async function dropQueueItem(table: SyncTable, rowId: string): Promise<vo
   const queue = await readSyncQueue()
   const remaining = queue.filter((item) => !(item.table === table && item.rowId === rowId))
   await writeSyncQueue(remaining)
-}
-
-/** Get the current sync queue for inspection. */
-export async function getSyncQueue(): Promise<SyncQueueItem[]> {
-  return readSyncQueue()
 }
 
 /** Resolve a sync conflict by accepting the remote version. */
@@ -822,6 +813,7 @@ async function pullUserSettings(): Promise<void> {
     if (settings.ollama_model) setOllamaModel(settings.ollama_model)
     if (settings.assistant_personality) setAssistantPersonality(settings.assistant_personality as AssistantPersonality)
     setAssistantCustomInstructions(settings.assistant_custom_instructions ?? "")
+    if (settings.study_planning_preferences) setStudyPlanningPreferences(settings.study_planning_preferences)
     const currentNotionSettings = getNotionCalendarSettings()
     setNotionCalendarSettings({
       token: currentNotionSettings.token,
@@ -989,10 +981,6 @@ async function applyRemoteRow(table: SyncTable, row: RemoteRow): Promise<void> {
   })
   await writeJsonArray(fileName, merged)
   emitLocalDataChanged(table)
-}
-
-export function getSyncDisabledReason(): string | null {
-  return syncDisabledReason
 }
 
 async function removeLocalRow(table: SyncTable, id: string): Promise<void> {
@@ -1273,6 +1261,7 @@ function collectUserSettingsForSync(): UserSettings {
     ollama_model: getOllamaModel(),
     assistant_personality: getAssistantPersonality(),
     assistant_custom_instructions: getAssistantCustomInstructions(),
+    study_planning_preferences: getStudyPlanningPreferences(),
   }
 }
 

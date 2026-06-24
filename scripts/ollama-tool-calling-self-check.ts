@@ -53,12 +53,14 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Respo
 }
 
 try {
-  const { ollamaProvider, pullOllamaModel } = await import("../src/lib/providers/ollama")
+  const { chooseOllamaModel, ollamaProvider, pullOllamaModel } = await import("../src/lib/providers/ollama")
   const models = await ollamaProvider.listModels()
   if (models.length !== 1 || models[0]?.id !== "qwen3:8b") throw new Error("non-chat models were not filtered")
   if (models[0].contextLength !== 32768 || !models[0].capabilities?.includes("tools")) {
     throw new Error("Ollama model details were not discovered")
   }
+  if (chooseOllamaModel(models, "") !== "qwen3:8b") throw new Error("tool-capable local model was not selected")
+  if (chooseOllamaModel(models, "qwen3:8b") !== null) throw new Error("valid local model selection was replaced")
   const health = await ollamaProvider.healthcheck()
   if (!health.ok || health.version !== "0.12.1" || health.modelCount !== 2) throw new Error("Ollama health details were not parsed")
   await pullOllamaModel("qwen3:8b")

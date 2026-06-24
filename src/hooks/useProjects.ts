@@ -98,17 +98,7 @@ export function useProjects() {
       throw new Error("Project name cannot be empty after sanitisation")
     }
 
-    let subfolders = DEFAULT_SUBFOLDERS
-    if (subjectId) {
-      try {
-        const templateFolders = await invoke<string[]>("get_subject_folder_template", { subjectId })
-        subfolders = templateFolders
-      } catch (e) {
-        console.warn("Could not get subject folder template, using defaults:", e)
-      }
-    }
-
-    const allSubfolders = customSubfolders ? [...subfolders, ...customSubfolders] : subfolders
+    const allSubfolders = customSubfolders ? [...DEFAULT_SUBFOLDERS, ...customSubfolders] : DEFAULT_SUBFOLDERS
 
     const now = new Date().toISOString()
     const project: Project = {

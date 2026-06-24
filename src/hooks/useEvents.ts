@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react"
 import type { CalendarEvent, EventType } from "@/lib/types"
-import { generateId, safeString, safeStringOpt, safeBool, safeDateMeta, parseNotionSource } from "@/lib/utils"
+import { generateId, safeString, safeStringOpt, safeBool, safeDateMeta, parseCalendarEventSource } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
@@ -43,7 +43,7 @@ function normaliseEvent(raw: unknown): CalendarEvent {
     location: safeStringOpt(obj, "location"),
     isFinished: safeBool(obj, "isFinished", false),
     finishedAt: safeStringOpt(obj, "finishedAt"),
-    source: parseNotionSource(obj.source),
+    source: parseCalendarEventSource(obj.source),
     ...meta,
   }
 }

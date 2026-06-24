@@ -4,7 +4,7 @@
  * pair. Also contains small type guards and ISO-date helpers used by the sync
  * engine.
  */
-import { parseNotionSource } from "@/lib/utils"
+import { parseCalendarEventSource, parseNotionSource } from "@/lib/utils"
 import type { CalendarEvent, ConfidenceScore, EventType, Project, StudySession, StudySessionStatus, Subject, TimetableConfig, TimetableDayLabel, Unit, UserSettings } from "@/lib/types"
 import type {
   CustomSubjectRow,
@@ -95,7 +95,7 @@ export function eventToRow(event: CalendarEvent, userId: string, deviceId: strin
     location: synced.location ?? null,
     is_finished: synced.isFinished ?? false,
     finished_at: synced.finishedAt ?? null,
-    source: synced.source ?? null,
+    source: (synced.source ?? null) as EventRow["source"],
     created_at: synced.created_at,
     updated_at: synced.updated_at,
     deleted_at: synced.deleted_at ?? null,
@@ -115,7 +115,7 @@ export function rowToEvent(row: EventRow): LocalEvent {
     location: row.location ?? undefined,
     isFinished: row.is_finished,
     finishedAt: row.finished_at ?? undefined,
-  source: parseNotionSource(row.source),
+    source: parseCalendarEventSource(row.source),
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
@@ -142,7 +142,7 @@ export function sessionToRow(session: StudySession, userId: string, deviceId: st
     next_action: synced.nextAction ?? null,
     active_durations: synced.activeDurations ?? null,
     completed_at: synced.completedAt ?? null,
-    source: synced.source ?? null,
+    source: (synced.source ?? null) as StudySessionRow["source"],
     created_at: synced.created_at,
     updated_at: synced.updated_at,
     deleted_at: synced.deleted_at ?? null,
@@ -277,6 +277,7 @@ export function rowToUserSettings(row: UserSettingsRow): UserSettings {
     ollama_model: row.settings.ollama_model,
     assistant_personality: row.settings.assistant_personality,
     assistant_custom_instructions: row.settings.assistant_custom_instructions,
+    study_planning_preferences: row.settings.study_planning_preferences,
   }
 }
 
