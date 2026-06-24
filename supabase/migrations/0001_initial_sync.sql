@@ -54,6 +54,8 @@ create table if not exists public.events (
 create table if not exists public.study_sessions (
   id uuid primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  schema_version integer not null default 1,
+  payload jsonb not null default '{}'::jsonb,
   project_id uuid,
   subject_ids jsonb not null default '[]'::jsonb,
   title text not null,

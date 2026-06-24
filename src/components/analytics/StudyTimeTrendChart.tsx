@@ -24,8 +24,6 @@ interface DailyPoint {
   [subjectId: string]: string | number
 }
 
-const TOP_N = 4
-const OTHER_ID = "__other"
 const UNASSIGNED_ID = "_unassigned"
 
 function formatMinutes(value: number) {
@@ -44,7 +42,7 @@ function formatTotalMinutes(m: number) {
 }
 
 export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
-  const { chartData, subjectIds, hiddenCount, totalMinutes, topSummaries, allSummaries } =
+  const { chartData, subjectIds, totalMinutes, summaries } =
     useMemo(() => {
       const dayMap = new Map<string, Map<string, number>>()
       data.forEach((point) => {
@@ -64,25 +62,6 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
       const sorted = Array.from(subjectTotals.entries())
         .filter(([, m]) => m > 0)
         .sort((a, b) => b[1] - a[1])
-      const topIds = new Set(sorted.slice(0, TOP_N).map(([sid]) => sid))
-      const hasOthers = sorted.length > TOP_N
-
-      if (hasOthers) {
-        const hiddenSet = new Set(sorted.slice(TOP_N).map(([sid]) => sid))
-        dayMap.forEach((subjectMap) => {
-          let otherTotal = 0
-          hiddenSet.forEach((hid) => {
-            const m = subjectMap.get(hid)
-            if (m) {
-              otherTotal += m
-              subjectMap.delete(hid)
-            }
-          })
-          if (otherTotal > 0) {
-            subjectMap.set(OTHER_ID, (subjectMap.get(OTHER_ID) ?? 0) + otherTotal)
-          }
-        })
-      }
 
       const sortedDays = Array.from(dayMap.entries()).sort(([a], [b]) =>
         a.localeCompare(b),
@@ -106,35 +85,19 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
 
       const total = sorted.reduce((sum, [, m]) => sum + m, 0)
 
-      const visibleIds = hasOthers
-        ? Array.from(topIds).concat([OTHER_ID])
-        : Array.from(topIds)
-      visibleIds.sort((a, b) => {
-        if (a === OTHER_ID) return 1
-        if (b === OTHER_ID) return -1
-        return (subjectTotals.get(b) ?? 0) - (subjectTotals.get(a) ?? 0)
-      })
-
       const nameFor = (sid: string) =>
-        sid === OTHER_ID
-          ? "Other"
-          : (getSubjectById(sid)?.name ?? "Unassigned")
+        getSubjectById(sid)?.name ?? "Unassigned"
 
-      const topSummaries = sorted
-        .slice(0, TOP_N)
-        .map(([sid, minutes]) => ({ name: nameFor(sid), minutes }))
-      const allSummaries = sorted.map(([sid, minutes]) => ({
+      const summaries = sorted.map(([sid, minutes]) => ({
         name: nameFor(sid),
         minutes,
       }))
 
       return {
         chartData: points,
-        subjectIds: visibleIds,
-        hiddenCount: hasOthers ? sorted.length - TOP_N : 0,
+        subjectIds: sorted.map(([sid]) => sid),
         totalMinutes: total,
-        topSummaries,
-        allSummaries,
+        summaries,
       }
     }, [data])
 
@@ -177,18 +140,12 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
             labelStyle={{ color: "var(--muted-foreground)", fontSize: 11 }}
             formatter={(value: unknown, name: unknown) => {
               const sid = String(name)
-              const displayName =
-                sid === OTHER_ID
-                  ? "Other"
-                  : (getSubjectById(sid)?.name ?? "Unassigned")
+              const displayName = getSubjectById(sid)?.name ?? "Unassigned"
               return [formatMinutes(Number(value)), displayName]
             }}
           />
           {subjectIds.map((subjectId) => {
-            const isOther = subjectId === OTHER_ID
-            const color = isOther
-              ? "var(--muted-foreground)"
-              : getSubjectColor(subjectId)
+            const color = getSubjectColor(subjectId)
             return (
               <Area
                 key={subjectId}
@@ -197,7 +154,7 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
                 stackId="1"
                 stroke={color}
                 fill={color}
-                fillOpacity={isOther ? 0.2 : 0.3}
+                fillOpacity={0.3}
                 strokeWidth={1.5}
               />
             )
@@ -206,22 +163,13 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
       </ResponsiveContainer>
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {subjectIds.map((sid) => {
-          const isOther = sid === OTHER_ID
-          const color = isOther
-            ? "var(--muted-foreground)"
-            : getSubjectColor(sid)
-          const name =
-            isOther
-              ? "Other"
-              : (getSubjectById(sid)?.name ?? "Unassigned")
+          const color = getSubjectColor(sid)
+          const name = getSubjectById(sid)?.name ?? "Unassigned"
           return (
             <div key={sid} className="flex items-center gap-1.5">
               <span
                 className="h-2 w-2 rounded-full"
-                style={{
-                  backgroundColor: color,
-                  opacity: isOther ? 0.4 : 1,
-                }}
+                style={{ backgroundColor: color }}
               />
               <span className="text-caption text-muted-foreground">{name}</span>
             </div>
@@ -231,16 +179,8 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
       <p className="sr-only">
         Study time trend over {chartData.length} day{chartData.length === 1 ? "" : "s"}:
         total {formatTotalMinutes(totalMinutes)}
-        {topSummaries.length > 0
-          ? `. Top subjects: ${topSummaries
-              .map((s) => `${s.name} ${formatTotalMinutes(s.minutes)}`)
-              .join(", ")}`
-          : ""}
-        {hiddenCount > 0
-          ? ` (${hiddenCount} additional subject${hiddenCount === 1 ? "" : "s"} grouped as Other)`
-          : ""}
-        {allSummaries.length > 0
-          ? `. All subjects: ${allSummaries
+        {summaries.length > 0
+          ? `. Subjects: ${summaries
               .map((s) => `${s.name} ${formatTotalMinutes(s.minutes)}`)
               .join(", ")}`
           : ""}

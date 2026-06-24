@@ -1,7 +1,7 @@
 {
   "name": "focal",
   "private": true,
-  "version": "0.5.7",
+  "version": "0.5.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check:text-planner": "node scripts/check-text-event-planner.mjs",
+    "check:study-sessions": "node --experimental-strip-types scripts/check-study-session-v2.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

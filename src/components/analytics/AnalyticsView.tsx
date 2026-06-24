@@ -197,7 +197,7 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
           )}
 
           {/* Chart grid: crossfade on range change, cards stagger on mount */}
-          <motion.div variants={staggerItem} className="analytics-aurora relative">
+          <motion.div variants={staggerItem} className="relative">
             <AnimatePresence mode="wait">
               <motion.div
                 key={range}

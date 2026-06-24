@@ -9,6 +9,8 @@ export interface CalendarSessionIndicator {
   color: string
   count: number
   totalMinutes: number
+  sessionIds: string[]
+  status: StudySession["status"]
 }
 
 export interface SessionProjectGroup {
@@ -47,7 +49,12 @@ export function getCalendarSessionIndicators(
   sessions: StudySession[],
   projects: Project[],
 ): CalendarSessionIndicator[] {
-  const bySubject = new Map<string, { count: number; totalMinutes: number }>()
+  const bySubject = new Map<string, {
+    count: number
+    totalMinutes: number
+    sessionIds: string[]
+    statuses: StudySession["status"][]
+  }>()
 
   for (const session of sessions) {
     const project = session.projectId ? projects.find((p) => p.id === session.projectId) : undefined
@@ -61,8 +68,15 @@ export function getCalendarSessionIndicators(
       if (entry) {
         entry.count += 1
         entry.totalMinutes += minutesPerSubject
+        entry.sessionIds.push(session.id)
+        entry.statuses.push(session.status)
       } else {
-        bySubject.set(subjectId, { count: 1, totalMinutes: minutesPerSubject })
+        bySubject.set(subjectId, {
+          count: 1,
+          totalMinutes: minutesPerSubject,
+          sessionIds: [session.id],
+          statuses: [session.status],
+        })
       }
     }
   }
@@ -70,12 +84,19 @@ export function getCalendarSessionIndicators(
   return Array.from(bySubject.entries())
     .map(([subjectId, data]) => {
       const info = getSubjectInfo(subjectId)
+      const status: StudySession["status"] = data.statuses.includes("in-progress")
+        ? "in-progress"
+        : data.statuses.every((item) => item === "completed")
+          ? "completed"
+          : "planned"
       return {
         subjectId,
         shortCode: info.shortCode,
         color: info.color,
         count: data.count,
         totalMinutes: Math.round(data.totalMinutes),
+        sessionIds: data.sessionIds,
+        status,
       }
     })
     .sort((a, b) => b.totalMinutes - a.totalMinutes)

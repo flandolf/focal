@@ -49,6 +49,7 @@ import type {
   PriorityItem,
   Project,
   StudySession,
+  StudySessionDraft,
 } from "@/lib/types";
 import { VCE_SUBJECTS } from "@/lib/types";
 import { CalendarGrid } from "@/components/home/CalendarGrid";
@@ -100,7 +101,7 @@ interface HomeViewProps {
     events: Omit<CalendarEvent, "id" | "created_at">[],
   ) => Promise<void>;
   onCreateStudySessions: (
-    sessions: Omit<StudySession, "id" | "status" | "created_at">[],
+    sessions: StudySessionDraft[],
   ) => Promise<void>;
   onDeleteCalendarItems: (itemIds: {
     eventIds: string[];

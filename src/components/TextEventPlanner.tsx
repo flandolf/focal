@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
 import { aiChatCompletion, describeAiError, VCE_JSON_FORMAT_GUARD, type ChatTurn } from "@/lib/aiAssistant"
-import type { CalendarEvent, EventType, Project, StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, EventType, Project, StudySessionDraft, Subject } from "@/lib/types"
 
 // --- Types ---
 
@@ -423,7 +423,7 @@ interface TextEventPlannerProps {
   projects: Project[]
   planningSubjects: Subject[]
   onCreateEvents: (events: Omit<CalendarEvent, "id" | "created_at">[]) => Promise<void>
-  onCreateStudySessions: (sessions: Omit<StudySession, "id" | "status" | "created_at">[]) => Promise<void>
+  onCreateStudySessions: (sessions: StudySessionDraft[]) => Promise<void>
 }
 
 export function TextEventPlanner({

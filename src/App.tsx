@@ -726,18 +726,30 @@ function App() {
     activeDurations?: { start: string; end: string }[]
   }) => {
     try {
-      const newSession = await addSession(
-        data.projectId,
-        data.subjectIds,
-        data.title,
-        data.startTime,
-        data.endTime,
-        data.description,
-        data.topics,
-        data.notes,
-        data.status,
-        data.activeDurations,
-      )
+      const blocks = data.activeDurations?.length
+        ? data.activeDurations
+        : [{ start: data.startTime, end: data.endTime }]
+      const execution = data.status === "completed"
+        ? { state: "completed" as const, intervals: [], completedAt: data.completedAt ?? new Date().toISOString() }
+        : data.status === "in-progress"
+          ? { state: "in-progress" as const, intervals: [] }
+          : { state: "planned" as const, intervals: [] as [] }
+      const newSession = await addSession({
+        projectId: data.projectId,
+        subjectIds: data.subjectIds,
+        title: data.title,
+        description: data.description,
+        topics: data.topics,
+        schedule: { blocks },
+        execution,
+        reflection: {
+          notes: data.notes,
+          confidence: data.confidence,
+          blockers: data.blockers,
+          nextAction: data.nextAction,
+        },
+        createdVia: "manual",
+      })
       toast.success(`Study session "${data.title}" created`)
       setSessionDialogOpen(false)
       void pushSessionChange(newSession)
@@ -807,18 +819,19 @@ function App() {
       const projectName = data.projectId ? projects.find((p) => p.id === data.projectId)?.name : undefined
       const blockStart = start.toISOString()
       const blockEnd = end.toISOString()
-      const session = await addSession(
-        data.projectId,
-        data.subjectIds,
-        getPomodoroTitle(data.subjectIds, data.cycleNumber, projectName),
-        blockStart,
-        blockEnd,
-        getPomodoroDescription(durationMinutes, data.cycleNumber),
-        undefined,
-        getPomodoroNotes(data.cycleNumber),
-        "in-progress",
-        [{ start: blockStart, end: blockEnd }],
-      )
+      const session = await addSession({
+        projectId: data.projectId,
+        subjectIds: data.subjectIds,
+        title: getPomodoroTitle(data.subjectIds, data.cycleNumber, projectName),
+        description: getPomodoroDescription(durationMinutes, data.cycleNumber),
+        schedule: { blocks: [{ start: blockStart, end: blockEnd }] },
+        execution: {
+          state: "in-progress",
+          intervals: [{ start: blockStart, end: blockEnd, source: "pomodoro", cycleNumber: data.cycleNumber }],
+        },
+        reflection: { notes: getPomodoroNotes(data.cycleNumber) },
+        createdVia: "manual",
+      })
       toast.success("Pomodoro session added to calendar")
       void pushSessionChange(session)
       return session
@@ -1600,7 +1613,7 @@ function App() {
     <TooltipProvider>
       <MotionConfig reducedMotion="user">
       <ErrorBoundary>
-      <div className="focal-shell relative flex h-full flex-col overflow-hidden text-foreground">
+      <div className="app-aurora focal-shell relative flex h-full flex-col overflow-hidden text-foreground">
         <TitleBar
           onSearch={() => setSearchOpen(true)}
           onSettings={() => setSettingsView(true)}
@@ -1668,7 +1681,11 @@ function App() {
           <motion.main
             layout
             transition={layoutTransition}
-            className="glass-panel focal-workbench min-w-0 flex-1 overflow-hidden rounded-lg"
+            className={`glass-panel min-w-0 flex-1 overflow-hidden rounded-lg ${
+              homeSelected && !settingsView && !timetableView && !analyticsView
+                ? "focal-workbench"
+                : ""
+            }`}
           >
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div

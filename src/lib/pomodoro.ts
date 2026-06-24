@@ -7,7 +7,7 @@ const LEGACY_POMODORO_DESCRIPTION = "Started from the Pomodoro timer."
 const LEGACY_POMODORO_NOTES = "Focus block logged from the sidebar timer."
 
 export function isPomodoroSession(session: StudySession) {
-  return (typeof session.description === "string" && (
+  return session.execution.intervals.some((interval) => interval.source === "pomodoro") || (typeof session.description === "string" && (
     session.description.startsWith(POMODORO_DESCRIPTION_PREFIX)
     || session.description === LEGACY_POMODORO_DESCRIPTION
   )) || session.notes === LEGACY_POMODORO_NOTES

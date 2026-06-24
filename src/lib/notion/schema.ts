@@ -1,6 +1,6 @@
 import { isRecord } from "@/lib/utils"
 export { isRecord }
-import type { CalendarEvent, EventType, NotionSource, StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, EventType, NotionSource, StudySession, StudySessionDraft, Subject } from "@/lib/types"
 
 export type NotionProperty = Record<string, unknown>
 
@@ -44,7 +44,7 @@ export interface NotionCalendarSyncResult {
     id: string
     updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
   }[]
-  createdSessions: Omit<StudySession, "id" | "created_at">[]
+  createdSessions: StudySessionDraft[]
   updatedSessions: {
     id: string
     updates: Partial<Omit<StudySession, "id" | "created_at">>
@@ -484,7 +484,7 @@ export function eventFingerprint(e: CalendarEvent | Omit<CalendarEvent, "id" | "
   ].join("|")
 }
 
-export function sessionFingerprint(s: StudySession | Omit<StudySession, "id" | "created_at">): string {
+export function sessionFingerprint(s: StudySession | StudySessionDraft): string {
   return [
     s.title,
     s.startTime,
@@ -620,7 +620,7 @@ export function toSessionFromPage(
   settings: { dateProperty: string; typeProperty: string; completedProperty: string; subjectProperty: string; titleProperty: string },
   subjects: Subject[],
   findSubjectIdFromValues: (values: string[], subjects: Subject[]) => string | undefined,
-): Omit<StudySession, "id" | "created_at"> | null {
+): StudySessionDraft | null {
   const properties = page.properties ?? {}
   const title = getPageTitle(properties, settings.titleProperty)
   const { startTime, endTime } = getPropertyDateForEvent(properties, settings)
