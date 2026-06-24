@@ -2106,18 +2106,17 @@ html.non-macos {
     }
 
     /* ════════════════════════════════════════════════
-     Overdrive analytics glow
-     Multi-layered aurora bg, KPI breath, chart hover
+     App-wide aurora glow
+     Multi-layered ambient bg, KPI breath, chart hover
      ════════════════════════════════════════════════ */
 
-    /* Aurora ambient glow behind chart grid */
-    .analytics-aurora {
-        position: relative;
+    .app-aurora {
+        isolation: isolate;
     }
-    .analytics-aurora::before {
+    .app-aurora::before {
         content: "";
         position: absolute;
-        inset: -28%;
+        inset: -18%;
         background:
             radial-gradient(
                 ellipse 40% 32% at 20% 24%,
@@ -2139,16 +2138,16 @@ html.non-macos {
                 color-mix(in oklch, var(--chart-5) 11%, transparent) 0%,
                 transparent 48%
             );
-        filter: blur(56px);
-        opacity: 0.5;
+        filter: blur(72px);
+        opacity: 0.46;
         pointer-events: none;
         z-index: 0;
         animation: aurora-drift 24s ease-in-out infinite alternate;
         will-change: transform, opacity;
     }
 
-    .dark .analytics-aurora::before {
-        opacity: 0.55;
+    .dark .app-aurora::before {
+        opacity: 0.52;
         background:
             radial-gradient(
                 ellipse 40% 32% at 20% 24%,
@@ -2352,11 +2351,11 @@ html.non-macos {
     /* ponytail: keep legacy class names while the surface system is consolidated;
        these solid mappings are the single upgrade point for the old glass UI. */
     .glass-panel {
-        background: var(--background);
+        background: color-mix(in oklch, var(--background) 88%, transparent);
         border: 1px solid var(--border);
         box-shadow: 0 1px 2px oklch(0.12 0.015 250 / 0.06);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
+        backdrop-filter: blur(20px) saturate(1.08);
+        -webkit-backdrop-filter: blur(20px) saturate(1.08);
     }
 
     .glass-sidebar {
@@ -2418,7 +2417,7 @@ html.non-macos {
     }
 
     .focal-workbench {
-        background-color: var(--background);
+        background-color: color-mix(in oklch, var(--background) 86%, transparent);
         background-image:
             linear-gradient(
                 to right,

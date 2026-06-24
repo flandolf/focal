@@ -9,7 +9,7 @@ import {
   ContextMenuSeparator as CtxMenuSep,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import { formatDeadline, getSubjectById, getEventTypeInfo, getSessionSubjectIds, cn } from "@/lib/utils"
+import { formatDeadline, getSubjectById, getEventTypeInfo, getSessionEffectiveMinutes, getSessionSubjectIds, cn } from "@/lib/utils"
 import { groupSessionsBySubject } from "@/lib/groupSessions"
 import type { CalendarEvent, Project, StudySession } from "@/lib/types"
 
@@ -264,7 +264,7 @@ export function DayDetail({
                               selected
                                 ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
                                 : "border-transparent bg-background/40 hover:bg-accent/20",
-                              s.status === "completed" && "opacity-60 hover:opacity-80",
+                              s.status === "completed" && "opacity-75 hover:opacity-95",
                             )}
                           >
                             <div className="flex items-start gap-2">
@@ -284,17 +284,23 @@ export function DayDetail({
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-2">
                                   <p className="min-w-0 truncate text-xs font-medium">{s.title}</p>
-                                  {s.status === "completed" && (
-                                    <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-success/15 text-success">
-                                      Done
+                                  {s.status !== "planned" && (
+                                    <span className={cn(
+                                      "rounded px-1.5 py-0.5 text-micro font-medium whitespace-nowrap",
+                                      s.status === "completed"
+                                        ? "bg-success/15 text-success"
+                                        : "bg-primary/12 text-primary",
+                                    )}>
+                                      {s.status === "completed" ? "Done" : "Active"}
                                     </span>
                                   )}
                                 </div>
                                 <p className="text-micro text-muted-foreground mt-0.5">
                                   {project?.name ?? subjects}
                                 </p>
-                                <p className="text-micro text-muted-foreground mt-1">
-                                  {formatTimeRange(s.startTime, s.endTime)}
+                                <p className="mt-1 text-micro font-medium tabular-nums text-muted-foreground">
+                                  {formatTimeRange(s.startTime, s.endTime)} · {formatDuration(getSessionEffectiveMinutes(s))}
+                                  {s.schedule.blocks.length > 1 ? ` · ${s.schedule.blocks.length} blocks` : ""}
                                 </p>
                               </div>
                             </div>

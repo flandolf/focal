@@ -114,6 +114,8 @@ export interface EventRow {
 export interface StudySessionRow {
   id: string
   user_id: string
+  schema_version: number
+  payload: JsonValue
   project_id: string | null
   subject_ids: string[]
   title: string

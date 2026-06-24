@@ -10,6 +10,41 @@ export type StudySessionStatus = "planned" | "in-progress" | "completed";
 
 export type ConfidenceScore = 1 | 2 | 3 | 4 | 5;
 
+export interface StudyTimeRange {
+  start: string;
+  end: string;
+}
+
+export interface StudyInterval {
+  start: string;
+  end?: string;
+  source: "manual" | "pomodoro" | "imported";
+  cycleNumber?: number;
+}
+
+export type StudySessionExecution =
+  | { state: "planned"; intervals: [] }
+  | { state: "in-progress"; intervals: StudyInterval[] }
+  | { state: "completed"; intervals: StudyInterval[]; completedAt: string; reportedMinutes?: number };
+
+export interface StudySessionDraft {
+  projectId?: string;
+  subjectIds: string[];
+  title: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  status?: StudySessionStatus;
+  topics?: string[];
+  notes?: string;
+  confidence?: ConfidenceScore;
+  blockers?: string;
+  nextAction?: string;
+  activeDurations?: StudyTimeRange[];
+  completedAt?: string;
+  source?: NotionSource;
+}
+
 export interface NotionSource {
   type: "notion";
   id: string;
@@ -27,26 +62,48 @@ export interface VcaaSource {
 }
 
 export interface StudySession {
+  schemaVersion: 2;
   id: string;
   projectId?: string;
   subjectIds: string[];
   title: string;
   description?: string;
-  startTime: string; // ISO date
-  endTime: string; // ISO date
-  status: StudySessionStatus;
   topics?: string[]; // Topics covered in the session
-  notes?: string;
-  confidence?: ConfidenceScore;
-  blockers?: string;
-  nextAction?: string;
-  activeDurations?: { start: string; end: string }[]; // For merged sessions: individual active periods within startTime-endTime span
-  completedAt?: string;
-  source?: NotionSource;
+  schedule: { blocks: StudyTimeRange[] };
+  execution: StudySessionExecution;
+  reflection?: {
+    notes?: string;
+    confidence?: ConfidenceScore;
+    blockers?: string;
+    nextAction?: string;
+  };
+  createdVia: "manual" | "planner" | "assistant" | "notion";
+  integrations?: { notion?: NotionSource };
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
   last_modified_device_id?: string | null;
+
+  /** @deprecated Compatibility view. New code should use schedule.blocks. */
+  startTime: string;
+  /** @deprecated Compatibility view. New code should use schedule.blocks. */
+  endTime: string;
+  /** @deprecated Compatibility view. New code should use execution.state. */
+  status: StudySessionStatus;
+  /** @deprecated Compatibility view. New code should use reflection. */
+  notes?: string;
+  /** @deprecated Compatibility view. New code should use reflection. */
+  confidence?: ConfidenceScore;
+  /** @deprecated Compatibility view. New code should use reflection. */
+  blockers?: string;
+  /** @deprecated Compatibility view. New code should use reflection. */
+  nextAction?: string;
+  /** @deprecated Compatibility view. Planned blocks and actual intervals are now separate. */
+  activeDurations?: StudyTimeRange[];
+  /** @deprecated Compatibility view. New code should use execution. */
+  completedAt?: string;
+  /** @deprecated Compatibility view. New code should use integrations.notion. */
+  source?: NotionSource;
 }
 
 export interface CalendarEvent {

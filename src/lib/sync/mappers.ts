@@ -6,6 +6,7 @@
  */
 import { parseCalendarEventSource, parseNotionSource } from "@/lib/utils"
 import type { CalendarEvent, ConfidenceScore, EventType, Project, StudySession, StudySessionStatus, Subject, TimetableConfig, TimetableDayLabel, Unit, UserSettings } from "@/lib/types"
+import { normalizeStudySession, studySessionPayload } from "@/lib/studySessions"
 import type {
   CustomSubjectRow,
   EventRow,
@@ -124,10 +125,12 @@ export function rowToEvent(row: EventRow): LocalEvent {
 }
 
 export function sessionToRow(session: StudySession, userId: string, deviceId: string): StudySessionRow {
-  const synced = ensureUpdatedAt(session)
+  const synced = ensureUpdatedAt(normalizeStudySession(session))
   return {
     id: synced.id,
     user_id: userId,
+    schema_version: synced.schemaVersion,
+    payload: studySessionPayload(synced) as StudySessionRow["payload"],
     project_id: synced.projectId ?? null,
     subject_ids: synced.subjectIds,
     title: synced.title,
@@ -140,7 +143,7 @@ export function sessionToRow(session: StudySession, userId: string, deviceId: st
     confidence: synced.confidence ?? null,
     blockers: synced.blockers ?? null,
     next_action: synced.nextAction ?? null,
-    active_durations: synced.activeDurations ?? null,
+    active_durations: (synced.activeDurations ?? null) as StudySessionRow["active_durations"],
     completed_at: synced.completedAt ?? null,
     source: (synced.source ?? null) as StudySessionRow["source"],
     created_at: synced.created_at,
@@ -151,7 +154,17 @@ export function sessionToRow(session: StudySession, userId: string, deviceId: st
 }
 
 export function rowToSession(row: StudySessionRow): LocalStudySession {
-  return {
+  if (row.schema_version === 2 && row.payload && typeof row.payload === "object" && !Array.isArray(row.payload) && Object.keys(row.payload).length > 0) {
+    return normalizeStudySession({
+      ...row.payload,
+      id: row.id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      deleted_at: row.deleted_at,
+      last_modified_device_id: row.last_modified_device_id,
+    })
+  }
+  return normalizeStudySession({
     id: row.id,
     projectId: row.project_id ?? undefined,
     subjectIds: row.subject_ids,
@@ -172,7 +185,7 @@ export function rowToSession(row: StudySessionRow): LocalStudySession {
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
     last_modified_device_id: row.last_modified_device_id,
-  }
+  })
 }
 
 export function subjectToRow(subject: Subject, userId: string, deviceId: string): Omit<CustomSubjectRow, "id"> & { id?: string } {
@@ -307,4 +320,3 @@ function isActiveDurations(value: unknown): value is { start: string; end: strin
     return typeof record.start === "string" && typeof record.end === "string"
   })
 }
-

@@ -177,9 +177,12 @@ export function getSessionSubjectIds(session: StudySession, project?: Project): 
 }
 
 export function getSessionEffectiveMinutes(session: StudySession): number {
-  if (session.activeDurations && session.activeDurations.length > 0) {
-    const total = session.activeDurations.reduce((sum, d) => {
-      return sum + Math.max(0, new Date(d.end).getTime() - new Date(d.start).getTime())
+  const ranges = session.execution.state === "planned"
+    ? session.schedule.blocks
+    : session.execution.intervals.filter((interval): interval is typeof interval & { end: string } => Boolean(interval.end))
+  if (ranges.length > 0) {
+    const total = ranges.reduce((sum, range) => {
+      return sum + Math.max(0, new Date(range.end).getTime() - new Date(range.start).getTime())
     }, 0)
     return Math.round(total / 60000)
   }

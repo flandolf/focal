@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { getNotionCalendarSettings } from "@/lib/settings"
 import { syncNotionCalendar, pushEventToNotion, pushSessionToNotion, type NotionCalendarSyncResult } from "@/lib/notion"
-import type { CalendarEvent, StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, StudySession, StudySessionDraft, Subject } from "@/lib/types"
 import type { NotionConflict } from "@/components/NotionConflictDialog"
 
 interface UseNotionSyncOptions {
@@ -10,7 +10,7 @@ interface UseNotionSyncOptions {
   sessions: StudySession[]
   allSubjects: Subject[]
   syncEvents: (created: Omit<CalendarEvent, "id" | "created_at">[], updated: { id: string; updates: Partial<Omit<CalendarEvent, "id" | "created_at">> }[]) => Promise<unknown>
-  syncSessions: (created: Omit<StudySession, "id" | "created_at">[], updated: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]) => Promise<unknown>
+  syncSessions: (created: StudySessionDraft[], updated: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]) => Promise<unknown>
 }
 
 export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncSessions }: UseNotionSyncOptions) {

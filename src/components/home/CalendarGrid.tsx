@@ -45,6 +45,13 @@ import type { CalendarEvent, Project, StudySession } from "@/lib/types";
 const CALENDAR_FALLBACK_COLOR = "var(--muted-foreground)";
 const DRAG_THRESHOLD = 4;
 
+function formatCompactDuration(totalMinutes: number): string {
+  if (totalMinutes < 60) return `${Math.max(1, Math.round(totalMinutes))}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.round(totalMinutes % 60);
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
 function parseDateKey(dateKey: string): Date | null {
   const [year, month, day] = dateKey.split("-").map(Number);
   if (!year || !month || !day) return null;
@@ -111,7 +118,7 @@ export function CalendarGrid({
   onToday,
   onSelectDate,
   onSelectProject,
-  onSelectSession: _onSelectSession,
+  onSelectSession,
   onSelectEvent,
   onMoveEvent,
   onDeleteCalendarItems,
@@ -544,16 +551,21 @@ export function CalendarGrid({
                 kind: "deadline" as const,
                 id: p.id,
               })),
-              ...sessionIndicators.map((ind) => ({
-                type: "session" as const,
-                name:
-                  ind.count > 1
-                    ? `${ind.shortCode} · ${ind.count}`
-                    : ind.shortCode,
-                color: ind.color,
-                kind: "session" as const,
-                id: ind.subjectId,
-              })),
+              ...sessionIndicators.map((ind) => {
+                const session = ind.count === 1
+                  ? daySessions.find((item) => item.id === ind.sessionIds[0])
+                  : undefined;
+                return {
+                  type: "session" as const,
+                  name: session?.title ?? ind.shortCode,
+                  meta: `${ind.count > 1 ? `${ind.count}× · ` : ""}${formatCompactDuration(ind.totalMinutes)}`,
+                  color: ind.color,
+                  kind: "session" as const,
+                  id: ind.subjectId,
+                  status: ind.status,
+                  session,
+                };
+              }),
               ...dayEvents.map((e) => ({
                 type: "event" as const,
                 name: e.title,
@@ -711,15 +723,43 @@ export function CalendarGrid({
                       "event" in item && item.type === "event";
                     const sharedClasses =
                       "flex h-5 w-full items-center gap-1 overflow-hidden rounded-[3px]";
+                    const isSession = item.type === "session";
                     const content = (
                       <>
-                        <div
-                          className="h-full w-0.75 shrink-0"
-                          style={{ backgroundColor: item.color }}
-                        />
-                        <span className="truncate text-caption font-medium leading-5 text-foreground/75">
+                        {isSession ? (
+                          item.status === "completed" ? (
+                            <CheckCircle2
+                              className="ml-1 h-2.5 w-2.5 shrink-0"
+                              style={{ color: item.color }}
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <span
+                              className={cn(
+                                "ml-1 h-1.5 w-1.5 shrink-0 rounded-full",
+                                item.status === "in-progress" && "ring-2 ring-primary/25",
+                              )}
+                              style={{ backgroundColor: item.color }}
+                              aria-hidden="true"
+                            />
+                          )
+                        ) : (
+                          <div
+                            className="h-full w-0.75 shrink-0"
+                            style={{ backgroundColor: item.color }}
+                          />
+                        )}
+                        <span className={cn(
+                          "truncate text-caption font-medium leading-5",
+                          isSession ? "text-foreground/85" : "text-foreground/75",
+                        )}>
                           {item.name}
                         </span>
+                        {isSession && (
+                          <span className="ml-auto mr-1 shrink-0 text-micro font-medium tabular-nums text-muted-foreground/70">
+                            {item.meta}
+                          </span>
+                        )}
                       </>
                     );
                     if (isDraggableEvent) {
@@ -802,6 +842,28 @@ export function CalendarGrid({
                         </ContextMenu>
                       );
                     }
+                    if (isSession) {
+                      return (
+                        <button
+                          key={`${item.type}-${idx}`}
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (item.session) onSelectSession(item.session);
+                            else onSelectDate(dateKey);
+                          }}
+                          className={cn(
+                            sharedClasses,
+                            "text-left transition-colors hover:bg-accent/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                            item.status === "completed" && "opacity-70 hover:opacity-90",
+                          )}
+                          style={{ backgroundColor: item.color + "10" }}
+                          aria-label={`${item.name} study, ${item.meta}${item.status === "completed" ? ", completed" : item.status === "in-progress" ? ", active" : ""}`}
+                        >
+                          {content}
+                        </button>
+                      );
+                    }
                     return (
                       <div
                         key={`${item.type}-${idx}`}
@@ -867,16 +929,21 @@ export function CalendarGrid({
                     CALENDAR_FALLBACK_COLOR,
                   project: p,
                 })),
-                ...sessionIndicators.map((ind) => ({
-                  type: "session" as const,
-                  name:
-                    ind.count > 1
-                      ? `${ind.shortCode} · ${ind.count}`
-                      : ind.shortCode,
-                  color: ind.color,
-                  kind: "session" as const,
-                  id: ind.subjectId,
-                })),
+                ...sessionIndicators.map((ind) => {
+                  const session = ind.count === 1
+                    ? daySessions.find((item) => item.id === ind.sessionIds[0])
+                    : undefined;
+                  return {
+                    type: "session" as const,
+                    name: session?.title ?? ind.shortCode,
+                    meta: `${ind.count > 1 ? `${ind.count}× · ` : ""}${formatCompactDuration(ind.totalMinutes)}`,
+                    color: ind.color,
+                    kind: "session" as const,
+                    id: ind.subjectId,
+                    status: ind.status,
+                    session,
+                  };
+                }),
                 ...regularDayEvents.map((e) => ({
                   type: "event" as const,
                   name: e.title,
@@ -985,12 +1052,18 @@ export function CalendarGrid({
                           e.stopPropagation();
                           if (item.type === "deadline" && "project" in item)
                             onSelectProject(item.project.id);
-                          else if (item.type === "session")
-                            onSelectDate(dateKey);
+                          else if (item.type === "session") {
+                            if (item.session) onSelectSession(item.session);
+                            else onSelectDate(dateKey);
+                          }
                           else if (item.type === "event" && "event" in item)
                             onSelectEvent(item.event);
                         }}
-                        className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/45"
+                        className={cn(
+                          "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                          item.type === "session" && "border border-border/30 bg-background/35",
+                          item.type === "session" && item.status === "completed" && "opacity-65 hover:opacity-90",
+                        )}
                         style={{
                           touchAction:
                             item.type === "event" && "event" in item
@@ -998,13 +1071,29 @@ export function CalendarGrid({
                               : undefined,
                         }}
                       >
-                        <div
-                          className="h-1.5 w-1.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: item.color }}
-                        />
+                        {item.type === "session" && item.status === "completed" ? (
+                          <CheckCircle2
+                            className="h-3 w-3 shrink-0"
+                            style={{ color: item.color }}
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <div
+                            className={cn(
+                              "h-1.5 w-1.5 shrink-0 rounded-full",
+                              item.type === "session" && item.status === "in-progress" && "ring-2 ring-primary/20",
+                            )}
+                            style={{ backgroundColor: item.color }}
+                          />
+                        )}
                         <span className="min-w-0 truncate text-xs font-medium leading-tight text-foreground/80">
                           {item.name}
                         </span>
+                        {item.type === "session" && (
+                          <span className="ml-auto shrink-0 text-micro font-medium tabular-nums text-muted-foreground">
+                            {item.status === "in-progress" ? "Active · " : ""}{item.meta}
+                          </span>
+                        )}
                       </button>
                     ))}
                     {allItems.length === 0 &&

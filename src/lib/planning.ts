@@ -78,10 +78,7 @@ function subtractRanges(window: TimeRange, busy: TimeRange[]): TimeRange[] {
 }
 
 function getSessionRanges(session: StudySession): TimeRange[] {
-  const periods = session.activeDurations?.length
-    ? session.activeDurations
-    : [{ start: session.startTime, end: session.endTime }]
-  return periods.map((period) => ({
+  return session.schedule.blocks.map((period) => ({
     start: new Date(period.start).getTime(),
     end: new Date(period.end).getTime(),
   }))

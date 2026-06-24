@@ -1,4 +1,5 @@
 import { buildAssistantOverview, buildStudyOverviewToolResult, executeReadOnlyFocalToolCall, extractFollowUpPrompts, parseLooseEventCreateRequest, prepareStudySessionUpdate } from "../src/components/AIAssistantPanel"
+import { normalizeStudySession } from "../src/lib/studySessions"
 
 const draft = parseLooseEventCreateRequest("math methods sac 8 august 1:45pm", "2026-06-19", [
   { id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB" },
@@ -12,7 +13,7 @@ const overview = buildAssistantOverview(
     created_at: "2026-06-01",
     folder_path: "methods-sac",
   }],
-  [{
+  [normalizeStudySession({
     id: "session-1",
     subjectIds: ["mm"],
     title: "Methods revision",
@@ -20,7 +21,7 @@ const overview = buildAssistantOverview(
     endTime: "2026-06-20T10:45:00",
     status: "planned",
     created_at: "2026-06-01",
-  }],
+  })],
   "2026-06-20",
 )
 if (overview.title !== "Methods SAC is due in 2 days") throw new Error(`Unexpected overview title: ${overview.title}`)
@@ -45,7 +46,7 @@ const studyEvidence = buildStudyOverviewToolResult(
       folder_path: "physics-sac",
     },
   ],
-  [{
+  [normalizeStudySession({
     id: "session-1",
     subjectIds: ["mm"],
     projectId: "methods-sac",
@@ -54,7 +55,7 @@ const studyEvidence = buildStudyOverviewToolResult(
     endTime: "2026-06-20T10:45:00",
     status: "planned",
     created_at: "2026-06-01",
-  }],
+  })],
   [
     { id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB" },
     { id: "phy", name: "Physics", shortCode: "PHY", color: "#7C3AED" },
@@ -167,7 +168,7 @@ const preparedSession = prepareStudySessionUpdate(
     },
   },
   {
-    sessions: [{
+    sessions: [normalizeStudySession({
       id: "session-1",
       subjectIds: ["mm"],
       title: "Methods revision",
@@ -175,7 +176,7 @@ const preparedSession = prepareStudySessionUpdate(
       endTime: "2026-06-20T10:45:00+10:00",
       status: "planned",
       created_at: "2026-06-01",
-    }],
+    })],
     subjects: [{ id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB" }],
     now: "2026-06-21T14:46:00+10:00",
   },

@@ -1,81 +1,22 @@
 import { useCallback } from "react"
-import type { ConfidenceScore, StudySession } from "@/lib/types"
-import { generateId, safeString, safeStringOpt, safeDateMeta, parseNotionSource } from "@/lib/utils"
+import type { StudySession, StudySessionDraft, StudyTimeRange } from "@/lib/types"
+import { generateId } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
-
-const VALID_STATUSES: readonly string[] = ["planned", "in-progress", "completed"]
-
-function isConfidenceScore(value: unknown): value is ConfidenceScore {
-  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
-}
-
-function normaliseSession(raw: unknown): StudySession {
-  const obj = raw as Record<string, unknown>
-  const meta = safeDateMeta(obj)
-  return {
-    id: safeString(obj, "id", `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`),
-    projectId: safeStringOpt(obj, "projectId") ?? undefined,
-    subjectIds: Array.isArray(obj.subjectIds) ? obj.subjectIds.filter((id): id is string => typeof id === "string") : [],
-    title: safeString(obj, "title", "Study Session"),
-    description: safeStringOpt(obj, "description"),
-    startTime: safeString(obj, "startTime", new Date().toISOString()),
-    endTime: safeString(obj, "endTime", new Date(Date.now() + 60 * 60 * 1000).toISOString()),
-    status: VALID_STATUSES.includes(String(obj.status)) ? (obj.status as StudySession["status"]) : "planned",
-    topics: Array.isArray(obj.topics) ? obj.topics : undefined,
-    notes: safeStringOpt(obj, "notes"),
-    confidence: isConfidenceScore(obj.confidence) ? obj.confidence : undefined,
-    blockers: safeStringOpt(obj, "blockers"),
-    nextAction: safeStringOpt(obj, "nextAction"),
-    completedAt: safeStringOpt(obj, "completedAt"),
-    source: parseNotionSource(obj.source),
-    activeDurations: Array.isArray(obj.activeDurations)
-      ? (obj.activeDurations as { start: string; end: string }[]).filter(
-          (d) => typeof d.start === "string" && typeof d.end === "string",
-        )
-      : undefined,
-    ...meta,
-  }
-}
+import { createStudySession, normalizeStudySession, updateStudySession, type CreateStudySessionInput } from "@/lib/studySessions"
 
 export function useStudySessions() {
   const { data: sessions, loading, error, save: saveSessions, refresh } = usePersistedData({
     fileName: "sessions.json",
-    normalize: normaliseSession,
+    normalize: normalizeStudySession,
     onLoad: (normalised) => normalised.filter((session) => !session.deleted_at),
   })
 
   const sessionsRef = useLatestRef(sessions)
 
-  const addSession = useCallback(async (
-    projectId: string | undefined,
-    subjectIds: string[],
-    title: string,
-    startTime: string,
-    endTime: string,
-    description?: string,
-    topics?: string[],
-    notes?: string,
-    status: StudySession["status"] = "planned",
-    activeDurations?: { start: string; end: string }[],
-  ) => {
-    const now = new Date().toISOString()
-    const session: StudySession = {
-      id: generateId(),
-      projectId,
-      subjectIds,
-      title,
-      description,
-      startTime,
-      endTime,
-      activeDurations,
-      status,
-      topics,
-      notes,
-      created_at: now,
-      updated_at: now,
-    }
+  const addSession = useCallback(async (input: CreateStudySessionInput) => {
+    const session = createStudySession(generateId(), input)
     const updated = [...sessionsRef.current, session]
     await saveSessions(updated)
     void recordLocalUpsert("study_sessions", session)
@@ -91,24 +32,19 @@ export function useStudySessions() {
     description?: string
     topics?: string[]
     notes?: string
-    activeDurations?: { start: string; end: string }[]
+    activeDurations?: StudyTimeRange[]
   }[]) => {
     const createdAt = new Date().toISOString()
-    const newSessions: StudySession[] = items.map((item) => ({
-      id: generateId(),
+    const newSessions = items.map((item) => createStudySession(generateId(), {
       projectId: item.projectId,
       subjectIds: item.subjectIds,
       title: item.title,
       description: item.description,
-      startTime: item.startTime,
-      endTime: item.endTime,
-      status: "planned",
       topics: item.topics,
-      notes: item.notes,
-      activeDurations: item.activeDurations,
-      created_at: createdAt,
-      updated_at: createdAt,
-    }))
+      schedule: { blocks: item.activeDurations?.length ? item.activeDurations : [{ start: item.startTime, end: item.endTime }] },
+      reflection: item.notes ? { notes: item.notes } : undefined,
+      createdVia: "planner",
+    }, createdAt))
     const updated = [...sessionsRef.current, ...newSessions]
     await saveSessions(updated)
     newSessions.forEach((session) => void recordLocalUpsert("study_sessions", session))
@@ -119,9 +55,7 @@ export function useStudySessions() {
     id: string,
     updates: Partial<Omit<StudySession, "id" | "created_at">>
   ) => {
-    const updated = sessionsRef.current.map((s) =>
-      s.id === id ? { ...s, ...updates, updated_at: new Date().toISOString() } : s
-    )
+    const updated = sessionsRef.current.map((s) => s.id === id ? updateStudySession(s, updates) : s)
     await saveSessions(updated)
     const session = updated.find((item) => item.id === id)
     if (session) void recordLocalUpsert("study_sessions", session)
@@ -134,7 +68,7 @@ export function useStudySessions() {
     const updateMap = new Map(items.map((item) => [item.id, item.updates]))
     const updated = sessionsRef.current.map((session) => {
       const updates = updateMap.get(session.id)
-      return updates ? { ...session, ...updates, updated_at: new Date().toISOString() } : session
+      return updates ? updateStudySession(session, updates) : session
     })
     await saveSessions(updated)
     items.forEach((item) => {
@@ -152,7 +86,7 @@ export function useStudySessions() {
   const restoreSession = useCallback(async (session: StudySession) => {
     const exists = sessionsRef.current.some((s) => s.id === session.id)
     if (exists) return
-    const restored = { ...session, deleted_at: null, updated_at: new Date().toISOString() }
+    const restored = updateStudySession(session, { deleted_at: null })
     const updated = [...sessionsRef.current, restored]
     await saveSessions(updated)
     void recordLocalUpsert("study_sessions", restored)
@@ -170,7 +104,7 @@ export function useStudySessions() {
     const existingIds = new Set(sessionsRef.current.map((s) => s.id))
     const newSessions = sessionsToRestore.filter((s) => !existingIds.has(s.id))
     if (newSessions.length === 0) return
-    const restoredSessions = newSessions.map((session) => ({ ...session, deleted_at: null, updated_at: new Date().toISOString() }))
+    const restoredSessions = newSessions.map((session) => updateStudySession(session, { deleted_at: null }))
     const updated = [...sessionsRef.current, ...restoredSessions]
     await saveSessions(updated)
     restoredSessions.forEach((session) => void recordLocalUpsert("study_sessions", session))
@@ -187,7 +121,7 @@ export function useStudySessions() {
       .filter((session) => !deleteSet.has(session.id))
       .map((session) => {
         const updates = updateMap.get(session.id)
-        return updates ? { ...session, ...updates, updated_at: new Date().toISOString() } : session
+        return updates ? updateStudySession(session, updates) : session
       })
     await saveSessions(updated)
     items.forEach((item) => {
@@ -198,34 +132,20 @@ export function useStudySessions() {
   }, [sessionsRef, saveSessions])
 
   const syncSessions = useCallback(async (
-    itemsToCreate: Omit<StudySession, "id" | "created_at">[],
+    itemsToCreate: StudySessionDraft[],
     itemsToUpdate: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[],
   ) => {
     const updateMap = new Map(itemsToUpdate.map((item) => [item.id, item.updates]))
     const createdAt = new Date().toISOString()
-    const newSessions: StudySession[] = itemsToCreate.map((item) => ({
+    const newSessions = itemsToCreate.map((item) => normalizeStudySession({
+      ...item,
       id: generateId(),
-      projectId: item.projectId,
-      subjectIds: item.subjectIds,
-      title: item.title,
-      description: item.description,
-      startTime: item.startTime,
-      endTime: item.endTime,
-      status: item.status,
-      topics: item.topics,
-      notes: item.notes,
-      confidence: item.confidence,
-      blockers: item.blockers,
-      nextAction: item.nextAction,
-      completedAt: item.completedAt,
-      activeDurations: item.activeDurations,
-      source: item.source,
       created_at: createdAt,
       updated_at: createdAt,
     }))
     const updated = sessionsRef.current.map((session) => {
       const updates = updateMap.get(session.id)
-      return updates ? { ...session, ...updates, updated_at: createdAt } : session
+      return updates ? updateStudySession(session, updates, createdAt) : session
     })
     await saveSessions([...updated, ...newSessions])
     itemsToUpdate.forEach((item) => {

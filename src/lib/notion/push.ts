@@ -24,10 +24,13 @@ import { createNotionPage, updateNotionPage, deleteNotionPage, fetchNotionSchema
 
 function buildSessionBodyText(session: StudySession): string | undefined {
   const base = [session.description, session.notes].filter(Boolean).join("\n\n")
-  if (!session.activeDurations || session.activeDurations.length === 0) {
+  const activeDurations = session.execution.intervals.filter(
+    (interval): interval is typeof interval & { end: string } => Boolean(interval.end),
+  )
+  if (activeDurations.length === 0) {
     return base || undefined
   }
-  const sorted = [...session.activeDurations].sort(
+  const sorted = [...activeDurations].sort(
     (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
   )
   const lines: string[] = []
@@ -35,7 +38,7 @@ function buildSessionBodyText(session: StudySession): string | undefined {
   let totalActive = 0
   for (const d of sorted) {
     const startDate = new Date(d.start)
-    const endDate = new Date(d.end)
+    const endDate = new Date(d.end!)
     const durationMin = Math.round((endDate.getTime() - startDate.getTime()) / 60000)
     totalActive += durationMin
     const timeFmt = (date: Date) =>

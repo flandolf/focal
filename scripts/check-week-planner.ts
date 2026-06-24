@@ -1,5 +1,6 @@
 import { buildAvailableStudyIntervals, sumAvailableStudyMinutes, type AvailableStudyInterval } from "../src/lib/planning"
 import type { StudySession } from "../src/lib/types"
+import { normalizeStudySession } from "../src/lib/studySessions"
 
 const intervals: AvailableStudyInterval[] = [
   { date: "2026-06-24", startTime: "2026-06-24T06:00:00.000Z", endTime: "2026-06-24T08:00:00.000Z", availableMinutes: 120, dailyRemainingMinutes: 180 },
@@ -11,7 +12,7 @@ if (sumAvailableStudyMinutes(intervals) !== 240) {
   throw new Error("Daily caps should limit the displayed weekly capacity")
 }
 
-const mergedSession: StudySession = {
+const mergedSession: StudySession = normalizeStudySession({
   id: "merged",
   title: "Merged study",
   subjectIds: ["eng"],
@@ -20,7 +21,7 @@ const mergedSession: StudySession = {
   activeDurations: [{ start: "2026-06-24T07:00:00.000Z", end: "2026-06-24T08:00:00.000Z" }],
   status: "planned",
   created_at: "2026-06-24T00:00:00.000Z",
-}
+})
 const mergedIntervals = buildAvailableStudyIntervals({
   preferences: {
     windows: [

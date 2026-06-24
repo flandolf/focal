@@ -12,7 +12,7 @@ import { buildAvailableStudyIntervals, getUrgencyLabel, getUrgencyClassName, sum
 import { DEFAULT_STUDY_PLANNING_PREFERENCES, getStudyPlanningPreferences, setStudyPlanningPreferences } from "@/lib/settings"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import { confirmAction } from "@/lib/confirmToast"
-import type { CalendarEvent, PriorityItem, Project, StudyPlanningPreferences, StudySession, Subject, TimetableConfig } from "@/lib/types"
+import type { CalendarEvent, PriorityItem, Project, StudyPlanningPreferences, StudySession, StudySessionDraft, Subject, TimetableConfig } from "@/lib/types"
 import { generateAssessmentCopilotPlan, clampCopilotDuration, splitCopilotTopics } from "@/lib/copilot"
 import type { CopilotFocusItem, CopilotSessionDraft } from "@/lib/copilot"
 import { describeAiError } from "@/lib/aiAssistant"
@@ -58,7 +58,7 @@ interface AssessmentCopilotProps {
   planningSubjects: Subject[]
   currentMonth: Date
   timetableConfig?: TimetableConfig | null
-  onCreateStudySessions: (sessions: Omit<StudySession, "id" | "status" | "created_at">[]) => Promise<void>
+  onCreateStudySessions: (sessions: StudySessionDraft[]) => Promise<void>
 }
 
 export function AssessmentCopilot({
