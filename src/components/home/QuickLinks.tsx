@@ -130,7 +130,7 @@ export function QuickLinks() {
 
   return (
     <>
-      <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+      <div className="workbench-section">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-heading text-sm font-semibold flex items-center gap-2">
             <Link className="h-3.5 w-3.5 text-muted-foreground" />

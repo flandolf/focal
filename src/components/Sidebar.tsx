@@ -358,7 +358,7 @@ export const Sidebar = memo(function Sidebar({
   const pressTransition = reduceMotion
     ? { duration: 0 }
     : SIDEBAR_PRESS_TRANSITION;
-  const hoverLift = reduceMotion ? undefined : { scale: 1.025 };
+  const hoverLift = reduceMotion ? undefined : { x: 2 };
   const tapPress = reduceMotion ? undefined : { scale: 0.96 };
 
   const selectedCount = selectedProjectIds?.size ?? 0;
@@ -373,7 +373,7 @@ export const Sidebar = memo(function Sidebar({
   return (
     <aside
       className={cn(
-        "glass-sidebar relative flex h-full flex-col overflow-hidden rounded-2xl text-sidebar-foreground transition-all duration-300 ease-out min-[1200px]:rounded-[1.35rem]",
+        "glass-sidebar relative flex h-full flex-col overflow-hidden rounded-xl text-sidebar-foreground transition-all duration-300 ease-out",
         isDragOver && "ring-2 ring-primary/50 ring-inset",
       )}
       onDragEnter={handleDragEnter}
@@ -393,7 +393,7 @@ export const Sidebar = memo(function Sidebar({
       )}
       <div
         className={cn(
-          "pb-2 pt-2.5 min-[1200px]:pb-3 min-[1200px]:pt-3",
+          "border-b border-sidebar-border/55 pb-3 pt-3 min-[1200px]:pb-4 min-[1200px]:pt-4",
           isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-3 min-[1200px]:px-4",
         )}
       >
@@ -433,7 +433,7 @@ export const Sidebar = memo(function Sidebar({
           <Button
             onClick={onNewProject}
             className={cn(
-              "h-8 overflow-hidden rounded-2xl text-primary-foreground btn-glow-primary",
+              "h-8 overflow-hidden rounded-md text-primary-foreground",
               isCollapsed ? "w-8 px-0" : "w-full gap-1",
             )}
             size="sm"
@@ -459,15 +459,15 @@ export const Sidebar = memo(function Sidebar({
           whileTap={tapPress}
           transition={pressTransition}
           className={cn(
-            "group relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
             homeSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
-              : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+              ? "bg-background/72 text-foreground shadow-sm ring-1 ring-primary/20"
+              : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Today (H)" : undefined}
         >
-          <Home className="h-4 w-4 shrink-0" />
+          <Home className={cn("h-4 w-4 shrink-0", homeSelected && "text-primary")} />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Today
           </CollapsibleInline>
@@ -475,7 +475,7 @@ export const Sidebar = memo(function Sidebar({
             <span className="mr-1 hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
               H
             </span>
-            <span className="rounded-full bg-background/55 px-2 py-0.5 text-caption text-muted-foreground">
+            <span className={cn("rounded-full px-2 py-0.5 text-caption", homeSelected ? "bg-primary/10 text-primary" : "bg-background/45 text-muted-foreground")}>
               {activeCount}
             </span>
           </CollapsibleInline>
@@ -487,15 +487,15 @@ export const Sidebar = memo(function Sidebar({
           whileTap={tapPress}
           transition={pressTransition}
           className={cn(
-            "group relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
             timetableSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
-              : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+              ? "bg-background/72 text-foreground shadow-sm ring-1 ring-primary/20"
+              : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Timetable (T)" : undefined}
         >
-          <CalendarIcon className="h-4 w-4 shrink-0" />
+          <CalendarIcon className={cn("h-4 w-4 shrink-0", timetableSelected && "text-primary")} />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Timetable
           </CollapsibleInline>
@@ -512,15 +512,15 @@ export const Sidebar = memo(function Sidebar({
           whileTap={tapPress}
           transition={pressTransition}
           className={cn(
-            "group relative flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-colors",
+            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
             analyticsSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
-              : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+              ? "bg-background/72 text-foreground shadow-sm ring-1 ring-primary/20"
+              : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Analytics (A)" : undefined}
         >
-          <BarChart3 className="h-4 w-4 shrink-0" />
+          <BarChart3 className={cn("h-4 w-4 shrink-0", analyticsSelected && "text-primary")} />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Analytics
           </CollapsibleInline>
@@ -533,7 +533,7 @@ export const Sidebar = memo(function Sidebar({
 
         <div
           className={cn(
-            "gap-1 rounded-xl border border-sidebar-border bg-background/30 p-0.5 min-[1200px]:rounded-2xl",
+            "gap-1 rounded-lg border border-sidebar-border/60 bg-background/20 p-1",
             isCollapsed ? "flex flex-col" : "grid grid-cols-2",
           )}
         >
@@ -545,10 +545,10 @@ export const Sidebar = memo(function Sidebar({
               whileTap={tapPress}
               transition={pressTransition}
               className={cn(
-                "relative flex h-7 items-center justify-center rounded-xl transition-colors",
+                "relative flex h-7 items-center justify-center rounded-md transition-colors",
                 isCollapsed ? "px-0" : "gap-1 px-2 py-1.5 text-xs",
                 filterMode === mode
-                  ? "bg-background/80 text-foreground shadow-xs font-medium"
+                  ? "bg-background/75 text-foreground shadow-xs ring-1 ring-sidebar-border/50 font-medium"
                   : "text-muted-foreground hover:text-foreground",
               )}
               title={isCollapsed ? label : undefined}

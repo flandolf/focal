@@ -20,7 +20,7 @@ export function StudyPriorities({
 }: StudyPrioritiesProps) {
   const reduceMotion = useReducedMotion() === true
   return (
-    <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur">
+    <div className="workbench-section">
       <button
         type="button"
         onClick={onToggle}

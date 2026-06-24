@@ -1616,8 +1616,7 @@ function App() {
             signedIn={Boolean(supabaseAuth.user)}
           />
         </TitleBar>
-        <div className="hairline-grid pointer-events-none absolute inset-0 z-0 opacity-80" />
-        <div className="ambient-shell pointer-events-none absolute inset-0 z-0 opacity-60" />
+        <div className="hairline-grid pointer-events-none absolute inset-0 z-0 opacity-50" />
         <div className="relative z-10 flex min-h-0 flex-1 gap-2 px-2 pb-2 min-[1200px]:gap-3 min-[1200px]:px-3 min-[1200px]:pb-3">
           <motion.div
             layout
@@ -1669,7 +1668,7 @@ function App() {
           <motion.main
             layout
             transition={layoutTransition}
-            className="glass-panel min-w-0 flex-1 overflow-hidden rounded-2xl min-[1200px]:rounded-[1.35rem]"
+            className="glass-panel focal-workbench min-w-0 flex-1 overflow-hidden rounded-lg"
           >
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
