@@ -155,7 +155,7 @@ export function TitleBar({ onSearch = noop, onSettings = noop, children }: Title
   return (
     <div
       data-tauri-drag-region
-      className="app-titlebar relative z-10 flex h-(--app-titlebar-inset) shrink-0 items-center select-none bg-background/60 backdrop-blur-md"
+      className="app-titlebar app-titlebar-surface relative z-10 flex h-(--app-titlebar-inset) shrink-0 items-center select-none"
     >
       {/* Left section: traffic lights on macOS, actions on other platforms */}
       {IS_MACOS ? (

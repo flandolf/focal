@@ -903,22 +903,22 @@ export const HomeView = memo(function HomeView({
       <ScrollArea className="h-full">
         <div
           className={cn(
-            "px-5 pt-5 min-[1200px]:px-8 min-[1200px]:pt-7",
+            "px-3 pt-3 min-[1200px]:px-5 min-[1200px]:pt-4",
             selectedBatchCount > 0
               ? "pb-24 min-[1200px]:pb-24"
-              : "pb-8 min-[1200px]:pb-10",
+              : "pb-5 min-[1200px]:pb-6",
           )}
         >
           <motion.div {...homeEnterProps}>
-            <div className="mb-6 grid gap-5 border-b border-border/70 pb-6 min-[1080px]:grid-cols-[minmax(12rem,0.7fr)_minmax(24rem,1.3fr)] min-[1200px]:mb-8 min-[1200px]:pb-8">
+            <div className="mb-4 grid gap-3 border-b border-border/70 pb-4 min-[1080px]:grid-cols-[minmax(12rem,0.7fr)_minmax(24rem,1.3fr)]">
               <div className="min-w-0">
-                <p className="mb-2 text-micro font-semibold uppercase tracking-[0.18em] text-primary">
+                <p className="mb-1 text-micro font-semibold uppercase tracking-[0.18em] text-primary">
                   {format(new Date(), "EEEE · d MMMM")}
                 </p>
                 <h1 className="font-heading text-3xl font-semibold tracking-[-0.045em] min-[1200px]:text-[2.5rem] min-[1200px]:leading-none">
                   Today
                 </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 {overdueProjects.length > 0 ? (
                   <span className="text-destructive font-medium">
                     {overdueProjects.length} overdue
@@ -947,7 +947,7 @@ export const HomeView = memo(function HomeView({
                   )}
               </p>
             </div>
-            <div className="flex flex-wrap content-start items-center gap-2 min-[1080px]:justify-end">
+            <div className="flex flex-wrap content-start items-center gap-1.5 min-[1080px]:justify-end">
               <span className="mr-1 text-micro font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
                 Tools
               </span>
@@ -1009,8 +1009,8 @@ export const HomeView = memo(function HomeView({
           </div>
 
           {overdueProjects.length > 0 && (
-            <div className="mb-6 rounded-2xl border border-destructive/15 bg-destructive/8 px-4 py-3 halo-urgent">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="mb-4 rounded-xl border border-destructive/15 bg-destructive/8 px-3 py-2 halo-urgent">
+              <div className="mb-1.5 flex items-center gap-2">
                 <AlertCircle className="h-3.5 w-3.5 text-destructive/70" />
                 <span className="text-xs font-semibold text-destructive/80">
                   {overdueProjects.length} overdue assessment
@@ -1034,9 +1034,9 @@ export const HomeView = memo(function HomeView({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 min-[1200px]:gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
-            <Card className="rounded-lg border border-border bg-card p-4 min-[1200px]:p-5">
-              <div className="flex h-full flex-col gap-4 min-[1200px]:gap-5">
+          <div className="grid grid-cols-1 gap-3 min-[1200px]:gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
+            <Card className="rounded-lg border border-border bg-card p-3 min-[1200px]:p-4">
+              <div className="flex h-full flex-col gap-3 min-[1200px]:gap-4">
                 <CalendarGrid
                   currentMonth={currentMonth}
                   calendarView={calendarView}
@@ -1105,7 +1105,7 @@ export const HomeView = memo(function HomeView({
               </div>
             </Card>
 
-            <div className="home-rail space-y-3 min-[1200px]:space-y-4">
+            <div className="home-rail space-y-2">
               <QuickLinks />
 
               {timetableConfig?.enabled &&
