@@ -1,4 +1,4 @@
-import { buildAssistantOverview, executeReadOnlyFocalToolCall, extractFollowUpPrompts, parseLooseEventCreateRequest } from "../src/components/AIAssistantPanel"
+import { buildAssistantOverview, buildStudyOverviewToolResult, executeReadOnlyFocalToolCall, extractFollowUpPrompts, parseLooseEventCreateRequest, prepareStudySessionUpdate } from "../src/components/AIAssistantPanel"
 
 const draft = parseLooseEventCreateRequest("math methods sac 8 august 1:45pm", "2026-06-19", [
   { id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB" },
@@ -25,6 +25,46 @@ const overview = buildAssistantOverview(
 )
 if (overview.title !== "Methods SAC is due in 2 days") throw new Error(`Unexpected overview title: ${overview.title}`)
 if (!overview.detail.includes("45 min")) throw new Error(`Unexpected overview detail: ${overview.detail}`)
+
+const studyEvidence = buildStudyOverviewToolResult(
+  [
+    {
+      id: "methods-sac",
+      name: "Methods SAC",
+      deadline: "2026-06-22",
+      subjectId: "mm",
+      created_at: "2026-06-01",
+      folder_path: "methods-sac",
+    },
+    {
+      id: "physics-sac",
+      name: "Physics SAC",
+      deadline: "2026-06-24",
+      subjectId: "phy",
+      created_at: "2026-06-01",
+      folder_path: "physics-sac",
+    },
+  ],
+  [{
+    id: "session-1",
+    subjectIds: ["mm"],
+    projectId: "methods-sac",
+    title: "Methods revision",
+    startTime: "2026-06-20T10:00:00",
+    endTime: "2026-06-20T10:45:00",
+    status: "planned",
+    created_at: "2026-06-01",
+  }],
+  [
+    { id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB" },
+    { id: "phy", name: "Physics", shortCode: "PHY", color: "#7C3AED" },
+  ],
+  "2026-06-20",
+)
+const gapSection = studyEvidence.split("Coverage gaps")[1] ?? ""
+if (!studyEvidence.includes("Planned study in the next 7 days")) throw new Error("study overview omitted planned sessions")
+if (!gapSection.includes("Physics SAC")) throw new Error(`uncovered deadline missing: ${studyEvidence}`)
+if (gapSection.includes("Methods SAC")) throw new Error(`covered deadline was reported as a gap: ${studyEvidence}`)
 
 const reply = extractFollowUpPrompts("Start with Methods.\n\n[[follow-up: Plan that session for me]]\n[[follow-up: Show my other deadlines]]")
 if (reply.content !== "Start with Methods.") throw new Error(`Unexpected cleaned reply: ${reply.content}`)
@@ -115,3 +155,41 @@ const subjectReply = executeReadOnlyFocalToolCall(
 )
 
 if (!subjectReply?.includes("call list_deadlines next")) throw new Error(`missing subject follow-up hint: ${subjectReply}`)
+
+const preparedSession = prepareStudySessionUpdate(
+  {
+    name: "update_study_session",
+    arguments: {
+      query: "methods revision",
+      startTime: "2026-06-21T14:00:00+10:00",
+      endTime: "2026-06-21T14:45:00+10:00",
+      status: "completed",
+    },
+  },
+  {
+    sessions: [{
+      id: "session-1",
+      subjectIds: ["mm"],
+      title: "Methods revision",
+      startTime: "2026-06-20T10:00:00+10:00",
+      endTime: "2026-06-20T10:45:00+10:00",
+      status: "planned",
+      created_at: "2026-06-01",
+    }],
+    subjects: [{ id: "mm", name: "Mathematical Methods", shortCode: "MCM", color: "#2563EB" }],
+    now: "2026-06-21T14:46:00+10:00",
+  },
+)
+if ("error" in preparedSession) throw new Error(`session update failed: ${preparedSession.error}`)
+if (preparedSession.session.id !== "session-1") throw new Error("session update matched the wrong session")
+if (preparedSession.updates.status !== "completed") throw new Error("session completion was not prepared")
+if (preparedSession.updates.completedAt !== "2026-06-21T14:46:00+10:00") throw new Error("session completion time was not set")
+
+const invalidSessionTime = prepareStudySessionUpdate(
+  {
+    name: "update_study_session",
+    arguments: { sessionId: "session-1", endTime: "2026-06-20T09:00:00+10:00" },
+  },
+  { sessions: [preparedSession.session] },
+)
+if (!("error" in invalidSessionTime) || !invalidSessionTime.error.includes("end after")) throw new Error("invalid session time was accepted")

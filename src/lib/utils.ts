@@ -1,41 +1,10 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { LucideIcon } from "lucide-react"
-import {
-  Atom,
-  BookOpen,
-  BookText,
-  Brain,
-  BriefcaseBusiness,
-  Calculator,
-  ChartNoAxesColumn,
-  Dna,
-  Dumbbell,
-  FlaskConical,
-  Globe,
-  Landmark,
-  Languages,
-  Sigma,
-  Tag,
-  TrendingUp,
-} from "lucide-react"
-import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent } from "@/lib/types"
+import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent, NotionSource } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
 export function generateId(): string {
-  const webCrypto: Crypto | undefined = typeof globalThis.crypto === "undefined" ? undefined : globalThis.crypto
-  if (webCrypto?.randomUUID) {
-    return webCrypto.randomUUID()
-  }
-  if (webCrypto) {
-    const bytes = webCrypto.getRandomValues(new Uint8Array(16))
-    bytes[6] = (bytes[6] & 0x0f) | 0x40
-    bytes[8] = (bytes[8] & 0x3f) | 0x80
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-  }
-  // ponytail: Math.random fallback is only for runtimes without Web Crypto; sync migration upgrades legacy ids before upload.
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+  return crypto.randomUUID()
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,7 +57,7 @@ export function safeDateMeta(obj: Record<string, unknown>): { created_at: string
   }
 }
 
-export function parseNotionSource(value: unknown): CalendarEvent["source"] | StudySession["source"] {
+export function parseNotionSource(value: unknown): NotionSource | undefined {
   if (typeof value !== "object" || value === null) return undefined
   const record = value as Record<string, unknown>
   if (record.type !== "notion" || typeof record.id !== "string") return undefined
@@ -100,6 +69,20 @@ export function parseNotionSource(value: unknown): CalendarEvent["source"] | Stu
     kind: record.kind === "event" || record.kind === "session" ? record.kind : undefined,
     bodyHash: typeof record.bodyHash === "string" ? record.bodyHash : undefined,
   }
+}
+
+export function parseCalendarEventSource(value: unknown): CalendarEvent["source"] {
+  const notion = parseNotionSource(value)
+  if (notion) return notion
+  if (typeof value !== "object" || value === null) return undefined
+  const record = value as Record<string, unknown>
+  if (
+    record.type !== "vcaa" ||
+    typeof record.id !== "string" ||
+    typeof record.year !== "number" ||
+    typeof record.url !== "string"
+  ) return undefined
+  return { type: "vcaa", id: record.id, year: record.year, url: record.url }
 }
 
 export function safeStringArray(obj: Record<string, unknown>, key: string): string[] | undefined {
@@ -157,41 +140,6 @@ export function getSubjectById(id?: string): Subject | undefined {
   const custom = getCustomSubjectsFromStorage().find((s) => s.id === id)
   _subjectByIdCache.set(id, custom)
   return custom
-}
-
-/**
- * Lucide icon map for every supported VCE subject. Mirrors and extends the
- * project-icon map so a single helper covers both project headers and other
- * subject chips/badges. Custom subjects fall back to a generic tag icon so
- * they look the same regardless of which lucide icon they might later map to.
- */
-export const SUBJECT_ICONS: Record<string, LucideIcon> = {
-  eng: BookOpen,
-  "eng-lang": Languages,
-  lit: BookText,
-  mm: Calculator,
-  sm: Sigma,
-  gm: ChartNoAxesColumn,
-  csl: Languages,
-  pe: Dumbbell,
-  chem: FlaskConical,
-  phys: Atom,
-  bio: Dna,
-  psych: Brain,
-  hist: Landmark,
-  geo: Globe,
-  econ: TrendingUp,
-  bm: BriefcaseBusiness,
-}
-
-/** Generic lucide icon used when no subject is provided or id is unknown. */
-const SUBJECT_ICON_FALLBACK: LucideIcon = Tag
-
-/** Look up the lucide icon for a subject by id. Falls back to Tag for
- *  unmapped/custom subjects; never throws. */
-export function getSubjectIcon(subjectId?: string): LucideIcon {
-  if (!subjectId) return SUBJECT_ICON_FALLBACK
-  return SUBJECT_ICONS[subjectId] ?? SUBJECT_ICON_FALLBACK
 }
 
 export function getDeadlineTypeInfo(type?: DeadlineType): { icon: string; label: string; color: string } {

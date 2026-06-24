@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import {
   Wand2,
@@ -30,7 +30,9 @@ import {
   generateRenames,
   getFileContentPreviews,
   loadProjectFiles,
+  normalizeRename,
 } from "@/lib/autoRename"
+import { describeAiError } from "@/lib/aiAssistant"
 import {
   SETTINGS_SECTION_CLASS,
   SETTINGS_CHECKBOX_CLASS,
@@ -70,6 +72,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
   const [error, setError] = useState<string | null>(null)
   const [showUnchanged, setShowUnchanged] = useState(false)
   const [model, setModelState] = useState(() => getEffectiveModel())
+  const generateAbortRef = useRef<AbortController | null>(null)
   const reduceMotion = useReducedMotion()
 
   useEffect(() => {
@@ -77,6 +80,8 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
     window.addEventListener("storage", handler)
     return () => window.removeEventListener("storage", handler)
   }, [])
+
+  useEffect(() => () => generateAbortRef.current?.abort(), [])
 
   const providerMissing = !getActiveProvider().isConfigured()
   const hasProjects = projects.length > 0
@@ -99,6 +104,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
     setLoading(true)
     setError(null)
     setEntries([])
+    generateAbortRef.current = new AbortController()
     try {
       const projectsWithFiles = await Promise.all(
         projects.map(async (project) => {
@@ -121,7 +127,6 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
 
       if (allFiles.length === 0) {
         setError("No files found across your projects.")
-        setLoading(false)
         return
       }
 
@@ -133,48 +138,39 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
         allFiles.map((f) => f.file),
         getEffectiveModel(),
         fileContentPreviews,
+        generateAbortRef.current.signal,
       )
 
-      const newEntries: RenameEntry[] = results.map((r) => {
-        const source = allFiles.find((f) => f.file.name === r.original && f.file.path === r.original)
-        const fallback = allFiles.find((f) => f.file.name === r.original)
-        const match = source ?? fallback
-        if (!match) {
-          return null
-        }
+      const newEntries: RenameEntry[] = results.map((result, index) => {
+        const match = allFiles[index]
         return {
           project: match.project,
           file: match.file,
-          newName: r.renamed,
-          approved: r.renamed !== r.original,
+          newName: result.renamed,
+          approved: result.renamed !== match.file.name,
         }
-      }).filter((entry): entry is RenameEntry => entry !== null)
-
-      // Add any files that weren't returned by the model with no rename
-      const returnedPaths = new Set(newEntries.map((e) => e.file.path))
-      for (const { project, file } of allFiles) {
-        if (!returnedPaths.has(file.path)) {
-          newEntries.push({
-            project,
-            file,
-            newName: file.name,
-            approved: false,
-          })
-        }
-      }
+      })
 
       setEntries(newEntries)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      const { message, cancelled } = describeAiError(e)
+      if (!cancelled) setError(message)
     } finally {
+      generateAbortRef.current = null
       setLoading(false)
     }
   }, [projects, useFileContent, hasProjects])
 
+  const cancelGenerate = useCallback(() => {
+    generateAbortRef.current?.abort()
+  }, [])
+
   const handleApply = useCallback(async () => {
-    const toApply = entries
-      .filter((e) => e.approved && e.newName !== e.file.name)
-      .map((e) => ({ filePath: e.file.path, newName: e.newName }))
+    const toApply = entries.flatMap((entry) => {
+      if (!entry.approved) return []
+      const newName = normalizeRename(entry.file.name, entry.newName)
+      return newName === entry.file.name ? [] : [{ filePath: entry.file.path, newName }]
+    })
 
     if (toApply.length === 0) return
 
@@ -276,6 +272,22 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
     )
   }, [])
 
+  const updateEntryName = useCallback((filePath: string, newName: string) => {
+    setEntries((prev) => prev.map((entry) => (
+      entry.file.path === filePath
+        ? { ...entry, newName, approved: newName.trim() !== entry.file.name, error: undefined }
+        : entry
+    )))
+  }, [])
+
+  const normalizeEntryName = useCallback((filePath: string) => {
+    setEntries((prev) => prev.map((entry) => {
+      if (entry.file.path !== filePath) return entry
+      const newName = normalizeRename(entry.file.name, entry.newName)
+      return { ...entry, newName, approved: newName !== entry.file.name, error: undefined }
+    }))
+  }, [])
+
   const approveAll = useCallback(() => {
     setEntries((prev) => prev.map((e) => ({ ...e, approved: e.newName !== e.file.name, error: undefined })))
   }, [])
@@ -296,7 +308,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
   return (
     <div className="grid min-h-0 w-full min-w-0 grid-cols-1 gap-2 overflow-hidden">
       {/* ===== Compact Configuration Section ===== */}
-      <section className={cn(SETTINGS_SECTION_CLASS, "w-full min-w-0 overflow-hidden p-3")}>
+      <section aria-busy={loading} className={cn(SETTINGS_SECTION_CLASS, "w-full min-w-0 overflow-hidden p-3")}>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -313,17 +325,18 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
           </div>
 
           <Button
-            onClick={handleGenerate}
-            disabled={loading || providerMissing || !hasProjects}
+            onClick={loading ? cancelGenerate : handleGenerate}
+            disabled={!loading && (providerMissing || !hasProjects)}
+            variant={loading ? "outline" : "default"}
             size="sm"
             className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
           >
             {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <X className="h-3.5 w-3.5" />
             ) : (
               <Wand2 className="h-3.5 w-3.5" />
             )}
-            {loading ? "Generating" : "Preview"}
+            {loading ? "Cancel scan" : "Preview"}
           </Button>
         </div>
 
@@ -372,8 +385,8 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
           />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium leading-tight">Use file content previews</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground/65">
-              Improves suggestions with short text previews.
+            <p className="mt-0.5 text-xs leading-snug text-muted-foreground/65">
+              Reads up to 1,000 characters per supported file and sends them to your selected AI provider.
             </p>
           </div>
         </label>
@@ -393,7 +406,8 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
               animate={{ opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
               transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.exit}
-              className="mt-2 flex items-center gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-caption text-amber-700 dark:text-amber-400"
+              role="status"
+              className="mt-2 flex items-center gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-caption text-amber-700 dark:text-amber-300"
             >
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               <span className="min-w-0 truncate">{`Configure ${getActiveProvider().displayName} in the AI Model section.`}</span>
@@ -407,6 +421,7 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
               animate={{ opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
               transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.exit}
+              role="alert"
               className="mt-2 flex items-center gap-2 rounded-md border border-destructive/20 bg-destructive/5 px-2.5 py-1.5 text-caption text-destructive"
             >
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -587,9 +602,15 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
                                       {entry.file.name}
                                     </p>
                                     <span className="text-micro text-muted-foreground/35 max-[520px]:hidden">→</span>
-                                    <p className="truncate text-caption font-medium leading-tight text-foreground">
-                                      {entry.newName}
-                                    </p>
+                                    <input
+                                      value={entry.newName}
+                                      onChange={(event) => updateEntryName(entry.file.path, event.target.value)}
+                                      onBlur={() => normalizeEntryName(entry.file.path)}
+                                      onFocus={(event) => event.currentTarget.select()}
+                                      aria-label={`New filename for ${entry.file.name}`}
+                                      spellCheck={false}
+                                      className="h-6 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-caption font-medium leading-tight text-foreground outline-none transition-colors hover:border-border focus:border-ring focus:ring-2 focus:ring-ring/30"
+                                    />
                                   </div>
                                 ) : (
                                   <p className="truncate text-caption leading-tight text-muted-foreground">

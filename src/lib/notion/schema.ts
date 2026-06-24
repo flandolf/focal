@@ -1,6 +1,6 @@
 import { isRecord } from "@/lib/utils"
 export { isRecord }
-import type { CalendarEvent, EventType, StudySession, Subject } from "@/lib/types"
+import type { CalendarEvent, EventType, NotionSource, StudySession, Subject } from "@/lib/types"
 
 export type NotionProperty = Record<string, unknown>
 
@@ -330,8 +330,8 @@ export function normalisePage(value: unknown): NotionPage | null {
   }
 }
 
-export function getNotionSource(page: NotionPage, kind: "event" | "session", bodyHash?: string): NonNullable<CalendarEvent["source"]> {
-  const source: NonNullable<CalendarEvent["source"]> = {
+export function getNotionSource(page: NotionPage, kind: "event" | "session", bodyHash?: string): NotionSource {
+  const source: NotionSource = {
     type: "notion",
     id: page.id,
     url: page.url,

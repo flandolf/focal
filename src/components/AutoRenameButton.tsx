@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Wand2, Loader2, X, Check, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,7 +15,7 @@ import type { FileInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { getAutoRenameUseFileContent, setAutoRenameUseFileContent } from "@/lib/settings"
 import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
-import { generateRenames, getFileContentPreviews } from "@/lib/autoRename"
+import { generateRenames, getFileContentPreviews, normalizeRename } from "@/lib/autoRename"
 import { describeAiError } from "@/lib/aiAssistant"
 
 interface RenameEntry {
@@ -71,6 +71,14 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
     renameAbortRef.current = null
   }, [])
 
+  useEffect(() => () => cancelRename(), [cancelRename])
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && applying) return
+    if (!nextOpen) cancelRename()
+    setOpen(nextOpen)
+  }, [applying, cancelRename])
+
   const handleGenerate = useCallback(async () => {
     const provider = getActiveProvider()
     if (!provider.isConfigured()) {
@@ -98,9 +106,9 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
         fileContentPreviews,
         renameAbortRef.current.signal,
       )
-      const newEntries: RenameEntry[] = results.map((r) => {
-        const file = selectedFiles.find((f) => f.name === r.original)!
-        return { file, newName: r.renamed, approved: r.renamed !== r.original }
+      const newEntries: RenameEntry[] = results.map((result, index) => {
+        const file = selectedFiles[index]
+        return { file, newName: result.renamed, approved: result.renamed !== file.name }
       })
       setEntries(newEntries)
     } catch (e) {
@@ -119,16 +127,32 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
     )
   }, [])
 
+  const updateEntryName = useCallback((index: number, newName: string) => {
+    setEntries((prev) => prev.map((entry, i) => (
+      i === index
+        ? { ...entry, newName, approved: newName.trim() !== entry.file.name, error: undefined }
+        : entry
+    )))
+  }, [])
+
+  const normalizeEntryName = useCallback((index: number) => {
+    setEntries((prev) => prev.map((entry, i) => {
+      if (i !== index) return entry
+      const newName = normalizeRename(entry.file.name, entry.newName)
+      return { ...entry, newName, approved: newName !== entry.file.name, error: undefined }
+    }))
+  }, [])
+
   const handleApply = useCallback(async () => {
-    const toApply = entries
-      .filter((e) => e.approved && e.newName !== e.file.name)
-      .map((e) => ({ filePath: e.file.path, newName: e.newName }))
+    const toApply = entries.flatMap((entry) => {
+      if (!entry.approved) return []
+      const newName = normalizeRename(entry.file.name, entry.newName)
+      return newName === entry.file.name ? [] : [{ filePath: entry.file.path, newName }]
+    })
     if (toApply.length === 0) return
 
     setApplying(true)
     setError(null)
-    const failedPaths = new Set<string>()
-
     try {
       await onApplyRenames(toApply)
     } catch (e) {
@@ -137,18 +161,8 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
       return
     }
 
-    setEntries((prev) =>
-      prev.map((e) => {
-        if (!e.approved || e.newName === e.file.name) return e
-        return { ...e, error: failedPaths.has(e.file.path) ? "Rename failed" : undefined }
-      })
-    )
-
-    const anyFailed = failedPaths.size > 0
     setApplying(false)
-    if (!anyFailed) {
-      setOpen(false)
-    }
+    setOpen(false)
   }, [entries, onApplyRenames])
 
   const changedCount = entries.filter((e) => e.newName !== e.file.name).length
@@ -168,8 +182,11 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
         <span className="text-sm font-medium">Auto Rename</span>
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex h-[min(86dvh,44rem)] w-[calc(100vw-1rem)] max-w-3xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-3xl">
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent
+          aria-busy={loading || applying}
+          className="flex h-[min(86dvh,44rem)] w-[calc(100vw-1rem)] max-w-3xl flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-3xl"
+        >
           <div className="border-b px-5 pb-4 pt-5">
             <DialogHeader>
               <DialogTitle>Auto Rename Files</DialogTitle>
@@ -181,14 +198,14 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
 
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-5 py-4">
             {providerMissing && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md px-3 py-2">
+              <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                 {`${getActiveProvider().displayName} is not configured. Go to `}
                 <span className="font-medium">Settings</span> in the sidebar to set it up.
               </p>
             )}
 
             {error && (
-              <div className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2 flex items-start gap-2">
+              <div role="alert" className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <div className="min-w-0">
                   <p>{error.message}</p>
@@ -199,11 +216,11 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
               </div>
             )}
 
-            <div className="flex shrink-0 items-center justify-between gap-3 rounded-md border px-3 py-2">
+            <label className="flex shrink-0 cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors hover:bg-accent/20 focus-within:ring-2 focus-within:ring-ring/40">
               <div className="min-w-0">
                 <p className="text-xs font-medium">Use file content context</p>
                 <p className="text-caption text-muted-foreground/70">
-                  Reads a short text preview to suggest more accurate names.
+                  Reads up to 1,000 characters per supported file. Content is sent to your selected AI provider.
                 </p>
               </div>
               <input
@@ -216,7 +233,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                 }}
                 className="h-4 w-4 shrink-0"
               />
-            </div>
+            </label>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               {loading && (
@@ -233,7 +250,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
               <Button
                 onClick={handleGenerate}
                 disabled={loading || providerMissing || selectedCount === 0}
-                className="gap-1.5 text-background"
+                className="gap-1.5"
                 size="sm"
               >
                 {loading ? (
@@ -258,6 +275,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                   {changedCount > 0 && (
                     <div className="flex gap-2">
                       <button
+                        type="button"
                         onClick={() =>
                           setEntries((prev) => prev.map((e) => ({ ...e, approved: true, error: undefined })))
                         }
@@ -266,11 +284,12 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                         Approve all
                       </button>
                       <button
+                        type="button"
                         onClick={() =>
                           setEntries((prev) =>
                             prev.map((e) => ({
                               ...e,
-                              approved: e.newName === e.file.name,
+                              approved: false,
                               error: undefined,
                             })),
                           )
@@ -290,12 +309,14 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
               <>
                 <div className="flex shrink-0 items-center gap-3">
                   <button
+                    type="button"
                     onClick={selectAll}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Select all
                   </button>
                   <button
+                    type="button"
                     onClick={deselectAll}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
@@ -307,10 +328,13 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                     {files.map((file) => {
                       const isSelected = selectedPaths.has(file.path)
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={file.path}
+                          aria-pressed={isSelected}
+                          aria-label={`${isSelected ? "Deselect" : "Select"} ${file.name}`}
                           className={cn(
-                            "flex min-w-0 items-center gap-2.5 bg-background px-3 py-2 cursor-pointer transition-colors hover:bg-accent/30",
+                            "flex min-w-0 items-center gap-2.5 bg-background px-3 py-2 text-left transition-colors hover:bg-accent/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
                             !isSelected && "opacity-40"
                           )}
                           onClick={() => toggleSelected(file.path)}
@@ -335,7 +359,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                               {file.name}
                             </p>
                           </div>
-                        </div>
+                        </button>
                       )
                     })}
                   </div>
@@ -363,10 +387,13 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                           iconClassName="size-3.5"
                         />
                         <button
+                          type="button"
                           onClick={() => isChanged && toggleApproved(i)}
                           disabled={!isChanged}
+                          aria-label={entry.approved ? `Reject rename for ${entry.file.name}` : `Approve rename for ${entry.file.name}`}
+                          aria-pressed={entry.approved}
                           className={cn(
-                            "shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+                            "flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
                             !isChanged
                               ? "border-muted-foreground/20 cursor-default"
                               : entry.approved
@@ -380,15 +407,22 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                           <p className="text-caption text-muted-foreground/50 truncate line-through leading-tight">
                             {entry.file.name}
                           </p>
-                          <p className="text-xs font-medium truncate leading-tight">
-                            {entry.newName}
-                          </p>
+                          <input
+                            value={entry.newName}
+                            onChange={(event) => updateEntryName(i, event.target.value)}
+                            onBlur={() => normalizeEntryName(i)}
+                            onFocus={(event) => event.currentTarget.select()}
+                            aria-label={`New filename for ${entry.file.name}`}
+                            spellCheck={false}
+                            className="h-6 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-xs font-medium leading-tight outline-none transition-colors hover:border-border focus:border-ring focus:ring-2 focus:ring-ring/30"
+                          />
                           {entry.error && (
                             <p className="text-micro text-destructive mt-0.5">{entry.error}</p>
                           )}
                         </div>
                         {isChanged && (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation()
                               setEntries((prev) =>
@@ -399,7 +433,8 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                                 ),
                               )
                             }}
-                            className="shrink-0 p-0.5 rounded hover:bg-accent text-muted-foreground"
+                            aria-label={`Keep original filename for ${entry.file.name}`}
+                            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -414,13 +449,13 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
 
           {entries.length > 0 && (
             <DialogFooter className="m-0 shrink-0 rounded-none border-t px-5 py-3">
-              <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+              <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)} disabled={applying}>
                 Cancel
               </Button>
               <Button
                 onClick={handleApply}
                 disabled={approvedCount === 0 || applying}
-                className="gap-1.5 text-background"
+                className="gap-1.5"
                 size="sm"
               >
                 {applying ? (

@@ -60,7 +60,7 @@ interface TimerState {
 }
 
 type TimerAction =
-  | { type: "TICK"; settings: TimerSettings }
+  | { type: "TICK"; settings: TimerSettings; seconds: number }
   | { type: "TOGGLE" }
   | { type: "RESET"; settings: TimerSettings }
   | { type: "SKIP_BREAK"; settings: TimerSettings }
@@ -133,6 +133,51 @@ function isValidMode(mode: unknown): mode is TimerMode {
   return mode === "work" || mode === "break" || mode === "long-break";
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- exported for the runnable timer self-check
+export function advanceTimer(
+  state: TimerState,
+  settings: TimerSettings,
+  elapsedSeconds: number,
+): TimerState {
+  let next = state;
+  let remaining = Math.max(0, Math.floor(elapsedSeconds));
+
+  if (next.studyOvertime) {
+    return { ...next, overtimeSeconds: next.overtimeSeconds + remaining };
+  }
+
+  while (remaining > 0 && next.running) {
+    if (remaining < next.secondsLeft) {
+      return { ...next, secondsLeft: next.secondsLeft - remaining };
+    }
+
+    remaining -= next.secondsLeft;
+    if (next.mode === "work") {
+      const cycles = next.cycles + 1;
+      const mode = cycles % 4 === 0 ? "long-break" : "break";
+      next = {
+        running: true,
+        mode,
+        secondsLeft: getDurationSeconds(mode, settings),
+        cycles,
+        studyOvertime: false,
+        overtimeSeconds: 0,
+      };
+    } else {
+      return {
+        running: false,
+        mode: "work",
+        secondsLeft: getDurationSeconds("work", settings),
+        cycles: next.cycles,
+        studyOvertime: false,
+        overtimeSeconds: 0,
+      };
+    }
+  }
+
+  return next;
+}
+
 function getInitialState(settings: TimerSettings): TimerState {
   const fallback: TimerState = {
     running: false,
@@ -179,40 +224,17 @@ function getInitialState(settings: TimerSettings): TimerState {
     }
 
     if (parsed.running) {
-      const rawSeconds = Math.round(parsed.secondsLeft ?? duration);
-      const secondsLeft = Math.max(1, rawSeconds - elapsedSeconds);
-
-      if (secondsLeft <= 0) {
-        if (mode === "work") {
-          const newCycles = cycles + 1;
-          const nextMode = newCycles % 4 === 0 ? "long-break" : "break";
-          return {
-            running: true,
-            mode: nextMode,
-            secondsLeft: getDurationSeconds(nextMode, settings),
-            cycles: newCycles,
-            studyOvertime: false,
-            overtimeSeconds: 0,
-          };
-        }
-        return {
-          running: false,
-          mode: "work",
-          secondsLeft: getDurationSeconds("work", settings),
-          cycles,
-          studyOvertime: false,
-          overtimeSeconds: 0,
-        };
-      }
-
-      return {
+      return advanceTimer({
         running: true,
         mode,
-        secondsLeft,
+        secondsLeft: Math.min(
+          duration,
+          Math.max(1, Math.round(parsed.secondsLeft ?? duration)),
+        ),
         cycles,
         studyOvertime: false,
         overtimeSeconds: 0,
-      };
+      }, settings, elapsedSeconds);
     }
 
     return {
@@ -234,32 +256,7 @@ function getInitialState(settings: TimerSettings): TimerState {
 function timerReducer(state: TimerState, action: TimerAction): TimerState {
   switch (action.type) {
     case "TICK":
-      if (state.studyOvertime) {
-        return { ...state, overtimeSeconds: state.overtimeSeconds + 1 };
-      }
-      if (state.secondsLeft <= 1) {
-        if (state.mode === "work") {
-          const newCycles = state.cycles + 1;
-          const nextMode = newCycles % 4 === 0 ? "long-break" : "break";
-          return {
-            running: true,
-            mode: nextMode,
-            secondsLeft: getDurationSeconds(nextMode, action.settings),
-            cycles: newCycles,
-            studyOvertime: false,
-            overtimeSeconds: 0,
-          };
-        }
-        return {
-          running: false,
-          mode: "work",
-          secondsLeft: getDurationSeconds("work", action.settings),
-          cycles: state.cycles,
-          studyOvertime: false,
-          overtimeSeconds: 0,
-        };
-      }
-      return { ...state, secondsLeft: state.secondsLeft - 1 };
+      return advanceTimer(state, action.settings, action.seconds);
     case "TOGGLE":
       return { ...state, running: !state.running };
     case "RESET":
@@ -440,11 +437,13 @@ const StudyTimerInner = memo(function StudyTimerInner({
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  const activeSessionRef = useRef<StudySession | null>(null);
   const stateRef = useRef(state);
   const settingsRef = useRef(settings);
-  const prevModeRef = useRef<TimerMode | null>(null);
+  const lastTickAtRef = useRef(Date.now());
   const isInitialMountRef = useRef(true);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completionInFlightRef = useRef(false);
+  const savingRef = useRef(false);
   const focusCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedProjectSubjectId = selectedProject?.subjectId;
 
@@ -504,7 +503,11 @@ const StudyTimerInner = memo(function StudyTimerInner({
   }, [settings]);
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
-  }, [activeSessionId]);
+    activeSessionRef.current = activeSessionId
+      ? sessions.find((session) => session.id === activeSessionId) ??
+        activeSessionRef.current
+      : null;
+  }, [activeSessionId, sessions]);
 
   useEffect(() => {
     const interval = window.setInterval(
@@ -526,26 +529,42 @@ const StudyTimerInner = memo(function StudyTimerInner({
   const completeActiveSession = useCallback(
     async (nextEndTime = new Date()) => {
       const sessionId = activeSessionIdRef.current;
-      if (!sessionId) return;
+      if (!sessionId || completionInFlightRef.current) return false;
+      completionInFlightRef.current = true;
 
       try {
-        await onUpdateSession(sessionId, {
-          endTime: nextEndTime.toISOString(),
+        const session =
+          activeSessionRef.current ??
+          sessions.find((item) => item.id === sessionId) ??
+          null;
+        const endTime = nextEndTime.toISOString();
+        const activeDurations = session?.activeDurations?.map((period, index, periods) =>
+          index === periods.length - 1 ? { ...period, end: endTime } : period,
+        );
+        const updates = {
+          endTime,
+          ...(activeDurations ? { activeDurations } : {}),
           status: "completed",
-          completedAt: nextEndTime.toISOString(),
-        });
+          completedAt: endTime,
+        } satisfies Partial<Omit<StudySession, "id" | "created_at">>;
+        await onUpdateSession(sessionId, updates);
+        activeSessionRef.current = session ? { ...session, ...updates } : null;
         setReflectionSessionId(sessionId);
         setReflectionConfidence(undefined);
         setReflectionBlockers("");
         setReflectionNextAction("");
+        activeSessionIdRef.current = null;
+        activeSessionRef.current = null;
+        setActiveSessionId(null);
+        return true;
       } catch (e) {
         console.error("Failed to complete session:", e);
+        return false;
       } finally {
-        activeSessionIdRef.current = null;
-        setActiveSessionId(null);
+        completionInFlightRef.current = false;
       }
     },
-    [onUpdateSession],
+    [onUpdateSession, sessions],
   );
 
   const handleRecoveryResume = useCallback(() => {
@@ -556,58 +575,42 @@ const StudyTimerInner = memo(function StudyTimerInner({
   const handleRecoveryFinish = useCallback(async () => {
     if (!recoverySessionId) return;
     try {
+      const completedAt = new Date().toISOString();
       await onUpdateSession(recoverySessionId, {
-        endTime: new Date().toISOString(),
+        endTime: completedAt,
         status: "completed",
-        completedAt: new Date().toISOString(),
+        completedAt,
       });
-    } catch (e) {
-      console.error("Failed to complete recovered session:", e);
-    } finally {
       activeSessionIdRef.current = null;
+      activeSessionRef.current = null;
       setActiveSessionId(null);
       setRecoverySessionId(null);
       setRecoveryDialogOpen(false);
       dispatch({ type: "RESET", settings });
+    } catch (e) {
+      console.error("Failed to complete recovered session:", e);
     }
   }, [recoverySessionId, onUpdateSession, settings]);
 
   const handleRecoveryDiscard = useCallback(async () => {
-    if (!recoverySessionId) return;
+    if (!recoverySessionId || !onDeleteSession) return;
     try {
-      if (onDeleteSession) {
-        await onDeleteSession(recoverySessionId);
-      }
-    } catch (e) {
-      console.error("Failed to discard recovered session:", e);
-    } finally {
+      await onDeleteSession(recoverySessionId);
       activeSessionIdRef.current = null;
+      activeSessionRef.current = null;
       setActiveSessionId(null);
       setRecoverySessionId(null);
       setRecoveryDialogOpen(false);
       dispatch({ type: "RESET", settings });
+    } catch (e) {
+      console.error("Failed to discard recovered session:", e);
     }
   }, [recoverySessionId, onDeleteSession, settings]);
 
   useEffect(() => {
-    if (isInitialMountRef.current) {
-      isInitialMountRef.current = false;
-      prevModeRef.current = state.mode;
-      if (
-        state.mode !== "work" &&
-        !state.studyOvertime &&
-        activeSessionIdRef.current
-      ) {
-        void completeActiveSession();
-      }
-      return;
-    }
-
-    const prevMode = prevModeRef.current;
-    prevModeRef.current = state.mode;
-
+    if (!isInitialMountRef.current) return;
+    isInitialMountRef.current = false;
     if (
-      prevMode === "work" &&
       state.mode !== "work" &&
       !state.studyOvertime &&
       activeSessionIdRef.current
@@ -617,21 +620,15 @@ const StudyTimerInner = memo(function StudyTimerInner({
   }, [state.mode, state.studyOvertime, completeActiveSession]);
 
   useEffect(() => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      localStorage.setItem(TIMER_SETTINGS_KEY, JSON.stringify(settings));
-      localStorage.setItem(
-        TIMER_STATE_KEY,
-        JSON.stringify({
-          ...state,
-          activeSessionId,
-          updatedAt: Date.now(),
-        } satisfies StoredTimerState),
-      );
-    }, 500);
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
+    localStorage.setItem(TIMER_SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(
+      TIMER_STATE_KEY,
+      JSON.stringify({
+        ...state,
+        activeSessionId,
+        updatedAt: Date.now(),
+      } satisfies StoredTimerState),
+    );
   }, [activeSessionId, settings, state]);
 
   const clearTimer = useCallback(() => {
@@ -642,8 +639,27 @@ const StudyTimerInner = memo(function StudyTimerInner({
   }, []);
 
   const onTick = useCallback(() => {
-    dispatch({ type: "TICK", settings: settingsRef.current });
-  }, []);
+    const now = Date.now();
+    const elapsedSeconds = Math.floor((now - lastTickAtRef.current) / 1000);
+    if (elapsedSeconds < 1) return;
+    const current = stateRef.current;
+    if (
+      current.running &&
+      current.mode === "work" &&
+      !current.studyOvertime &&
+      elapsedSeconds >= current.secondsLeft
+    ) {
+      void completeActiveSession(new Date(
+        lastTickAtRef.current + current.secondsLeft * 1000,
+      ));
+    }
+    lastTickAtRef.current += elapsedSeconds * 1000;
+    dispatch({
+      type: "TICK",
+      settings: settingsRef.current,
+      seconds: elapsedSeconds,
+    });
+  }, [completeActiveSession]);
 
   useEffect(() => {
     if (!state.running) {
@@ -652,7 +668,8 @@ const StudyTimerInner = memo(function StudyTimerInner({
     }
 
     clearTimer();
-    intervalRef.current = setInterval(onTick, 1000);
+    lastTickAtRef.current = Date.now();
+    intervalRef.current = setInterval(onTick, 250);
     return clearTimer;
   }, [state.running, onTick, clearTimer]);
 
@@ -807,6 +824,12 @@ const StudyTimerInner = memo(function StudyTimerInner({
       if (!sessionId) return;
       try {
         await onUpdateSession(sessionId, { subjectIds: nextSubjectIds });
+        if (activeSessionRef.current) {
+          activeSessionRef.current = {
+            ...activeSessionRef.current,
+            subjectIds: nextSubjectIds,
+          };
+        }
       } catch (e) {
         console.error("Failed to sync session subjects:", e);
       }
@@ -844,6 +867,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
       cycleNumber: cycles + 1,
     });
     activeSessionIdRef.current = session.id;
+    activeSessionRef.current = session;
     setActiveSessionId(session.id);
     setReflectionSessionId(null);
     return true;
@@ -855,8 +879,10 @@ const StudyTimerInner = memo(function StudyTimerInner({
   };
 
   const handleToggle = async () => {
+    if (savingRef.current) return;
     if (!running && mode === "work" && !activeSessionIdRef.current) {
       if (!canStartFocus) return;
+      savingRef.current = true;
       setSaving(true);
       try {
         const started = await startFocusSession();
@@ -864,30 +890,76 @@ const StudyTimerInner = memo(function StudyTimerInner({
       } catch (e) {
         console.error("Failed to start session:", e);
       } finally {
+        savingRef.current = false;
         setSaving(false);
       }
       return;
+    }
+
+    if (activeSessionIdRef.current && (mode === "work" || isStudyOvertime)) {
+      savingRef.current = true;
+      setSaving(true);
+      try {
+        const session = activeSessionRef.current;
+        if (!session) return;
+        const now = new Date();
+        const nowIso = now.toISOString();
+        const activeDurations = session.activeDurations?.length
+          ? running
+            ? session.activeDurations.map((period, index, periods) =>
+                index === periods.length - 1 ? { ...period, end: nowIso } : period,
+              )
+            : [
+                ...session.activeDurations,
+                {
+                  start: nowIso,
+                  end: new Date(
+                    now.getTime() +
+                      (isStudyOvertime
+                        ? settings.workMinutes * 60
+                        : secondsLeft) *
+                        1000,
+                  ).toISOString(),
+                },
+              ]
+          : [{ start: session.startTime, end: nowIso }];
+        const endTime = activeDurations[activeDurations.length - 1].end;
+        await onUpdateSession(session.id, { activeDurations, endTime });
+        activeSessionRef.current = { ...session, activeDurations, endTime };
+      } catch (e) {
+        console.error(`Failed to ${running ? "pause" : "resume"} session:`, e);
+        return;
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
     dispatch({ type: "TOGGLE" });
   };
 
   const handleFinish = async () => {
-    if (!activeSessionIdRef.current) return;
+    if (!activeSessionIdRef.current || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
-      await completeActiveSession();
+      if (await completeActiveSession()) {
+        dispatch({ type: "RESET", settings });
+      }
     } finally {
+      savingRef.current = false;
       setSaving(false);
-      dispatch({ type: "RESET", settings });
     }
   };
 
   const handleReset = async () => {
+    if (savingRef.current) return;
     if (activeSessionIdRef.current) {
+      savingRef.current = true;
       setSaving(true);
       try {
-        await completeActiveSession();
+        if (!(await completeActiveSession())) return;
       } finally {
+        savingRef.current = false;
         setSaving(false);
       }
     }
@@ -903,15 +975,17 @@ const StudyTimerInner = memo(function StudyTimerInner({
     )
       return;
 
-    dispatch({ type: "START_STUDY_OVERTIME", settings: settingsRef.current });
+    savingRef.current = true;
     setSaving(true);
     try {
       const started = await startTimerSession(settings.workMinutes * 60);
-      if (!started) dispatch({ type: "RETURN_TO_BREAK" });
+      if (started) {
+        dispatch({ type: "START_STUDY_OVERTIME", settings: settingsRef.current });
+      }
     } catch (e) {
       console.error("Failed to start overtime session:", e);
-      dispatch({ type: "RETURN_TO_BREAK" });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -947,14 +1021,17 @@ const StudyTimerInner = memo(function StudyTimerInner({
   }, []);
 
   const handleReturnToBreak = async () => {
-    if (!isStudyOvertime) return;
+    if (!isStudyOvertime || savingRef.current) return;
 
+    savingRef.current = true;
     setSaving(true);
     try {
-      await completeActiveSession();
+      if (await completeActiveSession()) {
+        dispatch({ type: "RETURN_TO_BREAK" });
+      }
     } finally {
+      savingRef.current = false;
       setSaving(false);
-      dispatch({ type: "RETURN_TO_BREAK" });
     }
   };
 

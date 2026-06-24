@@ -899,6 +899,23 @@ function App() {
     }
   }, [sessions, updateSession, pushSessionChange, setSessionDialogOpen, setSelectedSession])
 
+  const handleAiUpdateStudySession = useCallback(async (
+    id: string,
+    updates: Partial<Omit<StudySession, "id" | "created_at">>,
+  ) => {
+    const session = sessions.find((item) => item.id === id)
+    if (!session) return false
+    try {
+      await updateSession(id, updates)
+      toast.success(`Study session "${updates.title ?? session.title}" updated`)
+      void pushSessionChange({ ...session, ...updates })
+      return true
+    } catch (e) {
+      toast.error(`Failed to update study session: ${String(e)}`)
+      return false
+    }
+  }, [sessions, updateSession, pushSessionChange])
+
   const handleDeleteStudySession = useCallback(async (id: string) => {
     const session = sessions.find((s) => s.id === id)
     if (!session) return
@@ -959,6 +976,27 @@ function App() {
       throw e
     }
   }, [addEvents, requestNotionSync])
+
+  const handleImportVcaaEvents = useCallback(async (items: Omit<CalendarEvent, "id" | "created_at">[]) => {
+    const existingBySourceId = new Map(events.flatMap((event) =>
+      event.source?.type === "vcaa" ? [[event.source.id, event] as const] : []))
+    const creates: Omit<CalendarEvent, "id" | "created_at">[] = []
+    const updates: { id: string; updates: Partial<Omit<CalendarEvent, "id" | "created_at">> }[] = []
+    for (const item of items) {
+      const existing = item.source?.type === "vcaa" ? existingBySourceId.get(item.source.id) : undefined
+      if (existing) {
+        updates.push({ id: existing.id, updates: {
+          title: item.title,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          eventType: "exam",
+          subjectId: item.subjectId,
+          source: item.source,
+        } })
+      } else creates.push(item)
+    }
+    await syncEvents(creates, updates)
+  }, [events, syncEvents])
 
   const handleEditEvent = useCallback(async (data: {
     id: string
@@ -1657,6 +1695,8 @@ function App() {
                     hiddenSubjectIds={hiddenSubjectIds}
                     onToggleSubjectVisibility={handleToggleSubjectVisibility}
                     onShowAllSubjects={handleShowAllSubjects}
+                    events={events}
+                    onImportVcaaEvents={handleImportVcaaEvents}
                     onOpenExport={() => setExportOpen(true)}
                     onOpenSubjects={() => setSubjectsOpen(true)}
                     onSyncNotionCalendar={handleSyncNotionCalendar}
@@ -1797,6 +1837,7 @@ function App() {
             projects={projects}
             subjects={availableSubjects}
             onCreateSession={handleCreateStudySession}
+            onUpdateSession={handleAiUpdateStudySession}
             onCreateEvent={handleCreateEvent}
             onUpdateEvent={handleEditEvent}
             onDeleteEvent={handleDeleteEvent}

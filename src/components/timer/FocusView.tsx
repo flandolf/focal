@@ -200,7 +200,10 @@ export function FocusView({
   const [sessionIntention, setSessionIntention] = useState("");
 
   useEffect(() => {
-    window.setTimeout(() => resolvedCloseRef.current?.focus(), 0);
+    const focusTimeout = window.setTimeout(
+      () => resolvedCloseRef.current?.focus(),
+      0,
+    );
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -208,6 +211,7 @@ export function FocusView({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
+      window.clearTimeout(focusTimeout);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose, resolvedCloseRef]);
@@ -240,10 +244,13 @@ export function FocusView({
   const focusTicks = Array.from({ length: 32 }, (_, index) => index);
   const orbitTicks = Array.from({ length: 48 }, (_, index) => index);
   const circumference = 2 * Math.PI * 112;
-  const progressPercent = Math.round(progress * 100);
+  const safeProgress = Number.isFinite(progress)
+    ? Math.min(1, Math.max(0, progress))
+    : 0;
+  const progressPercent = Math.round(safeProgress * 100);
   const isFocusMode = mode === "work" || isStudyOvertime;
   const kineticStyle = {
-    "--focus-progress": progress,
+    "--focus-progress": safeProgress,
   } as CSSProperties;
 
   return (
@@ -370,12 +377,12 @@ export function FocusView({
                     aria-hidden="true"
                   >
                     {orbitTicks.map((tick) => {
-                      const isPassed = tick / orbitTicks.length <= progress;
+                      const isPassed = tick / orbitTicks.length <= safeProgress;
                       return (
                         <span
                           key={tick}
                           className={cn(
-                            "absolute left-1/2 top-1/2 h-1 w-3 origin-[0_0] rounded-full",
+                            "absolute left-1/2 top-1/2 h-1 w-3 origin-top-left rounded-full",
                             isPassed
                               ? isFocusMode
                                 ? "bg-primary"
@@ -451,7 +458,7 @@ export function FocusView({
                         stroke="currentColor"
                         strokeWidth="8"
                         strokeDasharray={`${circumference}`}
-                        strokeDashoffset={`${circumference * (1 - progress)}`}
+                        strokeDashoffset={`${circumference * (1 - safeProgress)}`}
                         strokeLinecap="round"
                         filter="url(#ring-glow)"
                         className={cn(
@@ -468,7 +475,7 @@ export function FocusView({
                       stroke="currentColor"
                       strokeWidth="10"
                       strokeDasharray={`${circumference}`}
-                      strokeDashoffset={`${circumference * (1 - progress)}`}
+                      strokeDashoffset={`${circumference * (1 - safeProgress)}`}
                       strokeLinecap="round"
                       className={cn(
                         "transition-[stroke-dashoffset] duration-1000 ease-out motion-reduce:transition-none",
@@ -498,7 +505,7 @@ export function FocusView({
                     </span>
                     <AnimatePresence mode="wait">
                       <motion.span
-                        key={mode + (isStudyOvertime ? '-overtime' : '')}
+                        key={mode + (isStudyOvertime ? "-overtime" : "")}
                         initial={{ opacity: 0, y: 6, filter: "blur(4px)" }}
                         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                         exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
@@ -590,7 +597,10 @@ export function FocusView({
                   icon={<BarChart3 className="h-4 w-4" />}
                 />
                 {running && todayAnalytics.totalMinutes > 0 && (
-                  <div className="absolute right-1 top-1/2 -translate-y-1/2" aria-hidden="true">
+                  <div
+                    className="absolute right-1 top-1/2 -translate-y-1/2"
+                    aria-hidden="true"
+                  >
                     <svg
                       width="48"
                       height="20"
@@ -723,7 +733,7 @@ export function FocusView({
                 placeholder="What do you want to accomplish in this session?"
                 value={sessionIntention}
                 onChange={(event) => setSessionIntention(event.target.value)}
-                className="mt-2 min-h-[4.5rem] w-full resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                className="mt-2 min-h-18 w-full resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
               />
             </section>
           </aside>

@@ -36,7 +36,8 @@ function pullEvent(
 ): void {
   const existing = eventBySourceId.get(page.id)
   if (existing) {
-    if (!existing.source?.lastEditedTime || existing.source.lastEditedTime !== page.last_edited_time) {
+    const existingSource = existing.source?.type === "notion" ? existing.source : undefined
+    if (!existingSource?.lastEditedTime || existingSource.lastEditedTime !== page.last_edited_time) {
       const fromPage = toEventFromPage(page, settings, subjects, findSubjectIdFromValues)
       const updates = {
         title: fromPage.title,
@@ -47,7 +48,7 @@ function pullEvent(
       const fullUpdates: Record<string, unknown> = { ...updates }
       if (fromPage.endTime !== undefined) fullUpdates.endTime = fromPage.endTime
       if (fromPage.subjectId !== undefined) fullUpdates.subjectId = fromPage.subjectId
-      fullUpdates.source = getNotionSource(page, "event", existing.source?.bodyHash)
+      fullUpdates.source = getNotionSource(page, "event", existingSource?.bodyHash)
       ctx.updatedEvents.set(existing.id, {
         ...ctx.updatedEvents.get(existing.id),
         ...fullUpdates,

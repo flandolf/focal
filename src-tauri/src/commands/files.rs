@@ -470,17 +470,6 @@ pub fn create_project_with_subfolders(
     Ok(project_dir.to_string_lossy().to_string())
 }
 
-#[tauri::command]
-pub fn get_subject_folder_template(_subject_id: String) -> Result<Vec<String>, String> {
-    Ok(vec![
-        "SACs".to_string(),
-        "Notes".to_string(),
-        "Past-Papers".to_string(),
-        "Exam-Revision".to_string(),
-        "Resources".to_string(),
-    ])
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchResult {
     pub file: FileInfo,

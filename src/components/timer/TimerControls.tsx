@@ -1,5 +1,5 @@
-import type { ReactNode } from "react"
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
+import type { ReactNode } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   BookOpen,
   CheckCircle2,
@@ -8,33 +8,33 @@ import {
   Play,
   Plus,
   SkipForward,
-} from "lucide-react"
-import { cn } from "@/lib/utils"
-import { MOTION_EASE, pressable } from "@/lib/motion"
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { MOTION_EASE, pressable } from "@/lib/motion";
 
-const EXTRA_BREAK_MINUTES = 5
+const EXTRA_BREAK_MINUTES = 5;
 
 const iconSwapTransition = {
   initial: { opacity: 0, rotate: -12, scale: 0.85 },
   animate: { opacity: 1, rotate: 0, scale: 1 },
   exit: { opacity: 0, rotate: 12, scale: 0.85 },
   transition: { duration: 0.2, ease: MOTION_EASE },
-} as const
+} as const;
 
-type TimerVariant = "footer" | "sidebar"
-type TimerTone = "primary" | "outline" | "ghost"
-type TimerSize = "footer" | "sidebar" | "sidebar-tight"
+type TimerVariant = "footer" | "sidebar";
+type TimerTone = "primary" | "outline" | "ghost";
+type TimerSize = "footer" | "sidebar" | "sidebar-tight";
 
 interface TimerButtonProps {
-  size: TimerSize
-  tone: TimerTone
-  onClick: () => void
-  disabled?: boolean
-  ariaLabel: string
-  icon?: ReactNode
-  children?: ReactNode
-  className?: string
-  reduceMotion: boolean
+  size: TimerSize;
+  tone: TimerTone;
+  onClick: () => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  icon?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+  reduceMotion: boolean;
 }
 
 function TimerButton({
@@ -48,21 +48,20 @@ function TimerButton({
   className,
   reduceMotion,
 }: TimerButtonProps) {
-  const isFooter = size === "footer"
+  const isFooter = size === "footer";
   const toneStyles: Record<TimerTone, string> = {
     primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-    outline:
-      "border-border bg-background text-foreground hover:bg-muted",
+    outline: "border-border bg-background text-foreground hover:bg-muted",
     ghost:
       "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-  }
+  };
   const sizeStyles =
     size === "footer"
       ? "h-11 gap-2 px-3 text-sm"
       : size === "sidebar"
-        ? "h-8 gap-1.5 px-2.5 text-control"
-        : "h-8 min-w-0 gap-1.5 px-1.5 text-control"
-  const radiusStyles = isFooter ? "rounded-lg" : "rounded-xl"
+        ? "h-8 gap-1.5 px-2.5 text-xs"
+        : "h-8 min-w-0 gap-1.5 px-1.5 text-xs";
+  const radiusStyles = isFooter ? "rounded-lg" : "rounded-xl";
 
   return (
     <motion.button
@@ -82,13 +81,13 @@ function TimerButton({
       {icon}
       {children && <span className="truncate">{children}</span>}
     </motion.button>
-  )
+  );
 }
 
 interface IconSwapProps {
-  running: boolean
-  children: ReactNode
-  className?: string
+  running: boolean;
+  children: ReactNode;
+  className?: string;
 }
 
 function IconSwap({ running, children, className }: IconSwapProps) {
@@ -105,24 +104,24 @@ function IconSwap({ running, children, className }: IconSwapProps) {
         {children}
       </motion.span>
     </AnimatePresence>
-  )
+  );
 }
 
 interface TimerControlsProps {
-  variant: TimerVariant
-  running: boolean
-  mode: "work" | "break" | "long-break"
-  isStudyOvertime: boolean
-  canStartFocus: boolean
-  saving: boolean
-  hasActiveSession: boolean
-  timerActionLabel: string
-  onToggle: () => void
-  onReturnToBreak: () => void
-  onFinish: () => void
-  onSkipBreak: () => void
-  onStartStudyOvertime: () => void
-  onMoreBreakTime: () => void
+  variant: TimerVariant;
+  running: boolean;
+  mode: "work" | "break" | "long-break";
+  isStudyOvertime: boolean;
+  canStartFocus: boolean;
+  saving: boolean;
+  hasActiveSession: boolean;
+  timerActionLabel: string;
+  onToggle: () => void;
+  onReturnToBreak: () => void;
+  onFinish: () => void;
+  onSkipBreak: () => void;
+  onStartStudyOvertime: () => void;
+  onMoreBreakTime: () => void;
 }
 
 export function TimerControls({
@@ -141,12 +140,12 @@ export function TimerControls({
   onStartStudyOvertime,
   onMoreBreakTime,
 }: TimerControlsProps) {
-  const reduceMotion = useReducedMotion() === true
-  const isFooter = variant === "footer"
-  const sidebarSize: TimerSize = "sidebar"
-  const iconClass = isFooter ? "h-4 w-4" : "h-3 w-3"
-  const toggleDisabled = mode === "work" && !canStartFocus && !running
-  const sidebarSpacing = isFooter ? "" : "mt-1.5"
+  const reduceMotion = useReducedMotion() === true;
+  const isFooter = variant === "footer";
+  const sidebarSize: TimerSize = "sidebar";
+  const iconClass = isFooter ? "h-4 w-4" : "h-3 w-3";
+  const toggleDisabled = mode === "work" && !canStartFocus && !running;
+  const sidebarSpacing = isFooter ? "" : "mt-1.5";
 
   const toggle = (
     <TimerButton
@@ -157,10 +156,7 @@ export function TimerControls({
       reduceMotion={reduceMotion}
       ariaLabel={running ? "Pause" : timerActionLabel}
     >
-      <IconSwap
-        running={running}
-        className={isFooter ? undefined : "gap-1.5"}
-      >
+      <IconSwap running={running} className={isFooter ? undefined : "gap-1.5"}>
         {running ? (
           <Pause className={iconClass} />
         ) : (
@@ -169,7 +165,7 @@ export function TimerControls({
         {running ? "Pause" : timerActionLabel}
       </IconSwap>
     </TimerButton>
-  )
+  );
 
   const returnToBreak = isStudyOvertime ? (
     <TimerButton
@@ -184,24 +180,25 @@ export function TimerControls({
     >
       Break time!
     </TimerButton>
-  ) : null
+  ) : null;
 
-  const finish = !isStudyOvertime && hasActiveSession ? (
-    <TimerButton
-      size={isFooter ? "footer" : sidebarSize}
-      tone={isFooter ? "outline" : "ghost"}
-      onClick={onFinish}
-      disabled={saving}
-      reduceMotion={reduceMotion}
-      ariaLabel="Finish and save session"
-      icon={<CheckCircle2 className={iconClass} />}
-      className={sidebarSpacing}
-    >
-      Finish &amp; save
-    </TimerButton>
-  ) : null
+  const finish =
+    !isStudyOvertime && hasActiveSession ? (
+      <TimerButton
+        size={isFooter ? "footer" : sidebarSize}
+        tone={isFooter ? "outline" : "ghost"}
+        onClick={onFinish}
+        disabled={saving}
+        reduceMotion={reduceMotion}
+        ariaLabel="Finish and save session"
+        icon={<CheckCircle2 className={iconClass} />}
+        className={sidebarSpacing}
+      >
+        Finish &amp; save
+      </TimerButton>
+    ) : null;
 
-  const secondaryAction = returnToBreak ?? finish
+  const secondaryAction = returnToBreak ?? finish;
 
   const breakActions =
     mode !== "work" && !isStudyOvertime ? (
@@ -274,13 +271,13 @@ export function TimerControls({
           </TimerButton>
         </div>
       )
-    ) : null
+    ) : null;
 
   if (isFooter) {
     return (
       <div
         className={cn(
-          "timer-floating-bar fixed bottom-4 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 px-3 py-3 sm:bottom-6 sm:w-[calc(100%-3rem)] sm:px-4",
+          "timer-floating-bar fixed bottom-4 left-1/2 z-60 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 px-3 py-3 sm:bottom-6 sm:w-[calc(100%-3rem)] sm:px-4",
           running && "timer-floating-bar-glow",
         )}
       >
@@ -290,7 +287,7 @@ export function TimerControls({
         </div>
         {breakActions}
       </div>
-    )
+    );
   }
 
   return (
@@ -299,5 +296,5 @@ export function TimerControls({
       {secondaryAction}
       {breakActions}
     </>
-  )
+  );
 }

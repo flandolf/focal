@@ -10,6 +10,22 @@ export type StudySessionStatus = "planned" | "in-progress" | "completed";
 
 export type ConfidenceScore = 1 | 2 | 3 | 4 | 5;
 
+export interface NotionSource {
+  type: "notion";
+  id: string;
+  url?: string;
+  lastEditedTime?: string;
+  kind?: "event" | "session";
+  bodyHash?: string;
+}
+
+export interface VcaaSource {
+  type: "vcaa";
+  id: string;
+  year: number;
+  url: string;
+}
+
 export interface StudySession {
   id: string;
   projectId?: string;
@@ -26,14 +42,7 @@ export interface StudySession {
   nextAction?: string;
   activeDurations?: { start: string; end: string }[]; // For merged sessions: individual active periods within startTime-endTime span
   completedAt?: string;
-  source?: {
-    type: "notion";
-    id: string;
-    url?: string;
-    lastEditedTime?: string;
-    kind?: "event" | "session";
-    bodyHash?: string;
-  };
+  source?: NotionSource;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -51,14 +60,7 @@ export interface CalendarEvent {
   location?: string;
   isFinished?: boolean;
   finishedAt?: string;
-  source?: {
-    type: "notion";
-    id: string;
-    url?: string;
-    lastEditedTime?: string;
-    kind?: "event" | "session";
-    bodyHash?: string;
-  };
+  source?: NotionSource | VcaaSource;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -204,6 +206,18 @@ export interface UserSettings {
   ollama_model?: string
   assistant_personality?: string
   assistant_custom_instructions?: string
+  study_planning_preferences?: StudyPlanningPreferences
+}
+
+export interface StudyWindow {
+  weekday: number // 0=Sunday ... 6=Saturday
+  startTime: string // HH:mm
+  endTime: string // HH:mm
+}
+
+export interface StudyPlanningPreferences {
+  windows: StudyWindow[]
+  dailyCapMinutes: number
 }
 
 export interface TimetableViewSettings {

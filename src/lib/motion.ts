@@ -46,8 +46,6 @@ export const TRANSITION = {
 
 /** Disabled (no-motion) transitions for prefers-reduced-motion users. */
 export const REDUCED_TRANSITION = { duration: 0 } as const
-export const REDUCED_HOVER = undefined
-export const REDUCED_TAP = undefined
 
 /* ------------------------------ Variants ------------------------------ */
 
@@ -82,40 +80,6 @@ export const staggerItem: Variants = {
   exit: { opacity: 0, y: -4, transition: TRANSITION.exit },
 }
 
-/** Item that fades + slides in from the side. */
-export const slideInRight: Variants = {
-  initial: { opacity: 0, x: 8 },
-  animate: { opacity: 1, x: 0, transition: TRANSITION.entrance },
-  exit: { opacity: 0, x: 4, transition: TRANSITION.exit },
-}
-
-export const slideInLeft: Variants = {
-  initial: { opacity: 0, x: -8 },
-  animate: { opacity: 1, x: 0, transition: TRANSITION.entrance },
-  exit: { opacity: 0, x: -4, transition: TRANSITION.exit },
-}
-
-/** Scale-in entrance (dialogs, popovers). */
-export const scaleIn: Variants = {
-  initial: { opacity: 0, scale: 0.96 },
-  animate: { opacity: 1, scale: 1, transition: TRANSITION.entrance },
-  exit: { opacity: 0, scale: 0.98, transition: TRANSITION.exit },
-}
-
-/** Popover-style entrance (slight scale + rise). */
-export const popIn: Variants = {
-  initial: { opacity: 0, y: -4, scale: 0.96 },
-  animate: { opacity: 1, y: 0, scale: 1, transition: TRANSITION.state },
-  exit: { opacity: 0, y: -2, scale: 0.98, transition: TRANSITION.exit },
-}
-
-/** Slide-down entrance (toasts from bottom, dropdowns from top). */
-export const slideDown: Variants = {
-  initial: { opacity: 0, y: -6 },
-  animate: { opacity: 1, y: 0, transition: TRANSITION.entrance },
-  exit: { opacity: 0, y: -4, transition: TRANSITION.exit },
-}
-
 /**
  * HomeView mount entrance — single subtle fade + 4px rise. Stays under
  * PRODUCT.md's "Faster ingress, no gratuitous animations" ceiling (~250ms via
@@ -146,26 +110,8 @@ export const hoverLift = (reduceMotion: boolean | null) =>
     ? undefined
     : { y: -2, transition: { duration: MOTION_DURATION.normal, ease: MOTION_EASE } }
 
-/** Stronger hover lift for prominent cards. */
-export const hoverLiftStrong = (reduceMotion: boolean | null) =>
-  reduceMotion
-    ? undefined
-    : { y: -4, transition: { duration: MOTION_DURATION.normal, ease: MOTION_EASE } }
-
 /** Slide-right hover for list items (icon/text nudge). */
 export const hoverNudgeRight = (reduceMotion: boolean | null) =>
   reduceMotion
     ? undefined
     : { x: 2, transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE_SNAPPY } }
-
-/** Subtle upward hover (default -1px) for dense rows. */
-export const hoverNudgeUp = (reduceMotion: boolean | null, distance = 1) =>
-  reduceMotion
-    ? undefined
-    : { y: -distance, transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE_SNAPPY } }
-
-/* ----------------------------- CSS helpers ----------------------------- */
-
-/** Inline `prefers-reduced-motion` guard for non-framer consumers. */
-export const REDUCED_MOTION_CSS =
-  "@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important}}"

@@ -962,7 +962,7 @@ export const HomeView = memo(function HomeView({
                 className="h-8 gap-1.5 rounded-xl bg-background/45"
               >
                 <Brain className="h-3.5 w-3.5" />
-                Assessment Copilot
+                Plan my week
               </Button>
               <Button
                 variant="outline"
@@ -1498,6 +1498,7 @@ export const HomeView = memo(function HomeView({
         prepBalanceItems={prepBalanceItems}
         planningSubjects={planningSubjects}
         currentMonth={currentMonth}
+        timetableConfig={timetableConfig}
         onCreateStudySessions={onCreateStudySessions}
       />
 

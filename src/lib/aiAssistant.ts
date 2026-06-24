@@ -1,17 +1,12 @@
 /**
  * Central helpers shared by every AI feature (Copilot, AutoRename,
- * TextEventPlanner, the chat assistant, session reflection, briefings).
+ * TextEventPlanner, and the chat assistant).
  *
  * Keeps the union of small but cross-cutting ergonomics in one place:
  *   - Wrapping `provider.chatCompletion` with structured-output coercion,
  *     cancellation, and a typed return.
  *   - Translating thrown provider errors into UI-friendly diagnostics
  *     that include a one-line recovery hint.
- *   - Cheap cost estimates from a model's pricing block so the UI can show
- *     "approx $0.002" before the user commits. ponytail: pricing is
- *     `string` from OpenRouter; we connect it to `maxTokens` which is the
- *     only knob callers routinely set. Real token accounting happens on
- *     the host.
  *   - The VCE-flavored handful-of-subjects primer used by every prompt
  *     builder so features stay consistent.
  *
@@ -27,7 +22,6 @@ import {
   type ChatMessage,
   type ChatCompletionResult,
   type JsonSchemaSpec,
-  type ModelInfo,
   type Provider,
   type ToolDefinition,
 } from "@/lib/providers"
@@ -114,7 +108,9 @@ export function describeAiError(e: unknown): AiErrorHint {
   if (lower.includes("network") || lower.includes("failed to fetch") || lower.includes("econnrefused")) {
     return {
       message: raw,
-      hint: "Can't reach the AI server. Check your network and the server URL.",
+      hint: provider.id === "ollama"
+        ? "Make sure Ollama is running, then check its server URL under Settings → AI."
+        : "Can't reach the AI server. Check your network and the server URL.",
       cancelled: false,
     }
   }
@@ -132,33 +128,6 @@ export function describeAiError(e: unknown): AiErrorHint {
     }
   }
   return { message: raw, hint: null, cancelled: false }
-}
-
-// --- Cost estimation -----------------------------------------------------
-
-/**
- * Return an approximate USD cost string for a request, derived from the
- * pricing block (`$/1M tokens`) on the selected model, scaled by `maxTokens`.
- * Returns `null` when pricing isn't published (e.g. Ollama local models).
- *
- * ponytail: this is a ceiling estimate — the model may use far fewer tokens
- * than `maxTokens`. Showing "$≤ 0.002" is honest; showing "$0.002" would
- * over-promise. If we ever wire real token usage from the provider, swap
- * this for the actual figure.
- */
-export function estimateRequestCost(
-  model: ModelInfo | undefined,
-  maxTokens: number,
-): { display: string; approximate: boolean } | null {
-  if (!model?.pricing) return null
-  const out = Number.parseFloat(model.pricing.completion)
-  if (!Number.isFinite(out) || out <= 0) return null
-  // Pricing returns $/1M tokens.
-  const dollars = (out * maxTokens) / 1_000_000
-  return {
-    display: dollars < 0.001 ? "<$0.001" : `~$${dollars.toFixed(3)}`,
-    approximate: true,
-  }
 }
 
 // --- Conversation primitives --------------------------------------------
@@ -244,18 +213,6 @@ export async function aiStructuredCompletion<T = unknown>(opts: {
     return parsed
   } catch {
     throw new Error("The AI response was not valid JSON. Try again with a clearer prompt.")
-  }
-}
-
-/** Optional helper that wraps an async fn with an AbortController. */
-export function withAbortController<T>(fn: (signal: AbortSignal) => Promise<T>): {
-  promise: Promise<T>
-  abort: () => void
-} {
-  const controller = new AbortController()
-  return {
-    promise: fn(controller.signal),
-    abort: () => controller.abort(),
   }
 }
 

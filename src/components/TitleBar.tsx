@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import { invoke } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { platform } from "@tauri-apps/plugin-os"
 import { motion, useReducedMotion } from "framer-motion"
 import { Minus, Plus, Search, Settings, X } from "lucide-react"
@@ -141,15 +141,15 @@ export function TitleBar({ onSearch = noop, onSettings = noop, children }: Title
   const reduceMotion = useReducedMotion()
 
   const handleMinimize = useCallback(() => {
-    void invoke("window_minimize")
+    void getCurrentWindow().minimize()
   }, [])
 
   const handleToggleMaximize = useCallback(() => {
-    void invoke("window_toggle_maximize")
+    void getCurrentWindow().toggleMaximize()
   }, [])
 
   const handleClose = useCallback(() => {
-    void invoke("window_close")
+    void getCurrentWindow().close()
   }, [])
 
   return (
