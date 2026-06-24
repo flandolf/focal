@@ -1149,6 +1149,19 @@ html.non-macos {
         -webkit-app-region: drag;
     }
 
+    .app-titlebar-surface {
+        background: linear-gradient(
+            to bottom,
+            color-mix(in oklch, var(--background) 82%, transparent),
+            color-mix(in oklch, var(--card) 64%, transparent)
+        );
+        border-bottom: 1px solid
+            color-mix(in oklch, var(--border) 38%, transparent);
+        box-shadow: 0 1px 0
+            color-mix(in oklch, var(--background) 72%, transparent);
+        backdrop-filter: blur(24px) saturate(1.25);
+    }
+
     .app-titlebar button,
     .app-titlebar-actions {
         -webkit-app-region: no-drag;
@@ -1156,6 +1169,15 @@ html.non-macos {
 
     .focal-shell {
         background: var(--background);
+    }
+
+    .app-workspace {
+        background: linear-gradient(
+            to right,
+            color-mix(in oklch, var(--sidebar) 22%, transparent),
+            transparent 28%,
+            color-mix(in oklch, var(--card) 14%, transparent)
+        );
     }
 
     .glass-panel {
@@ -2111,6 +2133,7 @@ html.non-macos {
      ════════════════════════════════════════════════ */
 
     .app-aurora {
+        position: relative;
         isolation: isolate;
     }
     .app-aurora::before {

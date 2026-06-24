@@ -22,6 +22,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { StudyTimer } from "@/components/StudyTimer";
 import { AssessmentRow } from "@/components/AssessmentRow";
 import { cn, getSubjectById } from "@/lib/utils";
+import { REDUCED_TRANSITION, TRANSITION } from "@/lib/motion";
 import type { ProjectSortKey } from "@/hooks/useProjects";
 import { sortProjects } from "@/hooks/useProjects";
 import type { Project, StudySession, Subject } from "@/lib/types";
@@ -373,7 +374,7 @@ export const Sidebar = memo(function Sidebar({
   return (
     <aside
       className={cn(
-        "glass-sidebar relative flex h-full flex-col overflow-hidden rounded-xl text-sidebar-foreground transition-all duration-300 ease-out",
+        "glass-sidebar relative flex h-full flex-col overflow-hidden rounded-xl text-sidebar-foreground transition-colors duration-200",
         isDragOver && "ring-2 ring-primary/50 ring-inset",
       )}
       onDragEnter={handleDragEnter}
@@ -461,17 +462,24 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
             homeSelected
-              ? "bg-background/72 text-foreground shadow-sm ring-1 ring-primary/20"
+              ? "text-foreground"
               : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Today (H)" : undefined}
         >
-          <Home className={cn("h-4 w-4 shrink-0", homeSelected && "text-primary")} />
-          <CollapsibleInline show={!isCollapsed} className="font-medium">
+          {homeSelected && (
+            <motion.span
+              layoutId="sidebar-primary-selection"
+              className="absolute inset-0 rounded-lg bg-background/72 shadow-sm ring-1 ring-primary/20"
+              transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.layout}
+            />
+          )}
+          <Home className={cn("relative z-10 h-4 w-4 shrink-0", homeSelected && "text-primary")} />
+          <CollapsibleInline show={!isCollapsed} className="relative z-10 font-medium">
             Today
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+          <CollapsibleInline show={!isCollapsed} className="relative z-10 ml-auto">
             <span className="mr-1 hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
               H
             </span>
@@ -489,17 +497,24 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
             timetableSelected
-              ? "bg-background/72 text-foreground shadow-sm ring-1 ring-primary/20"
+              ? "text-foreground"
               : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Timetable (T)" : undefined}
         >
-          <CalendarIcon className={cn("h-4 w-4 shrink-0", timetableSelected && "text-primary")} />
-          <CollapsibleInline show={!isCollapsed} className="font-medium">
+          {timetableSelected && (
+            <motion.span
+              layoutId="sidebar-primary-selection"
+              className="absolute inset-0 rounded-lg bg-background/72 shadow-sm ring-1 ring-primary/20"
+              transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.layout}
+            />
+          )}
+          <CalendarIcon className={cn("relative z-10 h-4 w-4 shrink-0", timetableSelected && "text-primary")} />
+          <CollapsibleInline show={!isCollapsed} className="relative z-10 font-medium">
             Timetable
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+          <CollapsibleInline show={!isCollapsed} className="relative z-10 ml-auto">
             <span className="hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
               T
             </span>
@@ -514,17 +529,24 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
             analyticsSelected
-              ? "bg-background/72 text-foreground shadow-sm ring-1 ring-primary/20"
+              ? "text-foreground"
               : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Analytics (A)" : undefined}
         >
-          <BarChart3 className={cn("h-4 w-4 shrink-0", analyticsSelected && "text-primary")} />
-          <CollapsibleInline show={!isCollapsed} className="font-medium">
+          {analyticsSelected && (
+            <motion.span
+              layoutId="sidebar-primary-selection"
+              className="absolute inset-0 rounded-lg bg-background/72 shadow-sm ring-1 ring-primary/20"
+              transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.layout}
+            />
+          )}
+          <BarChart3 className={cn("relative z-10 h-4 w-4 shrink-0", analyticsSelected && "text-primary")} />
+          <CollapsibleInline show={!isCollapsed} className="relative z-10 font-medium">
             Analytics
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+          <CollapsibleInline show={!isCollapsed} className="relative z-10 ml-auto">
             <span className="hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
               A
             </span>

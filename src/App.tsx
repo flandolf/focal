@@ -1630,7 +1630,7 @@ function App() {
           />
         </TitleBar>
         <div className="hairline-grid pointer-events-none absolute inset-0 z-0 opacity-50" />
-        <div className="relative z-10 flex min-h-0 flex-1 gap-2 px-2 pb-2 min-[1200px]:gap-3 min-[1200px]:px-3 min-[1200px]:pb-3">
+        <div className="app-workspace relative z-10 flex min-h-0 flex-1 gap-2 px-2 pb-2 min-[1200px]:gap-3 min-[1200px]:px-3 min-[1200px]:pb-3">
           <motion.div
             layout
             className="min-h-0 h-full shrink-0"
@@ -1681,7 +1681,7 @@ function App() {
           <motion.main
             layout
             transition={layoutTransition}
-            className={`glass-panel min-w-0 flex-1 overflow-hidden rounded-lg ${
+            className={`app-aurora glass-panel min-w-0 flex-1 overflow-hidden rounded-lg ${
               homeSelected && !settingsView && !timetableView && !analyticsView
                 ? "focal-workbench"
                 : ""
@@ -1690,10 +1690,10 @@ function App() {
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
                 key={contentKey}
-                className="h-full"
-                initial={{ opacity: 0, y: reduceMotion ? 0 : 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: reduceMotion ? 0 : -4 }}
+                className="relative z-10 h-full"
+                initial={{ opacity: 0, x: reduceMotion ? 0 : 6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: reduceMotion ? 0 : -3 }}
                 transition={viewTransition}
               >
                 {settingsView ? (
