@@ -909,9 +909,12 @@ export const HomeView = memo(function HomeView({
           )}
         >
           <motion.div {...homeEnterProps}>
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-2 min-[1200px]:mb-8 min-[1200px]:gap-3">
+            <div className="mb-6 grid gap-5 border-b border-border/70 pb-6 min-[1080px]:grid-cols-[minmax(12rem,0.7fr)_minmax(24rem,1.3fr)] min-[1200px]:mb-8 min-[1200px]:pb-8">
               <div className="min-w-0">
-                <h1 className="font-heading text-2xl font-semibold min-[1200px]:text-3xl">
+                <p className="mb-2 text-micro font-semibold uppercase tracking-[0.18em] text-primary">
+                  {format(new Date(), "EEEE · d MMMM")}
+                </p>
+                <h1 className="font-heading text-3xl font-semibold tracking-[-0.045em] min-[1200px]:text-[2.5rem] min-[1200px]:leading-none">
                   Today
                 </h1>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -943,41 +946,44 @@ export const HomeView = memo(function HomeView({
                   )}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex flex-wrap content-start items-center gap-2 min-[1080px]:justify-end">
+              <span className="mr-1 text-micro font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                Tools
+              </span>
               {onOpenAiAssistant && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={onOpenAiAssistant}
-                  className="h-8 gap-1.5 rounded-xl bg-background/45"
+                  className="h-8 gap-1.5 text-muted-foreground"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   AI Assistant
                 </Button>
               )}
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setCopilotOpen(true)}
-                className="h-8 gap-1.5 rounded-xl bg-background/45"
+                className="h-8 gap-1.5 text-muted-foreground"
               >
                 <Brain className="h-3.5 w-3.5" />
                 Plan my week
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={handleOpenTextPlanner}
-                className="h-8 gap-1.5 rounded-xl bg-background/45"
+                className="h-8 gap-1.5 text-muted-foreground"
               >
                 <Wand2 className="h-3.5 w-3.5" />
                 Text to Events
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={onNewProject}
-                className="h-8 gap-1.5 rounded-xl bg-background/45"
+                className="h-8 gap-1.5 min-[1080px]:ml-3"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Assessment
@@ -986,14 +992,14 @@ export const HomeView = memo(function HomeView({
                 variant="outline"
                 size="sm"
                 onClick={() => onNewEvent(selectedCalendarDate)}
-                className="h-8 gap-1.5 rounded-xl bg-background/45"
+                className="h-8 gap-1.5"
               >
                 <CalendarPlus className="h-3.5 w-3.5" />
                 Event
               </Button>                <Button
                   size="sm"
                   onClick={() => onNewSession(selectedCalendarDate)}
-                  className="h-8 gap-1.5 rounded-xl text-background bg-primary btn-glow-primary"
+                  className="h-8 gap-1.5 px-3 text-primary-foreground"
                 >
                 <Calendar className="h-3.5 w-3.5" />
                 Plan Session
@@ -1028,7 +1034,7 @@ export const HomeView = memo(function HomeView({
           )}
 
           <div className="grid grid-cols-1 gap-4 min-[1200px]:gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
-            <Card className="rounded-2xl border border-border/70 bg-background/48 p-4 shadow-sm backdrop-blur card-glow min-[1200px]:rounded-[1.25rem] min-[1200px]:p-5">
+            <Card className="rounded-lg border border-border bg-card p-4 min-[1200px]:p-5">
               <div className="flex h-full flex-col gap-4 min-[1200px]:gap-5">
                 <CalendarGrid
                   currentMonth={currentMonth}
@@ -1098,7 +1104,7 @@ export const HomeView = memo(function HomeView({
               </div>
             </Card>
 
-            <div className="space-y-3 min-[1200px]:space-y-4">
+            <div className="home-rail space-y-3 min-[1200px]:space-y-4">
               <QuickLinks />
 
               {timetableConfig?.enabled &&
@@ -1125,7 +1131,7 @@ export const HomeView = memo(function HomeView({
                   return (
                     <div
                       className={cn(
-                        "rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur",
+                        "workbench-section",
                         hasCurrent && "active-glow",
                       )}
                     >
@@ -1263,7 +1269,7 @@ export const HomeView = memo(function HomeView({
               />
 
               {dueThisWeek.length > 0 && (
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
+                <div className="workbench-section">
                   <h3 className="mb-2.5 font-heading text-sm font-semibold">
                     Due This Week
                   </h3>
@@ -1305,7 +1311,7 @@ export const HomeView = memo(function HomeView({
               )}
 
               {upcomingSessions.length > 0 && (
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
+                <div className="workbench-section">
                   <h3 className="mb-2.5 flex items-center gap-2 font-heading text-sm font-semibold">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                     Upcoming Sessions
@@ -1347,7 +1353,7 @@ export const HomeView = memo(function HomeView({
               )}
 
               {upcomingEvents.length > 0 && (
-                <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
+                <div className="workbench-section">
                   <h3 className="mb-2.5 flex items-center gap-2 font-heading text-sm font-semibold">
                     <CalendarPlus className="h-3.5 w-3.5 text-muted-foreground" />
                     Events
@@ -1416,7 +1422,7 @@ export const HomeView = memo(function HomeView({
                 upcomingSessions.length === 0 &&
                 upcomingEvents.length === 0 &&
                 overdueProjects.length === 0 && (
-                  <div className="rounded-[1.25rem] border border-dashed border-border bg-background/30 p-3.5">
+                  <div className="workbench-section border-dashed">
                     <p className="text-xs text-muted-foreground">
                       Nothing due this week. Use the buttons above to add an
                       assessment, event, or session.
@@ -1424,7 +1430,7 @@ export const HomeView = memo(function HomeView({
                   </div>
                 )}
 
-              <div className="rounded-[1.25rem] border border-border/70 bg-background/38 p-3.5 shadow-sm backdrop-blur card-glow">
+              <div className="workbench-section">
                 <h3 className="mb-2.5 font-heading text-sm font-semibold">
                   Summary
                 </h3>
