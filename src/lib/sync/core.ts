@@ -99,12 +99,41 @@ export function coalesceQueueItem(
     ...item,
     id,
     createdAt,
+    updatedAt: createdAt,
     retryCount: 0,
   }
   const updated = [...queue]
   if (existingIndex >= 0) updated[existingIndex] = nextItem
   else updated.push(nextItem)
   return updated
+}
+
+export function isQueueItemDue(item: Pick<SyncQueueItem, "nextAttemptAt">, nowIso: string): boolean {
+  return !item.nextAttemptAt || compareIso(item.nextAttemptAt, nowIso) <= 0
+}
+
+export function isRowInPullWindow(
+  row: { updated_at?: string | null },
+  lastPulledAt: string | null | undefined,
+  highWaterAt: string,
+): boolean {
+  return compareIso(row.updated_at, lastPulledAt) > 0 && compareIso(row.updated_at, highWaterAt) <= 0
+}
+
+export function retryQueueItem(item: SyncQueueItem, error: string, nowIso: string): SyncQueueItem {
+  const retryCount = item.retryCount + 1
+  return {
+    ...item,
+    retryCount,
+    lastError: error,
+    nextAttemptAt: new Date(new Date(nowIso).getTime() + getRetryDelayMs(retryCount)).toISOString(),
+    updatedAt: nowIso,
+  }
+}
+
+function getRetryDelayMs(retryCount: number): number {
+  // ponytail: capped exponential backoff; add jitter only if real users stampede Supabase.
+  return Math.min(5 * 60_000, 2 ** Math.max(0, retryCount - 1) * 5_000)
 }
 
 export function clearQueueItemsFromMeta(meta: SyncMeta, items: Pick<SyncQueueItem, "table" | "rowId">[]): SyncMeta {

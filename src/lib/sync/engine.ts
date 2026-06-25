@@ -4,9 +4,10 @@ import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-f
 import { supabase } from "@/lib/supabase/client"
 import { getAssistantCustomInstructions, getAssistantPersonality, getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getStudyPlanningPreferences, getTimetableConfig, setAssistantCustomInstructions, setAssistantPersonality, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setStudyPlanningPreferences, setTimetableConfig, type AssistantPersonality, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache, getErrorMessage } from "@/lib/utils"
-import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, mergeRemoteRecords, removeDeletedRowId, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
+import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, isQueueItemDue, mergeRemoteRecords, removeDeletedRowId, retryQueueItem, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
 import { enqueueSyncItem, finishSyncQueueFlush, readSyncQueue, writeSyncQueue } from "@/lib/sync/queue"
+import { readStoredMeta, writeStoredMeta } from "@/lib/sync/store"
 import {
   ensureUpdatedAt,
   eventToRow,
@@ -45,7 +46,6 @@ import type {
   UserSettingsRow,
 } from "@/lib/sync/types"
 import type { CalendarEvent, Project, StudySession, Subject, UserSettings } from "@/lib/types"
-const META_FILE = "sync-meta.json"
 const FILES: Partial<Record<SyncTable, string>> = {
   projects: "projects.json",
   events: "events.json",
@@ -482,12 +482,28 @@ async function flushQueueInternal(): Promise<void> {
     emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: snapshot.lastSuccessfulSyncAt, details: "All changes synced", isOnline: snapshot.isOnline })
     return
   }
+  const startedAt = new Date().toISOString()
+  const dueQueue = queue.filter((item) => isQueueItemDue(item, startedAt))
+  if (dueQueue.length === 0) {
+    const nextAttemptAt = queue
+      .map((item) => item.nextAttemptAt)
+      .filter((value): value is string => typeof value === "string")
+      .sort()[0]
+    emitStatus({
+      status: "pending",
+      pendingCount: queue.length,
+      error: null,
+      details: nextAttemptAt ? `${queue.length} change${queue.length === 1 ? "" : "s"} waiting to retry` : `${queue.length} change${queue.length === 1 ? "" : "s"} pending`,
+      isOnline: snapshot.isOnline,
+    })
+    return
+  }
 
   // Report per-table breakdown in details
   const byTable = new Map<SyncTable, number>()
-  for (const item of queue) byTable.set(item.table, (byTable.get(item.table) ?? 0) + 1)
+  for (const item of dueQueue) byTable.set(item.table, (byTable.get(item.table) ?? 0) + 1)
   const breakdown = [...byTable.entries()].map(([t, c]) => `${t.replace(/_/g, " ")}: ${c}`).join(", ")
-  emitStatus({ status: "syncing", pendingCount: queue.length, error: null, details: `Pushing ${queue.length} change${queue.length === 1 ? "" : "s"} (${breakdown})`, isOnline: snapshot.isOnline })
+  emitStatus({ status: "syncing", pendingCount: queue.length, error: null, details: `Pushing ${dueQueue.length} change${dueQueue.length === 1 ? "" : "s"} (${breakdown})`, isOnline: snapshot.isOnline })
 
   const remaining: SyncQueueItem[] = []
   const failed: { table: string; rowId: string; error: string }[] = []
@@ -496,53 +512,62 @@ async function flushQueueInternal(): Promise<void> {
   const droppedItems: SyncQueueItem[] = []
   let pausedForNetworkError = false
   const maxRetries = MAX_SYNC_RETRIES_TRANSIENT
-  for (let i = 0; i < queue.length; i++) {
-    const item = queue[i]
-    if (item.retryCount >= MAX_SYNC_RETRIES) {
-      failed.push({ table: item.table, rowId: item.rowId, error: item.lastError ?? "Max retries exceeded" })
-      processedIds.push(item.id)
-      droppedItems.push(item)
-      continue
+  const batches = buildPushBatches(dueQueue)
+  let pushedSoFar = 0
+  for (const batch of batches) {
+    const item = batch[0]
+    const alreadyMaxed = batch.filter((queued) => queued.retryCount >= MAX_SYNC_RETRIES)
+    for (const maxed of alreadyMaxed) {
+      failed.push({ table: maxed.table, rowId: maxed.rowId, error: maxed.lastError ?? "Max retries exceeded" })
+      processedIds.push(maxed.id)
+      droppedItems.push(maxed)
     }
+    const pushable = batch.filter((queued) => queued.retryCount < MAX_SYNC_RETRIES)
+    if (pushable.length === 0) continue
     // Emit per-item progress every 10 items or on table change
-    if (i > 0 && (i % 10 === 0 || item.table !== queue[i - 1]?.table)) {
+    if (pushedSoFar > 0 && (pushedSoFar % 10 === 0 || item.table !== dueQueue[pushedSoFar - 1]?.table)) {
       emitStatus({
         status: "syncing",
-        pendingCount: queue.length - i,
+        pendingCount: queue.length - pushedSoFar,
         error: null,
-        details: `Pushing ${item.table.replace(/_/g, " ")} (${i + 1}/${queue.length})...`,
+        details: `Pushing ${item.table.replace(/_/g, " ")} (${pushedSoFar + 1}/${dueQueue.length})...`,
         isOnline: snapshot.isOnline,
       })
     }
     try {
-      await pushQueueItem(supabase, item)
-      stats[item.table] = (stats[item.table] ?? 0) + 1
-      processedIds.push(item.id)
+      await pushQueueBatch(supabase, pushable)
+      stats[item.table] = (stats[item.table] ?? 0) + pushable.length
+      processedIds.push(...pushable.map((queued) => queued.id))
     } catch (e) {
       const errMsg = getErrorMessage(e)
-      console.error(`[sync] pushQueueItem failed for ${item.table} ${item.rowId}:`, errMsg, redactedPayloadSummary(item.table, item.payload))
-      processedIds.push(item.id)
+      console.error(`[sync] pushQueueItem failed for ${item.table} ${pushable.map((queued) => queued.rowId).join(",")}:`, errMsg, redactedPayloadSummary(item.table, pushable[0]?.payload))
+      processedIds.push(...pushable.map((queued) => queued.id))
       if (isTransientSyncError(e)) {
         // Exponential backoff: items with network errors get up to MAX_SYNC_RETRIES_TRANSIENT retries
-        if (item.retryCount >= maxRetries) {
-          failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
-          droppedItems.push(item)
-        } else {
-          remaining.push({ ...item, lastError: errMsg })
-          failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+        for (const queued of pushable) {
+          if (queued.retryCount + 1 >= maxRetries) {
+            failed.push({ table: queued.table, rowId: queued.rowId, error: errMsg })
+            droppedItems.push(queued)
+          } else {
+            remaining.push(retryQueueItem(queued, errMsg, startedAt))
+            failed.push({ table: queued.table, rowId: queued.rowId, error: errMsg })
+          }
         }
         pausedForNetworkError = true
         break
       }
       // Non-transient errors (e.g., schema mismatch, constraint violations)
-      if (item.retryCount + 1 >= MAX_SYNC_RETRIES) {
-        failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
-        droppedItems.push(item)
-      } else {
-        remaining.push({ ...item, retryCount: item.retryCount + 1, lastError: errMsg })
-        failed.push({ table: item.table, rowId: item.rowId, error: errMsg })
+      for (const queued of pushable) {
+        if (queued.retryCount + 1 >= MAX_SYNC_RETRIES) {
+          failed.push({ table: queued.table, rowId: queued.rowId, error: errMsg })
+          droppedItems.push(queued)
+        } else {
+          remaining.push(retryQueueItem(queued, errMsg, startedAt))
+          failed.push({ table: queued.table, rowId: queued.rowId, error: errMsg })
+        }
       }
     }
+    pushedSoFar += pushable.length
   }
 
   const nextQueue = await finishSyncQueueFlush(processedIds, remaining)
@@ -563,7 +588,7 @@ async function flushQueueInternal(): Promise<void> {
   const failedItems = failed.map((f) => ({ table: f.table as SyncTable, rowId: f.rowId, error: f.error }))
   if (pendingCount === 0 && failed.length === 0) {
     await updateMeta((meta) => ({ ...meta, lastSuccessfulSyncAt: now, eventsBackfillCompletedAt: stats.events ? (meta.eventsBackfillCompletedAt ?? now) : meta.eventsBackfillCompletedAt, sessionsBackfillCompletedAt: stats.study_sessions ? (meta.sessionsBackfillCompletedAt ?? now) : meta.sessionsBackfillCompletedAt, localChangedAt: {}, localChangedRowIds: {}, deletedRowIds: {} }))
-    emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: now, details: `Synced ${queue.length} change${queue.length === 1 ? "" : "s"}`, tableStats, failedItems: [], isOnline: true })
+    emitStatus({ status: "synced", pendingCount: 0, error: null, lastSuccessfulSyncAt: now, details: `Synced ${dueQueue.length} change${dueQueue.length === 1 ? "" : "s"}`, tableStats, failedItems: [], isOnline: true })
   } else if (pendingCount === 0 && failed.length > 0) {
     await updateMeta((meta) => ({ ...clearQueueItemsFromMeta(meta, droppedItems), lastSuccessfulSyncAt: now, eventsBackfillCompletedAt: stats.events ? (meta.eventsBackfillCompletedAt ?? now) : meta.eventsBackfillCompletedAt, sessionsBackfillCompletedAt: stats.study_sessions ? (meta.sessionsBackfillCompletedAt ?? now) : meta.sessionsBackfillCompletedAt }))
     const errSummary = failed.length === 1 ? failed[0].error : `${failed.length} items dropped after retries`
@@ -581,6 +606,35 @@ async function flushQueueInternal(): Promise<void> {
       failedItems,
       isOnline: snapshot.isOnline,
     })
+  }
+}
+
+function buildPushBatches(queue: SyncQueueItem[]): SyncQueueItem[][] {
+  const upserts = new Map<SyncTable, SyncQueueItem[]>()
+  const batches: SyncQueueItem[][] = []
+  for (const item of queue) {
+    if (item.operation === "upsert") {
+      const items = upserts.get(item.table) ?? []
+      items.push(item)
+      upserts.set(item.table, items)
+    } else {
+      batches.push([item])
+    }
+  }
+  return [...upserts.values(), ...batches]
+}
+
+async function pushQueueBatch(client: SupabaseClient, items: SyncQueueItem[]): Promise<void> {
+  if (items.length === 1 || items[0]?.operation !== "upsert") {
+    for (const item of items) await pushQueueItem(client, item)
+    return
+  }
+  const table = items[0].table
+  const payloads = items.map((item) => sanitizeSyncPayload(item.table, item.payload) as Record<string, unknown>)
+  const { error } = await client.from(table).upsert(payloads, { onConflict: getUpsertConflictTarget(table) })
+  if (error) {
+    console.error(`[sync] batch upsert error for ${table}:`, error, "payload:", redactedPayloadSummary(table, payloads[0]))
+    throw error
   }
 }
 
@@ -602,20 +656,22 @@ async function pushQueueItem(client: SupabaseClient, item: SyncQueueItem): Promi
     return
   }
 
-  const onConflict = item.table === "custom_subjects"
-    ? "user_id,subject_key"
-    : item.table === "hidden_subjects"
-      ? "user_id,subject_id"
-      : item.table === "timetable_config"
-        ? "user_id"
-        : item.table === "user_settings"
-          ? "user_id"
-          : "id"
+  const onConflict = getUpsertConflictTarget(item.table)
   const { error } = await client.from(item.table).upsert(payload, { onConflict })
   if (error) {
     console.error(`[sync] upsert error for ${item.table} (rowId=${item.rowId}, onConflict=${onConflict}):`, error, "payload:", redactedPayloadSummary(item.table, payload))
     throw error
   }
+}
+
+function getUpsertConflictTarget(table: SyncTable): string {
+  return table === "custom_subjects"
+    ? "user_id,subject_key"
+    : table === "hidden_subjects"
+      ? "user_id,subject_id"
+      : table === "timetable_config" || table === "user_settings"
+        ? "user_id"
+        : "id"
 }
 
 async function pullRemoteChanges(): Promise<void> {
@@ -628,25 +684,26 @@ async function pullRemoteChanges(): Promise<void> {
 
 async function pullRemoteChangesInternal(): Promise<void> {
   if (!currentSession || !supabase || syncDisabledReason) return
+  const highWaterAt = new Date().toISOString()
   emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling projects..." })
-  const projectCount = await pullTable<ProjectRow>("projects")
+  const projectCount = await pullTable<ProjectRow>("projects", highWaterAt)
   emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: projectCount > 0 ? `Pulling events... (${projectCount} projects received)` : "Pulling events..." })
-  const eventCount = await pullTable<EventRow>("events")
+  const eventCount = await pullTable<EventRow>("events", highWaterAt)
   emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: eventCount > 0 ? `Pulling sessions... (${eventCount} events received)` : "Pulling sessions..." })
-  const sessionCount = await pullTable<StudySessionRow>("study_sessions")
+  const sessionCount = await pullTable<StudySessionRow>("study_sessions", highWaterAt)
   const detailPrefix = [
     projectCount > 0 ? `${projectCount} projects` : null,
     eventCount > 0 ? `${eventCount} events` : null,
     sessionCount > 0 ? `${sessionCount} sessions` : null,
   ].filter(Boolean).join(", ")
   emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: detailPrefix ? `Pulling subjects... (received ${detailPrefix})` : "Pulling subjects..." })
-  await pullCustomSubjects()
+  const customSubjectCount = await pullCustomSubjects(highWaterAt)
   emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling hidden subjects..." })
-  await pullHiddenSubjects()
+  const hiddenSubjectCount = await pullHiddenSubjects(highWaterAt)
   emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling timetable config..." })
-  await pullTimetableConfig()
+  const timetableCount = await pullTimetableConfig(highWaterAt)
   emitStatus({ status: "syncing", pendingCount: snapshot.pendingCount, error: null, details: "Pulling user settings..." })
-  await pullUserSettings()
+  const userSettingsCount = await pullUserSettings(highWaterAt)
 
   // Note: we intentionally do NOT update lastSuccessfulSyncAt here.
   // enqueueAllLocalRows reads it to decide what to push; setting it to "now"
@@ -659,6 +716,10 @@ async function pullRemoteChangesInternal(): Promise<void> {
     { table: "projects", pulled: projectCount, pushed: 0, failed: 0 },
     { table: "events", pulled: eventCount, pushed: 0, failed: 0 },
     { table: "study_sessions", pulled: sessionCount, pushed: 0, failed: 0 },
+    { table: "custom_subjects", pulled: customSubjectCount, pushed: 0, failed: 0 },
+    { table: "hidden_subjects", pulled: hiddenSubjectCount, pushed: 0, failed: 0 },
+    { table: "timetable_config", pulled: timetableCount, pushed: 0, failed: 0 },
+    { table: "user_settings", pulled: userSettingsCount, pushed: 0, failed: 0 },
   ]
   emitStatus({
     status: queue.length > 0 ? "pending" : "synced",
@@ -697,25 +758,14 @@ function isTransientSyncError(error: unknown): boolean {
 
 const PAGE_SIZE = 1000
 
-async function pullTable<Row extends RemoteRow>(table: SyncTable): Promise<number> {
+async function pullTable<Row extends RemoteRow>(table: SyncTable, highWaterAt: string): Promise<number> {
   if (!supabase) return 0
   const fileName = FILES[table]
   if (!fileName) return 0
 
-  // Fetch all rows with pagination to avoid the default 1000-row limit.
-  const allRows: Row[] = []
-  let from = 0
-  for (;;) {
-    const { data, error } = await supabase.from(table).select("*").range(from, from + PAGE_SIZE - 1)
-    if (error) throw error
-    const batch = (data ?? []) as Row[]
-    allRows.push(...batch)
-    if (batch.length < PAGE_SIZE) break
-    from += PAGE_SIZE
-  }
-
   const local = await readJsonArray<Record<string, unknown>>(fileName)
   const meta = await readMeta()
+  const allRows = await fetchChangedRows<Row>(table, highWaterAt, meta.lastPulledAt?.[table])
   const allConflicts: SyncConflictItem[] = []
   const merged = mergeRemoteRows(table, local, allRows, {
     changedRowIds: meta.localChangedRowIds ?? {},
@@ -726,7 +776,58 @@ async function pullTable<Row extends RemoteRow>(table: SyncTable): Promise<numbe
   if (allConflicts.length > 0) {
     emitStatus({ conflicts: allConflicts })
   }
+  await markTablePulled(table, highWaterAt)
   return allRows.length
+}
+
+async function fetchChangedRows<Row extends RemoteRow>(table: SyncTable, highWaterAt: string, lastPulledAt?: string): Promise<Row[]> {
+  if (!supabase || !currentSession) return []
+  const allRows: Row[] = []
+  let from = 0
+  for (;;) {
+    let query = supabase
+      .from(table)
+      .select("*")
+      .eq("user_id", currentSession.user.id)
+      .lte("updated_at", highWaterAt)
+      .order("updated_at", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+    if (lastPulledAt) query = query.gt("updated_at", lastPulledAt)
+    const { data, error } = await query
+    if (error) throw error
+    const batch = (data ?? []) as Row[]
+    allRows.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return allRows
+}
+
+async function fetchAllRows<Row extends RemoteRow>(table: SyncTable): Promise<Row[]> {
+  if (!supabase || !currentSession) return []
+  const allRows: Row[] = []
+  let from = 0
+  for (;;) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("user_id", currentSession.user.id)
+      .order("updated_at", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    const batch = (data ?? []) as Row[]
+    allRows.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return allRows
+}
+
+async function markTablePulled(table: SyncTable, highWaterAt: string): Promise<void> {
+  await updateMeta((meta) => ({
+    ...meta,
+    lastPulledAt: { ...(meta.lastPulledAt ?? {}), [table]: highWaterAt },
+  }))
 }
 
 function mergeRemoteRows(
@@ -756,52 +857,70 @@ function mergeRemoteRows(
   })
 }
 
-async function pullCustomSubjects(): Promise<void> {
-  if (!supabase) return
-  const { data, error } = await supabase.from("custom_subjects").select("*")
-  if (error) throw error
+async function pullCustomSubjects(highWaterAt?: string): Promise<number> {
+  if (!supabase) return 0
+  const table: SyncTable = "custom_subjects"
+  const meta = await readMeta()
+  const data = highWaterAt
+    ? await fetchChangedRows<CustomSubjectRow>(table, highWaterAt, meta.lastPulledAt?.[table])
+    : await fetchAllRows<CustomSubjectRow>(table)
   const local = readLocalStorageArray<Subject>(CUSTOM_SUBJECTS_KEY)
   const byKey = new Map(local.map((subject) => [subject.id, subject]))
-  ;((data ?? []) as CustomSubjectRow[]).forEach((row) => {
+  data.forEach((row) => {
     if (row.deleted_at) byKey.delete(row.subject_key)
     else byKey.set(row.subject_key, rowToSubject(row))
   })
   localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(Array.from(byKey.values())))
   bustSubjectCache()
   emitLocalDataChanged("custom_subjects")
+  if (highWaterAt) await markTablePulled(table, highWaterAt)
+  return data.length
 }
 
-async function pullHiddenSubjects(): Promise<void> {
-  if (!supabase) return
-  const { data, error } = await supabase.from("hidden_subjects").select("*")
-  if (error) throw error
+async function pullHiddenSubjects(highWaterAt?: string): Promise<number> {
+  if (!supabase) return 0
+  const table: SyncTable = "hidden_subjects"
+  const meta = await readMeta()
+  const data = highWaterAt
+    ? await fetchChangedRows<HiddenSubjectRow>(table, highWaterAt, meta.lastPulledAt?.[table])
+    : await fetchAllRows<HiddenSubjectRow>(table)
   const next = new Set(readLocalStorageArray<string>(HIDDEN_SUBJECTS_KEY))
-  ;((data ?? []) as HiddenSubjectRow[]).forEach((row) => {
+  data.forEach((row) => {
     if (row.deleted_at) next.delete(row.subject_id)
     else next.add(row.subject_id)
   })
   localStorage.setItem(HIDDEN_SUBJECTS_KEY, JSON.stringify(Array.from(next)))
   emitLocalDataChanged("hidden_subjects")
+  if (highWaterAt) await markTablePulled(table, highWaterAt)
+  return data.length
 }
 
-async function pullTimetableConfig(): Promise<void> {
-  if (!supabase || !currentSession) return
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const { data, error } = await supabase.from("timetable_config").select("*").eq("user_id", currentSession.user.id).maybeSingle()
-  if (error) throw error
+async function pullTimetableConfig(highWaterAt?: string): Promise<number> {
+  if (!supabase || !currentSession) return 0
+  const table: SyncTable = "timetable_config"
+  const meta = await readMeta()
+  const rows = highWaterAt
+    ? await fetchChangedRows<TimetableConfigRow>(table, highWaterAt, meta.lastPulledAt?.[table])
+    : await fetchAllRows<TimetableConfigRow>(table)
+  const data = rows[0]
   if (data) {
-    setTimetableConfig(rowToTimetableConfig(data as TimetableConfigRow))
+    setTimetableConfig(rowToTimetableConfig(data))
     emitLocalDataChanged("timetable_config")
   }
+  if (highWaterAt) await markTablePulled(table, highWaterAt)
+  return rows.length
 }
 
-async function pullUserSettings(): Promise<void> {
-  if (!supabase || !currentSession) return
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const { data, error } = await supabase.from("user_settings").select("*").eq("user_id", currentSession.user.id).maybeSingle()
-  if (error) throw error
+async function pullUserSettings(highWaterAt?: string): Promise<number> {
+  if (!supabase || !currentSession) return 0
+  const table: SyncTable = "user_settings"
+  const meta = await readMeta()
+  const rows = highWaterAt
+    ? await fetchChangedRows<UserSettingsRow>(table, highWaterAt, meta.lastPulledAt?.[table])
+    : await fetchAllRows<UserSettingsRow>(table)
+  const data = rows[0]
   if (data) {
-    const row = data as UserSettingsRow
+    const row = data
     const settings = scrubUserSettingsSecrets(rowToUserSettings(row))
     await scrubRemoteUserSettingsSecrets(row)
     if (settings.openrouter_model) setModel(settings.openrouter_model)
@@ -826,6 +945,8 @@ async function pullUserSettings(): Promise<void> {
     })
     emitLocalDataChanged("user_settings")
   }
+  if (highWaterAt) await markTablePulled(table, highWaterAt)
+  return rows.length
 }
 
 async function scrubRemoteUserSettingsSecrets(row: UserSettingsRow): Promise<void> {
@@ -1118,16 +1239,16 @@ async function migrateLocalIdsToUuids(): Promise<void> {
 async function readMeta(): Promise<SyncMeta> {
   const deviceId = currentDeviceId ?? await getDeviceId()
   try {
-    const path = await appDataPath(META_FILE)
-    if (!(await exists(path))) return { deviceId, lastSuccessfulSyncAt: null }
-    const parsed = JSON.parse(await readTextFile(path)) as Partial<SyncMeta> & { calendarBackfillCompletedAt?: string | null }
+    const parsed = await readStoredMeta()
+    if (!parsed) return { deviceId, lastSuccessfulSyncAt: null }
+    const legacyCalendarBackfillCompletedAt = getLegacyCalendarBackfillCompletedAt(parsed)
     return {
       deviceId,
-      lastPulledAt: parsed.lastPulledAt,
+      lastPulledAt: parseTableStringRecord(parsed.lastPulledAt),
       lastSuccessfulSyncAt: parsed.lastSuccessfulSyncAt ?? null,
       migratedUuidIds: parsed.migratedUuidIds,
-      eventsBackfillCompletedAt: parsed.eventsBackfillCompletedAt ?? parsed.calendarBackfillCompletedAt ?? null,
-      sessionsBackfillCompletedAt: parsed.sessionsBackfillCompletedAt ?? parsed.calendarBackfillCompletedAt ?? null,
+      eventsBackfillCompletedAt: parsed.eventsBackfillCompletedAt ?? legacyCalendarBackfillCompletedAt,
+      sessionsBackfillCompletedAt: parsed.sessionsBackfillCompletedAt ?? legacyCalendarBackfillCompletedAt,
       localChangedAt: parseTableStringRecord(parsed.localChangedAt),
       localChangedRowIds: parseRowIdsByTable(parsed.localChangedRowIds),
       deletedRowIds: parseDeletedRowIds(parsed.deletedRowIds),
@@ -1138,8 +1259,7 @@ async function readMeta(): Promise<SyncMeta> {
 }
 
 async function writeMeta(meta: SyncMeta): Promise<void> {
-  const path = await appDataPath(META_FILE)
-  await writeTextFile(path, JSON.stringify(meta, null, 2))
+  await writeStoredMeta(meta)
 }
 
 async function updateMeta(update: (meta: SyncMeta) => SyncMeta | Promise<SyncMeta>): Promise<SyncMeta> {
@@ -1263,6 +1383,11 @@ function collectUserSettingsForSync(): UserSettings {
     assistant_custom_instructions: getAssistantCustomInstructions(),
     study_planning_preferences: getStudyPlanningPreferences(),
   }
+}
+
+function getLegacyCalendarBackfillCompletedAt(meta: Partial<SyncMeta>): string | null {
+  const value = (meta as { calendarBackfillCompletedAt?: unknown }).calendarBackfillCompletedAt
+  return typeof value === "string" ? value : null
 }
 
 function emitLocalDataChanged(table: SyncTable): void {

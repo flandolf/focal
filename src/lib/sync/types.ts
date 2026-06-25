@@ -32,8 +32,10 @@ export interface SyncQueueItem {
   rowId: string
   payload: unknown
   createdAt: string
+  updatedAt: string
   retryCount: number
   lastError?: string
+  nextAttemptAt?: string
 }
 
 export interface SyncMeta {
