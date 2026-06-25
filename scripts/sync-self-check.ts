@@ -3,8 +3,11 @@ import {
   addDeletedRowId,
   clearQueueItemsFromMeta,
   coalesceQueueItem,
+  isQueueItemDue,
+  isRowInPullWindow,
   mergeRemoteRecords,
   removeDeletedRowId,
+  retryQueueItem,
   scrubUserSettingsSecrets,
   shouldBackfillCalendarTable,
   shouldEnqueueFileRow,
@@ -203,6 +206,7 @@ const pendingEventUpsert: SyncQueueItem = {
   rowId: "event-1",
   payload: { id: "event-1", title: "Draft" },
   createdAt: "2026-06-13T09:00:00.000Z",
+  updatedAt: "2026-06-13T09:00:00.000Z",
   retryCount: 3,
 }
 
@@ -230,6 +234,60 @@ assertJsonEqual(
   restoreReplacesDelete.map((item) => ({ operation: item.operation, rowId: item.rowId })),
   [{ operation: "upsert", rowId: "event-1" }],
   "restore/upsert must replace a stale pending delete for the same event",
+)
+
+assertEqual(
+  isQueueItemDue({ nextAttemptAt: "2026-06-13T09:59:59.000Z" }, "2026-06-13T10:00:00.000Z"),
+  true,
+  "queued retries should run once their next attempt time has passed",
+)
+
+assertEqual(
+  isQueueItemDue({ nextAttemptAt: "2026-06-13T10:00:01.000Z" }, "2026-06-13T10:00:00.000Z"),
+  false,
+  "queued retries should wait until their backoff has elapsed",
+)
+
+assertJsonEqual(
+  (({ retryCount, lastError, nextAttemptAt }) => ({ retryCount, lastError, nextAttemptAt }))(
+    retryQueueItem(pendingEventUpsert, "network down", "2026-06-13T10:00:00.000Z"),
+  ),
+  {
+    retryCount: 4,
+    lastError: "network down",
+    nextAttemptAt: "2026-06-13T10:00:40.000Z",
+  },
+  "retry scheduling should increment retries and set capped exponential backoff",
+)
+
+assertEqual(
+  isRowInPullWindow(
+    { updated_at: "2026-06-13T10:00:00.000Z" },
+    "2026-06-13T09:00:00.000Z",
+    "2026-06-13T10:00:00.000Z",
+  ),
+  true,
+  "incremental pulls should include rows up to the pull high-water mark",
+)
+
+assertEqual(
+  isRowInPullWindow(
+    { updated_at: "2026-06-13T10:00:01.000Z" },
+    "2026-06-13T09:00:00.000Z",
+    "2026-06-13T10:00:00.000Z",
+  ),
+  false,
+  "incremental pulls should leave rows after the high-water mark for the next pull",
+)
+
+assertEqual(
+  isRowInPullWindow(
+    { updated_at: "2026-06-13T09:00:00.000Z" },
+    "2026-06-13T09:00:00.000Z",
+    "2026-06-13T10:00:00.000Z",
+  ),
+  false,
+  "incremental pulls should not refetch rows at the previous lastPulledAt boundary",
 )
 
 assertJsonEqual(
