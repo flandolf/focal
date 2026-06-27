@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { motion, useReducedMotion } from "framer-motion";
 import {
   CheckCircle2,
   Copy,
@@ -54,13 +53,6 @@ import {
   getSubjectById,
 } from "@/lib/utils";
 import type { DeadlineType, Project, StudySession } from "@/lib/types";
-
-const SIDEBAR_PRESS_TRANSITION = {
-  type: "spring",
-  stiffness: 520,
-  damping: 34,
-  mass: 0.65,
-} as const;
 
 const SUBJECT_ICONS: Record<string, LucideIcon> = {
   eng: BookOpen,
@@ -139,18 +131,12 @@ export const AssessmentRow = memo(function AssessmentRow({
   onStartPomodoroSession,
   onAddFile,
 }: AssessmentRowProps) {
-  const reduceMotion = useReducedMotion() === true;
   const ProjectIcon = getSidebarProjectIcon(project);
   const subject = getSubjectById(project.subjectId);
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType);
   const DeadlineIcon = getSidebarDeadlineIcon(project.deadlineType);
   const isMultiSelecting = (selectedProjectIds?.size ?? 0) > 0;
   const isSelected = selectedProjectIds?.has(project.id) ?? false;
-
-  const pressTransition = reduceMotion
-    ? { duration: 0 }
-    : SIDEBAR_PRESS_TRANSITION;
-  const tapPress = reduceMotion ? undefined : { scale: 0.96 };
 
   const handleProjectClick = () => {
     if (selectedProjectIds && selectedProjectIds.size > 0 && onToggleProjectSelection) {
@@ -163,26 +149,16 @@ export const AssessmentRow = memo(function AssessmentRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <motion.div
-          whileHover={
-            reduceMotion
-              ? undefined
-              : {
-                  x: isCollapsed ? 0 : 2,
-                  scale: isCollapsed ? 1.04 : 1.01,
-                }
-          }
-          whileTap={tapPress}
-          transition={pressTransition}
+        <div
           className={cn(
-            "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg transition-colors",
+            "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-md transition-colors",
             isCollapsed
               ? "justify-center px-2 py-1.25"
-              : "px-2 py-1.25 pr-8 min-[1200px]:rounded-xl",
+              : "px-2 py-1.25 pr-8",
             selectedId === project.id
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm active-glow active-glow-pulse"
-              : "text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
-            isSelected && "ring-1 ring-primary/30 bg-sidebar-accent/30",
+              ? "bg-accent text-accent-foreground"
+              : "hover:bg-accent hover:text-accent-foreground",
+            isSelected && "ring-1 ring-ring bg-accent/60",
             project.isArchived && "opacity-60",
             project.isFinished && "opacity-70",
           )}
@@ -204,8 +180,8 @@ export const AssessmentRow = memo(function AssessmentRow({
           <span className="relative shrink-0">
             <span
               className={cn(
-                "flex items-center justify-center rounded-md border border-sidebar-border bg-background/45 text-muted-foreground shadow-xs",
-                isCollapsed ? "size-6.5 rounded-xl" : "size-5",
+                "flex items-center justify-center rounded-md border bg-background text-muted-foreground",
+                isCollapsed ? "size-6.5" : "size-5",
               )}
               style={
                 subject
@@ -222,8 +198,8 @@ export const AssessmentRow = memo(function AssessmentRow({
               />
             </span>
             {project.isLinked && isCollapsed && (
-              <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-primary/90 ring-1 ring-background">
-                <Link className="size-2 text-background" />
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-primary ring-1 ring-background">
+                <Link className="size-2 text-primary-foreground" />
               </span>
             )}
           </span>
@@ -235,7 +211,7 @@ export const AssessmentRow = memo(function AssessmentRow({
                 </p>
                 <div className="flex shrink-0 items-center gap-1">
                   {project.isFinished && (
-                    <span className="hidden text-micro font-medium text-green-600 dark:text-green-400 min-[1050px]:inline-flex">
+                    <span className="hidden text-xs font-medium text-green-600 dark:text-green-400 min-[1050px]:inline-flex">
                       Done
                     </span>
                   )}
@@ -262,7 +238,7 @@ export const AssessmentRow = memo(function AssessmentRow({
               {project.deadline && !project.isFinished && (
                 <div className="mt-0.5 flex max-w-full items-center gap-1 overflow-hidden">
                   <span
-                    className="flex items-center gap-0.5 text-micro text-muted-foreground/70 select-none max-[900px]:hidden"
+                    className="flex items-center gap-0.5 text-xs text-muted-foreground/70 select-none max-[900px]:hidden"
                     style={{ color: deadlineInfo.color }}
                   >
                     <DeadlineIcon className="size-2.5" aria-hidden="true" />
@@ -270,7 +246,7 @@ export const AssessmentRow = memo(function AssessmentRow({
                   </span>
                   <span
                     className={cn(
-                      "truncate text-micro font-medium select-none",
+                      "truncate text-xs font-medium select-none",
                       isOverdue(project.deadline)
                         ? "text-destructive"
                         : "text-muted-foreground",
@@ -288,7 +264,7 @@ export const AssessmentRow = memo(function AssessmentRow({
                 <DropdownMenuTrigger asChild>
                   <button
                     aria-label={`Assessment actions for ${project.name}`}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground focus-visible:opacity-100 focus-visible:outline-none data-[state=open]:bg-accent data-[state=open]:text-accent-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
                     onClick={(event) => event.stopPropagation()}
                   >
                     <MoreHorizontal className="h-3.5 w-3.5" />
@@ -373,7 +349,7 @@ export const AssessmentRow = memo(function AssessmentRow({
               </DropdownMenu>
             </div>
           )}
-        </motion.div>
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-44">
         {onOpenProjectSettings && (
