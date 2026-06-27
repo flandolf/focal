@@ -1,5 +1,11 @@
-import { useState, memo, useCallback, useRef, useMemo, type ReactNode } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import {
+  useState,
+  memo,
+  useCallback,
+  useRef,
+  useMemo,
+  type ReactNode,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Archive,
@@ -17,12 +23,16 @@ import {
   Star,
   type LucideIcon,
 } from "lucide-react";
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { StudyTimer } from "@/components/StudyTimer";
 import { AssessmentRow } from "@/components/AssessmentRow";
 import { cn, getSubjectById } from "@/lib/utils";
-import { REDUCED_TRANSITION, TRANSITION } from "@/lib/motion";
 import type { ProjectSortKey } from "@/hooks/useProjects";
 import { sortProjects } from "@/hooks/useProjects";
 import type { Project, StudySession, Subject } from "@/lib/types";
@@ -41,13 +51,6 @@ type SidebarListItem =
   | { type: "top-header"; id: "top-header" }
   | { type: "group-header"; id: string; group: AssessmentSubjectGroup }
   | { type: "assessment"; id: string; project: Project };
-
-const SIDEBAR_PRESS_TRANSITION = {
-  type: "spring",
-  stiffness: 520,
-  damping: 34,
-  mass: 0.65,
-} as const;
 
 function CollapsibleInline({
   show,
@@ -213,7 +216,6 @@ export const Sidebar = memo(function Sidebar({
   const [filterMode, setFilterMode] = useState<FilterMode>("active");
   const [isDragOver, setIsDragOver] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const reduceMotion = useReducedMotion() === true;
 
   const dragCounter = useRef(0);
 
@@ -276,17 +278,27 @@ export const Sidebar = memo(function Sidebar({
   );
 
   const effectiveSortKey = sortKey ?? "deadline";
-  const sorted = useMemo(() => sortProjects(projects, effectiveSortKey, fileCounts), [projects, effectiveSortKey, fileCounts]);
+  const sorted = useMemo(
+    () => sortProjects(projects, effectiveSortKey, fileCounts),
+    [projects, effectiveSortKey, fileCounts],
+  );
 
-  const filtered = useMemo(() => sorted.filter((p) => {
-    if (filterMode === "favorites")
-      return p.isFavorite && !p.isArchived && !p.isFinished;
-    if (filterMode === "archived") return p.isArchived;
-    if (filterMode === "finished") return p.isFinished && !p.isArchived;
-    return !p.isArchived && !p.isFinished;
-  }), [sorted, filterMode]);
+  const filtered = useMemo(
+    () =>
+      sorted.filter((p) => {
+        if (filterMode === "favorites")
+          return p.isFavorite && !p.isArchived && !p.isFinished;
+        if (filterMode === "archived") return p.isArchived;
+        if (filterMode === "finished") return p.isFinished && !p.isArchived;
+        return !p.isArchived && !p.isFinished;
+      }),
+    [sorted, filterMode],
+  );
 
-  const subjectGroups = useMemo(() => getAssessmentSubjectGroups(filtered), [filtered]);
+  const subjectGroups = useMemo(
+    () => getAssessmentSubjectGroups(filtered),
+    [filtered],
+  );
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -297,7 +309,11 @@ export const Sidebar = memo(function Sidebar({
     }
     for (const group of subjectGroups) {
       if (!isCollapsed) {
-        items.push({ type: "group-header", id: `group-${group.subjectId}`, group });
+        items.push({
+          type: "group-header",
+          id: `group-${group.subjectId}`,
+          group,
+        });
       }
       for (const project of group.assessments) {
         items.push({ type: "assessment", id: project.id, project });
@@ -351,16 +367,21 @@ export const Sidebar = memo(function Sidebar({
     }[] = [
       { mode: "active", label: "Current", icon: CircleDot },
       { mode: "favorites", label: "Starred", icon: Star, count: favoriteCount },
-      { mode: "archived", label: "Archive", icon: Archive, count: archivedCount },
-      { mode: "finished", label: "Done", icon: CheckCircle2, count: finishedCount },
+      {
+        mode: "archived",
+        label: "Archive",
+        icon: Archive,
+        count: archivedCount,
+      },
+      {
+        mode: "finished",
+        label: "Done",
+        icon: CheckCircle2,
+        count: finishedCount,
+      },
     ];
     return { activeCount, filterItems: items };
   }, [sorted]);
-  const pressTransition = reduceMotion
-    ? { duration: 0 }
-    : SIDEBAR_PRESS_TRANSITION;
-  const hoverLift = reduceMotion ? undefined : { x: 2 };
-  const tapPress = reduceMotion ? undefined : { scale: 0.96 };
 
   const selectedCount = selectedProjectIds?.size ?? 0;
   const selectedIdsArray = selectedProjectIds
@@ -374,8 +395,8 @@ export const Sidebar = memo(function Sidebar({
   return (
     <aside
       className={cn(
-        "glass-sidebar relative flex h-full flex-col overflow-hidden rounded-xl text-sidebar-foreground transition-colors duration-200",
-        isDragOver && "ring-2 ring-primary/50 ring-inset",
+        "relative flex h-full flex-col overflow-hidden rounded-lg border bg-card text-card-foreground transition-colors",
+        isDragOver && "ring-2 ring-ring ring-inset",
       )}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -383,8 +404,8 @@ export const Sidebar = memo(function Sidebar({
       onDrop={handleDrop}
     >
       {isDragOver && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-[inherit] bg-primary/8 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-2 text-primary">
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-[inherit] bg-background/80">
+          <div className="flex flex-col items-center gap-2 text-foreground">
             <FolderOpen className="h-8 w-8" />
             <span className="text-sm font-medium">
               Drop folder to create assessment
@@ -394,7 +415,7 @@ export const Sidebar = memo(function Sidebar({
       )}
       <div
         className={cn(
-          "border-b border-sidebar-border/55 pb-3 pt-3 min-[1200px]:pb-4 min-[1200px]:pt-4",
+          "border-b pb-3 pt-3 min-[1200px]:pb-4 min-[1200px]:pt-4",
           isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-3 min-[1200px]:px-4",
         )}
       >
@@ -405,18 +426,16 @@ export const Sidebar = memo(function Sidebar({
           )}
         >
           <CollapsibleBlock show={!isCollapsed}>
-            <h1 className="font-heading text-base font-semibold">Focal</h1>
-            <p className="text-caption text-muted-foreground max-[900px]:hidden">
+            <h1 className="text-base font-semibold">Focal</h1>
+            <p className="text-xs text-muted-foreground max-[900px]:hidden">
               Study workspace
             </p>
           </CollapsibleBlock>
-          <motion.button
+          <button
+            type="button"
             onClick={onToggleCollapse}
-            whileHover={hoverLift}
-            whileTap={tapPress}
-            transition={pressTransition}
             className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground",
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
               !isCollapsed && "ml-auto",
             )}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -427,16 +446,14 @@ export const Sidebar = memo(function Sidebar({
             ) : (
               <PanelLeftClose className="h-3.5 w-3.5" />
             )}
-          </motion.button>
+          </button>
         </div>
 
         <div className="mt-3 flex justify-center">
           <Button
+            variant="outline"
             onClick={onNewProject}
-            className={cn(
-              "h-8 overflow-hidden rounded-md text-primary-foreground",
-              isCollapsed ? "w-8 px-0" : "w-full gap-1",
-            )}
+            className={cn(isCollapsed ? "w-8 px-0" : "w-full gap-1")}
             size="sm"
             title={isCollapsed ? "New Assessment" : undefined}
           >
@@ -450,128 +467,111 @@ export const Sidebar = memo(function Sidebar({
 
       <div
         className={cn(
-          "space-y-1.5 min-[1200px]:space-y-2",
+          "space-y-1.5 min-[1200px]:space-y-2 pt-2",
           isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-2.5 min-[1200px]:px-3",
         )}
       >
-        <motion.button
+        <button
+          type="button"
           onClick={onSelectHome}
-          whileHover={hoverLift}
-          whileTap={tapPress}
-          transition={pressTransition}
           className={cn(
-            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
             homeSelected
-              ? "text-foreground"
-              : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Today (H)" : undefined}
         >
-          {homeSelected && (
-            <motion.span
-              layoutId="sidebar-primary-selection"
-              className="absolute inset-0 rounded-lg bg-background/72 shadow-sm ring-1 ring-primary/20"
-              transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.layout}
-            />
-          )}
-          <Home className={cn("relative z-10 h-4 w-4 shrink-0", homeSelected && "text-primary")} />
-          <CollapsibleInline show={!isCollapsed} className="relative z-10 font-medium">
+          <Home
+            className={cn("h-4 w-4 shrink-0", homeSelected && "text-primary")}
+          />
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
             Today
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="relative z-10 ml-auto">
-            <span className="mr-1 hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
+          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+            <span className="mr-1 hidden rounded border bg-background px-1 font-mono text-[10px] leading-relaxed text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
               H
             </span>
-            <span className={cn("rounded-full px-2 py-0.5 text-caption", homeSelected ? "bg-primary/10 text-primary" : "bg-background/45 text-muted-foreground")}>
+            <span className="rounded-full px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
               {activeCount}
             </span>
           </CollapsibleInline>
-        </motion.button>
+        </button>
 
-        <motion.button
+        <button
+          type="button"
           onClick={onSelectTimetable}
-          whileHover={hoverLift}
-          whileTap={tapPress}
-          transition={pressTransition}
           className={cn(
-            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
             timetableSelected
-              ? "text-foreground"
-              : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Timetable (T)" : undefined}
         >
-          {timetableSelected && (
-            <motion.span
-              layoutId="sidebar-primary-selection"
-              className="absolute inset-0 rounded-lg bg-background/72 shadow-sm ring-1 ring-primary/20"
-              transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.layout}
-            />
-          )}
-          <CalendarIcon className={cn("relative z-10 h-4 w-4 shrink-0", timetableSelected && "text-primary")} />
-          <CollapsibleInline show={!isCollapsed} className="relative z-10 font-medium">
+          <CalendarIcon
+            className={cn(
+              "h-4 w-4 shrink-0",
+              timetableSelected && "text-primary",
+            )}
+          />
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
             Timetable
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="relative z-10 ml-auto">
-            <span className="hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
+          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+            <span className="hidden rounded border bg-background px-1 font-mono text-[10px] leading-relaxed text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
               T
             </span>
           </CollapsibleInline>
-        </motion.button>
+        </button>
 
-        <motion.button
+        <button
+          type="button"
           onClick={onSelectAnalytics}
-          whileHover={hoverLift}
-          whileTap={tapPress}
-          transition={pressTransition}
           className={cn(
-            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
             analyticsSelected
-              ? "text-foreground"
-              : "text-muted-foreground hover:bg-background/38 hover:text-foreground",
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             isCollapsed && "justify-center px-0",
           )}
           title={isCollapsed ? "Analytics (A)" : undefined}
         >
-          {analyticsSelected && (
-            <motion.span
-              layoutId="sidebar-primary-selection"
-              className="absolute inset-0 rounded-lg bg-background/72 shadow-sm ring-1 ring-primary/20"
-              transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.layout}
-            />
-          )}
-          <BarChart3 className={cn("relative z-10 h-4 w-4 shrink-0", analyticsSelected && "text-primary")} />
-          <CollapsibleInline show={!isCollapsed} className="relative z-10 font-medium">
+          <BarChart3
+            className={cn(
+              "h-4 w-4 shrink-0",
+              analyticsSelected && "text-primary",
+            )}
+          />
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
             Analytics
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="relative z-10 ml-auto">
-            <span className="hidden rounded border border-border/50 bg-background/35 px-1 font-mono text-[10px] leading-relaxed text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
+          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+            <span className="hidden rounded border bg-background px-1 font-mono text-[10px] leading-relaxed text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
               A
             </span>
           </CollapsibleInline>
-        </motion.button>
+        </button>
 
         <div
           className={cn(
-            "gap-1 rounded-lg border border-sidebar-border/60 bg-background/20 p-1",
+            "gap-1 rounded-md border bg-background p-1",
             isCollapsed ? "flex flex-col" : "grid grid-cols-2",
           )}
         >
           {filterItems.map(({ mode, label, icon: Icon, count }) => (
-            <motion.button
+            <button
+              type="button"
               key={mode}
               onClick={() => setFilterMode(mode)}
-              whileHover={hoverLift}
-              whileTap={tapPress}
-              transition={pressTransition}
               className={cn(
-                "relative flex h-7 items-center justify-center rounded-md transition-colors",
+                "relative flex h-7 items-center justify-center rounded-sm transition-colors",
                 isCollapsed ? "px-0" : "gap-1 px-2 py-1.5 text-xs",
                 filterMode === mode
-                  ? "bg-background/75 text-foreground shadow-xs ring-1 ring-sidebar-border/50 font-medium"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "bg-accent text-accent-foreground font-medium"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
               title={isCollapsed ? label : undefined}
             >
@@ -582,12 +582,12 @@ export const Sidebar = memo(function Sidebar({
               {count != null && count > 0 && !isCollapsed && (
                 <CollapsibleInline
                   show={!isCollapsed}
-                  className="tabular-nums text-caption"
+                  className="tabular-nums text-xs"
                 >
                   {count}
                 </CollapsibleInline>
               )}
-            </motion.button>
+            </button>
           ))}
         </div>
 
@@ -597,7 +597,7 @@ export const Sidebar = memo(function Sidebar({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-micro text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none transition-colors"
               >
                 <ArrowUpDown className="h-3 w-3 shrink-0" />
                 <span>{sortLabel}</span>
@@ -609,9 +609,7 @@ export const Sidebar = memo(function Sidebar({
                 <DropdownMenuItem
                   key={opt.key}
                   onSelect={() => onSortChange(opt.key)}
-                  className={cn(
-                    sortKey === opt.key && "font-medium text-foreground",
-                  )}
+                  className={cn(sortKey === opt.key && "font-medium")}
                 >
                   {opt.label}
                 </DropdownMenuItem>
@@ -656,7 +654,7 @@ export const Sidebar = memo(function Sidebar({
                     className="mb-0.5"
                   >
                     {item.type === "top-header" && !isCollapsed && (
-                      <div className="px-2 text-micro font-semibold uppercase text-muted-foreground/60">
+                      <div className="px-2 text-xs font-semibold uppercase text-muted-foreground">
                         Subjects
                       </div>
                     )}
@@ -670,10 +668,10 @@ export const Sidebar = memo(function Sidebar({
                               : undefined
                           }
                         />
-                        <p className="min-w-0 flex-1 truncate text-micro font-semibold uppercase text-muted-foreground/75">
+                        <p className="min-w-0 flex-1 truncate text-xs font-semibold uppercase text-muted-foreground">
                           {item.group.label}
                         </p>
-                        <span className="text-micro tabular-nums text-muted-foreground/60">
+                        <span className="text-xs tabular-nums text-muted-foreground">
                           {item.group.assessments.length}
                         </span>
                       </div>
@@ -711,13 +709,8 @@ export const Sidebar = memo(function Sidebar({
         (onBulkArchive ?? onBulkUnarchive) &&
         onBulkFinish &&
         onBulkDelete && (
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 20, opacity: 0 }}
-            className="mx-2 mb-2 flex items-center gap-1.5 rounded-xl border border-primary/20 bg-sidebar-accent/80 backdrop-blur-sm p-1.5"
-          >
-            <span className="px-2 text-micro font-medium tabular-nums">
+          <div className="mx-2 mb-2 flex items-center gap-1.5 rounded-md border bg-card p-1.5">
+            <span className="px-2 text-xs font-medium tabular-nums">
               {selectedCount} selected
             </span>
             <div className="ml-auto flex items-center gap-0.5">
@@ -726,7 +719,7 @@ export const Sidebar = memo(function Sidebar({
                     <button
                       type="button"
                       onClick={() => onBulkUnarchive(selectedIdsArray)}
-                      className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                      className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
                       Restore
                     </button>
@@ -735,7 +728,7 @@ export const Sidebar = memo(function Sidebar({
                     <button
                       type="button"
                       onClick={() => onBulkArchive(selectedIdsArray)}
-                      className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                      className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
                       Archive
                     </button>
@@ -743,7 +736,7 @@ export const Sidebar = memo(function Sidebar({
               <button
                 type="button"
                 onClick={() => onBulkFinish(selectedIdsArray)}
-                className="rounded-lg px-2 py-1 text-micro text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               >
                 Finish
               </button>
@@ -752,12 +745,12 @@ export const Sidebar = memo(function Sidebar({
                 onClick={() => {
                   if (onBulkDelete) onBulkDelete(selectedIdsArray);
                 }}
-                className="rounded-lg px-2 py-1 text-micro text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                className="rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors"
               >
                 Delete
               </button>
             </div>
-          </motion.div>
+          </div>
         )}
 
       <StudyTimer

@@ -1,7 +1,7 @@
 {
   "name": "focal",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.2.9",
     "@fontsource-variable/sora": "^5.2.8",
     "@supabase/supabase-js": "^2.108.1",
     "@tailwindcss/vite": "^4.3.0",

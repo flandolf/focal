@@ -1,7 +1,6 @@
 import { useCallback } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { platform } from "@tauri-apps/plugin-os"
-import { motion, useReducedMotion } from "framer-motion"
 import { Minus, Plus, Search, Settings, X } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
@@ -22,67 +21,62 @@ interface TitleBarProps {
   children?: React.ReactNode
 }
 
+interface TrafficLightProps {
+  onClick: () => void
+  color: string
+  ringColor: string
+  label: string
+  icon: typeof X
+}
+
+function TrafficLight({ onClick, color, ringColor, label, icon: Icon }: TrafficLightProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="group flex h-3 w-3 items-center justify-center rounded-full opacity-90 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2"
+      style={{ background: color, color: ringColor }}
+    >
+      <Icon className="hidden h-2.5 w-2.5 stroke-[2.5] group-hover:block" />
+    </button>
+  )
+}
+
 function TrafficLights({
-  reduceMotion,
   onClose,
   onMinimize,
   onMaximize,
   className,
-  reversed = false,
 }: {
-  reduceMotion: boolean | null
   onClose: () => void
   onMinimize: () => void
   onMaximize: () => void
   className?: string
-  reversed?: boolean
 }) {
-  const closeButton = (
-    <motion.button
-      key="close"
-      onClick={onClose}
-      whileHover={reduceMotion ? undefined : { scale: 1.1 }}
-      whileTap={reduceMotion ? undefined : { scale: 0.9 }}
-      className="group flex h-3 w-3 items-center justify-center rounded-full bg-[#ff5f57] text-[#4d0000] opacity-90 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff5f57]/50"
-      aria-label="Close window"
-    >
-      <X className="hidden h-2.5 w-2.5 stroke-[2.5] group-hover:block" />
-    </motion.button>
-  )
-
-  const minimizeButton = (
-    <motion.button
-      key="minimize"
-      onClick={onMinimize}
-      whileHover={reduceMotion ? undefined : { scale: 1.1 }}
-      whileTap={reduceMotion ? undefined : { scale: 0.9 }}
-      className="group flex h-3 w-3 items-center justify-center rounded-full bg-[#febc2e] text-[#995700] opacity-90 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#febc2e]/50"
-      aria-label="Minimize window"
-    >
-      <Minus className="hidden h-2.5 w-2.5 stroke-[2.5] group-hover:block" />
-    </motion.button>
-  )
-
-  const maximizeButton = (
-    <motion.button
-      key="maximize"
-      onClick={onMaximize}
-      whileHover={reduceMotion ? undefined : { scale: 1.1 }}
-      whileTap={reduceMotion ? undefined : { scale: 0.9 }}
-      className="group flex h-3 w-3 items-center justify-center rounded-full bg-[#28c840] text-[#006500] opacity-90 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#28c840]/50"
-      aria-label="Toggle maximize"
-    >
-      <Plus className="hidden h-2.5 w-2.5 stroke-[2.5] group-hover:block" />
-    </motion.button>
-  )
-
-  const buttons = reversed
-    ? [minimizeButton, maximizeButton, closeButton]
-    : [closeButton, minimizeButton, maximizeButton]
-
   return (
     <div className={className}>
-      {buttons}
+      <TrafficLight
+        onClick={onClose}
+        color="#ff5f57"
+        ringColor="#4d0000"
+        label="Close window"
+        icon={X}
+      />
+      <TrafficLight
+        onClick={onMinimize}
+        color="#febc2e"
+        ringColor="#995700"
+        label="Minimize window"
+        icon={Minus}
+      />
+      <TrafficLight
+        onClick={onMaximize}
+        color="#28c840"
+        ringColor="#006500"
+        label="Toggle maximize"
+        icon={Plus}
+      />
     </div>
   )
 }
@@ -91,44 +85,38 @@ function AppActions({
   onSearch,
   onSettings,
   children,
-  reduceMotion,
   className,
 }: {
   onSearch: () => void
   onSettings: () => void
   children?: React.ReactNode
-  reduceMotion: boolean | null
   className?: string
 }) {
   return (
     <div className={className}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <motion.button
+          <button
+            type="button"
             onClick={onSearch}
-            whileHover={reduceMotion ? undefined : { scale: 1.06 }}
-            whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-            transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 560, damping: 28, mass: 0.55 }}
-            className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-label="Search"
           >
             <Search className="h-3.5 w-3.5" />
-          </motion.button>
+          </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end">Search · {SEARCH_SHORTCUT}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <motion.button
+          <button
+            type="button"
             onClick={onSettings}
-            whileHover={reduceMotion ? undefined : { scale: 1.06 }}
-            whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-            transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 560, damping: 28, mass: 0.55 }}
-            className="flex h-7 w-7 items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-background/65 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-label="Settings"
           >
             <Settings className="h-3.5 w-3.5" />
-          </motion.button>
+          </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end">Settings</TooltipContent>
       </Tooltip>
@@ -138,8 +126,6 @@ function AppActions({
 }
 
 export function TitleBar({ onSearch = noop, onSettings = noop, children }: TitleBarProps) {
-  const reduceMotion = useReducedMotion()
-
   const handleMinimize = useCallback(() => {
     void getCurrentWindow().minimize()
   }, [])
@@ -155,12 +141,10 @@ export function TitleBar({ onSearch = noop, onSettings = noop, children }: Title
   return (
     <div
       data-tauri-drag-region
-      className="app-titlebar app-titlebar-surface relative z-10 flex h-(--app-titlebar-inset) shrink-0 items-center select-none"
+      className="relative z-10 flex h-10 shrink-0 items-center border-b bg-background select-none"
     >
-      {/* Left section: traffic lights on macOS, actions on other platforms */}
       {IS_MACOS ? (
         <TrafficLights
-          reduceMotion={reduceMotion}
           onClose={handleClose}
           onMinimize={handleMinimize}
           onMaximize={handleToggleMaximize}
@@ -170,35 +154,29 @@ export function TitleBar({ onSearch = noop, onSettings = noop, children }: Title
         <AppActions
           onSearch={onSearch}
           onSettings={onSettings}
-          reduceMotion={reduceMotion}
           className="flex items-center gap-1.5 px-4"
         >
           {children}
         </AppActions>
       )}
 
-      {/* App title — draggable region */}
       <div data-tauri-drag-region className="flex flex-1 items-center justify-center px-4">
-        <span data-tauri-drag-region className="text-sm font-medium text-muted-foreground/60">Focal</span>
+        <span data-tauri-drag-region className="text-sm font-medium text-muted-foreground">Focal</span>
       </div>
 
-      {/* Right section: actions on macOS, traffic lights on other platforms */}
       {IS_MACOS ? (
         <AppActions
           onSearch={onSearch}
           onSettings={onSettings}
-          reduceMotion={reduceMotion}
           className="flex items-center gap-1.5 px-4"
         >
           {children}
         </AppActions>
       ) : (
         <TrafficLights
-          reduceMotion={reduceMotion}
           onClose={handleClose}
           onMinimize={handleMinimize}
           onMaximize={handleToggleMaximize}
-          reversed={!IS_MACOS}
           className="flex items-center gap-2 px-4"
         />
       )}

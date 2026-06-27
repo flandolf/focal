@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   BookOpen,
   CheckCircle2,
@@ -9,17 +8,11 @@ import {
   Plus,
   SkipForward,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { MOTION_EASE, pressable } from "@/lib/motion";
 
 const EXTRA_BREAK_MINUTES = 5;
-
-const iconSwapTransition = {
-  initial: { opacity: 0, rotate: -12, scale: 0.85 },
-  animate: { opacity: 1, rotate: 0, scale: 1 },
-  exit: { opacity: 0, rotate: 12, scale: 0.85 },
-  transition: { duration: 0.2, ease: MOTION_EASE },
-} as const;
 
 type TimerVariant = "footer" | "sidebar";
 type TimerTone = "primary" | "outline" | "ghost";
@@ -32,9 +25,8 @@ interface TimerButtonProps {
   disabled?: boolean;
   ariaLabel: string;
   icon?: ReactNode;
-  children?: ReactNode;
+  children: ReactNode;
   className?: string;
-  reduceMotion: boolean;
 }
 
 function TimerButton({
@@ -46,64 +38,25 @@ function TimerButton({
   icon,
   children,
   className,
-  reduceMotion,
 }: TimerButtonProps) {
-  const isFooter = size === "footer";
-  const toneStyles: Record<TimerTone, string> = {
-    primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-    outline: "border-border bg-background text-foreground hover:bg-muted",
-    ghost:
-      "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-  };
-  const sizeStyles =
-    size === "footer"
-      ? "h-11 gap-2 px-3 text-sm"
-      : size === "sidebar"
-        ? "h-8 gap-1.5 px-2.5 text-xs"
-        : "h-8 min-w-0 gap-1.5 px-1.5 text-xs";
-  const radiusStyles = isFooter ? "rounded-lg" : "rounded-xl";
-
   return (
-    <motion.button
-      type="button"
+    <Button
+      size={size === "footer" ? "sm" : "xs"}
+      variant={tone === "primary" ? "default" : tone}
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
-      {...pressable(reduceMotion)}
       className={cn(
-        "relative inline-flex flex-1 items-center justify-center whitespace-nowrap border font-medium outline-none select-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none",
-        radiusStyles,
-        sizeStyles,
-        toneStyles[tone],
+        "min-w-0 justify-center",
+        size === "footer" && "h-9 flex-1 px-3",
+        size === "sidebar" && "w-full",
+        size === "sidebar-tight" && "w-full px-1.5",
         className,
       )}
     >
       {icon}
-      {children && <span className="truncate">{children}</span>}
-    </motion.button>
-  );
-}
-
-interface IconSwapProps {
-  running: boolean;
-  children: ReactNode;
-  className?: string;
-}
-
-function IconSwap({ running, children, className }: IconSwapProps) {
-  return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.span
-        key={running ? "pause" : "play"}
-        className={cn(
-          "flex items-center justify-center gap-2 motion-reduce:transition-none",
-          className,
-        )}
-        {...iconSwapTransition}
-      >
-        {children}
-      </motion.span>
-    </AnimatePresence>
+      <span className="truncate">{children}</span>
+    </Button>
   );
 }
 
@@ -140,161 +93,119 @@ export function TimerControls({
   onStartStudyOvertime,
   onMoreBreakTime,
 }: TimerControlsProps) {
-  const reduceMotion = useReducedMotion() === true;
   const isFooter = variant === "footer";
-  const sidebarSize: TimerSize = "sidebar";
   const iconClass = isFooter ? "h-4 w-4" : "h-3 w-3";
+  const controlSize: TimerSize = isFooter ? "footer" : "sidebar";
   const toggleDisabled = mode === "work" && !canStartFocus && !running;
-  const sidebarSpacing = isFooter ? "" : "mt-1.5";
 
   const toggle = (
     <TimerButton
-      size={isFooter ? "footer" : sidebarSize}
+      size={controlSize}
       tone={running ? "outline" : "primary"}
       onClick={onToggle}
       disabled={toggleDisabled}
-      reduceMotion={reduceMotion}
-      ariaLabel={running ? "Pause" : timerActionLabel}
-    >
-      <IconSwap running={running} className={isFooter ? undefined : "gap-1.5"}>
-        {running ? (
+      ariaLabel={running ? "Pause timer" : timerActionLabel}
+      icon={
+        running ? (
           <Pause className={iconClass} />
         ) : (
           <Play className={iconClass} />
-        )}
-        {running ? "Pause" : timerActionLabel}
-      </IconSwap>
+        )
+      }
+    >
+      {running ? "Pause" : timerActionLabel}
     </TimerButton>
   );
 
-  const returnToBreak = isStudyOvertime ? (
+  const secondaryAction = isStudyOvertime ? (
     <TimerButton
-      size={isFooter ? "footer" : sidebarSize}
+      size={controlSize}
       tone="primary"
       onClick={onReturnToBreak}
       disabled={saving}
-      reduceMotion={reduceMotion}
       ariaLabel="Return to break"
       icon={<Coffee className={iconClass} />}
-      className={sidebarSpacing}
     >
-      Break time!
+      Break time
+    </TimerButton>
+  ) : hasActiveSession ? (
+    <TimerButton
+      size={controlSize}
+      tone={isFooter ? "outline" : "ghost"}
+      onClick={onFinish}
+      disabled={saving}
+      ariaLabel="Finish and save session"
+      icon={<CheckCircle2 className={iconClass} />}
+    >
+      Finish &amp; save
     </TimerButton>
   ) : null;
 
-  const finish =
-    !isStudyOvertime && hasActiveSession ? (
-      <TimerButton
-        size={isFooter ? "footer" : sidebarSize}
-        tone={isFooter ? "outline" : "ghost"}
-        onClick={onFinish}
-        disabled={saving}
-        reduceMotion={reduceMotion}
-        ariaLabel="Finish and save session"
-        icon={<CheckCircle2 className={iconClass} />}
-        className={sidebarSpacing}
-      >
-        Finish &amp; save
-      </TimerButton>
-    ) : null;
-
-  const secondaryAction = returnToBreak ?? finish;
-
   const breakActions =
     mode !== "work" && !isStudyOvertime ? (
-      isFooter ? (
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-          <TimerButton
-            size="footer"
-            tone="ghost"
-            onClick={onSkipBreak}
-            reduceMotion={reduceMotion}
-            ariaLabel="Skip break"
-            icon={<SkipForward className={iconClass} />}
-          >
-            Skip
-          </TimerButton>
-          <TimerButton
-            size="footer"
-            tone="outline"
-            onClick={onStartStudyOvertime}
-            disabled={!canStartFocus}
-            reduceMotion={reduceMotion}
-            ariaLabel="Start study overtime"
-            icon={<BookOpen className={iconClass} />}
-          >
-            Study overtime
-          </TimerButton>
-          <TimerButton
-            size="footer"
-            tone="outline"
-            onClick={onMoreBreakTime}
-            reduceMotion={reduceMotion}
-            ariaLabel={`Add ${EXTRA_BREAK_MINUTES} more break minutes`}
-            icon={<Plus className={iconClass} />}
-          >
-            {EXTRA_BREAK_MINUTES} min
-          </TimerButton>
-        </div>
-      ) : (
-        <div className="mt-1.5 grid grid-cols-1 gap-1.5 min-[240px]:grid-cols-3">
-          <TimerButton
-            size="sidebar"
-            tone="ghost"
-            onClick={onSkipBreak}
-            reduceMotion={reduceMotion}
-            ariaLabel="Skip break"
-            icon={<SkipForward className={iconClass} />}
-          >
-            Skip
-          </TimerButton>
-          <TimerButton
-            size="sidebar-tight"
-            tone="outline"
-            onClick={onStartStudyOvertime}
-            disabled={!canStartFocus}
-            reduceMotion={reduceMotion}
-            ariaLabel="Start study overtime"
-            icon={<BookOpen className={iconClass} />}
-          >
-            Study
-          </TimerButton>
-          <TimerButton
-            size="sidebar"
-            tone="outline"
-            onClick={onMoreBreakTime}
-            reduceMotion={reduceMotion}
-            ariaLabel={`Add ${EXTRA_BREAK_MINUTES} more break minutes`}
-            icon={<Plus className={iconClass} />}
-          >
-            {EXTRA_BREAK_MINUTES} min
-          </TimerButton>
-        </div>
-      )
-    ) : null;
-
-  if (isFooter) {
-    return (
       <div
         className={cn(
-          "timer-floating-bar fixed bottom-4 left-1/2 z-60 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 px-3 py-3 sm:bottom-6 sm:w-[calc(100%-3rem)] sm:px-4",
-          running && "timer-floating-bar-glow",
+          "grid gap-1.5",
+          isFooter
+            ? "grid-cols-3"
+            : "grid-cols-1 min-[240px]:grid-cols-3",
         )}
       >
-        <div className="flex w-full flex-col gap-2 sm:flex-row">
-          {toggle}
-          {secondaryAction}
-        </div>
+        <TimerButton
+          size={isFooter ? "footer" : "sidebar"}
+          tone="ghost"
+          onClick={onSkipBreak}
+          ariaLabel="Skip break"
+          icon={<SkipForward className={iconClass} />}
+        >
+          Skip
+        </TimerButton>
+        <TimerButton
+          size={isFooter ? "footer" : "sidebar-tight"}
+          tone="outline"
+          onClick={onStartStudyOvertime}
+          disabled={!canStartFocus}
+          ariaLabel="Start study overtime"
+          icon={<BookOpen className={iconClass} />}
+        >
+          Study
+        </TimerButton>
+        <TimerButton
+          size={isFooter ? "footer" : "sidebar"}
+          tone="outline"
+          onClick={onMoreBreakTime}
+          ariaLabel={`Add ${EXTRA_BREAK_MINUTES} more break minutes`}
+          icon={<Plus className={iconClass} />}
+        >
+          {EXTRA_BREAK_MINUTES} min
+        </TimerButton>
+      </div>
+    ) : null;
+
+  if (!isFooter) {
+    return (
+      <div className="mt-3 grid gap-1.5">
+        {toggle}
+        {secondaryAction}
         {breakActions}
       </div>
     );
   }
 
   return (
-    <>
-      <div className="mt-3">{toggle}</div>
-      {secondaryAction}
-      {breakActions}
-    </>
+    <Card className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 gap-0 bg-card py-0 sm:bottom-6 sm:w-[calc(100%-3rem)]">
+      <CardContent className="grid gap-2 p-3 sm:p-4">
+        <div
+          className={cn(
+            "grid gap-2",
+            secondaryAction ? "sm:grid-cols-2" : "sm:grid-cols-1",
+          )}
+        >
+          {toggle}
+          {secondaryAction}
+        </div>
+        {breakActions}
+      </CardContent>
+    </Card>
   );
 }
