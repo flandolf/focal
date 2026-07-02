@@ -24,13 +24,11 @@ interface AppearanceSectionProps {
 }
 
 function ModeButton({
-  value,
   selected,
   onSelect,
   icon,
   label,
 }: {
-  value: ThemeMode;
   selected: boolean;
   onSelect: () => void;
   icon: ReactNode;
@@ -88,7 +86,6 @@ export function AppearanceSection({
           {MODE_OPTIONS.map(({ value, icon: Icon, label }) => (
             <ModeButton
               key={value}
-              value={value}
               selected={mode === value}
               onSelect={() => setMode(value)}
               icon={<Icon className="h-4 w-4" />}

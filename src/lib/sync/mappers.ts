@@ -290,7 +290,6 @@ export function rowToUserSettings(row: UserSettingsRow): UserSettings {
     ollama_model: row.settings.ollama_model,
     assistant_personality: row.settings.assistant_personality,
     assistant_custom_instructions: row.settings.assistant_custom_instructions,
-    study_planning_preferences: row.settings.study_planning_preferences,
   }
 }
 

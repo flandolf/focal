@@ -749,48 +749,52 @@ export function InlineEditDayDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <DialogBody className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5">
+        <DialogBody className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="flex flex-col gap-4 px-5">
 
-          {/* Periods header */}
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium leading-none">Periods</span>
-            <Button variant="ghost" size="xs" onClick={addPeriod} className="h-6 gap-1 rounded-md text-xs">
-              <Plus className="h-3 w-3" />
-              Add period
-            </Button>
-          </div>
+              {/* Periods header */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium leading-none">Periods</span>
+                <Button variant="ghost" size="xs" onClick={addPeriod} className="h-6 gap-1 rounded-md text-xs">
+                  <Plus className="h-3 w-3" />
+                  Add period
+                </Button>
+              </div>
 
-          {/* Empty state */}
-          {periods.length === 0 && (
-            <div className="px-4 py-8 text-center">
-            <p className="text-sm text-muted-foreground/70">No periods.</p>
-            <p className="mt-1 text-xs text-muted-foreground/50">Add a period or save to remove this day.</p>
-          </div>
-          )}
+              {/* Empty state */}
+              {periods.length === 0 && (
+                <div className="px-4 py-8 text-center">
+                <p className="text-sm text-muted-foreground/70">No periods.</p>
+                <p className="mt-1 text-xs text-muted-foreground/50">Add a period or save to remove this day.</p>
+              </div>
+              )}
 
-          {/* Period rows */}
-          <div className="space-y-2">
-            {periods.map((period, idx) => (
-              <PeriodRow
-                key={idx}
-                period={period}
-                index={idx}
-                total={periods.length}
-                subjects={allSubjects}
-                onUpdate={(field, value) => updatePeriod(idx, field, value)}
-                onMove={(dir) => movePeriod(idx, dir)}
-                onDuplicate={() => duplicatePeriod(idx)}
-                onDelete={() => deletePeriod(idx)}
-                invalid={invalidPeriodIndexes.has(idx)}
-              />
-            ))}
-          </div>
+              {/* Period rows */}
+              <div className="space-y-2">
+                {periods.map((period, idx) => (
+                  <PeriodRow
+                    key={idx}
+                    period={period}
+                    index={idx}
+                    total={periods.length}
+                    subjects={allSubjects}
+                    onUpdate={(field, value) => updatePeriod(idx, field, value)}
+                    onMove={(dir) => movePeriod(idx, dir)}
+                    onDuplicate={() => duplicatePeriod(idx)}
+                    onDelete={() => deletePeriod(idx)}
+                    invalid={invalidPeriodIndexes.has(idx)}
+                  />
+                ))}
+              </div>
 
-          {hasInvalidPeriods && (
-            <p className="text-xs text-destructive">
-              Start time must be before end time for every period.
-            </p>
-          )}
+              {hasInvalidPeriods && (
+                <p className="text-xs text-destructive">
+                  Start time must be before end time for every period.
+                </p>
+              )}
+            </div>
+          </ScrollArea>
         </DialogBody>
 
         <DialogFooter className="m-0 shrink-0 items-center justify-between gap-3 rounded-none border-t px-5 py-3">

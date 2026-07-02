@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, memo } from"react"
 import type { ReactNode } from"react"
 import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
-import { ScrollArea } from"@/components/ui/scroll-area"
+import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area"
 import { Card } from"@/components/ui/card"
 import { getAnalyticsData, type AnalyticsRange } from"@/lib/analytics"
 import type { Project, StudySession } from"@/lib/types"
@@ -378,7 +378,8 @@ function SubjectFilterChips({
  reduceMotion: boolean
 }) {
  return (
- <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+ <ScrollArea className="w-full whitespace-nowrap">
+ <div className="flex items-center gap-1.5 py-1">
  <FilterChip
  onClick={onSelectAll}
  active={selectionState ==="all"}
@@ -404,6 +405,8 @@ function SubjectFilterChips({
  )
  })}
  </div>
+ <ScrollBar orientation="horizontal" />
+ </ScrollArea>
  )
 }
 

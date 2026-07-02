@@ -4,6 +4,7 @@ import { createPortal } from "react-dom"
 import { motion, AnimatePresence, useMotionValue, useReducedMotion } from "framer-motion"
 import { format } from "date-fns"
 import { Card } from "@/components/ui/card"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { getHeatColor } from "@/lib/chartTheme"
 import { cn } from "@/lib/utils"
 import { REDUCED_TRANSITION, MOTION_DURATION, MOTION_EASE_SNAPPY } from "@/lib/motion"
@@ -198,10 +199,8 @@ export function ConsistencyHeatmap({ days, stats }: ConsistencyHeatmapProps) {
           ))}
           <span className="text-micro text-muted-foreground/70">More</span>
         </div>
-      </div>
-
-      <div className="min-w-0 overflow-x-auto rounded-xl border border-border/60 bg-background/30 p-3">
-        <div className="flex min-w-max gap-3">
+      </div> <ScrollArea className="min-w-0 rounded-xl border border-border/60 bg-background/30 p-3">
+ <div className="flex min-w-max gap-3">
           <div className="flex shrink-0 flex-col gap-0.75">
             {/* Spacer to align day labels with cells, below the month-label row */}
             <div className="h-3.5" />
@@ -271,7 +270,8 @@ export function ConsistencyHeatmap({ days, stats }: ConsistencyHeatmapProps) {
             </div>
           </div>
         </div>
-      </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1100px]:grid-cols-5">
         <div className="rounded-xl border border-border/60 bg-background/30 px-3 py-2">

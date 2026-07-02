@@ -5,7 +5,7 @@
  * endpoint with strict `response_format: { type: "json_schema", ... }` so the
  * schema in `ChatCompletionRequest.jsonSchema` is enforced server-side. This is
  * the only provider in the registry that can guarantee schema-validated output,
- * which is why both `copilot.ts` and `autoRename.ts` rely on it.
+ * which is why `autoRename.ts` and `TextEventPlanner.tsx` rely on it.
  *
  * Reasoning tokens are configurable via the `reasoning` block, which
  * OpenRouter translates per host; only Anthropic-style `max_tokens` is set

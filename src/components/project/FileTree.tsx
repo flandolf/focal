@@ -4,6 +4,7 @@ import { FolderOpen, Plus, Search, X, Trash2, ArrowUp, ArrowDown, Tag, MoveRight
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileRow } from "@/components/FileRow"
 import { FolderRow } from "./FolderRow"
 import { Breadcrumb } from "./Breadcrumb"
@@ -668,14 +669,17 @@ const VirtualFileList = memo(function VirtualFileList({
   const items = virtualizer.getVirtualItems()
 
   return (
-    <div
-      ref={parentRef}
-      className="min-h-0 flex-1 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25"
-      tabIndex={0}
-      role="listbox"
-      aria-label="Files and folders"
-      aria-activedescendant={focusedIndex >= 0 ? `file-item-${focusedIndex}` : undefined}
+    <ScrollArea
+      viewportRef={parentRef}
+      className="min-h-0 flex-1 outline-none [&:has(:focus-visible)]:ring-2 [&:has(:focus-visible)]:ring-inset [&:has(:focus-visible)]:ring-ring/25"
     >
+      <div
+        tabIndex={0}
+        role="listbox"
+        aria-label="Files and folders"
+        aria-activedescendant={focusedIndex >= 0 ? `file-item-${focusedIndex}` : undefined}
+        className="outline-none"
+      >
       <div
         style={{
           height: `${virtualizer.getTotalSize()}px`,
@@ -752,6 +756,7 @@ const VirtualFileList = memo(function VirtualFileList({
           })}
         </div>
       </div>
-    </div>
+      </div>
+    </ScrollArea>
   )
 })

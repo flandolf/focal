@@ -1,7 +1,7 @@
 # AI Providers
 
 Focal uses a small abstraction layer so every place the app talks to a language
-model — the assessment copilot, file auto-rename, the text-event planner, any
+model — file auto-rename, the text-event planner, any
 new AI feature — works the same way regardless of which backend you pick.
 
 This document explains the abstraction and how to add a new provider.
@@ -16,7 +16,7 @@ terms — they never touch `fetch`, bearer headers, or `response_format` quirks.
 
 ```
             ┌────────────────────────────────────────────────────┐
-            │             Caller (e.g. copilot.ts)               │
+            │             Caller (e.g. autoRename.ts)            │
             │                                                    │
             │  getActiveProvider().chatCompletion({              │
             │    model, messages, jsonSchema, reasoning, … })    │
@@ -77,8 +77,8 @@ beyond "is this the active one?".
 
 OpenRouter enforces `response_format: { type: "json_schema", ... }` server-side
 when a `JsonSchemaSpec` is supplied, so a valid response is guaranteed as long
-as the upstream host supports structured outputs. That is why `copilot.ts`,
-`autoRename.ts` and `TextEventPlanner.tsx` keep their hand-rolled parsers
+as the upstream host supports structured outputs. That is why `autoRename.ts`
+and `TextEventPlanner.tsx` keep their hand-rolled parsers
 strict — they reject payloads that look right but reference unknown subjects
 or projects.
 
@@ -250,5 +250,5 @@ section. Implement it as a cheap GET to whatever root your host exposes
 | Doc for humans                             | `PROVIDERS.md` (this file)                 |
 
 When in doubt: prefer one file, prefer no new abstractions, prefer letting
-the existing parsers in `copilot.ts`/`autoRename.ts`/`TextEventPlanner.tsx`
+the existing parsers in `autoRename.ts`/`TextEventPlanner.tsx`
 do strict validation rather than relying on the host to enforce schemas.

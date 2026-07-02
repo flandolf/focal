@@ -2,7 +2,7 @@
  * Provider registry + active-provider helpers.
  *
  * The single source of truth for which AI provider is currently selected.
- * Callers (copilot.ts, autoRename.ts, AIModelSection.tsx, TextEventPlanner.tsx)
+ * Callers (autoRename.ts, AIModelSection.tsx, TextEventPlanner.tsx)
  * talk to `getActiveProvider()` instead of hardcoding OpenRouter.
  */
 import {

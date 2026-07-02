@@ -43,40 +43,47 @@ function TrafficLight({ onClick, color, ringColor, label, icon: Icon }: TrafficL
   )
 }
 
+// ponytail: macOS goes close→minimize→maximize (left-to-right); Windows/Linux
+// conventionally go minimize→maximize→close. Flip the row when inverted.
+const LIGHT_CONFIG = {
+  close: { color: "#ff5f57", ringColor: "#4d0000", label: "Close window", icon: X },
+  minimize: { color: "#febc2e", ringColor: "#995700", label: "Minimize window", icon: Minus },
+  maximize: { color: "#28c840", ringColor: "#006500", label: "Toggle maximize", icon: Plus },
+} as const
+
+const LIGHT_ORDER_MACOS = ["close", "minimize", "maximize"] as const
+const LIGHT_ORDER_OTHER = ["minimize", "maximize", "close"] as const
+
 function TrafficLights({
   onClose,
   onMinimize,
   onMaximize,
   className,
+  inverted = false,
 }: {
   onClose: () => void
   onMinimize: () => void
   onMaximize: () => void
   className?: string
+  inverted?: boolean
 }) {
+  const order = inverted ? LIGHT_ORDER_OTHER : LIGHT_ORDER_MACOS
+  const handlers = { close: onClose, minimize: onMinimize, maximize: onMaximize }
   return (
     <div className={className}>
-      <TrafficLight
-        onClick={onClose}
-        color="#ff5f57"
-        ringColor="#4d0000"
-        label="Close window"
-        icon={X}
-      />
-      <TrafficLight
-        onClick={onMinimize}
-        color="#febc2e"
-        ringColor="#995700"
-        label="Minimize window"
-        icon={Minus}
-      />
-      <TrafficLight
-        onClick={onMaximize}
-        color="#28c840"
-        ringColor="#006500"
-        label="Toggle maximize"
-        icon={Plus}
-      />
+      {order.map((key) => {
+        const { color, ringColor, label, icon: Icon } = LIGHT_CONFIG[key]
+        return (
+          <TrafficLight
+            key={key}
+            onClick={handlers[key]}
+            color={color}
+            ringColor={ringColor}
+            label={label}
+            icon={Icon}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -177,6 +184,7 @@ export function TitleBar({ onSearch = noop, onSettings = noop, children }: Title
           onClose={handleClose}
           onMinimize={handleMinimize}
           onMaximize={handleToggleMaximize}
+          inverted
           className="flex items-center gap-2 px-4"
         />
       )}

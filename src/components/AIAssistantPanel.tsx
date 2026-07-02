@@ -26,6 +26,7 @@ import {
  TooltipContent,
  TooltipTrigger,
 } from"@/components/ui/tooltip";
+import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area";
 import { TRANSITION, staggerContainer, staggerItem } from"@/lib/motion";
 import { cn, combineDateAndTime, getLocalDateValue } from"@/lib/utils";
 import { showUndoToast } from"@/lib/undoToast";
@@ -3182,14 +3183,12 @@ ${text}`,
  </Button>
  </div>
  </div>
- </div>
-
- <div
- ref={scrollRef}
- className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3"
- >
- {messages.length === 0 ? (
- <div className="flex flex-1 flex-col justify-between gap-5">
+ </div>      <ScrollArea
+        viewportRef={scrollRef}
+        className="flex min-h-0 flex-1 flex-col px-3 py-3"
+      >
+        {messages.length === 0 ? (
+          <div className="flex h-full flex-col justify-between gap-5">
  <div className="pt-2">
  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border bg-background/45 text-primary">
  <Brain className="h-4 w-4" />
@@ -3251,10 +3250,9 @@ ${text}`,
  </motion.button>
  ))}
  </motion.div>
- </div>
- </div>
- ) : (
- <div className="flex flex-col gap-3">
+ </div>          </div>
+        ) : (
+          <div className="flex h-full flex-col gap-3">
  {messages.map((m) => (
  <Bubble
  key={m.id}
@@ -3282,11 +3280,10 @@ ${text}`,
  ? (prompt) => void send(prompt)
  : undefined
  }
- />
- ))}
- </div>
- )}
- </div>
+ />          ))}
+        </div>
+        )}
+      </ScrollArea>
 
  <AnimatePresence>
  {error && (
@@ -3499,12 +3496,15 @@ const MARKDOWN_COMPONENTS = {
  children,
  ...props
  }: MarkdownProps & React.HTMLAttributes<HTMLPreElement>) => (
+ <ScrollArea className="my-1.5 rounded-lg bg-foreground/8 ring-1 ring-border/40">
  <pre
- className="my-1.5 overflow-x-auto rounded-lg bg-foreground/8 p-2 font-mono text-[0.78em] leading-relaxed ring-1 ring-border/40"
+ className="font-mono text-[0.78em] leading-relaxed p-2"
  {...props}
  >
  {children}
  </pre>
+ <ScrollBar orientation="horizontal" />
+ </ScrollArea>
  ),
  a: ({
  node: _node,
@@ -3670,12 +3670,9 @@ function Bubble({
  className="max-w-full rounded-lg bg-primary/8 px-2 py-1.5 text-left text-xs font-medium leading-snug text-primary transition-colors hover:bg-primary/14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45"
  >
  {prompt}
- </button>
- ))}
- </div>
- )}
- </div>
-
+ </button>          ))}
+        </div>
+        )}
  {!isUser && !isToolActivity && !message.pending && !message.cancelled && (
  <div
  className={cn(
@@ -3721,6 +3718,7 @@ function Bubble({
  </Tooltip>
  </div>
  )}
+ </div>
  </motion.div>
  );
 }
@@ -3792,10 +3790,10 @@ function QuickActionChips({
  role="toolbar"
  aria-label="Quick actions"
  >
+ <ScrollArea className="w-full whitespace-nowrap">
  <div
  className={cn(
-"flex gap-1.5 overflow-x-auto",
-"snap-x snap-mandatory scrollbar-none [&::-webkit-scrollbar]:hidden",
+"flex gap-1.5 snap-x snap-mandatory",
  )}
  >
  {QUICK_ACTION_PROMPTS.map(({ label, prompt }) => (
@@ -3831,6 +3829,8 @@ function QuickActionChips({
  </button>
  ))}
  </div>
+ <ScrollBar orientation="horizontal" />
+ </ScrollArea>
  </div>
  );
 }
