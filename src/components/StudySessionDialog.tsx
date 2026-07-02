@@ -20,9 +20,10 @@ import {
  DialogHeader,
  DialogTitle,
 } from"@/components/ui/dialog"
-import { Button } from"@/components/ui/button"
-import { Checkbox } from"@/components/ui/checkbox"
-import { DatePickerField, FormField, FormSection, SelectField } from"@/components/ui/form-controls"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
+import TimePicker from "@/components/ui/time-picker"
 import { ScrollArea } from"@/components/ui/scroll-area"
 import { Input } from"@/components/ui/input"
 import { cn, getSessionSubjectIds, getSubjectById } from"@/lib/utils"
@@ -382,19 +383,13 @@ export function StudySessionDialog({
  onDateChange={setStartDate}
  buttonClassName={inputClass}
  labelClassName={fieldLabelClass}
- />
-
- <FormField label="Start" labelClassName={fieldLabelClass}>
- <div className={inputWithIconClass}>
- <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
- <input
- type="time"
- value={computedSegmentStart ??"14:00"}
- onChange={(e) => handleStartTimeChange(e.target.value)}
- className="min-w-0 flex-1 bg-transparent text-sm outline-none tabular-nums"
- />
- </div>
- </FormField>
+ />              <FormField label="Start" labelClassName={fieldLabelClass}>
+                <TimePicker
+                  value={computedSegmentStart ?? "14:00"}
+                  onChange={(e) => handleStartTimeChange(e.target.value)}
+                  className="h-10 bg-background/65 text-sm tabular-nums"
+                />
+              </FormField>
  <FormField label="Active" labelClassName={fieldLabelClass}>
  <div className={cn(inputWithIconClass,"text-sm")}>
  <Timer className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -593,20 +588,18 @@ export function StudySessionDialog({
  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-caption font-semibold bg-primary/12 text-primary">
  A{idx + 1}
  </span>
- <div className="flex items-center gap-1">
- <input
- type="time"
- value={seg.start}
- onChange={(e) => updateSegment(idx,"start", e.target.value)}
- className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
- />
- <span className="text-micro text-muted-foreground/60">to</span>
- <input
- type="time"
- value={seg.end}
- onChange={(e) => updateSegment(idx,"end", e.target.value)}
- className="h-7 w-22 rounded-md border border-input bg-background/65 px-2 text-xs tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
- />
+ <div className="flex items-center gap-1">                        <TimePicker
+                          showIcon={false}
+                          value={seg.start}
+                          onChange={(e) => updateSegment(idx, "start", e.target.value)}
+                          className="h-7 w-22 rounded-md bg-background/65 px-2 text-xs tabular-nums"
+                        />
+ <span className="text-micro text-muted-foreground/60">to</span>                        <TimePicker
+                          showIcon={false}
+                          value={seg.end}
+                          onChange={(e) => updateSegment(idx, "end", e.target.value)}
+                          className="h-7 w-22 rounded-md bg-background/65 px-2 text-xs tabular-nums"
+                        />
  </div>
  <span className="ml-auto text-xs tabular-nums font-medium text-foreground/80">
  {formatDurationStr(activeMin)}

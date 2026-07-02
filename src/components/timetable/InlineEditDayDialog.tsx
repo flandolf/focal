@@ -7,7 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { getTimetableConfig, setTimetableConfig, getDayToWeekday } from "@/lib/settings"
 import { type TimetableEntry, type TimetableDayLabel, VCE_SUBJECTS } from "@/lib/types"
 import { getTimetableEntriesForDay } from "@/lib/timetable"
-import { cn, formatTime12 } from "@/lib/utils"
+import { cn } from "@/lib/utils"
+import TimePicker from "@/components/ui/time-picker"
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 
@@ -17,8 +18,6 @@ const PERIOD_NAME_SUGGESTIONS = [
 ]
 
 const BREAK_LABELS = ["Recess", "Lunch", "Homeroom", "Assembly", "Form", "Free"] as const
-
-const QUICK_TIMES = ["08:00", "09:00", "10:00", "12:00", "13:00", "14:00", "15:00", "16:00"] as const
 
 // --- Period model ---
 
@@ -33,276 +32,6 @@ interface PeriodDraft {
 
 function isBreakLabel(label: string) {
   return (BREAK_LABELS as readonly string[]).includes(label)
-}
-
-// --- Time picker popover ---
-
-interface TimePickerProps {
-  value: string
-  onChange: (value: string) => void
-  label?: string
-}
-
-function parseTimeInput(raw: string): string | null {
-  const trimmed = raw.trim().toLowerCase()
-  const re = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/
-  const m = re.exec(trimmed)
-  if (!m) return null
-
-  let h = parseInt(m[1], 10)
-  const min = m[2] !== undefined ? parseInt(m[2], 10) : 0
-  const meridian = m[3] as string | undefined
-
-  if (meridian) {
-    if (h < 1 || h > 12) return null
-    if (meridian === "pm") h = h === 12 ? 12 : h + 12
-    else h = h === 12 ? 0 : h
-  } else {
-    if (h > 23) return null
-  }
-
-  if (min > 59) return null
-
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`
-}
-
-function formatDisplayForInput(hhmm: string): string {
-  const [hStr, mStr] = hhmm.split(":")
-  const h = Number(hStr)
-  const m = Number(mStr)
-  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
-  const period = h >= 12 ? "PM" : "AM"
-  const displayH = h % 12 === 0 ? 12 : h % 12
-  return `${displayH}:${String(m).padStart(2, "0")} ${period}`
-}
-
-function TimePicker({ value, onChange, label }: TimePickerProps) {
-  const [open, setOpen] = useState(false)
-  // Draft tracks what the user is currently typing (raw, not parsed)
-  const [draft, setDraft] = useState("")
-  // Show formatted display when not actively editing
-  const [isEditing, setIsEditing] = useState(false)
-  const [h, m] = value.split(":").map(Number)
-  const displayH = h % 12 === 0 ? 12 : h % 12
-
-  const commit = useCallback(
-    (hour: number, min: number) => {
-      const hh = String(Math.max(0, Math.min(23, hour))).padStart(2, "0")
-      const mm = String(Math.max(0, Math.min(59, min))).padStart(2, "0")
-      onChange(`${hh}:${mm}`)
-    },
-    [onChange],
-  )
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setDraft(e.target.value)
-    setIsEditing(true)
-  }, [])
-
-  const commitDraft = useCallback(
-    (raw: string) => {
-      const trimmed = raw.trim()
-      if (!trimmed) return
-      const parsed = parseTimeInput(trimmed)
-      if (parsed) {
-        onChange(parsed)
-      }
-      setDraft("")
-      setIsEditing(false)
-    },
-    [onChange],
-  )
-
-  const handleBlur = useCallback(() => {
-    if (draft) commitDraft(draft)
-    else { setDraft(""); setIsEditing(false) }
-  }, [draft, commitDraft])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        e.preventDefault()
-        commitDraft(draft)
-        e.currentTarget.blur()
-      }
-      if (e.key === "Escape") {
-        setDraft("")
-        setIsEditing(false)
-        e.currentTarget.blur()
-      }
-    },
-    [draft, commitDraft],
-  )
-
-  const handleOpenChange = useCallback(
-    (newOpen: boolean) => {
-      if (newOpen) {
-        setDraft("")
-        setIsEditing(false)
-      }
-      setOpen(newOpen)
-    },
-    [],
-  )
-
-  const inputValue = isEditing ? draft : (draft || formatDisplayForInput(value))
-
-  return (
-    <div className="flex items-center gap-1">
-      <input
-        type="text"
-        value={inputValue}
-        onChange={handleInputChange}
-        onFocus={() => { setDraft(formatDisplayForInput(value)); setIsEditing(true) }}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        inputMode="numeric"
-        aria-label={label}
-        placeholder="9:00 AM"
-        className="h-7 w-[5.5rem] rounded border border-input bg-background px-1.5 text-center text-xs font-medium tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      />
-
-      <Popover open={open} onOpenChange={handleOpenChange}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded border border-input bg-background/60 text-xs text-muted-foreground/60 hover:bg-accent/50 hover:text-foreground"
-            aria-label={`Pick ${label ?? "time"}`}
-          >
-            <ChevronUp className="h-3 w-3" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-3" align="start">
-          {/* Keyboard entry inside popup */}
-          <input
-            type="text"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && draft.trim()) {
-                commitDraft(draft)
-                setOpen(false)
-              }
-            }}
-            placeholder="Type time (e.g. 2:30 PM)"
-            className="mb-2 h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            autoFocus
-          />
-
-          <div className="grid grid-cols-3 gap-2">
-            {/* Hour column */}
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-caption font-medium text-muted-foreground">Hour</span>
-              <button
-                type="button"
-                onClick={() => { const nv = (h + 1) % 24; commit(nv, m) }}
-                className="flex h-7 w-full items-center justify-center rounded border border-input bg-background/60 text-xs hover:bg-accent/50"
-                aria-label="Increment hour"
-              >
-                <ChevronUp className="h-3 w-3" />
-              </button>
-              <div className="flex h-9 w-full items-center justify-center rounded border border-input bg-background font-medium tabular-nums text-sm">
-                {String(displayH).padStart(2, "0")}
-              </div>
-              <button
-                type="button"
-                onClick={() => { const nv = (h - 1 + 24) % 24; commit(nv, m) }}
-                className="flex h-7 w-full items-center justify-center rounded border border-input bg-background/60 text-xs hover:bg-accent/50"
-                aria-label="Decrement hour"
-              >
-                <ChevronDown className="h-3 w-3" />
-              </button>
-            </div>
-
-            {/* Separator */}
-            <div className="flex items-center justify-center pt-4">
-              <span className="text-lg font-semibold text-muted-foreground">:</span>
-            </div>
-
-            {/* Minute column */}
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-caption font-medium text-muted-foreground">Min</span>
-              <button
-                type="button"
-                onClick={() => { const nv = (m + 1) % 60; commit(h, nv) }}
-                className="flex h-7 w-full items-center justify-center rounded border border-input bg-background/60 text-xs hover:bg-accent/50"
-                aria-label="Increment minute"
-              >
-                <ChevronUp className="h-3 w-3" />
-              </button>
-              <div className="flex h-9 w-full items-center justify-center rounded border border-input bg-background font-medium tabular-nums text-sm">
-                {String(m).padStart(2, "0")}
-              </div>
-              <button
-                type="button"
-                onClick={() => { const nv = (m - 1 + 60) % 60; commit(h, nv) }}
-                className="flex h-7 w-full items-center justify-center rounded border border-input bg-background/60 text-xs hover:bg-accent/50"
-                aria-label="Decrement minute"
-              >
-                <ChevronDown className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-          {/* AM/PM */}
-          <div className="mt-2 grid grid-cols-2 gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                const nv = h >= 12 ? h - 12 : h
-                commit(nv, m)
-              }}
-              className={cn(
-                "rounded border px-2 py-1 text-xs font-medium transition-colors",
-                h < 12
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-input bg-background/60 text-muted-foreground hover:bg-accent/50",
-              )}
-            >
-              AM
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const nv = h < 12 ? h + 12 : h
-                commit(nv, m)
-              }}
-              className={cn(
-                "rounded border px-2 py-1 text-xs font-medium transition-colors",
-                h >= 12
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-input bg-background/60 text-muted-foreground hover:bg-accent/50",
-              )}
-            >
-              PM
-            </button>
-          </div>
-
-          {/* Quick presets — shown in 12h */}
-          <div className="mt-2 grid grid-cols-4 gap-1">
-            {QUICK_TIMES.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => {
-                  onChange(preset)
-                  setOpen(false)
-                }}
-                className={cn(
-                  "rounded border px-1 py-0.5 text-caption tabular-nums transition-colors",
-                  value === preset
-                    ? "border-primary/30 bg-primary/10 text-primary"
-                    : "border-input bg-background/60 text-muted-foreground hover:bg-accent/50",
-                )}
-              >
-                {formatTime12(preset)}
-              </button>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
-    </div>
-  )
 }
 
 // --- Subject picker popover ---
@@ -556,9 +285,9 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
           </div>
 
           <div className="flex items-center gap-2">
-            <TimePicker value={period.startTime} onChange={(v) => onUpdate("startTime", v)} label="Start time" />
+            <TimePicker value={period.startTime} onChange={(e) => onUpdate("startTime", e.target.value)} aria-label="Start time" showIcon={false} className="h-7 w-22 text-xs" />
             <span className="text-xs text-muted-foreground/50" aria-hidden>–</span>
-            <TimePicker value={period.endTime} onChange={(v) => onUpdate("endTime", v)} label="End time" />
+            <TimePicker value={period.endTime} onChange={(e) => onUpdate("endTime", e.target.value)} aria-label="End time" showIcon={false} className="h-7 w-22 text-xs" />
 
             <button
               type="button"

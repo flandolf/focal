@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import TimePicker from "@/components/ui/time-picker"
 import { VCE_SUBJECTS, type TimetablePeriod, type TimetableDayLabel, type Subject } from "@/lib/types"
 import { MOTION_DURATION, MOTION_EASE_SNAPPY } from "@/lib/motion"
 import { isMacOS } from "@/lib/platform"
@@ -189,12 +190,12 @@ export function PeriodEditPopover({
               <label className="text-micro font-medium text-muted-foreground/80">
                 Start
               </label>
-              <input
-                type="time"
+              <TimePicker
+                showIcon={false}
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 className={cn(
-                  "h-7 w-full rounded border bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
+                  "h-7 rounded bg-background px-2 text-xs",
                   startTime && endTime && startTime >= endTime
                     ? "border-destructive/50"
                     : "border-input",
@@ -205,12 +206,12 @@ export function PeriodEditPopover({
               <label className="text-micro font-medium text-muted-foreground/80">
                 End
               </label>
-              <input
-                type="time"
+              <TimePicker
+                showIcon={false}
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 className={cn(
-                  "h-7 w-full rounded border bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
+                  "h-7 rounded bg-background px-2 text-xs",
                   startTime && endTime && startTime >= endTime
                     ? "border-destructive/50"
                     : "border-input",

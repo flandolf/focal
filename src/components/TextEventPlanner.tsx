@@ -4,6 +4,7 @@ import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Pencil, Sq
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import TimePicker from "@/components/ui/time-picker"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
 import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
@@ -814,12 +815,12 @@ export function TextEventPlanner({
                             </label>
                             <label className="grid gap-1 text-micro font-medium text-muted-foreground">
                               Time
-                              <Input
-                                type="time"
-                                value={draft.startTime}
-                                onChange={(event) => handleUpdateDraft(index, { startTime: event.target.value })}
-                                aria-invalid={!isValidDateTime(draft.date, draft.startTime)}
-                              />
+                              <TimePicker
+                              showIcon={false}
+                              value={draft.startTime}
+                              onChange={(event) => handleUpdateDraft(index, { startTime: event.target.value })}
+                              aria-invalid={!isValidDateTime(draft.date, draft.startTime)}
+                            />
                             </label>
                             <label className="grid gap-1 text-micro font-medium text-muted-foreground">
                               Minutes
