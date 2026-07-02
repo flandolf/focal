@@ -31,7 +31,6 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 - **Timetable** — configurable cycle length (default 10-day VCE rotation), per-day period editing with subjects / locations / breaks, school holidays, weekend support, manual day override.
 - **Calendar** — month / week grid, multi-day events, drag-to-reschedule, batch select / complete / merge / delete, study priorities, prep balance, month brief.
 - **Deadline notifications** — in-app toasts plus optional native OS notifications at *due now*, *today*, *tomorrow*, and *soon* (≤72 hours).
-- **AI Assessment Copilot** — drafts focused study sessions for upcoming assessments from your priority and prep balance. Approve, edit, or refine each draft before it lands on the calendar.
 - **Text to Events** — paste a teacher notice or rough plan; the AI extracts draft calendar events you can review and approve.
 
 ### Focus
@@ -56,7 +55,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 | Frontend | React 19 · TypeScript (strict) · Tailwind v4 · Radix primitives · Recharts · Framer Motion · Sonner · `lucide-react` · `react-day-picker` · `date-fns` |
 | Desktop shell | Tauri v2 (Rust) — plugins: `fs` (with watcher) · `dialog` · `notification` · `opener` · `shell` · `os` · `updater` |
 | Type & colour | Sora Variable (display) · Geist (UI) · single-accent palette, dark and light modes equally considered |
-| AI | OpenRouter or local Ollama, with structured output and tool calling (Copilot, Auto Rename, Text-to-Events) |
+| AI | OpenRouter or local Ollama, with structured output and tool calling (Auto Rename, Text-to-Events) |
 | Cloud | Optional Supabase Auth + Postgres + Realtime, custom sync engine (queue, conflict resolution, device tracking). Notion integrates separately. |
 
 ---

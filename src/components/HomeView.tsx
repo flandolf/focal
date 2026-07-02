@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   Combine,
   Check,
-  Brain,
   Wand2,
   ArrowRight,
   Sparkles,
@@ -37,7 +36,6 @@ import {
   getLocalDateValue,
   formatTime12,
 } from "@/lib/utils";
-import { AssessmentCopilot } from "@/components/AssessmentCopilot";
 import { TextEventPlanner } from "@/components/TextEventPlanner";
 import { getPriorityItems } from "@/lib/studyPriority";
 import type { PrepBalanceItem } from "@/lib/planning";
@@ -157,7 +155,6 @@ export const HomeView = memo(function HomeView({
     "Paste a notice, rough plan, or teacher message. Review drafts before adding them.",
   );
   const [textPlannerInitialText, setTextPlannerInitialText] = useState("");
-  const [copilotOpen, setCopilotOpen] = useState(false);
 
   const selectedCalendarDate = selectedDate
     ? parseISO(selectedDate)
@@ -946,15 +943,6 @@ export const HomeView = memo(function HomeView({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setCopilotOpen(true)}
-                className="h-8 gap-1.5 text-muted-foreground"
-              >
-                <Brain className="h-3.5 w-3.5" />
-                Plan my week
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
                 onClick={handleOpenTextPlanner}
                 className="h-8 gap-1.5 text-muted-foreground"
               >
@@ -1108,7 +1096,6 @@ export const HomeView = memo(function HomeView({
                     .flatMap((e) => e.periods)
                     .sort((a, b) => a.startTime.localeCompare(b.startTime));
                   const periodInfo = getCurrentPeriodInfo(periods);
-                  const hasCurrent = periodInfo.current !== undefined;
                   return (
                     <div className="rounded-lg border bg-card p-3">
                       <h3 className="mb-2.5 flex items-center gap-1.5 text-sm font-semibold">
@@ -1466,20 +1453,6 @@ export const HomeView = memo(function HomeView({
           </div>
         </div>
       </ScrollArea>
-
-      <AssessmentCopilot
-        open={copilotOpen}
-        onOpenChange={setCopilotOpen}
-        projects={projects}
-        sessions={sessions}
-        events={events}
-        priorityItems={priorityItems}
-        prepBalanceItems={prepBalanceItems}
-        planningSubjects={planningSubjects}
-        currentMonth={currentMonth}
-        timetableConfig={timetableConfig}
-        onCreateStudySessions={onCreateStudySessions}
-      />
 
       <TextEventPlanner
         key={textPlannerOpen ? "planner-open" : "planner-closed"}

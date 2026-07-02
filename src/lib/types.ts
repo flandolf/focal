@@ -263,18 +263,6 @@ export interface UserSettings {
   ollama_model?: string
   assistant_personality?: string
   assistant_custom_instructions?: string
-  study_planning_preferences?: StudyPlanningPreferences
-}
-
-export interface StudyWindow {
-  weekday: number // 0=Sunday ... 6=Saturday
-  startTime: string // HH:mm
-  endTime: string // HH:mm
-}
-
-export interface StudyPlanningPreferences {
-  windows: StudyWindow[]
-  dailyCapMinutes: number
 }
 
 export interface TimetableViewSettings {

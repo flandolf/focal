@@ -30,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { StudyTimer } from "@/components/StudyTimer";
 import { AssessmentRow } from "@/components/AssessmentRow";
 import { cn, getSubjectById } from "@/lib/utils";
@@ -620,10 +621,10 @@ export const Sidebar = memo(function Sidebar({
       </div>
 
       {/* Virtualized project list */}
-      <div
-        ref={parentRef}
+      <ScrollArea
+        viewportRef={parentRef}
         className={cn(
-          "min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden",
+          "min-h-0 w-full flex-1",
           "pb-1.5 pt-2 min-[1200px]:pt-2.5 px-1.5 min-[1200px]:px-2",
         )}
       >
@@ -697,12 +698,11 @@ export const Sidebar = memo(function Sidebar({
                       />
                     )}
                   </div>
-                );
-              })}
-            </div>
+                );            })}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+      </ScrollArea>
 
       {/* Bulk action bar */}
       {bulkBarVisible &&

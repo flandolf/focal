@@ -1,5 +1,5 @@
 /**
- * Provider abstraction for AI features (assessment copilot, file auto-rename, ...).
+ * Provider abstraction for AI features (file auto-rename, text-event planner, ...).
  *
  * A `Provider` is one concrete way to talk to an LLM — e.g. OpenRouter, Ollama, or a
  * future LM Studio / vLLM / OpenAI-direct backend. Each implementation owns its

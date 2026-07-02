@@ -3,6 +3,7 @@ import { motion } from "framer-motion"
 import { Link2, Plus, X, ChevronDown, ChevronRight, ExternalLink, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { staggerContainer, staggerItem } from "@/lib/motion"
 import { getSubjectById } from "@/lib/utils"
@@ -195,7 +196,7 @@ export function ProjectDependenciesPanel({
                         className="h-7 text-sm mb-2"
                         autoFocus
                       />
-                      <div className="max-h-64 overflow-y-auto -mx-1">
+                      <ScrollArea className="max-h-64 -mx-1">
                         {filteredAddable.length === 0 ? (
                           <p className="py-3 px-2 text-sm text-muted-foreground/60 text-center">
                             No matches
@@ -224,7 +225,7 @@ export function ProjectDependenciesPanel({
                             )
                           })
                         )}
-                      </div>
+                      </ScrollArea>
                     </>
                   )}
                 </PopoverContent>

@@ -2,7 +2,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js"
 import { appDataDir } from "@tauri-apps/api/path"
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { supabase } from "@/lib/supabase/client"
-import { getAssistantCustomInstructions, getAssistantPersonality, getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getStudyPlanningPreferences, getTimetableConfig, setAssistantCustomInstructions, setAssistantPersonality, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setStudyPlanningPreferences, setTimetableConfig, type AssistantPersonality, type ReasoningEffort } from "@/lib/settings"
+import { getAssistantCustomInstructions, getAssistantPersonality, getModel, getNotionCalendarSettings, getOllamaBaseUrl, getOllamaModel, getProvider, getReasoningEffort, getReasoningExclude, getReasoningMaxTokens, getTimetableConfig, setAssistantCustomInstructions, setAssistantPersonality, setModel, setNotionCalendarSettings, setOllamaBaseUrl, setOllamaModel, setProvider, setReasoningEffort, setReasoningExclude, setReasoningMaxTokens, setTimetableConfig, type AssistantPersonality, type ReasoningEffort } from "@/lib/settings"
 import { bustSubjectCache, getErrorMessage } from "@/lib/utils"
 import { addChangedRowId, addDeletedRowId, clearQueueItemsFromMeta, isChangedRow, isQueueItemDue, mergeRemoteRecords, removeDeletedRowId, retryQueueItem, scrubUserSettingsSecrets, shouldBackfillCalendarTable, shouldEnqueueFileRow, SYNC_TABLES } from "@/lib/sync/core"
 import { getDeviceId } from "@/lib/sync/device"
@@ -932,7 +932,6 @@ async function pullUserSettings(highWaterAt?: string): Promise<number> {
     if (settings.ollama_model) setOllamaModel(settings.ollama_model)
     if (settings.assistant_personality) setAssistantPersonality(settings.assistant_personality as AssistantPersonality)
     setAssistantCustomInstructions(settings.assistant_custom_instructions ?? "")
-    if (settings.study_planning_preferences) setStudyPlanningPreferences(settings.study_planning_preferences)
     const currentNotionSettings = getNotionCalendarSettings()
     setNotionCalendarSettings({
       token: currentNotionSettings.token,
@@ -1381,7 +1380,6 @@ function collectUserSettingsForSync(): UserSettings {
     ollama_model: getOllamaModel(),
     assistant_personality: getAssistantPersonality(),
     assistant_custom_instructions: getAssistantCustomInstructions(),
-    study_planning_preferences: getStudyPlanningPreferences(),
   }
 }
 

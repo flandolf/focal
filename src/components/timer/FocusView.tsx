@@ -300,7 +300,8 @@ export function FocusView({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto py-3 min-[900px]:grid-cols-[minmax(0,1fr)_20rem] min-[900px]:overflow-hidden min-[1280px]:grid-cols-[minmax(0,1fr)_23rem] min-[1800px]:grid-cols-[minmax(0,1fr)_27rem]">
+        <ScrollArea className="min-h-0 flex-1 py-3">
+          <div className="grid h-full gap-3 min-[900px]:grid-cols-[minmax(0,1fr)_20rem] min-[1280px]:grid-cols-[minmax(0,1fr)_23rem] min-[1800px]:grid-cols-[minmax(0,1fr)_27rem]">
           <Card className="min-h-[38rem] gap-0 bg-card py-0 min-[900px]:min-h-0">
             <CardHeader className="border-b py-3">
               <CardTitle className="flex min-w-0 flex-wrap items-center gap-2 text-base">
@@ -581,7 +582,8 @@ export function FocusView({
               </Card>
             </aside>
           </ScrollArea>
-        </div>
+          </div>
+        </ScrollArea>
 
         <TimerControls
           variant="footer"

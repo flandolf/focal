@@ -248,7 +248,8 @@ function CycleEditor({
             Reset
           </button>
         </div>
-        <div className="grid max-h-36 grid-cols-2 gap-1.5 overflow-y-auto rounded-lg border border-border/50 bg-background/30 p-2 sm:grid-cols-3">
+        <ScrollArea className="max-h-36 rounded-lg border border-border/50 bg-background/30">
+          <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-3">
           {Array.from({ length: cycleLength }, (_, i) => i + 1).map(
             (day, idx) => (
               <div
@@ -277,6 +278,7 @@ function CycleEditor({
             ),
           )}
         </div>
+        </ScrollArea>
       </div>
     </div>
   );
@@ -913,8 +915,9 @@ export function TimetableEditor({
   const showSharedConfig = !saved && !(tab === "ai" && aiResult);
 
   const sharedConfigPanel = showSharedConfig ? (
-    <aside className="min-h-0 rounded-xl border border-border/60 bg-background/30 p-3 lg:max-h-full lg:overflow-y-auto">
-      <div className="space-y-3">
+    <aside className="min-h-0 overflow-hidden rounded-xl border border-border/60 bg-background/30 lg:max-h-full">
+      <ScrollArea className="h-full">
+      <div className="space-y-3 p-3">
         <div className="space-y-1.5">
           <label
             className="text-xs font-medium leading-none"
@@ -988,6 +991,7 @@ export function TimetableEditor({
           ))}
         </div>
       </div>
+      </ScrollArea>
     </aside>
   ) : null;
 
