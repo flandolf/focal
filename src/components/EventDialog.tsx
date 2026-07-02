@@ -10,9 +10,10 @@ import {
  DialogHeader,
  DialogTitle,
 } from"@/components/ui/dialog"
-import { Button } from"@/components/ui/button"
-import { Input } from"@/components/ui/input"
-import { DatePickerField, FormField, FormSection, SelectField } from"@/components/ui/form-controls"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
+import TimePicker from "@/components/ui/time-picker"
 import { VCE_SUBJECTS, type CalendarEvent, type EventType, type Subject } from"@/lib/types"
 import { cn, getSubjectById } from"@/lib/utils"
 
@@ -406,18 +407,13 @@ function EventForm({
  </div>
  )}
 
- <div className="mt-3 grid gap-3 sm:grid-cols-2">
- <FormField label="Start time" labelClassName={fieldLabelClass}>
- <div className={inputWithIconClass}>
- <Clock className="h-4 w-4 text-muted-foreground" />
- <input
- type="time"
- value={startTime}
- onChange={(event) => setStartTime(event.target.value)}
- className="min-w-0 flex-1 bg-transparent text-sm outline-none"
- />
- </div>
- </FormField>
+ <div className="mt-3 grid gap-3 sm:grid-cols-2">            <FormField label="Start time" labelClassName={fieldLabelClass}>
+              <TimePicker
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+                className="h-10 bg-background/65 text-sm"
+              />
+            </FormField>
 
  <FormField
  label={endTimeMode ==="end" ?"End time" :"Duration"}
@@ -439,31 +435,22 @@ function EventForm({
  {endTimeMode ==="end" ?"Use duration" :"Use end time"}
  </button>
  )}
- >
- {endTimeMode ==="end" ? (
- <div className={inputWithIconClass}>
- <Clock className="h-4 w-4 text-muted-foreground" />
- <input
- type="time"
- value={explicitEndTime}
- onChange={(e) => handleEndTimeChange(e.target.value)}
- className="min-w-0 flex-1 bg-transparent text-sm outline-none"
- />
- </div>
- ) : isMultiDay ? (
- <div className={inputWithIconClass}>
- <Clock className="h-4 w-4 text-muted-foreground" />
- <input
- type="time"
- value={explicitEndTime || startTime}
- onChange={(e) => {
- setExplicitEndTime(e.target.value)
- setEndTimeMode("end")
- }}
- className="min-w-0 flex-1 bg-transparent text-sm outline-none"
- />
- </div>
- ) : (
+ >              {endTimeMode === "end" ? (
+                <TimePicker
+                  value={explicitEndTime}
+                  onChange={(e) => handleEndTimeChange(e.target.value)}
+                  className="h-10 bg-background/65 text-sm"
+                />
+              ) : isMultiDay ? (
+                <TimePicker
+                  value={explicitEndTime || startTime}
+                  onChange={(e) => {
+                    setExplicitEndTime(e.target.value)
+                    setEndTimeMode("end")
+                  }}
+                  className="h-10 bg-background/65 text-sm"
+                />
+              ) : (
  <div className="flex items-center gap-1.5">
  <Input
  type="number"

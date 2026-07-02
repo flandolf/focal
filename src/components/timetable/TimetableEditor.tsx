@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import TimePicker from "@/components/ui/time-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -328,18 +329,18 @@ function PeriodEditRow({
         </SelectContent>
       </Select>
       <div className="flex items-center gap-1 max-[760px]:col-span-2 max-[760px]:col-start-2">
-        <input
-          type="time"
+        <TimePicker
+          showIcon={false}
           value={period.startTime}
           onChange={(e) => onChange("startTime", e.target.value)}
-          className="h-6 w-[5rem] rounded border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+          className="h-6 w-[5rem] rounded bg-background px-1 text-xs"
         />
         <span className="text-muted-foreground/40 text-xs">–</span>
-        <input
-          type="time"
+        <TimePicker
+          showIcon={false}
           value={period.endTime}
           onChange={(e) => onChange("endTime", e.target.value)}
-          className="h-6 w-[5rem] rounded border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+          className="h-6 w-[5rem] rounded bg-background px-1 text-xs"
         />
       </div>
       <input
