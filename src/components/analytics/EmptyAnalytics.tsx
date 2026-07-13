@@ -14,8 +14,8 @@ export function EmptyAnalytics({ onNewSession }: EmptyAnalyticsProps) {
     <motion.div
       className="flex h-full flex-col items-center justify-center px-5 text-center"
       variants={staggerContainer(0.08, 0.1)}
-      initial="initial"
-      animate="animate"
+      initial={reduceMotion ? false : "initial"}
+      animate={reduceMotion ? undefined : "animate"}
     >
       <motion.div variants={staggerItem} className="mb-5">
         <motion.div

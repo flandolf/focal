@@ -5,10 +5,7 @@ import {
   BriefcaseBusiness, Folder,
 } from "lucide-react"
 import { toast } from "sonner"
-import { cn, getErrorMessage as _getErrorMessage } from "@/lib/utils"
-
-// TODO: Remove this shim after a Vite dev-server restart (cached modules still import from here).
-export const getErrorMessage = _getErrorMessage
+import { cn, getErrorMessage } from "@/lib/utils"
 
 export const PROJECT_ICONS: Record<string, LucideIcon> = {
   eng: BookOpen,

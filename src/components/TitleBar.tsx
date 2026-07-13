@@ -12,6 +12,7 @@ const IS_MACOS = (() => {
   }
 })()
 const SEARCH_SHORTCUT = IS_MACOS ? "⌘K" : "Ctrl K"
+const SETTINGS_SHORTCUT = IS_MACOS ? "⌘," : "Ctrl ,"
 
 const noop = () => { /* no-op */ }
 
@@ -125,7 +126,7 @@ function AppActions({
             <Settings className="h-3.5 w-3.5" />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" align="end">Settings</TooltipContent>
+        <TooltipContent side="bottom" align="end">Settings · {SETTINGS_SHORTCUT}</TooltipContent>
       </Tooltip>
       {children}
     </div>

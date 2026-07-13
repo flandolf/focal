@@ -27,7 +27,7 @@ interface RenameEntry {
 
 interface AutoRenameButtonProps {
   files: FileInfo[]
-  onApplyRenames: (renames: { filePath: string; newName: string }[]) => Promise<void>
+  onApplyRenames: (renames: { filePath: string; newName: string }[]) => Promise<{ filePath: string; newName: string }[]>
 }
 
 export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProps) {
@@ -154,7 +154,13 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
     setApplying(true)
     setError(null)
     try {
-      await onApplyRenames(toApply)
+      const failed = await onApplyRenames(toApply)
+      if (failed.length > 0) {
+        const failedPaths = new Set(failed.map((rename) => rename.filePath))
+        setEntries((current) => current.filter((entry) => failedPaths.has(entry.file.path)))
+        setApplying(false)
+        return
+      }
     } catch (e) {
       setError({ message: describeAiError(e).message, hint: null })
       setApplying(false)

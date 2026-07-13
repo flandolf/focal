@@ -137,7 +137,7 @@ export function StudySessionDialog({
  && durationMinutes > 0
  const selectedDateLabel = startDate ? format(startDate,"EEE d MMM") :"No date"
  const subjectSummary = selectedSubjects.length > 0
- ? selectedSubjects.map((subject) => subject.shortCode).join(",")
+ ? selectedSubjects.map((subject) => subject.shortCode).join(", ")
  :"Subjects required"
 
  useEffect(() => {
@@ -148,7 +148,7 @@ export function StudySessionDialog({
  setSubjectIds(getSessionSubjectIds(session, project))
  setTitle(session.title)
  setDescription(session.description ??"")
- setTopicsInput(session.topics?.join(",") ??"")
+ setTopicsInput(session.topics?.join(", ") ??"")
  setNotes(session.notes ??"")
  setStatus(session.status)
  setConfidence(session.confidence)

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
@@ -22,12 +22,80 @@ fn get_projects_dir() -> Result<PathBuf, String> {
     get_documents_dir()
 }
 
+fn project_child_path(root: &Path, name: &str) -> Result<PathBuf, String> {
+    if name.is_empty()
+        || !Path::new(name)
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return Err("Project folder path must stay inside the projects directory".to_string());
+    }
+    Ok(root.join(name))
+}
+
+fn project_file_path(root: &Path, name: &str) -> Result<PathBuf, String> {
+    let mut components = Path::new(name).components();
+    if name.is_empty()
+        || !matches!(components.next(), Some(Component::Normal(_)))
+        || components.next().is_some()
+    {
+        return Err("File name must not contain a path".to_string());
+    }
+    Ok(root.join(name))
+}
+
+fn canonical_existing_path(path: &Path) -> Result<PathBuf, String> {
+    std::fs::canonicalize(path)
+        .map_err(|e| format!("Failed to resolve path {}: {}", path.display(), e))
+}
+
+fn canonical_project_descendant(root: &Path, candidate: &Path) -> Result<PathBuf, String> {
+    let unresolved = candidate;
+    let root = canonical_existing_path(root)?;
+    let candidate = canonical_existing_path(candidate)?;
+    if candidate == root || !candidate.starts_with(&root) {
+        return Err(format!(
+            "Path must stay inside the projects directory: {}",
+            candidate.display()
+        ));
+    }
+    Ok(unresolved.to_path_buf())
+}
+
+fn project_destination_path(root: &Path, name: &str) -> Result<PathBuf, String> {
+    let destination = project_child_path(root, name)?;
+    let canonical_root = canonical_existing_path(root)?;
+    let mut current = root.to_path_buf();
+
+    for component in Path::new(name).components() {
+        let Component::Normal(component) = component else {
+            unreachable!("project_child_path already validated components")
+        };
+        current.push(component);
+        if !current.exists() {
+            break;
+        }
+        let resolved = canonical_existing_path(&current)?;
+        if resolved == canonical_root || !resolved.starts_with(&canonical_root) {
+            return Err(format!(
+                "Project path must stay inside the projects directory: {}",
+                current.display()
+            ));
+        }
+    }
+
+    Ok(destination)
+}
+
 #[tauri::command]
 pub fn set_projects_directory(path: String) -> Result<(), String> {
     let normalized = normalize_path(&path);
     let path = PathBuf::from(&normalized);
     if !path.exists() {
         return Err(format!("Directory does not exist: {}", normalized));
+    }
+    if !path.is_dir() {
+        return Err(format!("Projects path is not a directory: {}", normalized));
     }
     if let Ok(mut override_val) = projects_dir_override().lock() {
         *override_val = Some(path);
@@ -63,7 +131,7 @@ pub fn scan_projects_root() -> Result<Vec<String>, String> {
             }
         }
     }
-    names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    names.sort_by_key(|a| a.to_lowercase());
     Ok(names)
 }
 
@@ -88,7 +156,7 @@ pub struct FileInfo {
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subfolder: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "isFavorite", skip_serializing_if = "Option::is_none")]
     pub is_favorite: Option<bool>,
 }
 
@@ -220,7 +288,7 @@ pub async fn move_files_to_project(
 ) -> Result<Vec<String>, String> {
     let copy_only = copy.unwrap_or(false);
     let projects_dir = get_projects_dir()?;
-    let project_dir = projects_dir.join(&project_name);
+    let project_dir = project_destination_path(&projects_dir, &project_name)?;
 
     // ponytail: offload blocking file I/O to a dedicated thread so the
     // async runtime worker (and the UI) stays responsive.
@@ -275,21 +343,20 @@ pub async fn move_files_to_project(
                 moved = true;
                 if std::fs::rename(&src, &dest).is_err()
                     && !rename_landed_after_error(&src, &dest)
+                    && src.exists()
                 {
-                    if src.exists() {
-                        if let Err(e) = std::fs::copy(&src, &dest) {
-                            if let Some(previous_dest) = recently_moved_dest(&normalized) {
-                                new_paths.push(previous_dest.to_string_lossy().to_string());
-                                continue;
-                            }
-                            if !dest.exists() {
-                                skipped.push(format!("{} (move failed: {})", normalized, e));
-                                moved = false;
-                            }
-                            // ponytail: dest exists — rename landed during copy attempt
-                        } else {
-                            let _ = std::fs::remove_file(&src);
+                    if let Err(e) = std::fs::copy(&src, &dest) {
+                        if let Some(previous_dest) = recently_moved_dest(&normalized) {
+                            new_paths.push(previous_dest.to_string_lossy().to_string());
+                            continue;
                         }
+                        if !dest.exists() {
+                            skipped.push(format!("{} (move failed: {})", normalized, e));
+                            moved = false;
+                        }
+                        // ponytail: dest exists — rename landed during copy attempt
+                    } else {
+                        let _ = std::fs::remove_file(&src);
                     }
                     // ponytail: if src no longer exists after a failed rename, the
                     // filesystem driver already moved it — treat as success.
@@ -305,7 +372,7 @@ pub async fn move_files_to_project(
 
         if !skipped.is_empty() {
             return Err(format!(
-                "Partially moved {} of {} file(s). Skipped {}: {}",
+                "Partially added {} of {} file(s). Skipped {}: {}",
                 new_paths.len(),
                 new_paths.len() + skipped.len(),
                 skipped.len(),
@@ -325,7 +392,7 @@ pub fn get_project_files(
     recursive: Option<bool>,
 ) -> Result<Vec<FileInfo>, String> {
     let projects_dir = get_projects_dir()?;
-    let project_dir = projects_dir.join(&project_name);
+    let project_dir = project_destination_path(&projects_dir, &project_name)?;
 
     get_project_files_for_path(&project_dir, recursive.unwrap_or(false))
 }
@@ -436,7 +503,7 @@ fn file_info_from_path(
 #[tauri::command]
 pub fn get_project_file_count(project_name: String) -> Result<usize, String> {
     let projects_dir = get_projects_dir()?;
-    let project_dir = projects_dir.join(&project_name);
+    let project_dir = project_destination_path(&projects_dir, &project_name)?;
     let files = get_project_files_for_path(&project_dir, true)?;
     Ok(files.len())
 }
@@ -444,7 +511,7 @@ pub fn get_project_file_count(project_name: String) -> Result<usize, String> {
 #[tauri::command]
 pub fn create_project_folder(project_name: String) -> Result<String, String> {
     let projects_dir = get_projects_dir()?;
-    let project_dir = projects_dir.join(&project_name);
+    let project_dir = project_destination_path(&projects_dir, &project_name)?;
     std::fs::create_dir_all(&project_dir)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
     Ok(project_dir.to_string_lossy().to_string())
@@ -456,13 +523,16 @@ pub fn create_project_with_subfolders(
     subfolders: Vec<String>,
 ) -> Result<String, String> {
     let projects_dir = get_projects_dir()?;
-    let project_dir = projects_dir.join(&project_name);
+    let project_dir = project_destination_path(&projects_dir, &project_name)?;
+    for subfolder in &subfolders {
+        project_child_path(&project_dir, subfolder)?;
+    }
 
     std::fs::create_dir_all(&project_dir)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
 
     for subfolder in subfolders {
-        let subfolder_path = project_dir.join(&subfolder);
+        let subfolder_path = project_destination_path(&project_dir, &subfolder)?;
         std::fs::create_dir_all(&subfolder_path)
             .map_err(|e| format!("Failed to create subfolder {}: {}", subfolder, e))?;
     }
@@ -473,6 +543,7 @@ pub fn create_project_with_subfolders(
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchResult {
     pub file: FileInfo,
+    #[serde(rename = "projectFolder")]
     pub project_folder: String,
 }
 
@@ -482,13 +553,11 @@ pub fn delete_files(file_paths: Vec<String>) -> Result<usize, String> {
     let mut deleted = 0;
     for path in &file_paths {
         let normalized = normalize_path(path);
-        let p = PathBuf::from(&normalized);
-        if !p.starts_with(&projects_dir) {
-            return Err(format!(
-                "Refusing to delete outside projects directory: {}",
-                path
-            ));
+        let unresolved = PathBuf::from(&normalized);
+        if !unresolved.exists() {
+            continue;
         }
+        let p = canonical_project_descendant(&projects_dir, &unresolved)?;
         if p.exists() && p.is_file() {
             if let Err(e) = std::fs::remove_file(&p) {
                 if e.kind() != std::io::ErrorKind::NotFound {
@@ -511,15 +580,9 @@ pub fn delete_files(file_paths: Vec<String>) -> Result<usize, String> {
 pub fn rename_file(file_path: String, new_name: String) -> Result<String, String> {
     let projects_dir = get_projects_dir()?;
     let normalized = normalize_path(&file_path);
-    let src = PathBuf::from(&normalized);
-    if !src.starts_with(&projects_dir) {
-        return Err(format!(
-            "Refusing to rename outside projects directory: {}",
-            file_path
-        ));
-    }
+    let src = canonical_project_descendant(&projects_dir, Path::new(&normalized))?;
     let parent = src.parent().ok_or("Failed to resolve parent directory")?;
-    let dest = parent.join(&new_name);
+    let dest = project_file_path(parent, &new_name)?;
     if dest.exists() {
         return Err(format!(
             "A file named \"{}\" already exists in this directory",
@@ -532,16 +595,15 @@ pub fn rename_file(file_path: String, new_name: String) -> Result<String, String
     // synced filesystem drivers can move the file between the check and the copy.
     if std::fs::rename(&src, &dest).is_err()
         && !rename_landed_after_error(&src, &dest)
+        && src.exists()
     {
-        if src.exists() {
-            if let Err(e) = std::fs::copy(&src, &dest) {
-                if !dest.exists() {
-                    return Err(format!("Failed to rename file: {}", e));
-                }
-                // dest exists — rename landed during the copy attempt
-            } else {
-                let _ = std::fs::remove_file(&src);
+        if let Err(e) = std::fs::copy(&src, &dest) {
+            if !dest.exists() {
+                return Err(format!("Failed to rename file: {}", e));
             }
+            // dest exists — rename landed during the copy attempt
+        } else {
+            let _ = std::fs::remove_file(&src);
         }
         // ponytail: if src didn't exist before the fallback, the filesystem
         // driver already moved it — treat as success.
@@ -554,30 +616,17 @@ pub fn rename_file(file_path: String, new_name: String) -> Result<String, String
 pub fn move_file_to_folder(file_path: String, dest_folder: String) -> Result<String, String> {
     let projects_dir = get_projects_dir()?;
     let normalized = normalize_path(&file_path);
-    let src = PathBuf::from(&normalized);
-    if !src.starts_with(&projects_dir) {
-        return Err(format!(
-            "Refusing to move outside projects directory: {}",
-            file_path
-        ));
-    }
-    let dest_dir = PathBuf::from(normalize_path(&dest_folder));
-    if !dest_dir.starts_with(&projects_dir) {
-        return Err(format!(
-            "Refusing to move to outside projects directory: {}",
-            dest_folder
-        ));
-    }
+    let src = canonical_project_descendant(&projects_dir, Path::new(&normalized))?;
+    let normalized_dest = normalize_path(&dest_folder);
+    let dest_dir = canonical_project_descendant(&projects_dir, Path::new(&normalized_dest))?;
     let file_name = src.file_name().ok_or("Failed to resolve file name")?;
     let dest = dest_dir.join(file_name);
     if dest.exists() {
         return Err("A file with the same name already exists in the destination".to_string());
     }
     if let Err(e) = std::fs::rename(&src, &dest) {
-        if !rename_landed_after_error(&src, &dest) {
-            if src.exists() {
-                return Err(format!("Failed to move file: {}", e));
-            }
+        if !rename_landed_after_error(&src, &dest) && src.exists() {
+            return Err(format!("Failed to move file: {}", e));
             // ponytail: src gone after failed rename — filesystem driver already
             // moved it; treat as success.
         }
@@ -595,13 +644,15 @@ pub fn get_file_content_previews(
         .clamp(200, MAX_CONTENT_PREVIEW_CHARS);
 
     let mut previews = Vec::new();
+    let projects_dir = get_projects_dir()?;
 
     for file_path in file_paths {
         let normalized = normalize_path(&file_path);
-        let path = PathBuf::from(&normalized);
-        if !path.exists() || !path.is_file() {
+        let unresolved = PathBuf::from(&normalized);
+        if !unresolved.exists() || !unresolved.is_file() {
             continue;
         }
+        let path = canonical_project_descendant(&projects_dir, &unresolved)?;
 
         let extension = path
             .extension()
@@ -747,7 +798,7 @@ pub struct FolderDropResult {
 #[tauri::command]
 pub async fn handle_folder_drop(source_path: String) -> Result<FolderDropResult, String> {
     let normalized = normalize_path(&source_path);
-    let src = PathBuf::from(&normalized);
+    let src = canonical_existing_path(Path::new(&normalized))?;
     if !src.exists() {
         return Err(format!("Source folder not found: {}", source_path));
     }
@@ -755,7 +806,10 @@ pub async fn handle_folder_drop(source_path: String) -> Result<FolderDropResult,
         return Err(format!("Source path is not a directory: {}", source_path));
     }
 
-    let projects_dir = get_projects_dir()?;
+    let projects_dir = canonical_existing_path(&get_projects_dir()?)?;
+    if src == projects_dir {
+        return Err("Select a project folder, not the projects directory itself".to_string());
+    }
 
     // If already inside the projects directory, link it in-place
     if src.starts_with(&projects_dir) {
@@ -806,7 +860,7 @@ pub async fn handle_folder_drop(source_path: String) -> Result<FolderDropResult,
 #[tauri::command]
 pub fn link_folder_as_project(source_path: String) -> Result<String, String> {
     let normalized = normalize_path(&source_path);
-    let src = PathBuf::from(&normalized);
+    let src = canonical_existing_path(Path::new(&normalized))?;
     if !src.exists() {
         return Err(format!("Source folder not found: {}", source_path));
     }
@@ -814,7 +868,10 @@ pub fn link_folder_as_project(source_path: String) -> Result<String, String> {
         return Err(format!("Source path is not a directory: {}", source_path));
     }
 
-    let projects_dir = get_projects_dir()?;
+    let projects_dir = canonical_existing_path(&get_projects_dir()?)?;
+    if src == projects_dir {
+        return Err("Select a project folder, not the projects directory itself".to_string());
+    }
 
     // ponytail: if the source is already inside the projects directory, preserve
     // the relative path so nested folders work correctly.
@@ -828,11 +885,11 @@ pub fn link_folder_as_project(source_path: String) -> Result<String, String> {
 
     // ponytail: reject folders outside the projects directory — file lookups
     // expect the folder to be inside projects_dir.
-    return Err(format!(
+    Err(format!(
         "Please select a folder inside the projects directory ({}). \
 You can change the projects directory above, or use \"Import folder\" to copy it in.",
         projects_dir.display()
-    ));
+    ))
 }
 
 #[tauri::command]
@@ -841,7 +898,7 @@ pub async fn import_folder_to_project(
     source_path: String,
 ) -> Result<String, String> {
     let normalized = normalize_path(&source_path);
-    let src = PathBuf::from(&normalized);
+    let src = canonical_existing_path(Path::new(&normalized))?;
     if !src.exists() {
         return Err(format!("Source folder not found: {}", source_path));
     }
@@ -854,12 +911,18 @@ pub async fn import_folder_to_project(
         .map(|n| n.to_string_lossy().to_string())
         .ok_or("Could not determine folder name")?;
 
-    let projects_dir = get_projects_dir()?;
+    let projects_dir = canonical_existing_path(&get_projects_dir()?)?;
+    if src == projects_dir {
+        return Err("Select a project folder, not the projects directory itself".to_string());
+    }
 
     // ponytail: if the source is already inside the projects directory, there is
-    // nothing to copy — just return the folder name in-place.
+    // nothing to copy — preserve its relative path so nested folders still work.
     if src.starts_with(&projects_dir) {
-        return Ok(folder_name);
+        return src
+            .strip_prefix(&projects_dir)
+            .map(|path| path.to_string_lossy().to_string().replace('\\', "/"))
+            .map_err(|_| "Could not compute relative path".to_string());
     }
 
     let mut dest = projects_dir.join(&folder_name);
@@ -899,8 +962,8 @@ pub async fn import_folder_to_project(
 #[tauri::command]
 pub async fn rename_project_folder(old_name: String, new_name: String) -> Result<(), String> {
     let projects_dir = get_projects_dir()?;
-    let old_path = projects_dir.join(&old_name);
-    let new_path = projects_dir.join(&new_name);
+    let old_path = project_destination_path(&projects_dir, &old_name)?;
+    let new_path = project_destination_path(&projects_dir, &new_name)?;
 
     if !old_path.exists() {
         return Err(format!("Folder not found: {}", old_name));
@@ -922,8 +985,7 @@ pub async fn rename_project_folder(old_name: String, new_name: String) -> Result
         // ponytail: try a fast atomic rename first. On the same filesystem
         // this moves all files and subdirectories instantly.
         if let Err(e) = std::fs::rename(&old_clone, &new_clone) {
-            if !rename_landed_after_error(&old_clone, &new_clone) {
-                if old_clone.exists() {
+            if !rename_landed_after_error(&old_clone, &new_clone) && old_clone.exists() {
                     // ponytail: fallback to recursive copy + delete when the OS
                     // refuses a direct rename (e.g. locked files on Windows).
                     // This is slower but guarantees all contents move across.
@@ -939,7 +1001,6 @@ pub async fn rename_project_folder(old_name: String, new_name: String) -> Result
                             name_for_error, remove_err
                         ));
                     }
-                }
                 // ponytail: src gone after failed rename — filesystem driver already
                 // moved it; treat as success.
             }
@@ -954,8 +1015,8 @@ pub async fn rename_project_folder(old_name: String, new_name: String) -> Result
 #[tauri::command]
 pub async fn copy_project_folder(source_name: String, dest_name: String) -> Result<(), String> {
     let projects_dir = get_projects_dir()?;
-    let src = projects_dir.join(&source_name);
-    let dest = projects_dir.join(&dest_name);
+    let src = project_destination_path(&projects_dir, &source_name)?;
+    let dest = project_destination_path(&projects_dir, &dest_name)?;
 
     if !src.exists() {
         return Err(format!("Source folder not found: {}", source_name));
@@ -980,10 +1041,155 @@ pub async fn copy_project_folder(source_name: String, dest_name: String) -> Resu
     Ok(())
 }
 
+fn read_project_files_recursive(
+    dir: &Path,
+    query: &str,
+    project_prefix: &str,
+) -> Result<Vec<SearchResult>, String> {
+    let mut results = Vec::new();
+
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        let file_name = entry.file_name().to_string_lossy().to_string();
+
+        if file_name == ".DS_Store" {
+            continue;
+        }
+        if path.is_file() && file_name.to_lowercase().contains(query) {
+            let metadata = entry
+                .metadata()
+                .map_err(|e| format!("Failed to read metadata: {}", e))?;
+            let extension = path
+                .extension()
+                .map(|e| e.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let modified = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
+            let file_info = FileInfo {
+                name: file_name,
+                path: path.to_string_lossy().to_string(),
+                size: metadata.len(),
+                modified,
+                extension,
+                tags: None,
+                subfolder: None,
+                is_favorite: None,
+            };
+
+            results.push(SearchResult {
+                file: file_info,
+                project_folder: project_prefix.to_string(),
+            });
+        } else if path.is_dir() {
+            // Recursively search subdirectories
+            if let Ok(mut subresults) = read_project_files_recursive(&path, query, project_prefix) {
+                results.append(&mut subresults);
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn project_child_path_rejects_paths() {
+        let root = Path::new("projects");
+        assert_eq!(
+            project_child_path(root, "Chemistry/Unit 3").unwrap(),
+            root.join("Chemistry/Unit 3")
+        );
+        for unsafe_name in [
+            "",
+            ".",
+            "..",
+            "../outside",
+            "Chemistry/../../outside",
+            "/outside",
+        ] {
+            assert!(
+                project_child_path(root, unsafe_name).is_err(),
+                "accepted {unsafe_name:?}"
+            );
+        }
+        #[cfg(windows)]
+        assert!(project_child_path(root, r"C:\outside").is_err());
+        assert!(project_file_path(root, "notes.txt").is_ok());
+        assert!(project_file_path(root, "../notes.txt").is_err());
+        assert!(project_file_path(root, "folder/notes.txt").is_err());
+    }
+
+    #[test]
+    fn canonical_project_descendant_rejects_root_and_outside() {
+        let base = std::env::temp_dir().join(format!(
+            "focal-path-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let root = base.join("projects");
+        let inside = root.join("notes.txt");
+        let outside = base.join("outside.txt");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&inside, "inside").unwrap();
+        std::fs::write(&outside, "outside").unwrap();
+
+        assert_eq!(canonical_project_descendant(&root, &inside).unwrap(), inside);
+        assert!(canonical_project_descendant(&root, &root).is_err());
+        assert!(canonical_project_descendant(&root, &outside).is_err());
+
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn projects_directory_rejects_file() {
+        let file = std::env::temp_dir().join(format!(
+            "focal-projects-root-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&file, "not a directory").unwrap();
+
+        assert!(set_projects_directory(file.to_string_lossy().to_string()).is_err());
+
+        let _ = std::fs::remove_file(file);
+    }
+
+    #[test]
+    fn search_result_serializes_for_frontend() {
+        let result = SearchResult {
+            file: FileInfo {
+                name: "notes.txt".into(),
+                path: "Chemistry/notes.txt".into(),
+                size: 4,
+                modified: 0,
+                extension: "txt".into(),
+                tags: None,
+                subfolder: None,
+                is_favorite: Some(true),
+            },
+            project_folder: "Chemistry".into(),
+        };
+        let value = serde_json::to_value(result).unwrap();
+        assert_eq!(value["projectFolder"], "Chemistry");
+        assert_eq!(value["file"]["isFavorite"], true);
+        assert!(value.get("project_folder").is_none());
+    }
 
     #[test]
     fn rename_landed_after_error_dest_exists() {
@@ -1044,62 +1250,4 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(base);
     }
-}
-
-fn read_project_files_recursive(
-    dir: &Path,
-    query: &str,
-    project_prefix: &str,
-) -> Result<Vec<SearchResult>, String> {
-    let mut results = Vec::new();
-
-    let entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-
-        if file_name == ".DS_Store" {
-            continue;
-        }
-        if path.is_file() && file_name.to_lowercase().contains(query) {
-            let metadata = entry
-                .metadata()
-                .map_err(|e| format!("Failed to read metadata: {}", e))?;
-            let extension = path
-                .extension()
-                .map(|e| e.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let modified = metadata
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-
-            let file_info = FileInfo {
-                name: file_name,
-                path: path.to_string_lossy().to_string(),
-                size: metadata.len(),
-                modified,
-                extension,
-                tags: None,
-                subfolder: None,
-                is_favorite: None,
-            };
-
-            results.push(SearchResult {
-                file: file_info,
-                project_folder: project_prefix.to_string(),
-            });
-        } else if path.is_dir() {
-            // Recursively search subdirectories
-            if let Ok(mut subresults) = read_project_files_recursive(&path, query, project_prefix) {
-                results.append(&mut subresults);
-            }
-        }
-    }
-
-    Ok(results)
 }

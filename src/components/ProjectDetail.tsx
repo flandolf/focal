@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react"
-import { Plus, Loader2 } from "lucide-react"
+import { AlertCircle, Plus, Loader2, RefreshCw } from "lucide-react"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { join } from "@tauri-apps/api/path"
 import { exists } from "@tauri-apps/plugin-fs"
@@ -49,7 +49,7 @@ export const ProjectDetail = memo(function ProjectDetail({
   onExport, onSaveAsTemplate,
 }: ProjectDetailProps) {
   const {
-    files, loading, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
+    files, loading, error, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
     addFileTags, removeFileTag, toggleFavorite,
     sortKey, sortAsc, setSortKey, setSortAsc,
     firstLevelSubfolders, hasPendingChanges, changedPaths, removedFiles,
@@ -207,9 +207,11 @@ export const ProjectDetail = memo(function ProjectDetail({
   }, [project.folder_path, selectedSubfolder, loadFiles, onFilesChanged])
 
   const handleAddFiles = useCallback(async () => {
-    const count = await addFiles(selectedSubfolder === "__root__" ? null : selectedSubfolder)
-    if (count) {
-      onFilesChanged()
+    try {
+      const count = await addFiles(selectedSubfolder === "__root__" ? null : selectedSubfolder)
+      if (count) onFilesChanged()
+    } catch (e) {
+      notifyProjectActionError("Could not add files", e)
     }
   }, [addFiles, selectedSubfolder, onFilesChanged])
 
@@ -367,29 +369,35 @@ export const ProjectDetail = memo(function ProjectDetail({
 
   const handleBulkMove = useCallback(async (destSubfolder: string) => {
     if (selectedFiles.size === 0) return
-    const projectsDir = await invoke<string>("get_projects_directory")
-    const destFolder = await join(projectsDir, project.folder_path, destSubfolder)
+    let destFolder: string
+    try {
+      const projectsDir = await invoke<string>("get_projects_directory")
+      destFolder = await join(projectsDir, project.folder_path, destSubfolder)
+    } catch (e) {
+      notifyProjectActionError("Could not prepare file move", e)
+      return
+    }
     const paths = Array.from(selectedFiles)
     let moved = 0
-    let failed = 0
-    const toastId = toast.loading(`Moving 0 of ${paths.length} files...`)
-    for (const fp of paths) {
+    const failedPaths: string[] = []
+    const toastId = toast.loading(`Processing 0 of ${paths.length} files...`)
+    for (const [index, fp] of paths.entries()) {
       try {
         await moveFileToFolder(fp, destFolder)
         moved++
-        toast.loading(`Moving ${moved} of ${paths.length} files...`, { id: toastId })
       } catch {
-        failed++
+        failedPaths.push(fp)
       }
+      toast.loading(`Processing ${index + 1} of ${paths.length} files...`, { id: toastId })
     }
     toast.dismiss(toastId)
     if (moved > 0) {
-      setSelectedFiles(new Set())
+      setSelectedFiles(new Set(failedPaths))
       onFilesChanged()
       toast.success(`Moved ${moved} file${moved > 1 ? "s" : ""}`)
     }
-    if (failed > 0) {
-      toast.error(`Could not move ${failed} file${failed === 1 ? "" : "s"}`)
+    if (failedPaths.length > 0) {
+      toast.error(`Could not move ${failedPaths.length} file${failedPaths.length === 1 ? "" : "s"}`)
     }
   }, [moveFileToFolder, project.folder_path, selectedFiles, onFilesChanged])
 
@@ -433,25 +441,27 @@ export const ProjectDetail = memo(function ProjectDetail({
 
   const handleApplyAutoRenames = useCallback(
     async (renames: { filePath: string; newName: string }[]) => {
-      if (renames.length === 0) return
-      let failed = 0
+      if (renames.length === 0) return []
+      const failed: { filePath: string; newName: string }[] = []
       const toastId = toast.loading(`Renaming 0 of ${renames.length} files...`)
       for (let i = 0; i < renames.length; i++) {
         const { filePath, newName } = renames[i]
         try {
           await renameFile(filePath, newName)
-          toast.loading(`Renaming ${i + 1} of ${renames.length} files...`, { id: toastId })
         } catch {
-          failed++
+          failed.push(renames[i])
         }
+        toast.loading(`Renaming ${i + 1} of ${renames.length} files...`, { id: toastId })
       }
       toast.dismiss(toastId)
       onFilesChanged()
-      if (failed > 0) {
-        toast.error(`Could not rename ${failed} file${failed === 1 ? "" : "s"}`)
+      if (failed.length > 0) {
+        const renamed = renames.length - failed.length
+        toast.error(`Renamed ${renamed} file${renamed === 1 ? "" : "s"}; could not rename ${failed.length}`)
       } else {
         toast.success(`Renamed ${renames.length} file${renames.length > 1 ? "s" : ""}`)
       }
+      return failed
     },
     [renameFile, onFilesChanged],
   )
@@ -669,6 +679,20 @@ export const ProjectDetail = memo(function ProjectDetail({
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">
+        {viewMode === "files" && error && (
+          <div role="alert" className="mx-3 mt-2 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate" title={error}>Couldn&apos;t load project files.</span>
+            <button
+              type="button"
+              onClick={() => void loadFiles()}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </button>
+          </div>
+        )}
         {viewMode === "sessions" ? (
           <SessionList
             sessions={sessions}
@@ -679,7 +703,7 @@ export const ProjectDetail = memo(function ProjectDetail({
           />
         ) : loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
+            <Loader2 className="h-5 w-5 text-muted-foreground/50 motion-safe:animate-spin" />
           </div>
         ) : (
           <FileTree

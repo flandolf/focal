@@ -193,6 +193,7 @@ export function ProjectHeader({
                 size="icon"
                 className="h-8 w-8 rounded-lg"
                 onClick={onOpenSettings}
+                aria-label="Assessment details"
               >
                 <Settings className="h-4 w-4" />
               </Button>
@@ -208,6 +209,7 @@ export function ProjectHeader({
                   size="icon"
                   className="relative h-8 w-8 rounded-lg"
                   onClick={onRefresh}
+                  aria-label={hasPendingChanges ? "Refresh files with external changes" : "Refresh files"}
                 >
                   <RefreshCw className="h-4 w-4" />
                   {hasPendingChanges && (
@@ -244,6 +246,7 @@ export function ProjectHeader({
                   size="icon"
                   className="h-8 w-8 rounded-lg"
                   onClick={() => onToggleFinished(project.id)}
+                  aria-label={project.isFinished ? "Mark as current" : "Mark as complete"}
                 >
                   <AnimatePresence initial={false}>
                     <motion.span
@@ -295,6 +298,7 @@ export function ProjectHeader({
                   size="icon"
                   className="h-8 w-8 rounded-lg"
                   onClick={onSaveAsTemplate}
+                  aria-label="Save as template"
                 >
                   <Bookmark className="h-4 w-4" />
                 </Button>
@@ -311,6 +315,7 @@ export function ProjectHeader({
                   size="icon"
                   className="h-8 w-8 rounded-lg"
                   onClick={onExport}
+                  aria-label="Export project"
                 >
                   <Download className="h-4 w-4" />
                 </Button>

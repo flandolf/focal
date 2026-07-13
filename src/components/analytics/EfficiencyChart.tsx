@@ -63,7 +63,7 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
               <div className="flex gap-1">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/50">
                   <div
-                    className="h-full rounded-full transition-all duration-500"
+                    className="h-full rounded-full transition-[width] duration-200 motion-reduce:transition-none"
                     style={{
                       width: `${barWidth}%`,
                       backgroundColor: color,
@@ -72,7 +72,7 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
                 </div>
                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted/50">
                   <div
-                    className="h-full rounded-full transition-all duration-500 bg-primary"
+                    className="h-full rounded-full bg-primary transition-[width] duration-200 motion-reduce:transition-none"
                     style={{ width: `${confidencePercent}%` }}
                   />
                 </div>

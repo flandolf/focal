@@ -1,4 +1,5 @@
 import { useMemo } from "react"
+import { useReducedMotion } from "framer-motion"
 import {
   ResponsiveContainer,
   BarChart,
@@ -16,6 +17,7 @@ interface TimeOfDayChartProps {
 }
 
 export function TimeOfDayChart({ data }: TimeOfDayChartProps) {
+  const reduceMotion = useReducedMotion() === true
   const hasData = data.some((d) => d.minutes > 0)
 
   const chartData = useMemo(() => {
@@ -82,6 +84,8 @@ export function TimeOfDayChart({ data }: TimeOfDayChartProps) {
               dataKey="minutes"
               fill="var(--chart-2)"
               radius={[4, 4, 0, 0]}
+              isAnimationActive={!reduceMotion}
+              animationDuration={200}
             />
           </BarChart>
         </ResponsiveContainer>

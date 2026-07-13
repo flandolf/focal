@@ -13,6 +13,28 @@ interface UseNotionSyncOptions {
   syncSessions: (created: StudySessionDraft[], updated: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]) => Promise<unknown>
 }
 
+export function notionEditedTimeLabel(value?: string): string {
+  const date = value ? new Date(value) : null
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleString() : "unknown"
+}
+
+export function notionSyncSettledState(succeeded: boolean, now = Date.now()) {
+  return succeeded
+    ? { status: "success" as const, lastSyncTime: now }
+    : { status: "error" as const }
+}
+
+export function notionSyncResultSucceeded(result: Pick<NotionCalendarSyncResult, "pushErrors">): boolean {
+  return result.pushErrors.length === 0
+}
+
+export function retainFailedNotionConflicts<T extends { id: string }>(
+  conflicts: T[],
+  failedIds: ReadonlySet<string>,
+): T[] {
+  return conflicts.filter((conflict) => failedIds.has(conflict.id))
+}
+
 export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncSessions }: UseNotionSyncOptions) {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error" | "success">("idle")
   const [lastSyncTime, setLastSyncTime] = useState(0)
@@ -31,8 +53,6 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
   // Debounce rapid sync requests into a single batched call
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingNotifyRef = useRef(false)
-  const pendingResolveRef = useRef<((value: NotionCalendarSyncResult | null) => void) | null>(null)
-  const pendingRejectRef = useRef<((reason: unknown) => void) | null>(null)
 
   useEffect(() => {
     eventsRef.current = events
@@ -57,6 +77,7 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     notionSyncInFlightRef.current = true
     notionSyncQueuedRef.current = false
     setSyncStatus("syncing")
+    let succeeded = false
     try {
       const result = await syncNotionCalendar(settings, eventsRef.current, sessionsRef.current, allSubjectsRef.current, onProgress, changedEventIds, changedSessionIds)
       if (result.created.length > 0 || result.updated.length > 0) {
@@ -65,6 +86,7 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
       if (result.createdSessions.length > 0 || result.updatedSessions.length > 0) {
         await syncSessions(result.createdSessions, result.updatedSessions)
       }
+      const syncSucceeded = notionSyncResultSucceeded(result)
 
       if (notify) {
         const pulled = result.created.length + result.updated.length + result.createdSessions.length + result.updatedSessions.length
@@ -73,11 +95,13 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
         if (pulled > 0) parts.push(`${pulled} pulled`)
         if (pushed > 0) parts.push(`${pushed} pushed`)
         if (result.deleted > 0) parts.push(`${result.deleted} deleted`)
-        toast.success(
-          parts.length > 0
-            ? `Synced Notion items: ${parts.join(", ")}`
-            : "Notion items already up to date",
-        )
+        if (syncSucceeded) {
+          toast.success(
+            parts.length > 0
+              ? `Synced Notion items: ${parts.join(", ")}`
+              : "Notion items already up to date",
+          )
+        }
         if (result.skipped > 0) {
           toast.info(`${result.skipped} Notion item${result.skipped === 1 ? "" : "s"} skipped without a valid date`, {
             description: result.skippedReasons[0],
@@ -96,7 +120,7 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
               endTime: item.endTime,
             },
             notionVersion: {
-              title: `Notion version (last edited ${item.notionLastEditedTime ? new Date(item.notionLastEditedTime).toLocaleString() : "unknown"})`,
+              title: `Notion version (last edited ${notionEditedTimeLabel(item.notionLastEditedTime)})`,
               startTime: item.startTime,
               endTime: item.endTime,
               url: item.notionUrl,
@@ -110,10 +134,10 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
             description: result.pushErrors[0],
           })
         }
-        return result
       }
+      succeeded = syncSucceeded
+      return notify ? result : null
     } catch (e) {
-      setSyncStatus("error")
       if (notify) {
         toast.error(`Notion sync failed: ${String(e)}`)
         throw e
@@ -121,10 +145,12 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
       console.error(`Notion sync failed: ${String(e)}`)
       return null
     } finally {
-      const now = Date.now()
-      setLastSyncTime(now)
-      setSyncStatus("success")
-      setTimeout(() => setSyncStatus("idle"), 2000)
+      const settled = notionSyncSettledState(succeeded)
+      setSyncStatus(settled.status)
+      if (settled.status === "success") {
+        setLastSyncTime(settled.lastSyncTime)
+        setTimeout(() => setSyncStatus((status) => status === "success" ? "idle" : status), 2000)
+      }
       notionSyncInFlightRef.current = false
       if (notionSyncQueuedRef.current) {
         notionSyncQueuedRef.current = false
@@ -161,18 +187,11 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     if (debounceTimerRef.current !== null) {
       clearTimeout(debounceTimerRef.current)
     }
-    debounceTimerRef.current = setTimeout(async () => {
+    debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null
       const notifyNow = pendingNotifyRef.current
       pendingNotifyRef.current = false
-      try {
-        const result = await performNotionSync(notifyNow)
-        pendingResolveRef.current?.(result)
-      } catch (e) {
-        pendingRejectRef.current?.(e)
-      }
-      pendingResolveRef.current = null
-      pendingRejectRef.current = null
+      void performNotionSync(notifyNow).catch(() => undefined)
     }, 500)
   }, [performNotionSync])
 
@@ -184,15 +203,14 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
       const result = await pushEventToNotion(settings, event, allSubjectsRef.current)
       if (result) {
         await syncEvents([], [{ id: event.id, updates: { source: result.source } }])
+        setSyncStatus("idle")
       } else {
         // Fall back to full sync but pass the changed ID so fast-push is used
-        void performNotionSync(false, undefined, new Set([event.id]))
+        await performNotionSync(false, undefined, new Set([event.id]))
       }
     } catch (e) {
       console.error("Failed to push event to Notion:", e)
       setSyncStatus("error")
-    } finally {
-      setSyncStatus("idle")
     }
   }, [syncEvents, performNotionSync])
 
@@ -204,15 +222,14 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
       const result = await pushSessionToNotion(settings, session, allSubjectsRef.current)
       if (result) {
         await syncSessions([], [{ id: session.id, updates: { source: result.source } }])
+        setSyncStatus("idle")
       } else {
         // Fall back to full sync but pass the changed ID so fast-push is used
-        void performNotionSync(false, undefined, undefined, new Set([session.id]))
+        await performNotionSync(false, undefined, undefined, new Set([session.id]))
       }
     } catch (e) {
       console.error("Failed to push session to Notion:", e)
       setSyncStatus("error")
-    } finally {
-      setSyncStatus("idle")
     }
   }, [syncSessions, performNotionSync])
 
@@ -222,7 +239,9 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
 
     const localResolutions: string[] = []
     const notionResolutions: string[] = []
+    const pendingNotionResolutions: NotionConflict[] = []
     const skipped: string[] = []
+    const failedResolutionIds = new Set<string>()
 
     for (const conflict of notionConflicts) {
       const resolution = resolutions[conflict.id]
@@ -233,38 +252,38 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
 
       if (resolution === "local") {
         // Force-push local version to Notion
-        localResolutions.push(conflict.title)
-        if (conflict.type === "event") {
-          const event = eventsRef.current.find((e) => e.id === conflict.localId)
-          if (event) {
-            try {
-              await pushEventToNotion(settings, event, allSubjectsRef.current)
-            } catch (e) {
-              console.error(`Failed to force-push event "${conflict.title}":`, e)
-            }
+        try {
+          if (conflict.type === "event") {
+            const event = eventsRef.current.find((e) => e.id === conflict.localId)
+            if (!event) throw new Error("Local event no longer exists")
+            const result = await pushEventToNotion(settings, event, allSubjectsRef.current)
+            if (!result) throw new Error("Notion did not accept the event")
+            await syncEvents([], [{ id: event.id, updates: { source: result.source } }])
+          } else {
+            const session = sessionsRef.current.find((s) => s.id === conflict.localId)
+            if (!session) throw new Error("Local study session no longer exists")
+            const result = await pushSessionToNotion(settings, session, allSubjectsRef.current)
+            if (!result) throw new Error("Notion did not accept the study session")
+            await syncSessions([], [{ id: session.id, updates: { source: result.source } }])
           }
-        } else {
-          const session = sessionsRef.current.find((s) => s.id === conflict.localId)
-          if (session) {
-            try {
-              await pushSessionToNotion(settings, session, allSubjectsRef.current)
-            } catch (e) {
-              console.error(`Failed to force-push session "${conflict.title}":`, e)
-            }
-          }
+          localResolutions.push(conflict.title)
+        } catch (e) {
+          failedResolutionIds.add(conflict.id)
+          console.error(`Failed to keep local "${conflict.title}":`, e)
         }
       } else if (resolution === "notion") {
-        // Will be resolved on next full sync (pull will overwrite local)
-        notionResolutions.push(conflict.title)
+        pendingNotionResolutions.push(conflict)
       }
     }
 
     // For "notion" resolutions, trigger a full re-sync to pull Notion changes
-    if (notionResolutions.length > 0) {
+    if (pendingNotionResolutions.length > 0) {
       setSyncStatus("syncing")
       try {
         await performNotionSync(true)
+        notionResolutions.push(...pendingNotionResolutions.map((conflict) => conflict.title))
       } catch (e) {
+        pendingNotionResolutions.forEach((conflict) => failedResolutionIds.add(conflict.id))
         console.error("Failed to pull Notion changes for resolution:", e)
       }
     }
@@ -278,8 +297,15 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
       toast.success(`Conflicts resolved: ${parts.join(", ")}`)
     }
 
-    setNotionConflicts([])
-  }, [notionConflicts, performNotionSync, eventsRef, sessionsRef, allSubjectsRef, setNotionConflicts])
+    const failedConflicts = retainFailedNotionConflicts(notionConflicts, failedResolutionIds)
+    setNotionConflicts(failedConflicts)
+    if (failedConflicts.length > 0) {
+      toast.error(`${failedConflicts.length} conflict resolution${failedConflicts.length === 1 ? "" : "s"} failed`, {
+        description: "The unresolved items were kept open so you can retry.",
+      })
+      setNotionConflictDialogOpen(true)
+    }
+  }, [notionConflicts, performNotionSync, syncEvents, syncSessions])
 
 
   return {

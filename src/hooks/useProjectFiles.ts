@@ -2,8 +2,10 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { downloadDir, join } from "@tauri-apps/api/path"
+import { toast } from "sonner"
 
 import type { FileInfo, FileTag } from "@/lib/types"
+import { getErrorMessage } from "@/lib/utils"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { PROJECTS_DIR_CHANGED_EVENT } from "@/hooks/useProjectsDirectoryWatcher"
 import {
@@ -12,6 +14,7 @@ import {
   removeFileTag,
   toggleFileFavorite,
   mergeMetadata,
+  moveFileMetadata,
   purgeMetadata,
 } from "@/lib/fileMetadata"
 
@@ -57,6 +60,7 @@ function updateFileTags(file: FileInfo, tags: FileTag[]): FileInfo {
 export function useProjectFiles(projectName: string | null) {
   const [files, setFiles] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>("name")
   const [sortAsc, setSortAsc] = useState(true)
   const [hasPendingChanges, setHasPendingChanges] = useState(false)
@@ -68,6 +72,7 @@ export function useProjectFiles(projectName: string | null) {
   const removedFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isLoadingFiles = useRef(false)
   const pendingOptions = useRef<{ silent?: boolean; notifyOnChange?: boolean } | null>(null)
+  const loadedProjectRef = useRef(projectName)
 
   useEffect(() => {
     filesRef.current = files
@@ -75,6 +80,12 @@ export function useProjectFiles(projectName: string | null) {
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const loadFiles = useCallback(async (options?: { silent?: boolean; notifyOnChange?: boolean }) => {
+    if (loadedProjectRef.current !== projectName) {
+      loadedProjectRef.current = projectName
+      filesHashRef.current = ""
+      setFiles([])
+      setError(null)
+    }
     if (!options?.notifyOnChange) {
       setHasPendingChanges(false)
     }
@@ -95,12 +106,16 @@ export function useProjectFiles(projectName: string | null) {
       return
     }
     isLoadingFiles.current = true
-    if (!options?.silent) setLoading(true)
+    if (!options?.silent) {
+      setLoading(true)
+      setError(null)
+    }
     try {
       const result = await invoke<FileInfo[]>("get_project_files", {
         projectName,
         recursive: true,
       })
+      setError(null)
       // Normalize subfolder separator (Rust uses \ on Windows)
       for (const f of result) {
         if (f.subfolder) {
@@ -141,8 +156,7 @@ export function useProjectFiles(projectName: string | null) {
       }
     } catch (e) {
       console.error("Failed to load files:", e)
-      filesHashRef.current = ""
-      setFiles([])
+      setError(getErrorMessage(e))
     } finally {
       if (!options?.silent) setLoading(false)
       isLoadingFiles.current = false
@@ -154,6 +168,11 @@ export function useProjectFiles(projectName: string | null) {
       }
     }
   }, [projectName])
+
+  const reloadFileMetadata = useCallback(async () => {
+    filesHashRef.current = ""
+    await loadFiles({ silent: true })
+  }, [loadFiles])
 
   const sortedFiles = useMemo(() => {
     const cmp = SORT_COMPARATORS[sortKey]
@@ -202,6 +221,7 @@ export function useProjectFiles(projectName: string | null) {
       const newPaths = await invoke<string[]>("move_files_to_project", {
         files: selected,
         projectName: targetFolder,
+        copy: true,
       })
       const now = Math.floor(Date.now() / 1000)
       const addedFiles: FileInfo[] = newPaths.map((p) => {
@@ -226,6 +246,12 @@ export function useProjectFiles(projectName: string | null) {
   const renameFile = useCallback(async (filePath: string, newName: string) => {
     try {
       const newPath = await invoke<string>("rename_file", { filePath, newName })
+      try {
+        await moveFileMetadata(filePath, newPath)
+      } catch (metadataError) {
+        console.warn("File renamed but metadata could not be moved:", metadataError)
+        toast.warning("File renamed, but its tags and favorite may need to be restored.")
+      }
       // Optimistic update
       setFiles((current) => {
         const now = Math.floor(Date.now() / 1000)
@@ -246,6 +272,12 @@ export function useProjectFiles(projectName: string | null) {
   const moveFileToFolder = useCallback(async (filePath: string, destFolder: string) => {
     try {
       const newPath = await invoke<string>("move_file_to_folder", { filePath, destFolder })
+      try {
+        await moveFileMetadata(filePath, newPath)
+      } catch (metadataError) {
+        console.warn("File moved but metadata could not be moved:", metadataError)
+        toast.warning("File moved, but its tags and favorite may need to be restored.")
+      }
       const projectsDir = await invoke<string>("get_projects_directory")
       const projectPath = (await join(projectsDir, projectName!)).replace(/\\/g, "/")
       const parent = newPath.substring(0, Math.max(newPath.lastIndexOf("/"), newPath.lastIndexOf("\\")))
@@ -267,7 +299,12 @@ export function useProjectFiles(projectName: string | null) {
     try {
       await invoke<number>("delete_files", { filePaths })
       setFiles((current) => current.filter((f) => !filePaths.includes(f.path)))
-      await purgeMetadata(filePaths)
+      try {
+        await purgeMetadata(filePaths)
+      } catch (metadataError) {
+        console.warn("Files deleted but metadata cleanup failed:", metadataError)
+        toast.warning("Files deleted, but some stale tag metadata could not be cleaned up.")
+      }
       await loadFiles()
     } catch (e) {
       console.error("Failed to delete files:", e)
@@ -280,8 +317,13 @@ export function useProjectFiles(projectName: string | null) {
     setFiles((current) =>
       current.map((file) => filePathSet.has(file.path) ? updateFileTags(file, tags) : file),
     )
-    await setFileTags(filePaths, tags)
-  }, [])
+    try {
+      await setFileTags(filePaths, tags)
+    } catch (error) {
+      await reloadFileMetadata()
+      throw error
+    }
+  }, [reloadFileMetadata])
 
   const handleAddFileTags = useCallback(async (filePaths: string[], tags: FileTag[]) => {
     const filePathSet = new Set(filePaths)
@@ -293,8 +335,13 @@ export function useProjectFiles(projectName: string | null) {
         return updateFileTags(file, [...nextTags])
       }),
     )
-    await addFileTags(filePaths, tags)
-  }, [])
+    try {
+      await addFileTags(filePaths, tags)
+    } catch (error) {
+      await reloadFileMetadata()
+      throw error
+    }
+  }, [reloadFileMetadata])
 
   const handleRemoveFileTag = useCallback(async (filePath: string, tag: FileTag) => {
     setFiles((current) =>
@@ -304,8 +351,13 @@ export function useProjectFiles(projectName: string | null) {
         return updateFileTags(file, nextTags)
       }),
     )
-    await removeFileTag(filePath, tag)
-  }, [])
+    try {
+      await removeFileTag(filePath, tag)
+    } catch (error) {
+      await reloadFileMetadata()
+      throw error
+    }
+  }, [reloadFileMetadata])
 
   const handleToggleFavorite = useCallback(async (filePath: string): Promise<boolean> => {
     const optimistic = !files.find((file) => file.path === filePath)?.isFavorite
@@ -316,16 +368,21 @@ export function useProjectFiles(projectName: string | null) {
           : file,
       ),
     )
-    const result = await toggleFileFavorite(filePath)
-    setFiles((current) =>
-      current.map((file) =>
-        file.path === filePath
-          ? { ...file, isFavorite: result }
-          : file,
-      ),
-    )
-    return result
-  }, [files])
+    try {
+      const result = await toggleFileFavorite(filePath)
+      setFiles((current) =>
+        current.map((file) =>
+          file.path === filePath
+            ? { ...file, isFavorite: result }
+            : file,
+        ),
+      )
+      return result
+    } catch (error) {
+      await reloadFileMetadata()
+      throw error
+    }
+  }, [files, reloadFileMetadata])
 
   /** Listen for global filesystem changes and reload this project's files. */
   const loadFilesRef = useLatestRef(loadFiles)
@@ -359,6 +416,7 @@ export function useProjectFiles(projectName: string | null) {
     allSubfolders,
     firstLevelSubfolders,
     loading,
+    error,
     loadFiles,
     addFiles,
     renameFile,

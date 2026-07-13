@@ -57,7 +57,7 @@ function StatusPill({ status, online }: { status: SyncStatus; online: boolean })
   const effective: SyncStatus = online === false ? "error" : status
   const config: Record<SyncStatus, { dot: string; label: string }> = {
     synced: { dot: "bg-emerald-500", label: "Synced" },
-    syncing: { dot: "bg-primary animate-pulse", label: "Syncing…" },
+    syncing: { dot: "bg-primary motion-safe:animate-pulse", label: "Syncing…" },
     pending: { dot: "bg-amber-500", label: "Pending" },
     error: { dot: "bg-destructive", label: "Error" },
     "signed-out": { dot: "bg-muted-foreground/40", label: "Signed out" },

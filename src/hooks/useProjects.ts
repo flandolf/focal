@@ -1,11 +1,14 @@
 import { useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { join } from "@tauri-apps/api/path"
+import { toast } from "sonner"
 import type { Project, ProjectChecklistItem, ProjectTemplate, DeadlineType, Unit } from "@/lib/types"
 import { sanitiseFolderName, generateId, sortProjectsByDeadline, safeString, safeStringOpt, safeBool, safeBoolOpt, safeDateMeta, safeStringArray } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS } from "@/lib/types"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
+import { copyFileMetadataPrefix, moveFileMetadataPrefix } from "@/lib/fileMetadata"
 
 export type ProjectSortKey = "deadline" | "name" | "created-newest" | "created-oldest" | "fileCount"
 
@@ -120,15 +123,17 @@ export function useProjects() {
     if (!skipDiskCreation) {
       try {
         await invoke("create_project_with_subfolders", {
-      projectName: folderPath,
-      subfolders: allSubfolders,
+          projectName: folderPath,
+          subfolders: allSubfolders,
         })
       } catch (e) {
         console.warn("Could not create project folder on disk:", e)
+        throw e
       }
     }
     const updated = [...projectsRef.current, project]
     await saveProjects(updated)
+    projectsRef.current = updated
     void recordLocalUpsert("projects", project)
     return project
   }, [projectsRef, saveProjects])
@@ -165,6 +170,17 @@ export function useProjects() {
       throw e
     }
 
+    try {
+      const projectsDir = await invoke<string>("get_projects_directory")
+      await moveFileMetadataPrefix(
+        await join(projectsDir, current.folder_path),
+        await join(projectsDir, sanitised),
+      )
+    } catch (metadataError) {
+      console.warn("Project folder renamed but file metadata could not be moved:", metadataError)
+      toast.warning("Assessment folder renamed, but some file tags or favorites may need to be restored.")
+    }
+
     const updated = projectsRef.current.map((p) =>
       p.id === id
         ? { ...p, folder_path: sanitised, updated_at: new Date().toISOString() }
@@ -182,7 +198,7 @@ export function useProjects() {
 
     const updated = projectsRef.current.map((p) =>
       p.id === id
-        ? { ...p, folder_path: newFolderPath, updated_at: new Date().toISOString() }
+        ? { ...p, folder_path: newFolderPath, isLinked: true, updated_at: new Date().toISOString() }
         : p
     )
     await saveProjects(updated)
@@ -205,13 +221,13 @@ export function useProjects() {
     void recordLocalUpsert("projects", restored)
   }, [projectsRef, saveProjects])
 
-  const linkFolderAsProject = useCallback(async (folderPath: string) => {
+  const linkFolderAsProject = useCallback(async (folderPath: string, isLinked = true) => {
     const rawPath = await invoke<string>("link_folder_as_project", { sourcePath: folderPath })
     const existingPaths = new Set(projectsRef.current.map((p) => p.folder_path))
     if (existingPaths.has(rawPath)) {
       throw new Error(`A project named "${rawPath}" already exists.`)
     }
-    const project = await addProject(rawPath, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true, rawPath, true)
+    const project = await addProject(rawPath, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true, rawPath, isLinked)
     return project
   }, [projectsRef, addProject])
 
@@ -227,7 +243,7 @@ export function useProjects() {
         continue
       }
       try {
-        await addProject(name, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true, undefined, false)
+        await addProject(name, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true, name, false)
         created.push(name)
       } catch (e) {
         console.warn(`Failed to import project from folder "${name}":`, e)
@@ -316,6 +332,18 @@ export function useProjects() {
       })
     } catch (e) {
       console.warn("Could not copy project folder on disk:", e)
+      throw e
+    }
+
+    try {
+      const projectsDir = await invoke<string>("get_projects_directory")
+      await copyFileMetadataPrefix(
+        await join(projectsDir, source.folder_path),
+        await join(projectsDir, sanitised),
+      )
+    } catch (e) {
+      console.warn("Could not copy project file metadata:", e)
+      toast.warning("Assessment copied, but some file tags or favorites may need to be restored.")
     }
 
     const now = new Date().toISOString()

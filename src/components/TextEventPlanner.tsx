@@ -861,14 +861,14 @@ export function TextEventPlanner({
             <div className="min-h-0 flex-1 space-y-0 overflow-hidden rounded-lg border border-border/60">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="flex items-center gap-3 border-b border-border/40 bg-background/40 px-3 py-3 last:border-b-0">
-                  <div className="h-3.5 w-3.5 shrink-0 animate-pulse rounded bg-muted" />
+                  <div className="h-3.5 w-3.5 shrink-0 rounded bg-muted motion-safe:animate-pulse" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-3.5 w-3/5 animate-pulse rounded bg-muted" />
-                    <div className="h-2.5 w-1/4 animate-pulse rounded bg-muted/60" />
+                    <div className="h-3.5 w-3/5 rounded bg-muted motion-safe:animate-pulse" />
+                    <div className="h-2.5 w-1/4 rounded bg-muted/60 motion-safe:animate-pulse" />
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <div className="h-3 w-14 animate-pulse rounded bg-muted" />
-                    <div className="h-2.5 w-10 animate-pulse rounded bg-muted/60" />
+                    <div className="h-3 w-14 rounded bg-muted motion-safe:animate-pulse" />
+                    <div className="h-2.5 w-10 rounded bg-muted/60 motion-safe:animate-pulse" />
                   </div>
                 </div>
               ))}

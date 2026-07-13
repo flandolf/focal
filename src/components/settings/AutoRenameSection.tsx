@@ -33,6 +33,7 @@ import {
   normalizeRename,
 } from "@/lib/autoRename"
 import { describeAiError } from "@/lib/aiAssistant"
+import { moveFileMetadata } from "@/lib/fileMetadata"
 import {
   SETTINGS_SECTION_CLASS,
   SETTINGS_CHECKBOX_CLASS,
@@ -178,12 +179,19 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
     setError(null)
 
     const failed: RenameEntry[] = []
-    let successCount = 0
+    const renamedPaths = new Map<string, string>()
+    let metadataFailures = 0
 
     for (const { filePath, newName } of toApply) {
       try {
-        await invoke<string>("rename_file", { filePath, newName })
-        successCount++
+        const newPath = await invoke<string>("rename_file", { filePath, newName })
+        try {
+          await moveFileMetadata(filePath, newPath)
+        } catch (metadataError) {
+          console.warn("File renamed but metadata could not be moved:", metadataError)
+          metadataFailures++
+        }
+        renamedPaths.set(filePath, newPath)
       } catch (e) {
         const entry = entries.find((e) => e.file.path === filePath)
         if (entry) {
@@ -199,7 +207,10 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
           if (failedEntry) {
             return { ...entry, error: failedEntry.error }
           }
-          return { ...entry, file: { ...entry.file, name: entry.newName, path: entry.file.path } }
+          const newPath = renamedPaths.get(entry.file.path)
+          if (newPath) {
+            return { ...entry, approved: false, error: undefined, file: { ...entry.file, name: entry.newName, path: newPath } }
+          }
         }
         return entry
       })
@@ -207,9 +218,9 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
 
     setApplying(false)
 
-    if (successCount > 0) {
+    if (renamedPaths.size > 0) {
       toast.success(
-        `Renamed ${successCount} file${successCount !== 1 ? "s" : ""}`
+        `Renamed ${renamedPaths.size} file${renamedPaths.size !== 1 ? "s" : ""}`
       )
       onFilesChanged?.()
     }
@@ -217,6 +228,9 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
       toast.error(
         `Failed to rename ${failed.length} file${failed.length !== 1 ? "s" : ""}`
       )
+    }
+    if (metadataFailures > 0) {
+      toast.warning(`${metadataFailures} renamed file${metadataFailures === 1 ? "" : "s"} lost saved tags or favorites`)
     }
   }, [entries, onFilesChanged])
 

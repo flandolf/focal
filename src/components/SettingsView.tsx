@@ -93,7 +93,7 @@ interface SettingsViewProps {
  onClearConflicts?: () => void;
  onProjectsRootChanged?: () => void;
  onScanAndImportProjects?: () => Promise<{ created: string[]; skipped: string[]; failed: string[] }>;
- onLinkFolderAsProject?: (folderPath: string) => Promise<unknown>;
+ onLinkFolderAsProject?: (folderPath: string, isLinked?: boolean) => Promise<unknown>;
 }
 
 const SECTION_ITEMS: {

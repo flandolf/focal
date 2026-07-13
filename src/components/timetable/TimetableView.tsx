@@ -442,7 +442,7 @@ function LiveStatusCard({
  <div className="min-w-0 flex-1 space-y-1">
  <div className="flex items-center gap-1.5">
  <span className="relative flex h-1.5 w-1.5">
- <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+ <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-60 motion-safe:animate-ping" />
  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
  </span>
  <span className="text-micro font-bold uppercase tracking-widest text-primary">
@@ -845,7 +845,7 @@ function TimelineBlock({
  {periodLabel}
  </span>
  {isCurrentPeriod && (
- <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-pulse" />
+ <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />
  )}
  {isNextPeriod && !isCurrentPeriod && (
  <span className="shrink-0 text-micro font-bold uppercase tracking-wider text-primary/70">
