@@ -8,6 +8,8 @@ interface ShortcutHandlers {
   onGoHome?: () => void
   onGoTimetable?: () => void
   onGoAnalytics?: () => void
+  onGoSettings?: () => void
+  onOpenAiAssistant?: () => void
   onToggleSidebar?: () => void
   onZoomIn?: () => void
   onZoomOut?: () => void
@@ -91,6 +93,13 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         return
       }
 
+      // Cmd/Ctrl + ,: Settings
+      if (meta && key === ",") {
+        e.preventDefault()
+        handlersRef.current.onGoSettings?.()
+        return
+      }
+
       // T: Go timetable
       if (key === "t" && !meta && !e.altKey && !e.shiftKey) {
         handlersRef.current.onGoTimetable?.()
@@ -100,6 +109,12 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       // A: Go analytics
       if (key === "a" && !meta && !e.altKey && !e.shiftKey) {
         handlersRef.current.onGoAnalytics?.()
+        return
+      }
+
+      // I: Open AI assistant
+      if (key === "i" && !meta && !e.altKey && !e.shiftKey) {
+        handlersRef.current.onOpenAiAssistant?.()
         return
       }
 

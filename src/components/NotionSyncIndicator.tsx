@@ -39,7 +39,7 @@ function StatusDot({ status }: { status: SyncStatus }) {
   return (
     <span className="absolute bottom-0 right-0 flex h-2 w-2">
       {status === "syncing" && (
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60 motion-reduce:animate-none" />
       )}
       <span
         className={cn(
@@ -78,11 +78,12 @@ export function NotionSyncIndicator({
 
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled || status === "syncing"}
       title={tooltipText}
       className={cn(
-        "relative flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-all duration-200",
+        "relative flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-all duration-200 motion-reduce:transition-none",
         "focus-visible:outline-2 focus-visible:outline-ring",
         "disabled:cursor-not-allowed disabled:opacity-50",
         status === "syncing"
@@ -94,15 +95,9 @@ export function NotionSyncIndicator({
               : "text-muted-foreground/50 hover:bg-background/65 hover:text-muted-foreground",
         className,
       )}
-      aria-label={
-        status === "syncing"
-          ? "Syncing with Notion"
-          : status === "error"
-            ? "Sync failed — click to retry"
-            : "Sync to Notion"
-      }
+      aria-label={tooltipText}
     >
-      <NotionLogo className={cn("h-4 w-4", status === "syncing" && "animate-pulse")} />
+      <NotionLogo className={cn("h-4 w-4", status === "syncing" && "animate-pulse motion-reduce:animate-none")} />
       <StatusDot status={status} />
     </button>
   )

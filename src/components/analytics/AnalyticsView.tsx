@@ -3,7 +3,7 @@ import type { ReactNode } from"react"
 import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
 import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area"
 import { Card } from"@/components/ui/card"
-import { getAnalyticsData, type AnalyticsRange } from"@/lib/analytics"
+import { getAnalyticsData, getConsistencyForTimeTrends, type AnalyticsRange } from"@/lib/analytics"
 import type { Project, StudySession } from"@/lib/types"
 import { cn, getSubjectById } from"@/lib/utils"
 import { getSubjectColor } from"@/lib/chartTheme"
@@ -101,11 +101,25 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  () =>
  isFilterActive
  ? data.timeTrends.filter(
- (p) => p.subjectId == null || activeSet.has(p.subjectId),
+ (p) => activeSet.has(p.subjectId ??"_unassigned"),
  )
  : data.timeTrends,
  [data.timeTrends, activeSet, isFilterActive],
  )
+ const filteredConsistency = useMemo(
+ () => isFilterActive
+ ? getConsistencyForTimeTrends(data.consistency.days, filteredTimeTrends)
+ : data.consistency,
+ [data.consistency, filteredTimeTrends, isFilterActive],
+ )
+ const filteredTimeOfDay = useMemo(() => {
+ if (!isFilterActive) return data.timeOfDay
+ const buckets = Array.from({ length: 24 }, (_, hour) => ({ hour, minutes: 0 }))
+ for (const bucket of data.timeOfDayBySubject) {
+ if (activeSet.has(bucket.subjectId)) buckets[bucket.hour].minutes += bucket.minutes
+ }
+ return buckets
+ }, [activeSet, data.timeOfDay, data.timeOfDayBySubject, isFilterActive])
 
  const filteredTotalMinutes = useMemo(
  () => filteredBreakdown.reduce((s, d) => s + d.minutes, 0),
@@ -113,10 +127,10 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  )
  const filteredDailyAverage = useMemo(
  () =>
- data.consistency.days.length > 0
- ? Math.round(filteredTotalMinutes / data.consistency.days.length)
+ filteredConsistency.days.length > 0
+ ? Math.round(filteredTotalMinutes / filteredConsistency.days.length)
  : 0,
- [filteredTotalMinutes, data.consistency.days.length],
+ [filteredTotalMinutes, filteredConsistency.days.length],
  )
 
  const handleToggleSubject = useCallback(
@@ -136,21 +150,19 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  return <EmptyAnalytics onNewSession={onNewSession} />
  }
 
- const unfiltered = isFilterActive && selectedSubjects.size > 0
-
  return (
  <ScrollArea className="h-full">
  <motion.div
  className="px-6 py-5 min-[1200px]:px-8 min-[1200px]:py-6"
- initial={{ opacity: 0, y: 6 }}
+ initial={reduceMotion ? false : { opacity: 0, y: 6 }}
  animate={{ opacity: 1, y: 0 }}
- transition={TRANSITION.view}
+ transition={reduceMotion ? REDUCED_TRANSITION : TRANSITION.view}
  >
  <motion.div
  className="space-y-5"
  variants={staggerContainer(0.06, 0.05)}
- initial="initial"
- animate="animate"
+ initial={reduceMotion ? false :"initial"}
+ animate={reduceMotion ? undefined :"animate"}
  >
  {/* Header row */}
  <motion.div
@@ -163,9 +175,9 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  <KpiStrip
  totalMinutes={filteredTotalMinutes}
  dailyAverage={filteredDailyAverage}
- daysStudied={data.consistency.stats.totalStudyDays}
- totalDays={data.consistency.days.length}
- currentStreak={data.consistency.stats.currentStreak}
+ daysStudied={filteredConsistency.stats.totalStudyDays}
+ totalDays={filteredConsistency.days.length}
+ currentStreak={filteredConsistency.stats.currentStreak}
  filterActive={isFilterActive}
  reduceMotion={reduceMotion}
  />
@@ -190,15 +202,15 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  <AnimatePresence mode="wait">
  <motion.div
  key={range}
- initial={{ opacity: 0 }}
+ initial={reduceMotion ? false : { opacity: 0 }}
  animate={{ opacity: 1 }}
  exit={{ opacity: 0 }}
- transition={{ duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
+ transition={reduceMotion ? REDUCED_TRANSITION : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
  >
  <motion.div
  variants={staggerContainer(0.05, 0)}
- initial="initial"
- animate="animate"
+ initial={reduceMotion ? false :"initial"}
+ animate={reduceMotion ? undefined :"animate"}
  className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-2"
  >
  <motion.div
@@ -215,9 +227,9 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  </motion.div>
  <motion.div
  variants={staggerItem}
- className={cn("relative", unfiltered &&"opacity-65")}
+ className="relative"
  >
- <TimeOfDayChart data={data.timeOfDay} />
+ <TimeOfDayChart data={filteredTimeOfDay} />
  </motion.div>
  <motion.div variants={staggerItem} className="relative">
  <EfficiencyChart data={filteredEfficiency} />
@@ -227,8 +239,8 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  className="relative min-[900px]:col-span-2"
  >
  <ConsistencyHeatmap
- days={data.consistency.days}
- stats={data.consistency.stats}
+ days={filteredConsistency.days}
+ stats={filteredConsistency.stats}
  />
  </motion.div>
  </motion.div>

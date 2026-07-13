@@ -26,7 +26,7 @@ function StatusDot({ status }: { status: DotStatus }) {
   return (
     <span className="absolute bottom-0 right-0 flex h-2 w-2">
       {status === "syncing" && (
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60 motion-reduce:animate-none" />
       )}
       <span
         className={cn(
@@ -88,7 +88,7 @@ export function SupabaseSyncIndicator({ sync, signedIn }: SupabaseSyncIndicatorP
   const tooltipLines = [label]
   if (sync.lastSuccessfulSyncAt) {
     const date = new Date(sync.lastSuccessfulSyncAt)
-    tooltipLines.push(`Last sync: ${date.toLocaleString()}`)
+    if (Number.isFinite(date.getTime())) tooltipLines.push(`Last sync: ${date.toLocaleString()}`)
   }
   if (sync.tableStats && sync.tableStats.length > 0) {
     const stats = formatTableStats(sync.tableStats)
@@ -106,7 +106,7 @@ export function SupabaseSyncIndicator({ sync, signedIn }: SupabaseSyncIndicatorP
   return (
     <div
       className={cn(
-        "relative flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-all duration-200",
+        "relative flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-all duration-200 motion-reduce:transition-none",
         isOffline
           ? "text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
           : sync.status === "syncing"
@@ -119,10 +119,12 @@ export function SupabaseSyncIndicator({ sync, signedIn }: SupabaseSyncIndicatorP
                   ? "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
                   : "text-muted-foreground/50 opacity-55",
       )}
+      role="status"
+      aria-live="polite"
       aria-label={label}
       title={tooltip}
     >
-      <SupabaseLogo className={cn("h-4 w-4", sync.status === "syncing" && !isOffline && "animate-pulse")} />
+      <SupabaseLogo className={cn("h-4 w-4", sync.status === "syncing" && !isOffline && "animate-pulse motion-reduce:animate-none")} />
       <StatusDot status={dotStatus} />
     </div>
   )

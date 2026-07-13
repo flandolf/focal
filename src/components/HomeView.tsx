@@ -38,7 +38,7 @@ import {
 } from "@/lib/utils";
 import { TextEventPlanner } from "@/components/TextEventPlanner";
 import { getPriorityItems } from "@/lib/studyPriority";
-import type { PrepBalanceItem } from "@/lib/planning";
+import { getCompletedStudyMinutesBySubject, type PrepBalanceItem } from "@/lib/planning";
 import type { TimetableConfig } from "@/lib/settings";
 import type {
   CalendarEvent,
@@ -178,14 +178,15 @@ export const HomeView = memo(function HomeView({
         parseISO(a.deadline!).getTime() - parseISO(b.deadline!).getTime(),
     );
 
-  const totalStudyMinutes = sessions.reduce((acc, s) => {
+  const completedSessionItems = sessions.filter(
+    (session) => session.status === "completed",
+  );
+  const totalStudyMinutes = completedSessionItems.reduce((acc, s) => {
     return acc + getSessionEffectiveMinutes(s);
   }, 0);
   const totalStudyHours = Math.round((totalStudyMinutes / 60) * 10) / 10;
 
-  const completedSessions = sessions.filter(
-    (s) => s.status === "completed",
-  ).length;
+  const completedSessions = completedSessionItems.length;
   const priorityItems = useMemo(
     () => getPriorityItems({ projects, sessions, events }),
     [projects, sessions, events],
@@ -244,30 +245,18 @@ export const HomeView = memo(function HomeView({
       .slice(0, 7);
   }, [sessions, events, projects]);
 
-  const studyBySubject: Record<
-    string,
-    { minutes: number; icon: string; shortCode: string }
-  > = {};
-  sessions.forEach((s) => {
-    const project = projects.find((p) => p.id === s.projectId);
-    const subjectIds = getSessionSubjectIds(s, project);
-    if (subjectIds.length === 0) return;
-    const startMs = new Date(s.startTime).getTime();
-    const endMs = new Date(s.endTime).getTime();
-    const mins = (endMs - startMs) / (1000 * 60);
-    subjectIds.forEach((subjectId) => {
+  const studyBySubject = Object.entries(
+    getCompletedStudyMinutesBySubject(sessions, projects),
+  ).map(([subjectId, minutes]) => {
       const subject = getSubjectById(subjectId);
-      if (!studyBySubject[subjectId]) {
-        studyBySubject[subjectId] = {
-          minutes: 0,
-          icon: subject?.icon ?? "",
-          shortCode: subject?.shortCode ?? subjectId,
-        };
-      }
-      studyBySubject[subjectId].minutes += mins;
-    });
+      return [subjectId, {
+        minutes,
+        icon: subject?.icon ?? "",
+        shortCode: subject?.shortCode ?? subjectId,
+      }] as const;
   });
-  const topSubjects = Object.entries(studyBySubject)
+  const topSubjects = studyBySubject
+    .filter(([, info]) => info.minutes > 0)
     .sort(([, a], [, b]) => b.minutes - a.minutes)
     .slice(0, 3);
   const upcomingSessions = sessions
@@ -1139,7 +1128,7 @@ export const HomeView = memo(function HomeView({
 
                               {/* Current period pulsing dot */}
                               {isCurrent && (
-                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-pulse" />
+                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />
                               )}
 
                               {/* Time */}
@@ -1437,14 +1426,13 @@ export const HomeView = memo(function HomeView({
                               color: subject?.color,
                             }}
                           >
-                            {info.icon} {info.shortCode}
+                            {info.icon} {info.shortCode}{" "}
+                            <span className="font-normal tabular-nums">
+                              {Math.round((info.minutes / 60) * 10) / 10}h
+                            </span>
                           </span>
                         );
                       })}
-                      <span className="text-sm text-muted-foreground ml-auto tabular-nums">
-                        {topSubjects.length > 0 &&
-                          `${Math.round((topSubjects.reduce((acc, [, info]) => acc + info.minutes, 0) / 60) * 10) / 10}h total`}
-                      </span>
                     </div>
                   </div>
                 )}

@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from"react"
+import { useState, useEffect, useId } from"react"
 import { motion, useReducedMotion } from"framer-motion"
+import { openUrl } from"@tauri-apps/plugin-opener"
+import { toast } from"sonner"
 import { Plus, Pencil, Trash2, Link, BookOpen, GraduationCap, FileText, Globe, Video, Calculator, Palette, FlaskConical, Music, Dumbbell, ExternalLink } from"lucide-react"
 import { Button } from"@/components/ui/button"
 import { Input } from"@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from"@/components/ui/dialog"
-import { cn } from"@/lib/utils"
+import { cn, isRecord } from"@/lib/utils"
 import { staggerContainer, staggerItem, hoverLift } from"@/lib/motion"
 
 interface QuickLink {
@@ -59,39 +61,35 @@ function getQuickLinkDestination(url: string) {
  }
 }
 
-export function QuickLinks() {
- const [quickLinks, setQuickLinks] = useState<QuickLink[]>(() => {
+function getStoredQuickLinks(): QuickLink[] {
+ try {
  const stored = localStorage.getItem(QUICK_LINKS_KEY)
- return stored ? (JSON.parse(stored) as QuickLink[]) : []
- })
+ if (!stored) return []
+ const parsed: unknown = JSON.parse(stored)
+ return Array.isArray(parsed)
+ ? parsed.filter(
+ (link): link is QuickLink =>
+ isRecord(link) &&
+ ["id","label","url","icon","color"].every(
+ (field) => typeof link[field] ==="string",
+ ),
+ )
+ : []
+ } catch {
+ return []
+ }
+}
+
+export function QuickLinks() {
+ const [quickLinks, setQuickLinks] = useState<QuickLink[]>(getStoredQuickLinks)
  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
  const [editingLink, setEditingLink] = useState<QuickLink | null>(null)
  const [linkLabel, setLinkLabel] = useState("")
  const [linkUrl, setLinkUrl] = useState("")
  const [linkIcon, setLinkIcon] = useState("Link")
  const [linkColor, setLinkColor] = useState(DEFAULT_QUICK_LINK_COLOR)
- const [contextMenu, setContextMenu] = useState<{ x: number; y: number; link: QuickLink } | null>(null)
- const contextMenuRef = useRef<HTMLDivElement>(null)
  const reduceMotion = useReducedMotion() === true
-
- const handleContextMenu = useCallback((e: React.MouseEvent, link: QuickLink) => {
- e.preventDefault()
- setContextMenu({ x: e.clientX, y: e.clientY, link })
- }, [])
-
- useEffect(() => {
- if (!contextMenu) return
- const handleClick = () => setContextMenu(null)
- const handleKeyDown = (e: KeyboardEvent) => {
- if (e.key ==="Escape") setContextMenu(null)
- }
- document.addEventListener("click", handleClick)
- document.addEventListener("keydown", handleKeyDown)
- return () => {
- document.removeEventListener("click", handleClick)
- document.removeEventListener("keydown", handleKeyDown)
- }
- }, [contextMenu])
+ const fieldId = useId()
 
  useEffect(() => {
  localStorage.setItem(QUICK_LINKS_KEY, JSON.stringify(quickLinks))
@@ -99,7 +97,8 @@ export function QuickLinks() {
 
  const handleSaveLink = () => {
  if (!linkLabel.trim() || !linkUrl.trim()) return
- const url = linkUrl.startsWith("http") ? linkUrl : `https://${linkUrl}`
+ const rawUrl = linkUrl.trim()
+ const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
  if (editingLink) {
  setQuickLinks((prev) =>
  prev.map((l) => (l.id === editingLink.id ? { ...l, label: linkLabel.trim(), url, icon: linkIcon, color: linkColor } : l))
@@ -177,11 +176,11 @@ export function QuickLinks() {
  transition={{ type:"spring", stiffness: 480, damping: 32, mass: 0.6 }}
  className="group relative min-w-0"
  >
- <a
- href={link.url}
- target="_blank"
- rel="noopener noreferrer"
- onContextMenu={(e) => handleContextMenu(e, link)}
+ <button
+ type="button"
+ onClick={() => void openUrl(link.url).catch(() => {
+ toast.error(`Couldn't open "${link.label}". Check the saved URL and try again.`)
+ })}
  className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-border/60 p-3 text-center transition-all hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
  style={{ backgroundColor: link.color +"18" }}
  aria-label={`Open ${link.label}: ${destination}`}
@@ -193,11 +192,10 @@ export function QuickLinks() {
  <span className="w-full truncate text-micro leading-none text-muted-foreground/70">
  {destination}
  </span>
- </a>
+ </button>
  <button
  type="button"
  onClick={() => handleEditLink(link)}
- onContextMenu={(e) => handleContextMenu(e, link)}
  className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-background/90 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border/80 backdrop-blur transition-all hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 group-hover:opacity-100"
  aria-label={`Edit ${link.label}`}
  >
@@ -210,40 +208,17 @@ export function QuickLinks() {
  )}
  </div>
 
- {contextMenu && (
- <div
- ref={contextMenuRef}
- className="fixed z-50 min-w-35 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
- style={{ top: contextMenu.y, left: contextMenu.x }}
- >
- <button
- className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
- onClick={() => {
- handleEditLink(contextMenu.link)
- setContextMenu(null)
- }}
- >
- <Pencil className="h-3.5 w-3.5" />
- Edit
- </button>
- <button
- className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors"
- onClick={() => {
- handleDeleteLink(contextMenu.link.id)
- setContextMenu(null)
- }}
- >
- <Trash2 className="h-3.5 w-3.5" />
- Remove
- </button>
- </div>
- )}
-
  <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
  <DialogContent className="sm:max-w-lg">
  <DialogHeader>
  <DialogTitle>{editingLink ?"Edit Link" :"Add Quick Link"}</DialogTitle>
  </DialogHeader>
+ <form
+ onSubmit={(event) => {
+ event.preventDefault()
+ handleSaveLink()
+ }}
+ >
  <div className="grid gap-4 py-1">
  <div className="grid gap-2">
  <label className="text-control font-medium text-muted-foreground">Icon</label>
@@ -291,32 +266,53 @@ export function QuickLinks() {
  </div>
  </div>
  <div className="grid gap-2">
- <label className="text-control font-medium text-muted-foreground">Label</label>
+ <label htmlFor={`${fieldId}-label`} className="text-control font-medium text-muted-foreground">Label</label>
  <Input
+ id={`${fieldId}-label`}
+ required
  placeholder="e.g. VCAA English"
  value={linkLabel}
  onChange={(e) => setLinkLabel(e.target.value)}
- onKeyDown={(e) => e.key ==="Enter" && handleSaveLink()}
  />
  </div>
  <div className="grid gap-2">
- <label className="text-control font-medium text-muted-foreground">URL</label>
+ <label htmlFor={`${fieldId}-url`} className="text-control font-medium text-muted-foreground">URL</label>
  <Input
+ id={`${fieldId}-url`}
+ type="url"
+ pattern="https?://.+"
+ required
  placeholder="https://..."
  value={linkUrl}
  onChange={(e) => setLinkUrl(e.target.value)}
- onKeyDown={(e) => e.key ==="Enter" && handleSaveLink()}
  />
  </div>
  </div>
  <DialogFooter>
- <Button variant="ghost" size="sm" onClick={() => setLinkDialogOpen(false)}>
+ {editingLink && (
+ <Button
+ type="button"
+ variant="destructive"
+ size="sm"
+ className="sm:mr-auto"
+ onClick={() => {
+ handleDeleteLink(editingLink.id)
+ setEditingLink(null)
+ setLinkDialogOpen(false)
+ }}
+ >
+ <Trash2 className="h-3.5 w-3.5" />
+ Remove
+ </Button>
+ )}
+ <Button type="button" variant="ghost" size="sm" onClick={() => setLinkDialogOpen(false)}>
  Cancel
  </Button>
- <Button size="sm" onClick={handleSaveLink} disabled={!linkLabel.trim() || !linkUrl.trim()}>
+ <Button type="submit" size="sm" disabled={!linkLabel.trim() || !linkUrl.trim()}>
  {editingLink ?"Save" :"Add"}
  </Button>
  </DialogFooter>
+ </form>
  </DialogContent>
  </Dialog>
  </>

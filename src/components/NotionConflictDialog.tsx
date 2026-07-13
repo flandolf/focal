@@ -1,7 +1,13 @@
 import { useState } from"react"
-import { createPortal } from"react-dom"
-import { AlertTriangle, CheckCircle2, ExternalLink, X } from"lucide-react"
+import { AlertTriangle, CheckCircle2, ExternalLink } from"lucide-react"
 import { Button } from"@/components/ui/button"
+import {
+ Dialog,
+ DialogClose,
+ DialogContent,
+ DialogDescription,
+ DialogTitle,
+} from"@/components/ui/dialog"
 import { ScrollArea } from"@/components/ui/scroll-area"
 import { cn } from"@/lib/utils"
 
@@ -41,8 +47,6 @@ export function NotionConflictDialog({
 }: NotionConflictDialogProps) {
  const [resolutions, setResolutions] = useState<Record<string,"local" |"notion" |"skip">>({})
 
- if (!open || conflicts.length === 0) return null
-
  const handleResolve = (id: string, resolution:"local" |"notion" |"skip") => {
  setResolutions((prev) => ({ ...prev, [id]: resolution }))
  }
@@ -69,39 +73,31 @@ export function NotionConflictDialog({
 
  const formatDate = (dateStr?: string) => {
  if (!dateStr) return"—"
- try {
- return new Date(dateStr).toLocaleDateString("en-AU", {
+ const date = new Date(dateStr)
+ if (!Number.isFinite(date.getTime())) return dateStr
+ return date.toLocaleDateString("en-AU", {
  day:"numeric",
  month:"short",
  year:"numeric",
  })
- } catch {
- return dateStr
- }
  }
 
  const allResolved = conflicts.every((c) => resolutions[c.id])
 
- return createPortal(
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
- <div className="mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl p-5">
+ return (
+ <Dialog open={open && conflicts.length > 0} onOpenChange={onOpenChange}>
+ <DialogContent className="flex max-h-[85vh] flex-col gap-0 sm:max-w-2xl" showCloseButton>
  <div className="mb-4 flex items-start gap-3">
  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
  <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
  </div>
  <div className="flex-1">
- <h3 className="font-heading text-lg font-semibold">Notion Sync Conflicts</h3>
- <p className="mt-1 text-sm text-muted-foreground">
+ <DialogTitle className="font-heading">Notion Sync Conflicts</DialogTitle>
+ <DialogDescription className="mt-1">
  {conflicts.length} item{conflicts.length === 1 ?"" :"s"} were modified in both Focal and Notion.
  Choose which version to keep for each conflict.
- </p>
+ </DialogDescription>
  </div>
- <button
- onClick={() => onOpenChange(false)}
- className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
- >
- <X className="h-4 w-4" />
- </button>
  </div>
 
  <ScrollArea className="min-h-0 flex-1 -mx-2 px-2">
@@ -157,6 +153,7 @@ export function NotionConflictDialog({
  href={conflict.notionVersion.url}
  target="_blank"
  rel="noopener noreferrer"
+ aria-label={`Open ${conflict.title} in Notion`}
  className="text-xs text-muted-foreground hover:text-foreground"
  >
  <ExternalLink className="h-3 w-3" />
@@ -217,16 +214,15 @@ export function NotionConflictDialog({
  Skip All
  </Button>
  <div className="flex gap-2">
- <Button variant="outline" onClick={() => onOpenChange(false)}>
- Cancel
- </Button>
+ <DialogClose asChild>
+ <Button variant="outline">Cancel</Button>
+ </DialogClose>
  <Button onClick={handleResolveAll} disabled={!allResolved}>
  Resolve All ({Object.keys(resolutions).length}/{conflicts.length})
  </Button>
  </div>
  </div>
- </div>
- </div>,
- document.body,
+ </DialogContent>
+ </Dialog>
  )
 }

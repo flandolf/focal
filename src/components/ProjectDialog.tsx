@@ -83,7 +83,7 @@ export function ProjectDialog({
           <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
             <Link className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <p>
-              This assessment links to a folder in another location (e.g., OneDrive). Files are not copied, and the path is synced across devices.
+              This assessment uses an existing folder inside your projects directory. Files stay in place instead of being copied.
             </p>
           </div>
         )}
@@ -110,7 +110,7 @@ export function ProjectDialog({
           <div className="mt-4 space-y-2">
             <div className="text-sm font-medium text-muted-foreground">Folder</div>
             <div className="flex items-center gap-2">
-              <code className="flex-1 rounded-md bg-muted px-2 py-1.5 text-sm font-mono">
+              <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 text-sm font-mono" title={existingProject.folder_path}>
                 {existingProject.folder_path}
               </code>
               {onChangeFolder && (

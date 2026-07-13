@@ -1,8 +1,6 @@
 import type { Project, StudySession } from "@/lib/types"
 import { getSessionSubjectIds, getSessionEffectiveMinutes } from "@/lib/utils"
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
 export type AnalyticsRange = 7 | 30 | 90 | 365 | 0
 
 export interface StudyTimePoint {
@@ -36,6 +34,10 @@ export interface TimeOfDayBucket {
   minutes: number
 }
 
+export interface SubjectTimeOfDayBucket extends TimeOfDayBucket {
+  subjectId: string
+}
+
 export interface SubjectCompletion {
   subjectId: string
   completed: number
@@ -55,6 +57,7 @@ export interface AnalyticsData {
   subjectBreakdown: SubjectMinutes[]
   consistency: { days: ConsistencyDay[]; stats: ConsistencyStats }
   timeOfDay: TimeOfDayBucket[]
+  timeOfDayBySubject: SubjectTimeOfDayBucket[]
   subjectCompletion: SubjectCompletion[]
   efficiency: EfficiencyPoint[]
   hasData: boolean
@@ -62,6 +65,16 @@ export interface AnalyticsData {
 
 function getSessionMinutes(session: StudySession): number {
   return getSessionEffectiveMinutes(session)
+}
+
+function getSessionAnalyticsStart(session: StudySession): number {
+  if (session.execution.state !== "planned") {
+    const intervalStarts = session.execution.intervals
+      .map((interval) => new Date(interval.start).getTime())
+      .filter(Number.isFinite)
+    if (intervalStarts.length > 0) return Math.min(...intervalStarts)
+  }
+  return new Date(session.startTime).getTime()
 }
 
 function toDateString(timestamp: number): string {
@@ -74,23 +87,28 @@ function toDateString(timestamp: number): string {
 
 function getRangeCutoff(range: AnalyticsRange): number {
   if (range === 0) return 0
-  return Date.now() - range * DAY_MS
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - (range - 1))
+  return start.getTime()
 }
 
 function getCompletedSessions(sessions: StudySession[], range: AnalyticsRange): StudySession[] {
   const cutoff = getRangeCutoff(range)
   return sessions.filter((s) => {
     if (s.status !== "completed") return false
-    const start = new Date(s.startTime).getTime()
+    const start = getSessionAnalyticsStart(s)
     if (Number.isNaN(start)) return false
     if (cutoff > 0 && start < cutoff) return false
     return true
   })
 }
 
-function splitMinutesAcrossSubjects(minutes: number, subjectIds: string[]): number {
-  if (subjectIds.length <= 1) return minutes
-  return Math.round(minutes / subjectIds.length)
+function splitMinutesAcrossSubjects(minutes: number, subjectIds: string[]): number[] {
+  if (subjectIds.length <= 1) return [minutes]
+  const base = Math.floor(minutes / subjectIds.length)
+  const remainder = minutes % subjectIds.length
+  return subjectIds.map((_, index) => base + (index < remainder ? 1 : 0))
 }
 
 export function getTimeTrends(
@@ -102,7 +120,7 @@ export function getTimeTrends(
   const dayMap = new Map<string, Map<string, number>>()
 
   completed.forEach((session) => {
-    const dateStr = toDateString(new Date(session.startTime).getTime())
+    const dateStr = toDateString(getSessionAnalyticsStart(session))
     const minutes = getSessionMinutes(session)
     if (minutes <= 0) return
 
@@ -111,9 +129,9 @@ export function getTimeTrends(
     const subjectMap = dayMap.get(dateStr) ?? new Map<string, number>()
 
     if (subjectIds.length > 0) {
-      const minutesPerSubject = splitMinutesAcrossSubjects(minutes, subjectIds)
-      subjectIds.forEach((subjectId) => {
-        subjectMap.set(subjectId, (subjectMap.get(subjectId) ?? 0) + minutesPerSubject)
+      const subjectMinutes = splitMinutesAcrossSubjects(minutes, subjectIds)
+      subjectIds.forEach((subjectId, index) => {
+        subjectMap.set(subjectId, (subjectMap.get(subjectId) ?? 0) + subjectMinutes[index])
       })
     } else {
       subjectMap.set("_unassigned", (subjectMap.get("_unassigned") ?? 0) + minutes)
@@ -153,9 +171,9 @@ export function getSubjectBreakdown(
     if (subjectIds.length === 0) {
       subjectMinutes.set("_unassigned", (subjectMinutes.get("_unassigned") ?? 0) + minutes)
     } else {
-      const minutesPerSubject = splitMinutesAcrossSubjects(minutes, subjectIds)
-      subjectIds.forEach((id) => {
-        subjectMinutes.set(id, (subjectMinutes.get(id) ?? 0) + minutesPerSubject)
+      const shares = splitMinutesAcrossSubjects(minutes, subjectIds)
+      subjectIds.forEach((id, index) => {
+        subjectMinutes.set(id, (subjectMinutes.get(id) ?? 0) + shares[index])
       })
     }
     total += minutes
@@ -178,7 +196,7 @@ export function getConsistencyData(
   const minutesByDay = new Map<string, number>()
 
   completed.forEach((session) => {
-    const dateStr = toDateString(new Date(session.startTime).getTime())
+    const dateStr = toDateString(getSessionAnalyticsStart(session))
     const minutes = getSessionMinutes(session)
     if (minutes > 0) {
       minutesByDay.set(dateStr, (minutesByDay.get(dateStr) ?? 0) + minutes)
@@ -193,7 +211,7 @@ export function getConsistencyData(
   }, null)
   const startDate = range === 0 && earliestCompletedStart != null
     ? new Date(earliestCompletedStart)
-    : new Date(Date.now() - range * DAY_MS)
+    : new Date(range === 0 ? Date.now() : getRangeCutoff(range))
   startDate.setHours(0, 0, 0, 0)
 
   const days: ConsistencyDay[] = []
@@ -209,6 +227,21 @@ export function getConsistencyData(
   return { days, stats }
 }
 
+export function getConsistencyForTimeTrends(
+  days: ConsistencyDay[],
+  points: StudyTimePoint[],
+): { days: ConsistencyDay[]; stats: ConsistencyStats } {
+  const minutesByDay = new Map<string, number>()
+  for (const point of points) {
+    minutesByDay.set(point.date, (minutesByDay.get(point.date) ?? 0) + point.minutes)
+  }
+  const filteredDays = days.map((day) => {
+    const minutes = minutesByDay.get(day.date) ?? 0
+    return { ...day, minutes, level: getHeatLevel(minutes) }
+  })
+  return { days: filteredDays, stats: computeStreaks(filteredDays) }
+}
+
 function getHeatLevel(minutes: number): 0 | 1 | 2 | 3 | 4 {
   if (minutes === 0) return 0
   if (minutes <= 30) return 1
@@ -218,37 +251,32 @@ function getHeatLevel(minutes: number): 0 | 1 | 2 | 3 | 4 {
 }
 
 function computeStreaks(days: ConsistencyDay[]): ConsistencyStats {
-  let currentStreak = 0
   let longestStreak = 0
   let streak = 0
   let totalStudyDays = 0
   let totalMinutes = 0
 
-  for (let i = days.length - 1; i >= 0; i--) {
-    totalMinutes += days[i].minutes
-    if (days[i].minutes > 0) {
+  for (const day of days) {
+    totalMinutes += day.minutes
+    if (day.minutes > 0) {
       totalStudyDays++
+      streak++
+      longestStreak = Math.max(longestStreak, streak)
+    } else {
+      streak = 0
     }
   }
 
   const todayStr = toDateString(Date.now())
-  let checkingCurrent = true
-  for (let i = days.length - 1; i >= 0; i--) {
-    if (days[i].minutes > 0) {
-      streak++
-      if (checkingCurrent && (days[i].date === todayStr || days[i].date < todayStr)) {
-        currentStreak = streak
-      }
-    } else {
-      if (checkingCurrent) {
-        checkingCurrent = false
-        currentStreak = streak
-      }
-      streak = 0
-    }
-    if (streak > longestStreak) longestStreak = streak
+  let currentIndex = days.length - 1
+  if (days[currentIndex]?.date === todayStr && days[currentIndex].minutes === 0) {
+    currentIndex--
   }
-  if (checkingCurrent) currentStreak = streak
+  let currentStreak = 0
+  while (currentIndex >= 0 && days[currentIndex].minutes > 0) {
+    currentStreak++
+    currentIndex--
+  }
 
   const averageMinutesPerDay = days.length > 0 ? Math.round(totalMinutes / days.length) : 0
 
@@ -258,20 +286,50 @@ function computeStreaks(days: ConsistencyDay[]): ConsistencyStats {
 export function getTimeOfDayAnalysis(
   sessions: StudySession[],
   range: AnalyticsRange,
+  projects: Project[] = [],
 ): TimeOfDayBucket[] {
-  const completed = getCompletedSessions(sessions, range)
+  return aggregateTimeOfDay(getTimeOfDayBySubject(sessions, projects, range))
+}
+
+function aggregateTimeOfDay(subjectBuckets: SubjectTimeOfDayBucket[]): TimeOfDayBucket[] {
   const buckets: TimeOfDayBucket[] = Array.from({ length: 24 }, (_, hour) => ({ hour, minutes: 0 }))
-
-  completed.forEach((session) => {
-    const minutes = getSessionMinutes(session)
-    if (minutes <= 0) return
-    const hour = new Date(session.startTime).getHours()
-    if (!Number.isNaN(hour) && hour >= 0 && hour < 24) {
-      buckets[hour].minutes += minutes
-    }
-  })
-
+  for (const bucket of subjectBuckets) buckets[bucket.hour].minutes += bucket.minutes
   return buckets
+}
+
+export function getTimeOfDayBySubject(
+  sessions: StudySession[],
+  projects: Project[],
+  range: AnalyticsRange,
+): SubjectTimeOfDayBucket[] {
+  const completed = getCompletedSessions(sessions, range)
+  const projectsById = new Map(projects.map((project) => [project.id, project]))
+  const buckets = new Map<number, Map<string, number>>()
+
+  for (const session of completed) {
+    const minutes = getSessionMinutes(session)
+    const hour = new Date(getSessionAnalyticsStart(session)).getHours()
+    if (minutes <= 0 || Number.isNaN(hour) || hour < 0 || hour > 23) continue
+    const subjectIds = getSessionSubjectIds(
+      session,
+      session.projectId ? projectsById.get(session.projectId) : undefined,
+    )
+    const subjects = subjectIds.length > 0 ? subjectIds : ["_unassigned"]
+    const shares = splitMinutesAcrossSubjects(minutes, subjects)
+    const hourBuckets = buckets.get(hour) ?? new Map<string, number>()
+    subjects.forEach((subjectId, index) => {
+      hourBuckets.set(subjectId, (hourBuckets.get(subjectId) ?? 0) + shares[index])
+    })
+    buckets.set(hour, hourBuckets)
+  }
+
+  return Array.from(buckets.entries()).flatMap(([hour, subjectBuckets]) =>
+    Array.from(subjectBuckets.entries()).map(([subjectId, minutes]) => ({
+      hour,
+      subjectId,
+      minutes,
+    })),
+  )
 }
 
 export function getSubjectCompletion(
@@ -280,12 +338,14 @@ export function getSubjectCompletion(
   range: AnalyticsRange,
 ): SubjectCompletion[] {
   const cutoff = getRangeCutoff(range)
+  const now = Date.now()
   const subjectStats = new Map<string, { completed: number; total: number }>()
 
   sessions.forEach((session) => {
-    const start = new Date(session.startTime).getTime()
+    const start = getSessionAnalyticsStart(session)
     if (Number.isNaN(start)) return
     if (cutoff > 0 && start < cutoff) return
+    if (start > now) return
 
     const project = projects.find((p) => p.id === session.projectId)
     const subjectIds = getSessionSubjectIds(session, project)
@@ -326,12 +386,12 @@ export function getStudyEfficiency(
     const subjectIds = getSessionSubjectIds(session, project)
     const confidence = session.confidence ?? 3
 
-    const minutesPerSubject = splitMinutesAcrossSubjects(minutes, subjectIds.length > 0 ? subjectIds : ["_unassigned"])
     const subjects = subjectIds.length > 0 ? subjectIds : ["_unassigned"]
+    const subjectMinutes = splitMinutesAcrossSubjects(minutes, subjects)
 
-    subjects.forEach((subjectId) => {
+    subjects.forEach((subjectId, index) => {
       const data = subjectData.get(subjectId) ?? { totalMinutes: 0, totalConfidence: 0, count: 0 }
-      data.totalMinutes += minutesPerSubject
+      data.totalMinutes += subjectMinutes[index]
       data.totalConfidence += confidence
       data.count++
       subjectData.set(subjectId, data)
@@ -357,11 +417,12 @@ export function getAnalyticsData(
   const timeTrends = getTimeTrends(sessions, projects, range)
   const subjectBreakdown = getSubjectBreakdown(sessions, projects, range)
   const consistency = getConsistencyData(sessions, range)
-  const timeOfDay = getTimeOfDayAnalysis(sessions, range)
+  const timeOfDayBySubject = getTimeOfDayBySubject(sessions, projects, range)
+  const timeOfDay = aggregateTimeOfDay(timeOfDayBySubject)
   const subjectCompletion = getSubjectCompletion(sessions, projects, range)
   const efficiency = getStudyEfficiency(sessions, projects, range)
 
   const hasData = sessions.some((s) => s.status === "completed")
 
-  return { timeTrends, subjectBreakdown, consistency, timeOfDay, subjectCompletion, efficiency, hasData }
+  return { timeTrends, subjectBreakdown, consistency, timeOfDay, timeOfDayBySubject, subjectCompletion, efficiency, hasData }
 }

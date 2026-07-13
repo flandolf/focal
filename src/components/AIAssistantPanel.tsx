@@ -360,7 +360,7 @@ export function extractFollowUpPrompts(raw: string): {
 function projectContextLine(project: Project): string {
  const subject = project.subjectId ? ` (subject ${project.subjectId})` :"";
  const deadline = project.deadline ? ` with deadline ${project.deadline}` :"";
- return `User is currently looking at the assessment"${project.name}"${subject}${deadline}.`;
+ return `User is currently looking at the assessment "${project.name}"${subject}${deadline}.`;
 }
 
 function buildContextBits(
@@ -515,7 +515,7 @@ export function buildAssistantOverview(
  ? `${nextDeadline.name} is ${timing}`
  : `${nextDeadline.name} is due ${timing}`,
  detail: plannedDetail,
- prompt: `Help me prepare for"${nextDeadline.name}", due ${nextDeadline.deadline.slice(0, 10)}. Check my current study sessions and suggest the single best next study block.`,
+ prompt: `Help me prepare for "${nextDeadline.name}", due ${nextDeadline.deadline.slice(0, 10)}. Check my current study sessions and suggest the single best next study block.`,
  hasFocalContext: true,
  };
  }
@@ -524,7 +524,7 @@ export function buildAssistantOverview(
  return {
  title: `Plan the next step for ${currentProject.name}`,
  detail: plannedDetail,
- prompt: `I'm working on"${currentProject.name}". Check its details and my current study sessions, then suggest the single best next study block.`,
+ prompt: `I'm working on "${currentProject.name}". Check its details and my current study sessions, then suggest the single best next study block.`,
  hasFocalContext: true,
  };
  }
@@ -595,7 +595,7 @@ Tool rules:
 - After tool results arrive, answer naturally and briefly from the tool result.
 - Do not tell the user to use an external calendar app.
 
-Today is ${contextDay}. Date phrases are relative to this date. Tool range values include this_week, next_7_days, next_14_days, all_upcoming, and all. Use only these event types: ${EVENT_TYPE_ENUM.join(",")}.`;
+Today is ${contextDay}. Date phrases are relative to this date. Tool range values include this_week, next_7_days, next_14_days, all_upcoming, and all. Use only these event types: ${EVENT_TYPE_ENUM.join(", ")}.`;
 }
 
 const SESSION_DRAFT_SCHEMA = {
@@ -1142,7 +1142,7 @@ function isIsoDateTime(value: string | undefined): value is string {
 function normaliseKey(value: string): string {
  return value
  .toLowerCase()
- .replace(/[^a-z0-9]+/g,"")
+ .replace(/[^a-z0-9]+/g," ")
  .trim();
 }
 
@@ -1180,7 +1180,7 @@ function titleCase(value: string): string {
  ? word.toUpperCase()
  : `${word[0].toUpperCase()}${word.slice(1).toLowerCase()}`,
  )
- .join("");
+ .join(" ");
 }
 
 function parseLooseTime(value: string): string | undefined {
@@ -1409,7 +1409,7 @@ function buildEventToolContext(
  (subject) => `- ${subject.id}: ${subject.name} (${subject.shortCode})`,
  )
  .join("\n") ||"No subjects.";
- return `Available event types: ${EVENT_TYPE_ENUM.join(",")}
+ return `Available event types: ${EVENT_TYPE_ENUM.join(", ")}
 
 Subjects:
 ${subjectLines}
@@ -1654,8 +1654,8 @@ function formatSessionLine(
  const subjectLabels =
  session.subjectIds
  .map((id) => projectSubjectLabel(subjects, id))
- .join(",") ||"no subject";
- const projectLabel = project ? `; project"${project.name}"` :"";
+ .join(", ") ||"no subject";
+ const projectLabel = project ? `; project "${project.name}"` :"";
  const confidence = session.confidence
  ? `; confidence ${session.confidence}/5`
  :"";
@@ -1779,7 +1779,7 @@ export function prepareStudySessionUpdate(
  !(context.projects ?? []).some((project) => project.id === projectId)
  ) {
  return {
- error: `Project id"${projectId}" does not exist, so I did not update the session.`,
+ error: `Project id "${projectId}" does not exist, so I did not update the session.`,
  };
  }
  const nextStart = updates.startTime ?? session.startTime;
@@ -2357,7 +2357,7 @@ export function AIAssistantPanel({
  async (data: EventToolData): Promise<string> => {
  if (!onCreateEvent) return"Event creation is not available here.";
  if (!data.title || !data.eventType || !isIsoDateTime(data.startTime)) {
- return `I need a title, event type (${EVENT_TYPE_ENUM.join(",")}), and date/time before I can create that event.`;
+ return `I need a title, event type (${EVENT_TYPE_ENUM.join(", ")}), and date/time before I can create that event.`;
  }
  if (data.endTime && !isIsoDateTime(data.endTime))
  return"The event end time was not a valid ISO date.";
@@ -2365,7 +2365,7 @@ export function AIAssistantPanel({
  data.subjectId &&
  !(subjects ?? []).some((subject) => subject.id === data.subjectId)
  ) {
- return `I couldn't find subject id"${data.subjectId}", so I didn't create the event.`;
+ return `I couldn't find subject id "${data.subjectId}", so I didn't create the event.`;
  }
  const result = await onCreateEvent({
  title: data.title,
@@ -2450,7 +2450,7 @@ export function AIAssistantPanel({
  data.subjectId &&
  !(subjects ?? []).some((subject) => subject.id === data.subjectId)
  ) {
- return `Subject id"${data.subjectId}" does not exist; event was not updated.`;
+ return `Subject id "${data.subjectId}" does not exist; event was not updated.`;
  }
  const result = await onUpdateEvent({
  id: event.id,
@@ -2471,16 +2471,16 @@ export function AIAssistantPanel({
  : event.finishedAt),
  });
  return result === false
- ? `Could not update"${event.title}".`
- : `Updated"${data.title ?? event.title}".`;
+ ? `Could not update "${event.title}".`
+ : `Updated "${data.title ?? event.title}".`;
  }
 
  if (call.action ==="delete_event") {
  if (!onDeleteEvent) return"Event deletion is not available here.";
  const result = await onDeleteEvent(event.id);
  return result === false
- ? `Deletion cancelled for"${event.title}".`
- : `Deleted"${event.title}".`;
+ ? `Deletion cancelled for "${event.title}".`
+ : `Deleted "${event.title}".`;
  }
 
  return null;
@@ -2526,7 +2526,7 @@ export function AIAssistantPanel({
  projectId &&
  !(projects ?? []).some((project) => project.id === projectId)
  ) {
- return `Project id"${projectId}" does not exist, so I did not create the session.`;
+ return `Project id "${projectId}" does not exist, so I did not create the session.`;
  }
  const result = await onCreateSession({
  title,
@@ -2738,7 +2738,7 @@ ${text}`,
  const call = normaliseEventToolCall(raw);
  if (call.action ==="none") {
  return hasEventMutationIntent(text)
- ? `Yes. Tell me the event title, date/time, and type (${EVENT_TYPE_ENUM.join(",")}), and I can add or update it in Focal.`
+ ? `Yes. Tell me the event title, date/time, and type (${EVENT_TYPE_ENUM.join(", ")}), and I can add or update it in Focal.`
  : null;
  }
  return executeEventToolCall(call, looseCreate);
@@ -3645,7 +3645,7 @@ function Bubble({
  {message.content}
  </ReactMarkdown>
  {message.content.length === 0 && (
- <span className="ml-0 inline-flex animate-pulse text-muted-foreground">
+ <span className="ml-0 inline-flex text-muted-foreground motion-safe:animate-pulse">
  ▍
  </span>
  )}

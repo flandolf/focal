@@ -5,6 +5,7 @@ import {
   useCallback,
   useReducer,
   useMemo,
+  useId,
   memo,
 } from "react";
 import { createPortal } from "react-dom";
@@ -176,6 +177,16 @@ export function advanceTimer(
   }
 
   return next;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- exported for the runnable timer self-check
+export function closeRunningInterval(
+  intervals: StudySession["execution"]["intervals"],
+  end: string,
+) {
+  return intervals.map((interval, index, items) =>
+    index === items.length - 1 && !interval.end ? { ...interval, end } : interval,
+  );
 }
 
 function getInitialState(settings: TimerSettings): TimerState {
@@ -350,15 +361,11 @@ function formatMinutes(totalMinutes: number) {
 }
 
 function getSessionMinutes(session: StudySession, now?: Date) {
-  const startMs = new Date(session.startTime).getTime();
-  const plannedEndMs = new Date(session.endTime).getTime();
-  const endMs =
-    session.status === "in-progress" && now
-      ? Math.min(plannedEndMs, now.getTime())
-      : plannedEndMs;
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs)
-    return 0;
-  return Math.round((endMs - startMs) / 60000);
+  return Math.round(session.execution.intervals.reduce((total, interval) => {
+    const start = new Date(interval.start).getTime();
+    const end = interval.end ? new Date(interval.end).getTime() : now?.getTime();
+    return total + (Number.isFinite(start) && end && end > start ? end - start : 0);
+  }, 0) / 60000);
 }
 
 function getTodayRange(now: Date) {
@@ -383,6 +390,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
   onDeleteSession,
 }: StudyTimerProps) {
   const [expanded, setExpanded] = useState(false);
+  const expandedPanelId = useId();
   const [focusViewOpen, setFocusViewOpen] = useState(false);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
   const [settings, setSettings] = useState<TimerSettings>(getInitialSettings);
@@ -537,15 +545,16 @@ const StudyTimerInner = memo(function StudyTimerInner({
           activeSessionRef.current ??
           sessions.find((item) => item.id === sessionId) ??
           null;
+        if (!session) return false;
         const endTime = nextEndTime.toISOString();
-        const activeDurations = session?.activeDurations?.map((period, index, periods) =>
-          index === periods.length - 1 ? { ...period, end: endTime } : period,
+        const intervals = closeRunningInterval(session.execution.intervals, endTime);
+        const blocks = intervals.flatMap((interval) => interval.end
+          ? [{ start: interval.start, end: interval.end }]
+          : [],
         );
         const updates = {
-          endTime,
-          ...(activeDurations ? { activeDurations } : {}),
-          status: "completed",
-          completedAt: endTime,
+          ...(blocks.length ? { schedule: { blocks } } : {}),
+          execution: { state: "completed", intervals, completedAt: endTime } as const,
         } satisfies Partial<Omit<StudySession, "id" | "created_at">>;
         await onUpdateSession(sessionId, updates);
         activeSessionRef.current = session ? { ...session, ...updates } : null;
@@ -556,6 +565,8 @@ const StudyTimerInner = memo(function StudyTimerInner({
         activeSessionIdRef.current = null;
         activeSessionRef.current = null;
         setActiveSessionId(null);
+        setRecoverySessionId(null);
+        setRecoveryDialogOpen(false);
         return true;
       } catch (e) {
         console.error("Failed to complete session:", e);
@@ -575,22 +586,15 @@ const StudyTimerInner = memo(function StudyTimerInner({
   const handleRecoveryFinish = useCallback(async () => {
     if (!recoverySessionId) return;
     try {
-      const completedAt = new Date().toISOString();
-      await onUpdateSession(recoverySessionId, {
-        endTime: completedAt,
-        status: "completed",
-        completedAt,
-      });
-      activeSessionIdRef.current = null;
-      activeSessionRef.current = null;
-      setActiveSessionId(null);
-      setRecoverySessionId(null);
-      setRecoveryDialogOpen(false);
-      dispatch({ type: "RESET", settings });
+      if (await completeActiveSession()) {
+        setRecoverySessionId(null);
+        setRecoveryDialogOpen(false);
+        dispatch({ type: "RESET", settings });
+      }
     } catch (e) {
       console.error("Failed to complete recovered session:", e);
     }
-  }, [recoverySessionId, onUpdateSession, settings]);
+  }, [recoverySessionId, completeActiveSession, settings]);
 
   const handleRecoveryDiscard = useCallback(async () => {
     if (!recoverySessionId || !onDeleteSession) return;
@@ -615,9 +619,15 @@ const StudyTimerInner = memo(function StudyTimerInner({
       !state.studyOvertime &&
       activeSessionIdRef.current
     ) {
-      void completeActiveSession();
+      const session = sessions.find((item) => item.id === activeSessionIdRef.current);
+      const scheduledEnd = session ? new Date(session.endTime) : null;
+      void completeActiveSession(
+        scheduledEnd && Number.isFinite(scheduledEnd.getTime()) && scheduledEnd < new Date()
+          ? scheduledEnd
+          : new Date(),
+      );
     }
-  }, [state.mode, state.studyOvertime, completeActiveSession]);
+  }, [state.mode, state.studyOvertime, completeActiveSession, sessions]);
 
   useEffect(() => {
     localStorage.setItem(TIMER_SETTINGS_KEY, JSON.stringify(settings));
@@ -904,28 +914,23 @@ const StudyTimerInner = memo(function StudyTimerInner({
         if (!session) return;
         const now = new Date();
         const nowIso = now.toISOString();
-        const activeDurations = session.activeDurations?.length
-          ? running
-            ? session.activeDurations.map((period, index, periods) =>
-                index === periods.length - 1 ? { ...period, end: nowIso } : period,
-              )
-            : [
-                ...session.activeDurations,
-                {
-                  start: nowIso,
-                  end: new Date(
-                    now.getTime() +
-                      (isStudyOvertime
-                        ? settings.workMinutes * 60
-                        : secondsLeft) *
-                        1000,
-                  ).toISOString(),
-                },
-              ]
-          : [{ start: session.startTime, end: nowIso }];
-        const endTime = activeDurations[activeDurations.length - 1].end;
-        await onUpdateSession(session.id, { activeDurations, endTime });
-        activeSessionRef.current = { ...session, activeDurations, endTime };
+        const intervals = running
+          ? closeRunningInterval(session.execution.intervals, nowIso)
+          : [...session.execution.intervals, {
+              start: nowIso,
+              source: "pomodoro" as const,
+              cycleNumber: cycles + 1,
+            }];
+        const blocks = intervals.map((interval) => ({
+          start: interval.start,
+          end: interval.end ?? new Date(now.getTime() + secondsLeft * 1000).toISOString(),
+        }));
+        const updates = {
+          schedule: { blocks },
+          execution: { state: "in-progress", intervals } as const,
+        };
+        await onUpdateSession(session.id, updates);
+        activeSessionRef.current = { ...session, ...updates };
       } catch (e) {
         console.error(`Failed to ${running ? "pause" : "resume"} session:`, e);
         return;
@@ -1152,9 +1157,12 @@ const StudyTimerInner = memo(function StudyTimerInner({
         <div className="px-2 py-1.5">
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => setExpanded(!expanded)}
               className="flex min-h-8 flex-1 items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
               aria-label={expanded ? "Collapse Pomodoro timer" : "Expand Pomodoro timer"}
+              aria-expanded={expanded}
+              aria-controls={expandedPanelId}
             >
               <Timer className="h-3.5 w-3.5 shrink-0" />
               <span
@@ -1193,6 +1201,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
         <AnimatePresence initial={false}>
           {expanded && (
             <motion.div
+              id={expandedPanelId}
               ref={expandedRef}
               key="expanded"
               initial={reduceMotion ? "visible" : "hidden"}
@@ -1231,7 +1240,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
                   <div className="mx-auto relative h-16 w-16">
                     {/* Flow pressure indicator — pulsing dot when timer is running */}
                     {running && (
-                      <div className="flow-pressure absolute -top-0.5 -right-0.5 z-10 h-2.5 w-2.5 rounded-full bg-primary" />
+                      <div className="absolute -right-0.5 -top-0.5 z-10 h-2.5 w-2.5 rounded-full bg-primary motion-safe:animate-pulse" />
                     )}
                     <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
                       <circle
@@ -1254,7 +1263,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
                         strokeDashoffset={`${2 * Math.PI * 34 * (1 - progress)}`}
                         strokeLinecap="round"
                         className={cn(
-                          "transition-[stroke-dashoffset] duration-1000",
+                          "transition-[stroke-dashoffset] duration-1000 motion-reduce:transition-none",
                           mode === "work" || isStudyOvertime
                             ? "text-background"
                             : "text-emerald-500",

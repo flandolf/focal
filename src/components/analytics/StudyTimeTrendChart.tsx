@@ -1,4 +1,5 @@
 import { useMemo } from "react"
+import { useReducedMotion } from "framer-motion"
 import {
   ResponsiveContainer,
   AreaChart,
@@ -42,6 +43,7 @@ function formatTotalMinutes(m: number) {
 }
 
 export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
+  const reduceMotion = useReducedMotion() === true
   const { chartData, subjectIds, totalMinutes, summaries } =
     useMemo(() => {
       const dayMap = new Map<string, Map<string, number>>()
@@ -156,6 +158,8 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
                 fill={color}
                 fillOpacity={0.3}
                 strokeWidth={1.5}
+                isAnimationActive={!reduceMotion}
+                animationDuration={200}
               />
             )
           })}

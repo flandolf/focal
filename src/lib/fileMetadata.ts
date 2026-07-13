@@ -7,7 +7,7 @@ export interface FileMeta {
   isFavorite?: boolean
 }
 
-type MetadataMap = Record<string, FileMeta>
+export type MetadataMap = Record<string, FileMeta>
 
 let _cache: MetadataMap | null = null
 let _cacheKey = ""
@@ -53,7 +53,7 @@ export async function setFileTags(
   filePaths: string[],
   tags: FileTag[],
 ): Promise<void> {
-  const meta = await loadFileMetadata()
+  const meta = { ...await loadFileMetadata() }
   for (const fp of filePaths) {
     const existing = meta[fp] ?? {}
     meta[fp] = { ...existing, tags: tags.length > 0 ? [...tags] : undefined }
@@ -65,7 +65,7 @@ export async function addFileTags(
   filePaths: string[],
   tags: FileTag[],
 ): Promise<void> {
-  const meta = await loadFileMetadata()
+  const meta = { ...await loadFileMetadata() }
   for (const fp of filePaths) {
     const existing = meta[fp] ?? {}
     const currentTags = new Set(existing.tags ?? [])
@@ -79,7 +79,7 @@ export async function removeFileTag(
   filePath: string,
   tag: FileTag,
 ): Promise<void> {
-  const meta = await loadFileMetadata()
+  const meta = { ...await loadFileMetadata() }
   const existing = meta[filePath]
   if (!existing?.tags) return
   const next = existing.tags.filter((t) => t !== tag)
@@ -88,12 +88,88 @@ export async function removeFileTag(
 }
 
 export async function toggleFileFavorite(filePath: string): Promise<boolean> {
-  const meta = await loadFileMetadata()
+  const meta = { ...await loadFileMetadata() }
   const existing = meta[filePath] ?? {}
   const next = !existing.isFavorite
   meta[filePath] = { ...existing, isFavorite: next }
   await saveFileMetadata(meta)
   return next
+}
+
+export async function moveFileMetadata(oldPath: string, newPath: string): Promise<void> {
+  if (oldPath === newPath) return
+  const current = await loadFileMetadata()
+  const meta = relocateFileMetadata(current, oldPath, newPath)
+  if (meta === current) return
+  await saveFileMetadata(meta)
+}
+
+export function relocateFileMetadata(
+  current: MetadataMap,
+  oldPath: string,
+  newPath: string,
+): MetadataMap {
+  const existing = current[oldPath]
+  if (oldPath === newPath || !existing) return current
+  const next = { ...current, [newPath]: existing }
+  delete next[oldPath]
+  return next
+}
+
+export async function moveFileMetadataPrefix(oldPrefix: string, newPrefix: string): Promise<void> {
+  const current = await loadFileMetadata()
+  const next = relocateFileMetadataPrefix(current, oldPrefix, newPrefix)
+  if (next === current) return
+  await saveFileMetadata(next)
+}
+
+export async function copyFileMetadataPrefix(oldPrefix: string, newPrefix: string): Promise<void> {
+  const current = await loadFileMetadata()
+  const next = copyFileMetadataPrefixEntries(current, oldPrefix, newPrefix)
+  if (next === current) return
+  await saveFileMetadata(next)
+}
+
+export function relocateFileMetadataPrefix(
+  current: MetadataMap,
+  oldPrefix: string,
+  newPrefix: string,
+): MetadataMap {
+  return remapFileMetadataPrefix(current, oldPrefix, newPrefix, true)
+}
+
+export function copyFileMetadataPrefixEntries(
+  current: MetadataMap,
+  oldPrefix: string,
+  newPrefix: string,
+): MetadataMap {
+  return remapFileMetadataPrefix(current, oldPrefix, newPrefix, false)
+}
+
+function remapFileMetadataPrefix(
+  current: MetadataMap,
+  oldPrefix: string,
+  newPrefix: string,
+  removeSource: boolean,
+): MetadataMap {
+  const oldNormalized = oldPrefix.replace(/\\/g, "/").replace(/\/+$/, "")
+  const newNormalized = newPrefix.replace(/\\/g, "/").replace(/\/+$/, "")
+  const caseInsensitive = /^[a-z]:/i.test(oldNormalized)
+  const comparableOld = caseInsensitive ? oldNormalized.toLowerCase() : oldNormalized
+  let next: MetadataMap | undefined
+
+  for (const [path, metadata] of Object.entries(current)) {
+    const normalized = path.replace(/\\/g, "/")
+    const comparablePath = caseInsensitive ? normalized.toLowerCase() : normalized
+    if (comparablePath !== comparableOld && !comparablePath.startsWith(`${comparableOld}/`)) continue
+    const separator = newPrefix.includes("\\") ? "\\" : "/"
+    const destination = `${newNormalized}${normalized.slice(oldNormalized.length)}`.replace(/\//g, separator)
+    next ??= { ...current }
+    if (removeSource) delete next[path]
+    next[destination] = metadata
+  }
+
+  return next ?? current
 }
 
 /** Merge metadata into FileInfo objects — mutates in place for perf. */
@@ -118,7 +194,7 @@ export async function mergeMetadata<T extends { path: string; tag?: FileTag; tag
 
 /** Clear metadata entries for deleted paths (garbage collection). */
 export async function purgeMetadata(filePaths: string[]): Promise<void> {
-  const meta = await loadFileMetadata()
+  const meta = { ...await loadFileMetadata() }
   let changed = false
   for (const fp of filePaths) {
     if (meta[fp] !== undefined) {

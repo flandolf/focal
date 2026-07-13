@@ -15,6 +15,12 @@ import {
   shouldKeepLocalRow,
 } from "../src/lib/sync/core"
 import type { SyncQueueItem } from "../src/lib/sync/types"
+import {
+  notionEditedTimeLabel,
+  retainFailedNotionConflicts,
+  notionSyncResultSucceeded,
+  notionSyncSettledState,
+} from "../src/hooks/useNotionSync"
 
 const lastSyncAt = "2026-06-13T08:00:00.000Z"
 
@@ -31,6 +37,30 @@ function assertJsonEqual(actual: unknown, expected: unknown, message: string): v
     throw new Error(`${message}: expected ${expectedJson}, got ${actualJson}`)
   }
 }
+
+assertEqual(notionEditedTimeLabel(undefined), "unknown", "missing Notion edit times should be safe")
+assertEqual(notionEditedTimeLabel("not-a-date"), "unknown", "invalid Notion edit times should be safe")
+assertJsonEqual(
+  notionSyncSettledState(true, 123),
+  { status: "success", lastSyncTime: 123 },
+  "successful Notion syncs should advance the timestamp",
+)
+assertJsonEqual(
+  notionSyncSettledState(false, 123),
+  { status: "error" },
+  "failed Notion syncs should remain errors without advancing the timestamp",
+)
+assertEqual(notionSyncResultSucceeded({ pushErrors: [] }), true, "clean Notion syncs should succeed")
+assertEqual(
+  notionSyncResultSucceeded({ pushErrors: ["permission denied"] }),
+  false,
+  "partial Notion push failures should not report success",
+)
+assertJsonEqual(
+  retainFailedNotionConflicts([{ id: "ok" }, { id: "retry" }], new Set(["retry"])),
+  [{ id: "retry" }],
+  "failed Notion conflict resolutions must remain available for retry",
+)
 
 assertEqual(
   shouldEnqueueFileRow(

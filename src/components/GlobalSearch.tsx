@@ -8,6 +8,8 @@ import {
 } from"react";
 import { invoke } from"@tauri-apps/api/core";
 import { openPath } from"@tauri-apps/plugin-opener";
+import { format, parseISO } from"date-fns";
+import { toast } from"sonner";
 import {
  Search,
  X,
@@ -19,8 +21,10 @@ import {
  CalendarDays,
  Plus,
  Sparkles,
+ Settings,
 } from"lucide-react";
 import { Button } from"@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from"@/components/ui/dialog";
 import { Input } from"@/components/ui/input";
 import { ScrollArea } from"@/components/ui/scroll-area";
 import { isMacOS } from"@/lib/platform";
@@ -52,6 +56,7 @@ interface GlobalSearchProps {
  onGoHome?: () => void;
  onGoTimetable?: () => void;
  onGoAnalytics?: () => void;
+ onGoSettings?: () => void;
  onOpenAiAssistant?: () => void;
  open: boolean;
  onOpenChange: (open: boolean) => void;
@@ -105,6 +110,12 @@ function quickActionMatches(action: QuickAction, lowerQuery: string) {
  );
 }
 
+function formatSearchDate(value: string | undefined, pattern = "MMM d, h:mm a") {
+ if (!value) return undefined;
+ const date = parseISO(value);
+ return Number.isNaN(date.getTime()) ? undefined : format(date, pattern);
+}
+
 export function GlobalSearch({
  projects,
  sessions,
@@ -118,6 +129,7 @@ export function GlobalSearch({
  onGoHome,
  onGoTimetable,
  onGoAnalytics,
+ onGoSettings,
  onOpenAiAssistant,
  open,
  onOpenChange,
@@ -127,8 +139,6 @@ export function GlobalSearch({
  const [loading, setLoading] = useState(false);
  const [fileSearchFailed, setFileSearchFailed] = useState(false);
  const [selectedIndex, setSelectedIndex] = useState(-1);
- const inputRef = useRef<HTMLInputElement>(null);
- const containerRef = useRef<HTMLDivElement>(null);
  const resultRefs = useRef<(HTMLButtonElement | null)[]>([]);
  const searchRequestRef = useRef(0);
  const searchId = useId();
@@ -201,6 +211,16 @@ export function GlobalSearch({
  icon: BarChart3,
  run: onGoAnalytics,
  },
+ onGoSettings && {
+ type:"action" as const,
+ id:"open-settings",
+ label:"Open settings",
+ hint:"Manage account, sync, data, and AI models",
+ aliases: ["preferences","account","sync","backup","models"],
+ shortcut: `${modKeyLabel} ,`,
+ icon: Settings,
+ run: onGoSettings,
+ },
  onOpenAiAssistant && {
  type:"action" as const,
  id:"open-ai-assistant",
@@ -218,6 +238,7 @@ export function GlobalSearch({
  modKeyLabel,
  onGoAnalytics,
  onGoHome,
+ onGoSettings,
  onGoTimetable,
  onNewEvent,
  onNewProject,
@@ -234,7 +255,6 @@ export function GlobalSearch({
  setLoading(false);
  setFileSearchFailed(false);
  setSelectedIndex(quickActions.length > 0 ? 0 : -1);
- setTimeout(() => inputRef.current?.focus(), 50);
  }
  }, [open, quickActions.length]);
 
@@ -355,23 +375,6 @@ export function GlobalSearch({
  return () => clearTimeout(timer);
  }, [query, search, projects, sessions, events]);
 
- useEffect(() => {
- if (!open) return;
-
- const handleKeyDown = (e: KeyboardEvent) => {
- if ((e.metaKey || e.ctrlKey) && e.key ==="k") {
- e.preventDefault();
- onOpenChange(!open);
- }
- if (e.key ==="Escape") {
- onOpenChange(false);
- }
- };
-
- window.addEventListener("keydown", handleKeyDown, true);
- return () => window.removeEventListener("keydown", handleKeyDown, true);
- }, [open, onOpenChange]);
-
  const trimmedQuery = query.trim();
  const hasQuery = trimmedQuery.length > 0;
  const lowerQuery = trimmedQuery.toLowerCase();
@@ -404,7 +407,9 @@ export function GlobalSearch({
  } else if (item.type ==="event") {
  onSelectEvent(item.data);
  } else if (item.type ==="file") {
- void openPath(item.data.file.path).catch(() => undefined);
+ void openPath(item.data.file.path).catch(() => {
+ toast.error(`Couldn't open "${item.data.file.name}". It may have been moved or deleted.`);
+ });
  }
  onOpenChange(false);
  };
@@ -446,24 +451,15 @@ export function GlobalSearch({
  }
  }, [selectedIndex]);
 
- if (!open) return null;
-
- return ( <div
- className="fixed inset-0 z-50 flex items-start justify-center px-3 pt-[14vh] backdrop-blur-sm animate-in fade-in duration-100 sm:pt-[18vh]"
- onClick={() => onOpenChange(false)}
- >
- <div
- ref={containerRef}
- role="dialog"
- aria-modal="true"
- aria-labelledby={titleId}
- className="w-full max-w-2xl overflow-hidden rounded-2xl text-popover-foreground outline-none animate-in zoom-in-95 duration-100"
- onClick={(e) => e.stopPropagation()}
+ return ( <Dialog open={open} onOpenChange={onOpenChange}>
+ <DialogContent
+ showCloseButton={false}
+ className="top-[14vh] block max-w-2xl translate-y-0 gap-0 rounded-xl border-border/70 p-0 shadow-md sm:top-[18vh]"
  onKeyDown={handleKeyDown}
  >
- <h2 id={titleId} className="sr-only">
+ <DialogTitle id={titleId} className="sr-only">
  Search
- </h2>
+ </DialogTitle>
  <div id={statusId} className="sr-only" aria-live="polite">
  {loading
  ?"Searching"
@@ -475,7 +471,6 @@ export function GlobalSearch({
  <div className="flex min-h-14 items-center gap-3 border-b px-4">
  <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
  <Input
- ref={inputRef}
  value={query}
  onChange={(e) => {
  const nextQuery = e.target.value;
@@ -581,6 +576,7 @@ export function GlobalSearch({
  </div>
  {results.projects.map((project, idx) => {
  const subject = getSubjectById(project.subjectId);
+ const deadline = formatSearchDate(project.deadline,"MMM d");
  const globalIdx = actionOffset + idx;
  return (
  <button
@@ -607,6 +603,7 @@ export function GlobalSearch({
  <p className="truncate text-sm font-medium">
  {project.name}
  </p>
+ <span className="flex items-center gap-2">
  {subject && (
  <span
  className="rounded px-1.5 py-0.5 text-micro font-medium"
@@ -618,6 +615,12 @@ export function GlobalSearch({
  {subject.shortCode}
  </span>
  )}
+ {deadline && (
+ <span className="text-xs text-muted-foreground">
+ Due {deadline}
+ </span>
+ )}
+ </span>
  </div>
  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
  </button>
@@ -640,7 +643,8 @@ export function GlobalSearch({
  (subjectId) =>
  getSubjectById(subjectId)?.shortCode ?? subjectId,
  )
- .join(",");
+ .join(", ");
+ const sessionDate = formatSearchDate(session.startTime);
  const globalIdx = actionOffset + results.projects.length + idx;
  return (
  <button
@@ -668,7 +672,9 @@ export function GlobalSearch({
  {session.title}
  </p>
  <p className="truncate text-xs text-muted-foreground">
- {project?.name ?? subjectLabel}
+ {[(project?.name ?? subjectLabel) ||"Study session", sessionDate]
+ .filter(Boolean)
+ .join(" · ")}
  </p>
  </div>
  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
@@ -686,6 +692,7 @@ export function GlobalSearch({
  {results.events.map((event, idx) => {
  const subject = getSubjectById(event.subjectId);
  const eventInfo = getEventTypeInfo(event.eventType);
+ const eventDate = formatSearchDate(event.startTime);
  const globalIdx =
  actionOffset + results.projects.length + results.sessions.length + idx;
  return (
@@ -732,6 +739,11 @@ export function GlobalSearch({
  }}
  >
  {subject.shortCode}
+ </span>
+ )}
+ {eventDate && (
+ <span className="text-xs text-muted-foreground">
+ {eventDate}
  </span>
  )}
  </div>
@@ -858,7 +870,7 @@ export function GlobalSearch({
  )}
  </span>
  </div>
- </div>
- </div>
+ </DialogContent>
+ </Dialog>
  );
 }

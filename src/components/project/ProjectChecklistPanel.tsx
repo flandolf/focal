@@ -134,6 +134,8 @@ export function ProjectChecklistPanel({
                   <button
                     type="button"
                     onClick={() => onToggleChecklistItem(item.id)}
+                    aria-label={`${item.completed ? "Mark incomplete" : "Mark complete"}: ${item.text}`}
+                    aria-pressed={item.completed}
                     className={cn(
                       "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors",
                       item.completed
@@ -154,7 +156,8 @@ export function ProjectChecklistPanel({
                   <button
                     type="button"
                     onClick={() => onRemoveChecklistItem(item.id)}
-                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-all hover:text-destructive hover:bg-destructive/10 group-hover:opacity-100"
+                    aria-label={`Remove checklist item: ${item.text}`}
+                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-all hover:text-destructive hover:bg-destructive/10 group-hover:opacity-100 focus-visible:opacity-100"
                   >
                     <Trash2 className="h-2.5 w-2.5" />
                   </button>
@@ -181,6 +184,7 @@ export function ProjectChecklistPanel({
                   variant="ghost"
                   onClick={handleAddItem}
                   disabled={!newItemText.trim()}
+                  aria-label="Add checklist item"
                   className="h-6 w-6 shrink-0 rounded-md"
                 >
                   <Plus className="h-3 w-3" />

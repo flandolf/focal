@@ -88,7 +88,6 @@ import { CustomSubjects } from "@/components/CustomSubjects";
 import { NotionConflictDialog } from "@/components/NotionConflictDialog";
 import { NotionSyncIndicator } from "@/components/NotionSyncIndicator";
 import { SupabaseSyncIndicator } from "@/components/SupabaseSyncIndicator";
-import { AIAssistantPanel } from "@/components/AIAssistantPanel";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -115,6 +114,11 @@ const SettingsView = lazy(() =>
 const AnalyticsView = lazy(() =>
   import("@/components/analytics/AnalyticsView").then((m) => ({
     default: m.AnalyticsView,
+  })),
+);
+const AIAssistantPanel = lazy(() =>
+  import("@/components/AIAssistantPanel").then((m) => ({
+    default: m.AIAssistantPanel,
   })),
 );
 
@@ -399,6 +403,7 @@ function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [subjectsOpen, setSubjectsOpen] = useState(false);
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
+  const [aiAssistantLoaded, setAiAssistantLoaded] = useState(false);
   const [settingsView, setSettingsView] = useState(false);
   const [analyticsView, setAnalyticsView] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -765,6 +770,14 @@ function App() {
     setAnalyticsView(true);
   }, []);
 
+  const handleSelectSettings = useCallback(() => {
+    setSelectedId(null);
+    setHomeSelected(false);
+    setTimetableView(false);
+    setAnalyticsView(false);
+    setSettingsView(true);
+  }, []);
+
   const handleOpenNewSession = useCallback((initialDate?: Date) => {
     setSelectedSession(null);
     setNewItemInitialDate(initialDate);
@@ -779,21 +792,27 @@ function App() {
     setEventDialogOpen(true);
   }, []);
 
+  const handleOpenAiAssistant = useCallback(() => {
+    setAiAssistantLoaded(true);
+    setAiAssistantOpen(true);
+  }, []);
+
   useKeyboardShortcuts({
-    onSearch: () => setSearchOpen(true),
+    onSearch: () => setSearchOpen((open) => !open),
     onNewAssessment: () => setDialogOpen(true),
     onNewEvent: () => handleOpenNewEvent(),
     onNewSession: () => handleOpenNewSession(),
     onGoHome: handleSelectHome,
     onGoTimetable: handleSelectTimetable,
     onGoAnalytics: handleSelectAnalytics,
+    onGoSettings: handleSelectSettings,
+    onOpenAiAssistant: handleOpenAiAssistant,
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
     onZoomIn: handleZoomIn,
     onZoomOut: handleZoomOut,
     onZoomReset: handleZoomReset,
   });
 
-  const handleOpenAiAssistant = useCallback(() => setAiAssistantOpen(true), []);
   const handleOpenAiSettings = useCallback(() => {
     setSettingsView(true);
     setAiAssistantOpen(false);
@@ -804,25 +823,26 @@ function App() {
       const project = projects.find((p) => p.id === projectId);
       if (!project) return;
 
-      const selected = await open({
-        multiple: true,
-        directory: false,
-        defaultPath: await downloadDir(),
-      });
-
-      if (!selected || selected.length === 0) return;
-
       try {
+        const selected = await open({
+          multiple: true,
+          directory: false,
+          defaultPath: await downloadDir(),
+        });
+        if (!selected || selected.length === 0) return;
+
         await invoke("move_files_to_project", {
           files: selected,
           projectName: project.folder_path,
+          copy: true,
         });
         await refreshFileCountForProject(projectId);
         toast.success(
           `Added ${selected.length} file${selected.length === 1 ? "" : "s"} to ${project.name}`,
         );
-      } catch {
-        toast.error("Failed to add files");
+      } catch (e) {
+        await refreshFileCountForProject(projectId);
+        toast.error(`Failed to add all files: ${String(e)}`);
       }
     },
     [projects, refreshFileCountForProject],
@@ -853,7 +873,7 @@ function App() {
         );
         setSelectedId(project.id);
         setHomeSelected(false);
-        toast.success(`Assessment"${data.name}" created`);
+        toast.success(`Assessment "${data.name}" created`);
       } catch (e) {
         toast.error(`Failed to create assessment: ${String(e)}`);
       }
@@ -886,8 +906,8 @@ function App() {
           const sanitised = sanitiseFolderName(data.name);
           if (sanitised && sanitised !== project.folder_path) {
             const confirmed = await confirmAction({
-              title: `Rename folder to"${sanitised}"?`,
-              description: `The folder on disk is currently"${project.folder_path}".`,
+              title: `Rename folder to "${sanitised}"?`,
+              description: `The folder on disk is currently "${project.folder_path}".`,
               actionLabel: "Rename",
               cancelLabel: "Keep",
               duration: 15000,
@@ -914,7 +934,7 @@ function App() {
       const project = projects.find((p) => p.id === id);
       if (!project) return;
       const confirmed = await confirmDestructiveAction({
-        title: `Delete"${project.name}"?`,
+        title: `Delete "${project.name}"?`,
         description: "This also removes associated study sessions.",
         actionLabel: "Delete",
       });
@@ -926,10 +946,10 @@ function App() {
           setHomeSelected(true);
         }
         showUndoToast({
-          message: `Assessment"${project.name}" deleted`,
+          message: `Assessment "${project.name}" deleted`,
           onUndo: async () => {
             await restoreProject(project);
-            toast.success(`Assessment"${project.name}" restored`);
+            toast.success(`Assessment "${project.name}" restored`);
           },
         });
         void requestNotionSync(false);
@@ -988,7 +1008,7 @@ function App() {
           },
           createdVia: "manual",
         });
-        toast.success(`Study session"${data.title}" created`);
+        toast.success(`Study session "${data.title}" created`);
         setSessionDialogOpen(false);
         void pushSessionChange(newSession);
       } catch (e) {
@@ -1043,55 +1063,38 @@ function App() {
         );
 
         if (adjacentSession) {
-          const mergedStart = new Date(
-            Math.min(
-              new Date(adjacentSession.startTime).getTime(),
-              start.getTime(),
-            ),
-          );
-          const mergedEnd = new Date(
-            Math.max(
-              new Date(adjacentSession.endTime).getTime(),
-              end.getTime(),
-            ),
-          );
-
-          const existingDurations =
-            adjacentSession.activeDurations &&
-            adjacentSession.activeDurations.length > 0
-              ? adjacentSession.activeDurations
-              : [
-                  {
-                    start: adjacentSession.startTime,
-                    end: adjacentSession.endTime,
-                  },
-                ];
-          const newActiveDurations = [
-            ...existingDurations,
-            { start: start.toISOString(), end: end.toISOString() },
+          const newIntervals = [
+            ...adjacentSession.execution.intervals,
+            { start: start.toISOString(), source: "pomodoro" as const, cycleNumber: data.cycleNumber },
           ];
+          const newActiveDurations = newIntervals.flatMap((interval) => interval.end
+            ? [{ start: interval.start, end: interval.end }]
+            : [],
+          );
           const mergedDurationMin = Math.round(
-            newActiveDurations.reduce((sum, d) => {
+            (newActiveDurations.reduce((sum, d) => {
               return (
                 sum + (new Date(d.end).getTime() - new Date(d.start).getTime())
               );
-            }, 0) / 60000,
+            }, 0) + data.durationSeconds * 1000) / 60000,
           );
 
           await updateSession(adjacentSession.id, {
-            startTime: mergedStart.toISOString(),
-            endTime: mergedEnd.toISOString(),
-            activeDurations: newActiveDurations,
-            status: "in-progress",
-            completedAt: undefined,
+            schedule: { blocks: [
+              ...newActiveDurations,
+              { start: start.toISOString(), end: end.toISOString() },
+            ] },
+            execution: { state: "in-progress", intervals: newIntervals },
             description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)`,
           });
           toast.success("Pomodoro session merged on calendar");
           const updatedSession = {
             ...adjacentSession,
-            startTime: mergedStart.toISOString(),
-            endTime: mergedEnd.toISOString(),
-            activeDurations: newActiveDurations,
+            schedule: { blocks: [
+              ...newActiveDurations,
+              { start: start.toISOString(), end: end.toISOString() },
+            ] },
+            execution: { state: "in-progress" as const, intervals: newIntervals },
             status: "in-progress" as const,
             completedAt: undefined,
             description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)`,
@@ -1124,7 +1127,6 @@ function App() {
             intervals: [
               {
                 start: blockStart,
-                end: blockEnd,
                 source: "pomodoro",
                 cycleNumber: data.cycleNumber,
               },
@@ -1245,7 +1247,7 @@ function App() {
       try {
         await updateSession(id, updates);
         toast.success(
-          `Study session"${updates.title ?? session.title}" updated`,
+          `Study session "${updates.title ?? session.title}" updated`,
         );
         void pushSessionChange({ ...session, ...updates });
         return true;
@@ -1262,7 +1264,7 @@ function App() {
       const session = sessions.find((s) => s.id === id);
       if (!session) return;
       const confirmed = await confirmDestructiveAction({
-        title: `Delete"${session.title}"?`,
+        title: `Delete "${session.title}"?`,
         description: "This study session will be removed from your calendar.",
         actionLabel: "Delete",
       });
@@ -1308,7 +1310,7 @@ function App() {
     }) => {
       try {
         const created = await addEvent(data);
-        toast.success(`Event"${data.title}" added`);
+        toast.success(`Event "${data.title}" added`);
         setEventDialogOpen(false);
         void pushEventChange(created);
         return true;
@@ -1427,7 +1429,7 @@ function App() {
       const event = events.find((item) => item.id === id);
       if (!event) return false;
       const confirmed = await confirmDestructiveAction({
-        title: `Delete"${event.title}"?`,
+        title: `Delete "${event.title}"?`,
         description: "This event will be removed from your calendar.",
         actionLabel: "Delete",
       });
@@ -1891,7 +1893,7 @@ function App() {
         }>("handle_folder_drop", { sourcePath: path });
         const existingPaths = new Set(projects.map((p) => p.folder_path));
         if (existingPaths.has(result.folder_path)) {
-          toast.error(`A project for"${result.folder_path}" already exists`);
+          toast.error(`A project for "${result.folder_path}" already exists`);
           return;
         }
         const project = await addProject(
@@ -1915,8 +1917,8 @@ function App() {
         setTimetableView(false);
         toast.success(
           result.is_linked
-            ? `Linked"${result.folder_path}"`
-            : `Imported"${result.folder_path}"`,
+            ? `Linked "${result.folder_path}"`
+            : `Imported "${result.folder_path}"`,
         );
       } catch (e) {
         toast.error(`Failed to drop folder: ${String(e)}`);
@@ -1932,7 +1934,7 @@ function App() {
         const copy = await duplicateProject(id);
         setSelectedId(copy.id);
         setHomeSelected(false);
-        toast.success(`Duplicated as"${copy.name}"`);
+        toast.success(`Duplicated as "${copy.name}"`);
       } catch (e) {
         toast.error(`Failed to duplicate: ${String(e)}`);
       }
@@ -2100,7 +2102,7 @@ function App() {
       try {
         saveAsTemplate(projectId, name);
         setTemplates(getTemplates());
-        toast.success(`Template"${name}" saved`);
+        toast.success(`Template "${name}" saved`);
       } catch (e) {
         toast.error(`Failed to save template: ${String(e)}`);
       }
@@ -2122,7 +2124,7 @@ function App() {
         const project = await loadFromTemplate(templateId);
         setSelectedId(project.id);
         setHomeSelected(false);
-        toast.success(`Created"${project.name}" from template`);
+        toast.success(`Created "${project.name}" from template`);
       } catch (e) {
         toast.error(`Failed to load template: ${String(e)}`);
       }
@@ -2168,13 +2170,13 @@ function App() {
       const project = projects.find((p) => p.id === projectId);
       if (!project) return;
 
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
-      if (!selected || typeof selected !== "string") return;
-
       try {
+        const selected = await open({
+          directory: true,
+          multiple: false,
+        });
+        if (!selected || typeof selected !== "string") return;
+
         const folderPath = await invoke<string>("link_folder_as_project", {
           sourcePath: selected,
         });
@@ -2183,11 +2185,11 @@ function App() {
           existingPaths.has(folderPath) &&
           folderPath !== project.folder_path
         ) {
-          toast.error(`A project for"${folderPath}" already exists`);
+          toast.error(`A project for "${folderPath}" already exists`);
           return;
         }
         await changeProjectFolder(projectId, folderPath);
-        toast.success(`Folder changed to"${folderPath}"`);
+        toast.success(`Folder changed to "${folderPath}"`);
       } catch (e) {
         toast.error(`Failed to change folder: ${String(e)}`);
       }
@@ -2486,21 +2488,25 @@ function App() {
                   </motion.div>
                 </AnimatePresence>
               </motion.main>
-              <AIAssistantPanel
-                open={aiAssistantOpen}
-                onOpenChange={setAiAssistantOpen}
-                onOpenSettings={handleOpenAiSettings}
-                sessions={sessions}
-                events={events}
-                projects={projects}
-                subjects={availableSubjects}
-                onCreateSession={handleCreateStudySession}
-                onUpdateSession={handleAiUpdateStudySession}
-                onCreateEvent={handleCreateEvent}
-                onUpdateEvent={handleEditEvent}
-                onDeleteEvent={handleDeleteEvent}
-                contextRefs={{ project: selectedProject }}
-              />
+              {aiAssistantLoaded && (
+                <Suspense fallback={null}>
+                  <AIAssistantPanel
+                    open={aiAssistantOpen}
+                    onOpenChange={setAiAssistantOpen}
+                    onOpenSettings={handleOpenAiSettings}
+                    sessions={sessions}
+                    events={events}
+                    projects={projects}
+                    subjects={availableSubjects}
+                    onCreateSession={handleCreateStudySession}
+                    onUpdateSession={handleAiUpdateStudySession}
+                    onCreateEvent={handleCreateEvent}
+                    onUpdateEvent={handleEditEvent}
+                    onDeleteEvent={handleDeleteEvent}
+                    contextRefs={{ project: selectedProject }}
+                  />
+                </Suspense>
+              )}
             </div>
             <ProjectDialog
               open={dialogOpen}
@@ -2565,6 +2571,7 @@ function App() {
               onGoHome={handleSelectHome}
               onGoTimetable={handleSelectTimetable}
               onGoAnalytics={handleSelectAnalytics}
+              onGoSettings={handleSelectSettings}
               onOpenAiAssistant={handleOpenAiAssistant}
               open={searchOpen}
               onOpenChange={setSearchOpen}

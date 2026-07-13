@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { listen } from "@tauri-apps/api/event"
+import { join } from "@tauri-apps/api/path"
 import { FolderInput, Database, Loader2, FileBox, ArrowUpRight, FolderOpen, RotateCcw, ScanSearch, Link, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getProjectsRootPath, setProjectsRootPath } from "@/lib/settings"
@@ -11,7 +12,7 @@ interface DataSectionProps {
   onOpenExport?: () => void
   onProjectsRootChanged?: () => void
   onScanAndImportProjects?: () => Promise<{ created: string[]; skipped: string[]; failed: string[] }>
-  onLinkFolderAsProject?: (folderPath: string) => Promise<unknown>
+  onLinkFolderAsProject?: (folderPath: string, isLinked?: boolean) => Promise<unknown>
 }
 
 interface Action {
@@ -41,7 +42,13 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
   }, [])
 
   const handleImportFolder = useCallback(async () => {
-    const selected = await open({ directory: true, multiple: false })
+    let selected
+    try {
+      selected = await open({ directory: true, multiple: false })
+    } catch (e) {
+      toast.error(`Could not open folder picker: ${String(e)}`)
+      return
+    }
     if (!selected) return
     setImporting(true)
     setImportResult(null)
@@ -49,17 +56,31 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
     try {
       const name = await invoke<string>("import_folder_to_project", { sourcePath: selected })
       setImportResult({ name })
+      if (onLinkFolderAsProject) {
+        try {
+          const projectsRoot = await invoke<string>("get_projects_directory")
+          await onLinkFolderAsProject(await join(projectsRoot, name), false)
+        } catch (e) {
+          toast.warning(`Folder copied, but it could not be added as an assessment: ${String(e)}`)
+        }
+      }
     } catch (e) {
-      setImportResult({ name: selected.split("/").pop() ?? "Folder", error: String(e) })
+      setImportResult({ name: selected.split(/[\\/]/).pop() ?? "Folder", error: String(e) })
     } finally {
       setImporting(false)
       importTimeoutRef.current = setTimeout(() => setImportProgress(null), 600)
     }
-  }, [])
+  }, [onLinkFolderAsProject])
 
   const handleLinkFolder = useCallback(async () => {
     if (!onLinkFolderAsProject) return
-    const selected = await open({ directory: true, multiple: false })
+    let selected
+    try {
+      selected = await open({ directory: true, multiple: false })
+    } catch (e) {
+      toast.error(`Could not open folder picker: ${String(e)}`)
+      return
+    }
     if (!selected) return
     setLinking(true)
     setLinkResult(null)
@@ -67,11 +88,11 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
       const project = await onLinkFolderAsProject(selected)
       const name = project && typeof project === "object" && "name" in project
         ? String(project.name)
-        : selected.split("/").pop() ?? "Folder"
+        : selected.split(/[\\/]/).pop() ?? "Folder"
       setLinkResult({ name })
       toast.success(`Linked "${name}" as an assessment`)
     } catch (e) {
-      setLinkResult({ name: selected.split("/").pop() ?? "Folder", error: String(e) })
+      setLinkResult({ name: selected.split(/[\\/]/).pop() ?? "Folder", error: String(e) })
       toast.error(`Failed to link folder: ${String(e)}`)
     } finally {
       setLinking(false)
@@ -79,7 +100,13 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
   }, [onLinkFolderAsProject])
 
   const handlePickProjectsRoot = useCallback(async () => {
-    const selected = await open({ directory: true, multiple: false })
+    let selected
+    try {
+      selected = await open({ directory: true, multiple: false })
+    } catch (e) {
+      toast.error(`Could not open folder picker: ${String(e)}`)
+      return
+    }
     if (!selected) return
     try {
       await invoke("set_projects_directory", { path: selected })
@@ -96,9 +123,9 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
   const handleResetProjectsRoot = useCallback(async () => {
     try {
       const dir = await invoke<string>("get_default_documents_dir")
+      await invoke("set_projects_directory", { path: dir })
       setProjectsRootPath(null)
       setProjectsRoot(null)
-      await invoke("set_projects_directory", { path: dir })
       onProjectsRootChanged?.()
       toast.success("Projects folder reset to default")
     } catch (e) {
@@ -119,7 +146,10 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
       if (result.skipped.length > 0) {
         toast.info(`${result.skipped.length} subfolder${result.skipped.length === 1 ? "" : "s"} already had projects`)
       }
-      if (result.created.length === 0 && result.skipped.length === 0) {
+      if (result.failed.length > 0) {
+        toast.error(`${result.failed.length} subfolder${result.failed.length === 1 ? "" : "s"} could not be imported`)
+      }
+      if (result.created.length === 0 && result.skipped.length === 0 && result.failed.length === 0) {
         toast.info("No subfolders found to import")
       }
     } catch (e) {
@@ -178,6 +208,7 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
       onSelect: onOpenExport,
     })
   }
+  const isBusy = importing || scanning || linking
 
   return (
     <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
@@ -204,7 +235,9 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
               <button
                 type="button"
                 onClick={() => { void handleResetProjectsRoot() }}
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background/45 px-2.5 text-caption text-muted-foreground transition-colors hover:bg-background/60"
+                disabled={isBusy}
+                aria-label="Reset projects folder to default"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background/45 px-2.5 text-caption text-muted-foreground transition-colors hover:bg-background/60 disabled:cursor-not-allowed disabled:opacity-60"
                 title="Reset to default"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -214,7 +247,9 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
             <button
               type="button"
               onClick={() => { void handlePickProjectsRoot() }}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-primary/10 px-2.5 text-caption font-medium text-primary transition-colors hover:bg-primary/15"
+              disabled={isBusy}
+              aria-label="Choose projects folder"
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-primary/10 px-2.5 text-caption font-medium text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FolderOpen className="h-3.5 w-3.5" />
               <span className="max-[500px]:hidden">Choose</span>
@@ -229,16 +264,16 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
       <div className="mt-3 grid gap-2">
         {actions.map((action) => {
           const Icon = action.icon
-        const isLoading = (action.id === "import" && importing) || (action.id === "scan" && scanning) || (action.id === "link" && linking)
-        const isImportResult = action.id === "import" && importResult
-        const isLinkResult = action.id === "link" && linkResult
-        const isScanResult = action.id === "scan" && scanResult
+          const isLoading = (action.id === "import" && importing) || (action.id === "scan" && scanning) || (action.id === "link" && linking)
+          const isImportResult = action.id === "import" && importResult
+          const isLinkResult = action.id === "link" && linkResult
+          const isScanResult = action.id === "scan" && scanResult
           return (
             <button
               key={action.id}
               type="button"
               onClick={action.onSelect}
-              disabled={isLoading}
+              disabled={isBusy}
               className={cn(
                 "group/action relative flex w-full items-start gap-3 rounded-lg border border-border/60 bg-background/30 p-3 text-left transition-colors outline-none",
                 "hover:border-muted-foreground/35 hover:bg-background/45",
@@ -273,7 +308,7 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
                 <p className="mt-0.5 text-caption text-muted-foreground/75 text-wrap-balance">
                   {action.description}
                 </p>
-                {importProgress && (
+                {action.id === "import" && importProgress && (
                   <div className="mt-2">
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <div

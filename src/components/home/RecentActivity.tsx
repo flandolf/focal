@@ -1,4 +1,5 @@
 import { format } from"date-fns"
+import { useId } from"react"
 import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
 import { ChevronRight, Activity } from"lucide-react"
 import { staggerContainer, staggerItem, REDUCED_TRANSITION, hoverNudgeRight } from"@/lib/motion"
@@ -47,11 +48,14 @@ export function RecentActivity({
  onSelectEvent,
 }: RecentActivityProps) {
  const reduceMotion = useReducedMotion() === true
+ const contentId = useId()
  return (
  <div>
  <button
  type="button"
  onClick={onToggle}
+ aria-expanded={isOpen}
+ aria-controls={contentId}
  className="flex w-full items-center justify-between gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
  >
  <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
@@ -70,6 +74,7 @@ export function RecentActivity({
  {isOpen && (
  <motion.div
  key="recent-activity-body"
+ id={contentId}
  initial={reduceMotion ? false : { height: 0, opacity: 0 }}
  animate={reduceMotion ? { height:"auto", opacity: 1 } : { height:"auto", opacity: 1, transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] } }}
  exit={reduceMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0, transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] } }}
@@ -78,8 +83,8 @@ export function RecentActivity({
  <motion.div
  className="mt-2.5 space-y-1"
  variants={staggerContainer(0.04, 0.05)}
- initial="initial"
- animate="animate"
+ initial={reduceMotion ? false :"initial"}
+ animate={reduceMotion ? undefined :"animate"}
  >
  {items.length === 0 ? (
  <p className="text-xs text-muted-foreground">

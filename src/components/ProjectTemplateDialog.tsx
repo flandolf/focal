@@ -161,6 +161,7 @@ export function ProjectTemplateDialog({
  size="icon"
  variant="ghost"
  onClick={() => onDeleteTemplate(template.id)}
+ aria-label={`Delete ${template.name} template`}
  className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive"
  >
  <Trash2 className="h-3.5 w-3.5" />

@@ -1,4 +1,3 @@
-import { useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { getSubjectColor } from "@/lib/chartTheme"
 import { getSubjectById } from "@/lib/utils"
@@ -9,8 +8,6 @@ interface SubjectCompletionChartProps {
 }
 
 export function SubjectCompletionChart({ data }: SubjectCompletionChartProps) {
-  const maxRate = useMemo(() => Math.max(...data.map((d) => d.rate), 1), [data])
-
   if (data.length === 0) {
     return (
       <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
@@ -28,8 +25,6 @@ export function SubjectCompletionChart({ data }: SubjectCompletionChartProps) {
         {data.map((item) => {
           const subject = getSubjectById(item.subjectId)
           const color = getSubjectColor(item.subjectId)
-          const barWidth = (item.rate / maxRate) * 100
-
           return (
             <div key={item.subjectId} className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -53,9 +48,9 @@ export function SubjectCompletionChart({ data }: SubjectCompletionChartProps) {
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/50">
                 <div
-                  className="h-full rounded-full transition-all duration-500"
+                  className="h-full rounded-full transition-[width] duration-200 motion-reduce:transition-none"
                   style={{
-                    width: `${barWidth}%`,
+                    width: `${item.rate}%`,
                     backgroundColor: color,
                   }}
                 />

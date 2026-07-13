@@ -1,4 +1,5 @@
-import type { CalendarEvent, PriorityUrgency } from "@/lib/types"
+import { getSessionEffectiveMinutes, getSessionSubjectIds } from "@/lib/utils"
+import type { CalendarEvent, PriorityUrgency, Project, StudySession } from "@/lib/types"
 
 export interface PrepBalanceItem {
   subjectId: string
@@ -11,6 +12,30 @@ export interface PrepBalanceItem {
   nextDate?: Date
   projectId?: string
   event?: CalendarEvent
+}
+
+export function getCompletedStudyMinutesBySubject(
+  sessions: StudySession[],
+  projects: Project[],
+): Record<string, number> {
+  const projectsById = new Map(projects.map((project) => [project.id, project]))
+  const minutesBySubject: Record<string, number> = {}
+
+  for (const session of sessions) {
+    if (session.status !== "completed") continue
+    const subjectIds = getSessionSubjectIds(
+      session,
+      session.projectId ? projectsById.get(session.projectId) : undefined,
+    )
+    const minutes = getSessionEffectiveMinutes(session)
+    if (subjectIds.length === 0 || minutes <= 0) continue
+    const minutesPerSubject = minutes / subjectIds.length
+    for (const subjectId of subjectIds) {
+      minutesBySubject[subjectId] = (minutesBySubject[subjectId] ?? 0) + minutesPerSubject
+    }
+  }
+
+  return minutesBySubject
 }
 
 export function getUrgencyLabel(urgency: PriorityUrgency) {

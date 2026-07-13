@@ -12,7 +12,7 @@ export interface TimePickerProps extends Omit<React.ComponentProps<"input">, "ty
 
 function TimePicker({ label, showIcon = true, wrapperClassName, className, id, ...props }: TimePickerProps) {
   const generatedId = useId()
-  const inputId = id || generatedId
+  const inputId = id ?? generatedId
 
   const input = (
     <div className="relative">

@@ -3,6 +3,7 @@ import { invoke } from"@tauri-apps/api/core"
 import { appDataDir } from"@tauri-apps/api/path"
 import { writeTextFile } from"@tauri-apps/plugin-fs"
 import { Download, Check, Loader2, Upload } from"lucide-react"
+import { toast } from"sonner"
 import { Button } from"@/components/ui/button"
 import {
  Dialog,
@@ -12,7 +13,8 @@ import {
  DialogTitle,
 } from"@/components/ui/dialog"
 import { confirmDestructiveAction } from"@/lib/confirmToast"
-import type { CalendarEvent, Project, StudySession } from"@/lib/types"
+import { parseBackup } from"@/lib/backup"
+import { DEFAULT_SUBFOLDERS, type CalendarEvent, type Project, type StudySession } from"@/lib/types"
 
 interface DataExportProps {
  projects: Project[]
@@ -52,11 +54,13 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  ? JSON.stringify(data, null, 2)
  : toCsv(data)
 
- const blob = new Blob([content], { type:"text/plain;charset=utf-8" })
+ const blob = new Blob([content], {
+ type: format ==="json" ?"application/json;charset=utf-8" :"text/csv;charset=utf-8",
+ })
  const url = URL.createObjectURL(blob)
  const a = document.createElement("a")
  a.href = url
- a.download = `focal-backup-${new Date().toISOString().slice(0, 10)}.${format}`
+ a.download = `focal-${format ==="json" ?"backup" :"data"}-${new Date().toISOString().slice(0, 10)}.${format}`
  document.body.appendChild(a)
  a.click()
  document.body.removeChild(a)
@@ -69,65 +73,65 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  }, 1500)
  } catch (e) {
  console.error("Export failed:", e)
+ toast.error("Couldn't export your data. Try again.")
  } finally {
  setExporting(false)
  }
  }
 
- const handleImport = async () => {
- const confirmed = await confirmDestructiveAction({
- title:"Import backup?",
- description:"This overwrites existing assessments, sessions, and events.",
- actionLabel:"Import",
- })
- if (!confirmed) return
+ const handleImport = () => {
  const input = document.createElement("input")
  input.type ="file"
  input.accept =".json"
  input.onchange = async (e) => {
  const file = (e.target as HTMLInputElement).files?.[0]
  if (!file) return
- setImporting(true)
  try {
  const text = await file.text()
- // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
- const data: Record<string, unknown> = JSON.parse(text)
+ const data = parseBackup(text)
+ const summary = [
+ data.projects && `${data.projects.length} assessment${data.projects.length ===1 ?"" :"s"}`,
+ data.sessions && `${data.sessions.length} session${data.sessions.length ===1 ?"" :"s"}`,
+ data.events && `${data.events.length} event${data.events.length ===1 ?"" :"s"}`,
+ ].filter(Boolean).join(", ")
+ const confirmed = await confirmDestructiveAction({
+ title:"Restore this backup?",
+ description:`Restore ${summary}. Included datasets will replace the data currently in Focal.`,
+ actionLabel:"Restore",
+ })
+ if (!confirmed) return
+ setImporting(true)
  const baseDir = await appDataDir()
 
- const importedAssessments = Array.isArray(data.assessments)
- ? data.assessments
- : Array.isArray(data.projects)
- ? data.projects
- : []
-
  // Assessments are stored in the legacy projects.json file for migration compatibility.
- if (importedAssessments.length > 0) {
- await writeTextFile(
- getAppDataFilePath(baseDir,"projects.json"),
- JSON.stringify(importedAssessments, null, 2),
- )
- for (const project of importedAssessments as { folder_path: string }[]) {
+ if (data.projects) {
+ for (const project of data.projects as { folder_path: string; customSubfolders?: unknown }[]) {
  if (!project.folder_path) continue
- try {
  await invoke("create_project_with_subfolders", {
  projectName: project.folder_path,
- subfolders: ["SACs","Notes","Past-Papers","Exam-Revision","Resources"],
+ subfolders: [
+ ...DEFAULT_SUBFOLDERS,
+ ...(Array.isArray(project.customSubfolders)
+ ? project.customSubfolders.filter((folder): folder is string => typeof folder ==="string")
+ : []),
+ ],
  })
- } catch {
- // folder may already exist
  }
- }
+ await writeTextFile(
+ getAppDataFilePath(baseDir,"projects.json"),
+ JSON.stringify(data.projects, null, 2),
+ )
  }
 
  // Restore sessions
- if (data.sessions && Array.isArray(data.sessions)) {
+ if (data.sessions) {
  await writeTextFile(
  getAppDataFilePath(baseDir,"sessions.json"),
  JSON.stringify(data.sessions, null, 2),
  )
  }
 
- if (data.events && Array.isArray(data.events)) {
+ if (data.events) {
  await writeTextFile(
  getAppDataFilePath(baseDir,"events.json"),
  JSON.stringify(data.events, null, 2),
@@ -142,6 +146,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  }, 800)
  } catch (err) {
  console.error("Import failed:", err)
+ toast.error("Couldn't import that backup. Check the file and try again.")
  } finally {
  setImporting(false)
  }
@@ -162,6 +167,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  <div className="grid gap-5 py-1">
  <div className="flex items-center gap-2">
  <button
+ type="button"
  onClick={() => setFormat("json")}
  className={`min-h-10 flex-1 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
  format ==="json"
@@ -170,9 +176,10 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  }`}
  aria-pressed={format ==="json"}
  >
- JSON
+ JSON backup
  </button>
  <button
+ type="button"
  onClick={() => setFormat("csv")}
  className={`min-h-10 flex-1 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
  format ==="csv"
@@ -181,9 +188,14 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  }`}
  aria-pressed={format ==="csv"}
  >
- CSV
+ CSV spreadsheet
  </button>
  </div>
+ <p className="text-xs text-muted-foreground">
+ {format ==="json"
+ ?"A complete backup that can be restored into Focal."
+ :"A readable spreadsheet export. CSV files cannot be restored into Focal."}
+ </p>
 
  <div className="grid grid-cols-3 gap-2 text-center sm:gap-3">
  <div className="rounded-lg border border-border/60 bg-background/45 p-3">
@@ -202,25 +214,25 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
 
  <div className="flex gap-2"> <Button
  onClick={handleExport}
- disabled={exporting}
+ disabled={exporting || importing}
  className="flex-1 gap-2"
  >
  {exporting ? (
- <Loader2 className="h-4 w-4 animate-spin" />
+ <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
  ) : done ? (
  <Check className="h-4 w-4" />
  ) : (
  <Download className="h-4 w-4" />
  )}
- {done ?"Exported!" :"Export"}
+ {done ?"Downloaded" : format ==="json" ?"Download backup" :"Download CSV"}
  </Button>
- <Button variant="outline" onClick={handleImport} disabled={importing} className="gap-2">
+ <Button variant="outline" onClick={handleImport} disabled={importing || exporting} className="gap-2">
  {importing ? (
- <Loader2 className="h-4 w-4 animate-spin" />
+ <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
  ) : (
  <Upload className="h-4 w-4" />
  )}
- Import
+ Restore
  </Button>
  </div>
  </div>
