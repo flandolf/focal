@@ -3,6 +3,7 @@ import { Archive, CheckCircle2, Star } from"lucide-react"
 import { DialogBody, DialogFooter } from"@/components/ui/dialog"
 import { Button } from"@/components/ui/button"
 import { Input } from"@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
  EmojiPicker,
  FormField,
@@ -65,7 +66,9 @@ export function AssessmentForm({
 
  return (
  <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
- <DialogBody className="grid max-h-[min(68vh,38rem)] gap-5 py-1 pr-1">
+ <DialogBody className="flex max-h-[min(68vh,38rem)]">
+ <ScrollArea className="min-h-0 flex-1">
+ <div className="grid gap-5 py-1 pr-1">
  <div className="grid gap-4 sm:grid-cols-2">
  <FormField label="Name">
  <Input
@@ -146,6 +149,8 @@ export function AssessmentForm({
  </ToggleChip>
  </div>
  )}
+ </div>
+ </ScrollArea>
  </DialogBody>
 
  <DialogFooter className="mt-5">

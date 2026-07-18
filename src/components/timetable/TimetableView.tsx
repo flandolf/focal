@@ -1,2318 +1,429 @@
+import { memo, useEffect, useMemo, useState } from "react"
 import {
- useState,
- useMemo,
- useEffect,
- useCallback,
- useRef,
- memo,
- type PointerEvent as ReactPointerEvent,
-} from"react";
-import { motion, AnimatePresence, useReducedMotion } from"framer-motion";
+  AlertCircle,
+  CalendarClock,
+  CalendarDays,
+  CalendarOff,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  MapPin,
+  Pencil,
+  Plus,
+  Settings2,
+} from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { TimetableManager } from "@/components/timetable/TimetableManager"
 import {
- Clock,
- Pencil,
- Trash2,
- AlertCircle,
- CalendarDays,
- ChevronDown,
- Edit3,
- MapPin,
- Pin,
- PinOff,
- Sparkles,
- Sun,
- CheckCircle2,
- Settings2,
- Eye,
- EyeOff,
- Copy,
- Plus,
- GripVertical,
-} from"lucide-react";
-import { ScrollArea } from"@/components/ui/scroll-area";
-import { Button } from"@/components/ui/button";
-import { Checkbox } from"@/components/ui/checkbox";
+  DEFAULT_VIEW_SETTINGS,
+  getCycleLength,
+  getDayToWeekday,
+  getTimetableConfig,
+  getWeekendTimetables,
+  setTimetableConfig,
+} from "@/lib/settings"
 import {
- Popover,
- PopoverContent,
- PopoverTrigger,
-} from"@/components/ui/popover";
-import { cn, getSubjectById, formatTime } from"@/lib/utils";
-import {
- getDayLabelForDate,
- getTimetableEntriesForDay,
- getCurrentPeriodInfo,
- isTimetableBreakLabel as isBreakLabel,
- reorderPeriodsIntoSlots,
-} from"@/lib/timetable";
-import {
- getTimetableConfig,
- getCycleLength,
- getDayToWeekday,
- getWeekendTimetables,
- setTimetableConfig,
- setTimetableCurrentDayOverride,
-} from"@/lib/settings";
-import { TimetableEditor } from"@/components/timetable/TimetableEditor";
-import { InlineEditDayDialog } from"@/components/timetable/InlineEditDayDialog";
-import { PeriodEditPopover } from"@/components/timetable/PeriodEditPopover";
-import {
- MOTION_DURATION,
- MOTION_EASE,
- staggerContainer,
- staggerItem,
-} from"@/lib/motion";
-import { DEFAULT_VIEW_SETTINGS } from"@/lib/settings";
-import {
- type TimetableDayLabel,
- type Subject,
- type TimetablePeriod,
- type TimetableEntry,
- type TimetableViewSettings,
-} from"@/lib/types";
+  getCurrentPeriodInfo,
+  getDayLabelForDate,
+  getTimetablePeriodError,
+  getTimetablePeriodsForDay,
+  isTimetableBreakLabel,
+  timetableTimeToMinutes,
+} from "@/lib/timetable"
+import type { Subject, TimetableConfig, TimetableDayLabel, TimetablePeriod } from "@/lib/types"
+import { VCE_SUBJECTS } from "@/lib/types"
+import { cn, formatTime } from "@/lib/utils"
 
-// --- Helpers ---
-
-const WEEKDAY_SHORT = [
-"Sun",
-"Mon",
-"Tue",
-"Wed",
-"Thu",
-"Fri",
-"Sat",
-] as const;
-
-function dayLabelsInRange(
- start: number,
- count: number,
- cycleLength: number,
-): TimetableDayLabel[] {
- const out: TimetableDayLabel[] = [];
- for (let i = 0; i < count; i++) {
- const label = ((start - 1 + i) % cycleLength) + 1;
- if (label < 1) continue;
- out.push(label);
- }
- return out;
-}
-
-function allDayLabels(cycleLength: number): TimetableDayLabel[] {
- return Array.from({ length: cycleLength }, (_, i) => i + 1);
-}
-
-interface PeriodDragSource {
- dayLabel: TimetableDayLabel;
- entryIdx: number;
- periodIdx: number;
- period: TimetablePeriod;
- periodLabel: string;
- timeLabel: string;
- color?: string;
-}
-
-interface PeriodDropTarget {
- dayLabel: TimetableDayLabel;
- insertIndex: number;
- yPercent: number;
-}
-
-interface PeriodDragState extends PeriodDragSource {
- pointerId: number;
- x: number;
- y: number;
- offsetX: number;
- offsetY: number;
- width: number;
- height: number;
- target: PeriodDropTarget | null;
-}
-
-function clampNumber(value: number, min: number, max: number): number {
- return Math.min(max, Math.max(min, value));
-}
-
-function findDayEntryIndex(
- entries: Pick<TimetableEntry,"dayLabel">[],
- dayLabel: TimetableDayLabel,
- entryIdx: number,
-): number {
- let seen = 0;
- for (let i = 0; i < entries.length; i++) {
- if (entries[i].dayLabel !== dayLabel) continue;
- if (seen === entryIdx) return i;
- seen++;
- }
- return -1;
-}
-
-function sameDragSource(
- source: Pick<PeriodDragSource,"dayLabel" |"entryIdx" |"periodIdx">,
- dayLabel: TimetableDayLabel,
- entryIdx: number,
- periodIdx: number,
-): boolean {
- return (
- source.dayLabel === dayLabel &&
- source.entryIdx === entryIdx &&
- source.periodIdx === periodIdx
- );
-}
-
-function getPeriodDropTarget(
- clientX: number,
- clientY: number,
-): PeriodDropTarget | null {
- const hit = document.elementFromPoint(clientX, clientY);
- const dayEl = hit?.closest<HTMLElement>("[data-timetable-day]");
- if (!dayEl) return null;
-
- const dayLabel = Number(dayEl.dataset.timetableDay);
- if (!Number.isFinite(dayLabel)) return null;
-
- const timelineEl =
- dayEl.querySelector<HTMLElement>("[data-timetable-day-body]") ?? dayEl;
- const timelineRect = timelineEl.getBoundingClientRect();
- const yPercent = clampNumber(
- ((clientY - timelineRect.top) / Math.max(timelineRect.height, 1)) * 100,
- 1,
- 99,
- );
-
- const periodEls = Array.from(
- dayEl.querySelectorAll<HTMLElement>("[data-timetable-period]"),
- ).sort(
- (a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top,
- );
-
- const insertIndex = periodEls.findIndex((periodEl) => {
- const rect = periodEl.getBoundingClientRect();
- return clientY < rect.top + rect.height / 2;
- });
-
- return {
- dayLabel,
- insertIndex: insertIndex === -1 ? periodEls.length : insertIndex,
- yPercent,
- };
-}
-
-/** Pick a grid column count that keeps the popover tight for any cycle length. */
-function dayPickerCols(cycleLength: number): string {
- if (cycleLength <= 4) return"grid-cols-4";
- if (cycleLength <= 6) return"grid-cols-5";
- if (cycleLength <= 9) return"grid-cols-5";
- if (cycleLength <= 12) return"grid-cols-6";
- return"grid-cols-7";
-}
-
-function timeStringToMinutes(t: string): number {
- const [h, m] = t.split(":").map(Number);
- if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
- return h * 60 + m;
-}
-
-function minutesToTimeString(minutes: number): string {
- const h = Math.min(24, Math.floor(minutes / 60));
- const m = minutes % 60;
- return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-}
-
-function comparePeriodsByStart(a: TimetablePeriod, b: TimetablePeriod): number {
- return timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime);
-}
-
-function getCurrentPeriodProgress(period: TimetablePeriod, now: Date): number {
- const start = timeStringToMinutes(period.startTime);
- const end = timeStringToMinutes(period.endTime);
- if (end <= start) return 0;
- const currentMin = now.getHours() * 60 + now.getMinutes();
- return Math.max(
- 0,
- Math.min(100, ((currentMin - start) / (end - start)) * 100),
- );
-}
+const DAYS_PER_BLOCK = 5
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 
 interface TimetableViewProps {
- customSubjects: Subject[];
+  customSubjects: Subject[]
 }
 
-// --- View settings popover ---
+function dayForDate(config: TimetableConfig, date: Date): TimetableDayLabel | null {
+  return config.currentDayOverride ?? getDayLabelForDate(
+    date,
+    config.day1Starts,
+    config.holidays,
+    getCycleLength(config),
+    getWeekendTimetables(config),
+  )
+}
 
-function ViewSettingsPopover({
- viewSettings,
- onChange,
- isAutoBlock,
- useBlockModel,
- cycleLength,
+function blockDays(selectedDay: TimetableDayLabel, cycleLength: number): TimetableDayLabel[] {
+  const start = Math.floor((selectedDay - 1) / DAYS_PER_BLOCK) * DAYS_PER_BLOCK + 1
+  return Array.from(
+    { length: Math.min(DAYS_PER_BLOCK, cycleLength - start + 1) },
+    (_, index) => start + index,
+  )
+}
+
+function periodProgress(period: TimetablePeriod, now: Date): number {
+  const start = timetableTimeToMinutes(period.startTime)
+  const end = timetableTimeToMinutes(period.endTime)
+  if (start === null || end === null || end <= start) return 0
+  const current = now.getHours() * 60 + now.getMinutes()
+  return Math.min(Math.max(((current - start) / (end - start)) * 100, 0), 100)
+}
+
+function emitTimetableUpdate() {
+  window.dispatchEvent(new CustomEvent("focal-timetable-updated"))
+}
+
+function DayCard({
+  dayLabel,
+  weekday,
+  periods,
+  subjects,
+  isSelected,
+  isToday,
+  now,
+  showLocations,
+  showBreaks,
+  use24Hour,
+  onSelect,
+  onEdit,
 }: {
- viewSettings: TimetableViewSettings;
- onChange: (updated: Partial<TimetableViewSettings>) => void;
- isAutoBlock: number;
- useBlockModel: boolean;
- cycleLength: number;
+  dayLabel: TimetableDayLabel
+  weekday: number
+  periods: TimetablePeriod[]
+  subjects: Map<string, Subject>
+  isSelected: boolean
+  isToday: boolean
+  now: Date
+  showLocations: boolean
+  showBreaks: boolean
+  use24Hour: boolean
+  onSelect: () => void
+  onEdit: () => void
 }) {
- return (
- <Popover>
- <PopoverTrigger asChild>
- <Button
- variant="outline"
- size="icon-sm"
- aria-label="View settings"
- >
- <Settings2 />
- </Button>
- </PopoverTrigger>
- <PopoverContent className="w-60 p-3 space-y-3" align="end">
- {/* View section */}
- <div className="space-y-2">
- <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground/50">
- View
- </p>
- <label className="flex items-center gap-2.5 cursor-pointer select-none">
- <Checkbox
- checked={viewSettings.showAllDays}
- onCheckedChange={(checked) =>
- onChange({ showAllDays: checked === true })
- }
- />
- <span className="flex-1 text-xs leading-tight">
- Show all {cycleLength} days
- </span>
- </label>
- </div>
+  const visiblePeriods = showBreaks
+    ? periods
+    : periods.filter((period) => !isTimetableBreakLabel(period.period))
+  const current = isToday ? getCurrentPeriodInfo(periods, now).current : null
 
- {/* Display section */}
- <div className="space-y-2">
- <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground/50">
- Display
- </p>
- <label className="flex items-center gap-2.5 cursor-pointer select-none">
- <Checkbox
- checked={viewSettings.showLocations}
- onCheckedChange={(checked) =>
- onChange({ showLocations: checked === true })
- }
- />
- <span className="flex-1 text-xs leading-tight">Show locations</span>
- </label>
- <label className="flex items-center gap-2.5 cursor-pointer select-none">
- <Checkbox
- checked={viewSettings.showBreaks}
- onCheckedChange={(checked) =>
- onChange({ showBreaks: checked === true })
- }
- />
- <span className="flex-1 text-xs leading-tight">
- Show breaks (Recess, Lunch…)
- </span>
- </label>
- <label className="flex items-center gap-2.5 cursor-pointer select-none">
- <Checkbox
- checked={viewSettings.use24Hour}
- onCheckedChange={(checked) =>
- onChange({ use24Hour: checked === true })
- }
- />
- <span className="flex-1 text-xs leading-tight">24-hour time</span>
- </label>
- </div>
+  return (
+    <Card
+      size="sm"
+      className={cn(
+        "h-full min-w-0 gap-0 py-0 transition-colors",
+        isSelected && "ring-primary/45",
+        isToday && "bg-primary/[0.025] ring-primary/60",
+      )}
+    >
+      <CardHeader className="border-b border-border/70 px-3 py-3">
+        <button type="button" onClick={onSelect} className="min-w-0 text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring">
+          <div className="flex items-center gap-2">
+            <CardTitle>Day {dayLabel}</CardTitle>
+            {isToday && <Badge variant="secondary">Today</Badge>}
+          </div>
+          <p className="mt-0.5 text-caption text-muted-foreground">{WEEKDAY_SHORT[weekday] ?? "Day"} · {visiblePeriods.length} {visiblePeriods.length === 1 ? "entry" : "entries"}</p>
+        </button>
+        <CardAction>
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onEdit} aria-label={`Edit Day ${dayLabel}`}>
+            <Pencil />
+          </Button>
+        </CardAction>
+      </CardHeader>
 
- {/* Week block section */}
- {useBlockModel ? (
- <div className="space-y-2">
- <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground/50">
- Week block
- </p>
- <div className="flex gap-1">
- {([null, 1, 2] as const).map((block) => (
- <Button
- key={block === null ?"auto" : `block-${block}`}
- variant={viewSettings.manualBlock === block ? "secondary" : "outline"}
- size="sm"
- onClick={() => onChange({ manualBlock: block })}
- className="flex-1"
- aria-pressed={viewSettings.manualBlock === block}
- >
- {block === null
- ?"Auto"
- : `Block ${String.fromCharCode(64 + block)}`}
- </Button>
- ))}
- </div>
- <p className="text-xs text-muted-foreground/50">
- Auto = Block {String.fromCharCode(64 + isAutoBlock)} (Day{""}
- {isAutoBlock === 1 ?"1–5" :"6–10"})
- </p>
- </div>
- ) : ( <p className="text-xs text-muted-foreground/50">
- Week blocks only apply to 10-day cycles — your {cycleLength}-day
- cycle always shows all days.
- </p>
- )}
- </PopoverContent>
- </Popover>
- );
+      <CardContent className="flex-1 px-0 py-1">
+        {visiblePeriods.length === 0 ? (
+          <button type="button" onClick={onEdit} className="flex min-h-36 w-full flex-col items-center justify-center px-4 text-center text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+            <Plus className="mb-2 h-4 w-4" />
+            <span className="text-caption">Add entries for Day {dayLabel}</span>
+          </button>
+        ) : (
+          <ol className="divide-y divide-border/60">
+            {visiblePeriods.map((period, index) => {
+              const subject = subjects.get(period.subject)
+              const isCurrent = current === period
+              const error = getTimetablePeriodError(period)
+              const isBreak = isTimetableBreakLabel(period.period)
+              return (
+                <li
+                  key={`${period.startTime}-${period.period}-${index}`}
+                  className={cn(
+                    "relative grid grid-cols-[3.6rem_minmax(0,1fr)] gap-2 overflow-hidden px-3 py-2.5",
+                    isBreak && "bg-muted/30",
+                    isCurrent && "bg-primary/[0.07]",
+                  )}
+                >
+                  <time className="pt-0.5 text-micro font-medium tabular-nums text-muted-foreground">
+                    {formatTime(period.startTime, use24Hour)}
+                  </time>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/35"
+                        style={subject ? { backgroundColor: subject.color } : undefined}
+                      />
+                      <p className="truncate text-sm font-medium leading-tight">
+                        {subject?.shortCode ?? subject?.name ?? (period.subject ? period.subject : period.period)}
+                      </p>
+                      {isCurrent && <span className="ml-auto shrink-0 text-micro font-semibold text-primary">Now</span>}
+                    </div>
+                    {Boolean(subject ?? period.subject) && <p className="mt-1 truncate text-caption text-muted-foreground">{period.period}</p>}
+                    <div className="mt-1 flex min-w-0 items-center gap-1.5 text-micro text-muted-foreground">
+                      <Clock3 className="h-3 w-3" />
+                      <span className="shrink-0 tabular-nums">to {formatTime(period.endTime, use24Hour)}</span>
+                      {showLocations && period.location && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <MapPin className="h-3 w-3" />
+                          <span className="truncate">{period.location}</span>
+                        </>
+                      )}
+                    </div>
+                    {error && (
+                      <p className="mt-1 flex items-center gap-1 text-micro text-destructive">
+                        <AlertCircle className="h-3 w-3" />
+                        {error}
+                      </p>
+                    )}
+                  </div>
+                  {isCurrent && (
+                    <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary/15">
+                      <span className="block h-full bg-primary" style={{ width: `${periodProgress(period, now)}%` }} />
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
-// --- Live"now/next" hero card ---
-
-function LiveStatusCard({
- current,
- next,
- periods,
- now,
- reduceMotion,
- use24Hour,
-}: {
- current: TimetablePeriod | null;
- next: TimetablePeriod | null;
- periods: TimetablePeriod[];
- now: Date;
- reduceMotion: boolean;
- use24Hour?: boolean;
-}) {
- // No periods on the current day — a free day
- if (periods.length === 0) {
- return (
- <motion.div
- initial={reduceMotion ? false : { opacity: 0, y: 6 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="flex items-center gap-3 rounded-lg px-3 py-2"
- >
- <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/40">
- <Sparkles className="h-4 w-4 text-muted-foreground/60" />
- </div>
- <div className="min-w-0">
- <p className="text-sm font-medium">No classes scheduled</p>
- <p className="text-xs text-muted-foreground/70">
- A free day — add periods from the edit menu.
- </p>
- </div>
- </motion.div>
- );
- }
-
- // All periods are in the past — school day is done
- if (!current && !next) {
- return (
- <motion.div
- initial={reduceMotion ? false : { opacity: 0, y: 6 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="flex items-center gap-3 rounded-lg px-3 py-2"
- >
- <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/12">
- <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
- </div>
- <div className="min-w-0">
- <p className="text-sm font-medium">School day done</p>
- <p className="text-xs text-muted-foreground/70">
- All {periods.length} period{periods.length !== 1 ?"s" :""}{""}
- complete — see you tomorrow.
- </p>
- </div>
- </motion.div>
- );
- }
-
- // Period in progress
- if (current) {
- const subject = getSubjectById(current.subject);
- const progress = getCurrentPeriodProgress(current, now);
- const endMin = timeStringToMinutes(current.endTime);
- const remaining = Math.max(
- 0,
- endMin - (now.getHours() * 60 + now.getMinutes()),
- );
-
- return (
- <motion.div
- initial={reduceMotion ? false : { opacity: 0, y: 6 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="relative overflow-hidden rounded-lg px-3 py-2"
- >
- <div className="flex items-start justify-between gap-3">
- <div className="min-w-0 flex-1 space-y-1">
- <div className="flex items-center gap-1.5">
- <span className="relative flex h-1.5 w-1.5">
- <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-60 motion-safe:animate-ping" />
- <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
- </span>
- <span className="text-micro font-bold uppercase tracking-widest text-primary">
- Happening now
- </span>
- </div>
- <div className="flex items-center gap-1.5">
- {subject && (
- <div
- className="h-4 w-0.5 rounded-full"
- style={{ backgroundColor: subject.color }}
- />
- )}
- <h3
- className="truncate font-heading text-base font-semibold"
- style={subject ? { color: subject.color } : undefined}
- >
- {subject?.name ?? current.subject}
- </h3>
- </div>
- <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
- <span className="tabular-nums">
- {formatTime(current.startTime, use24Hour ?? false)} –{""}
- {formatTime(current.endTime, use24Hour ?? false)}
- </span>
- {current.location && (
- <>
- <span className="text-muted-foreground/30">·</span>
- <span className="flex items-center gap-1">
- <MapPin className="h-2.5 w-2.5" />
- {current.location}
- </span>
- </>
- )}
- </div>
- </div>
- <div className="shrink-0 text-right">
- <div className="font-heading text-xl font-semibold tabular-nums text-primary">
- {remaining}
- </div>
- <div className="text-micro font-medium uppercase tracking-wider text-muted-foreground/60">
- min left
- </div>
- </div>
- </div>
-
- {/* Progress bar */}
- <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-primary/10">
- <motion.div
- className="h-full rounded-full bg-primary"
- initial={reduceMotion ? false : { width: 0 }}
- animate={{ width: `${progress}%` }}
- transition={{ duration: MOTION_DURATION.page, ease: MOTION_EASE }}
- />
- </div>
-
- {next && (
- <NextUpHint
- next={next}
- reduceMotion={reduceMotion}
- use24Hour={use24Hour}
- />
- )}
- </motion.div>
- );
- }
-
- // No period in progress, but a next one
- if (next) {
- const subject = getSubjectById(next.subject);
- const startMin = timeStringToMinutes(next.startTime);
- const currentMin = now.getHours() * 60 + now.getMinutes();
- const minutesUntil = Math.max(0, startMin - currentMin);
-
- return (
- <motion.div
- initial={reduceMotion ? false : { opacity: 0, y: 6 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="flex items-center gap-2 rounded-lg px-3 py-2"
- >
- <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40">
- <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
- </div>
- <div className="min-w-0 flex-1">
- <p className="text-micro font-bold uppercase tracking-widest text-muted-foreground/70">
- Up next
- </p>
- <div className="mt-px flex items-center gap-1">
- {subject && (
- <span
- className="h-2 w-0.5 shrink-0 rounded-full"
- style={{ backgroundColor: subject.color }}
- />
- )}
- <p
- className="truncate text-xs font-semibold"
- style={subject ? { color: subject.color } : undefined}
- >
- {subject?.name ?? next.subject}
- </p>
- <span className="text-micro text-muted-foreground/70 tabular-nums">
- at {formatTime(next.startTime, use24Hour ?? false)}
- </span>
- </div>
- </div>
- <div className="shrink-0 text-right">
- <div className="font-heading text-base font-semibold tabular-nums">
- {minutesUntil}
- </div>
- <div className="text-micro font-medium uppercase tracking-wider text-muted-foreground/60">
- min
- </div>
- </div>
- </motion.div>
- );
- }
-
- return null;
-}
-
-function NextUpHint({
- next,
- reduceMotion,
- use24Hour,
-}: {
- next: TimetablePeriod;
- reduceMotion: boolean;
- use24Hour?: boolean;
-}) {
- const subject = getSubjectById(next.subject);
- return (
- <motion.div
- initial={reduceMotion ? false : { opacity: 0 }}
- animate={{ opacity: 1 }}
- transition={{
- duration: MOTION_DURATION.normal,
- ease: MOTION_EASE,
- delay: 0.12,
- }}
- className="mt-2 flex items-center gap-1.5 border-t border-primary/15 pt-1.5"
- >
- <span className="text-micro font-bold uppercase tracking-widest text-muted-foreground/60">
- Then
- </span>
- <div className="flex min-w-0 flex-1 items-center gap-1">
- {subject && (
- <span
- className="h-2 w-0.5 shrink-0 rounded-full"
- style={{ backgroundColor: subject.color }}
- />
- )}
- <span className="truncate text-micro font-medium text-muted-foreground">
- {subject?.name ?? next.subject}
- </span>
- {next.location && (
- <span className="hidden text-micro text-muted-foreground/50 sm:inline">
- · {next.location}
- </span>
- )}
- </div>
- <span className="shrink-0 text-micro tabular-nums text-muted-foreground/70">
- {formatTime(next.startTime, use24Hour ?? false)}
- </span>
- </motion.div>
- );
-}
-
-// --- Timeline helpers ---
-
-function getTimelineRange(
- days: {
- dayLabel: TimetableDayLabel;
- entries: { periods: TimetablePeriod[] }[];
- }[],
- bufferMinutes = 0,
-): { start: number; end: number } {
- let minStart = 24 * 60;
- let maxEnd = 0;
- let hasPeriods = false;
-
- days.forEach(({ entries }) => {
- entries.forEach((entry) => {
- entry.periods.forEach((period) => {
- hasPeriods = true;
- const s = timeStringToMinutes(period.startTime);
- const e = timeStringToMinutes(period.endTime);
- minStart = Math.min(minStart, s);
- maxEnd = Math.max(maxEnd, e);
- });
- });
- });
-
- if (!hasPeriods) return { start: 8 * 60, end: 15 * 60 };
-
- const start = Math.max(0, Math.floor(minStart / 60) * 60 - bufferMinutes);
- const end = Math.min(24 * 60, Math.ceil(maxEnd / 60) * 60 + bufferMinutes);
- return { start, end };
-}
-
-function getHourMarkers(start: number, end: number): number[] {
- const markers: number[] = [];
- const firstHour = Math.ceil(start / 60);
- const lastHour = Math.floor(end / 60);
- for (let h = firstHour; h <= lastHour; h++) {
- markers.push(h);
- }
- return markers;
-}
-
-/* ponytail: absolute-positioned school periods need collision math more
- than a full interval-layout engine. Tiny breaks collapse into readable
- markers; normal classes keep their true time scale. If overlapping
- custom periods become common, upgrade this to lane packing. */
-const PERIOD_MIN_HEIGHT_PERCENT = 8;
-const PERIOD_BLOCK_GAP_PERCENT = 0.7;
-
-function getPeriodLayouts(
- periods: { period: TimetablePeriod; entryIdx: number; periodIdx: number }[],
- timelineStart: number,
- timelineEnd: number,
-): Map<string, { top: number; height: number }> {
- const result = new Map<string, { top: number; height: number }>();
- const total = timelineEnd - timelineStart;
- if (total <= 0 || periods.length === 0) return result;
-
- const sorted = [...periods].sort((a, b) =>
- a.period.startTime.localeCompare(b.period.startTime),
- );
-
- for (let i = 0; i < sorted.length; i++) {
- const item = sorted[i];
- const key = `${item.entryIdx}-${item.periodIdx}`;
- const startMin = timeStringToMinutes(item.period.startTime);
- const endMin = timeStringToMinutes(item.period.endTime);
- const rawTop = ((startMin - timelineStart) / total) * 100;
- const rawHeight = ((endMin - startMin) / total) * 100;
- const prev = sorted[i - 1];
- const prevLayout = prev
- ? result.get(`${prev.entryIdx}-${prev.periodIdx}`)
- : undefined;
- const top = prevLayout
- ? Math.max(
- rawTop,
- prevLayout.top + prevLayout.height + PERIOD_BLOCK_GAP_PERCENT,
- )
- : rawTop;
- const available = 100 - top;
- const height = Math.max(
- 1,
- Math.min(Math.max(PERIOD_MIN_HEIGHT_PERCENT, rawHeight), available),
- );
-
- result.set(key, { top, height });
- }
-
- return result;
-}
-
-// --- Timeline block ---
-
-function TimelineBlock({
- layout,
- period,
- subject,
- isCurrentPeriod,
- isNextPeriod,
- now,
- use24Hour,
- showLocation,
- onEdit,
- onDelete,
- onSavePeriod,
- onMovePeriod,
- onStartDrag,
- onKeyboardReorder,
- dragState,
- dayLabel,
- allDayLabels,
- customSubjects,
- entryIdx,
- periodIdx,
-}: {
- layout: { top: number; height: number };
- period: TimetablePeriod;
- subject: ReturnType<typeof getSubjectById>;
- isCurrentPeriod: boolean;
- isNextPeriod: boolean;
- now: Date;
- use24Hour?: boolean;
- showLocation?: boolean;
- onEdit: () => void;
- onDelete: () => void;
- onSavePeriod?: (updated: TimetablePeriod) => void;
- onMovePeriod?: (toDay: TimetableDayLabel) => void;
- onStartDrag?: (
- e: ReactPointerEvent<HTMLElement>,
- source: PeriodDragSource,
- ) => void;
- onKeyboardReorder?: (direction: -1 | 1) => void;
- dragState?: PeriodDragState | null;
- dayLabel?: TimetableDayLabel;
- allDayLabels?: TimetableDayLabel[];
- customSubjects?: Subject[];
- entryIdx?: number;
- periodIdx?: number;
-}) {
- const reduceMotion = useReducedMotion() === true;
- const isBreak = isBreakLabel(period.period);
- const compact = layout.height <= 4.5;
- const markerOnly = layout.height <= 2.5;
- const periodLabel = (subject?.name ?? period.subject) || period.period;
- const timeLabel = `${formatTime(period.startTime, use24Hour ?? false)}-${formatTime(period.endTime, use24Hour ?? false)}`;
-
- const canInlineEdit =
- !!onSavePeriod &&
- !!onMovePeriod &&
- dayLabel !== undefined &&
- allDayLabels !== undefined;
- const canDrag =
- canInlineEdit &&
- entryIdx !== undefined &&
- periodIdx !== undefined &&
- !!onStartDrag;
- const isDragging =
- dragState !== undefined &&
- dragState !== null &&
- dayLabel !== undefined &&
- entryIdx !== undefined &&
- periodIdx !== undefined &&
- sameDragSource(dragState, dayLabel, entryIdx, periodIdx);
-
- const blockContent = (
- <motion.div
- layout="position"
- data-timetable-period
- className={cn(
-"group/block absolute left-9 right-2 overflow-hidden rounded-lg border transition-[background-color,border-color,box-shadow,transform] duration-200",
- isBreak
- ?"border-dashed border-border/45 bg-muted/28"
- :"border-border/55 bg-background/62 shadow-[inset_0_1px_0_oklch(1_0_0/0.08)] backdrop-blur-sm",
- isCurrentPeriod &&
-"border-primary/45 bg-primary/10 shadow-[0_0_22px_-10px_var(--primary),inset_0_1px_0_oklch(1_0_0/0.12)]",
- isNextPeriod && !isCurrentPeriod &&"border-primary/25 bg-primary/5",
- !isBreak &&"hover:border-primary/35 hover:bg-primary/8",
- markerOnly &&"rounded-md",
- canInlineEdit &&"cursor-pointer",
- isDragging &&"pointer-events-none opacity-25",
- )}
- style={{
- top: `${layout.top}%`,
- height: `${layout.height}%`,
- backgroundColor:
- subject && !isBreak
- ? `color-mix(in oklch, ${subject.color} ${isCurrentPeriod ? 16 : 10}%, transparent)`
- : undefined,
- }}
- animate={reduceMotion ? undefined : { scale: isDragging ? 0.985 : 1 }}
- transition={
- reduceMotion
- ? { duration: 0 }
- : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
- }
- aria-label={`${periodLabel}, ${timeLabel}`}
- title={`${periodLabel} · ${timeLabel}`}
- >
- {/* Subject content */}
- <div
- className={cn(
-"flex h-full min-w-0 flex-col justify-center px-2 py-1",
- compact &&"px-2.5 py-1",
- markerOnly &&"px-1.5 py-0.5",
- )}
- >
- {markerOnly ? (
- <span
- className="block h-full w-full rounded-sm"
- style={{
- backgroundColor: subject?.color ??"var(--muted-foreground)",
- opacity: isBreak ? 0.45 : 0.72,
- }}
- aria-hidden
- />
- ) : (
- <div className="flex min-w-0 items-center gap-1.5 pr-10">
- {subject && (
- <span
- className="h-1.5 w-1.5 shrink-0 rounded-full"
- style={{ backgroundColor: subject.color }}
- aria-hidden
- />
- )}
- <span
- className={cn(
-"truncate text-xs leading-tight",
- isCurrentPeriod ?"font-semibold" :"font-medium",
- )}
- style={subject ? { color: subject.color } : undefined}
- >
- {periodLabel}
- </span>
- {isCurrentPeriod && (
- <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />
- )}
- {isNextPeriod && !isCurrentPeriod && (
- <span className="shrink-0 text-micro font-bold uppercase tracking-wider text-primary/70">
- Next
- </span>
- )}
- </div>
- )}
-
- {!compact && !markerOnly && (
- <div className="mt-0.5 flex min-w-0 items-center gap-1 pr-10 text-caption leading-tight text-muted-foreground/75">
- <span className="tabular-nums">{timeLabel}</span>
- {showLocation && period.location && (
- <>
- <span className="text-muted-foreground/30">·</span>
- <span className="flex items-center gap-0.5 truncate">
- <MapPin className="h-2 w-2 shrink-0" />
- {period.location}
- </span>
- </>
- )}
- </div>
- )}
- </div>
-
- {/* Drag handle + hover actions */}
- <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 rounded-md bg-background/88 p-0.5 opacity-0 ring-1 ring-border/30 backdrop-blur-md transition-all duration-150 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100">
- {canDrag &&
- dayLabel !== undefined &&
- entryIdx !== undefined &&
- periodIdx !== undefined && (
- <Button
- variant="ghost"
- size="icon-xs"
- className="cursor-grab touch-none active:cursor-grabbing"
- title="Drag to move. Use Up or Down when focused."
- aria-label="Move period"
- onKeyDown={(e) => {
- if (e.key !=="ArrowUp" && e.key !=="ArrowDown") return;
- e.preventDefault();
- e.stopPropagation();
- onKeyboardReorder?.(e.key ==="ArrowUp" ? -1 : 1);
- }}
- onPointerDown={(e) => {
- e.preventDefault();
- e.stopPropagation();
- onStartDrag(e, {
- dayLabel,
- entryIdx,
- periodIdx,
- period,
- periodLabel,
- timeLabel,
- color: subject?.color,
- });
- }}
- >
- <GripVertical />
- </Button>
- )}
- <Button
- variant="ghost"
- size="icon-xs"
- onClick={(e) => {
- e.stopPropagation();
- onEdit();
- }}
- aria-label="Edit period"
- title="Edit period"
- >
- <Pencil />
- </Button>
- <Button
- variant="ghost"
- size="icon-xs"
- onClick={(e) => {
- e.stopPropagation();
- onDelete();
- }}
- className="text-destructive"
- aria-label="Delete period"
- title="Delete period"
- >
- <Trash2 />
- </Button>
- </div>
-
- {/* Current period progress */}
- {isCurrentPeriod && (
- <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/20">
- <div
- className="h-full bg-primary transition-all duration-1000"
- style={{ width: `${getCurrentPeriodProgress(period, now)}%` }}
- />
- </div>
- )}
- </motion.div>
- );
-
- // Wrap in PeriodEditPopover if inline editing is enabled
- if (canInlineEdit && onSavePeriod && onMovePeriod) {
- return (
- <PeriodEditPopover
- period={period}
- dayLabel={dayLabel}
- cycleLength={allDayLabels.length}
- allDayLabels={allDayLabels}
- subjects={customSubjects ?? []}
- onSave={onSavePeriod}
- onDelete={onDelete}
- onMove={onMovePeriod}
- >
- {blockContent}
- </PeriodEditPopover>
- );
- }
-
- return blockContent;
-}
-
-// --- Current time indicator ---
-
-function CurrentTimeIndicator({
- now,
- timelineStart,
- timelineEnd,
- use24Hour,
-}: {
- now: Date;
- timelineStart: number;
- timelineEnd: number;
- use24Hour?: boolean;
-}) {
- const currentMin = now.getHours() * 60 + now.getMinutes();
- if (currentMin < timelineStart || currentMin > timelineEnd) return null;
- const top =
- ((currentMin - timelineStart) / (timelineEnd - timelineStart)) * 100;
- const stamp24 = `${String(Math.floor(currentMin / 60)).padStart(2,"0")}:${String(currentMin % 60).padStart(2,"0")}`;
-
- return (
- <div
- className="absolute left-0 right-0 z-10 pointer-events-none"
- style={{ top: `${top}%` }}
- >
- <div className="flex items-center gap-1">
- <span className="h-2 w-2 shrink-0 rounded-full bg-primary ring-2 ring-background/80 shadow-[0_0_10px] shadow-primary/50" />
- <div className="h-px flex-1 bg-primary/60" />
- <span className="rounded-md bg-primary/95 px-1.5 py-0.5 text-caption font-semibold tabular-nums text-primary-foreground shadow-sm">
- {formatTime(stamp24, use24Hour ?? false)}
- </span>
- </div>
- </div>
- );
-}
-
-// --- Day timeline card ---
-
-function DayHeader({
- dayLabel,
- isToday,
- isDayOverridden,
- isHidden,
- onEdit,
- onToggleHide,
- onCopyTo,
- dayToWeekday,
-}: {
- dayLabel: TimetableDayLabel;
- isToday: boolean;
- isDayOverridden: boolean;
- isHidden: boolean;
- onEdit: () => void;
- onToggleHide: () => void;
- onCopyTo: (day: TimetableDayLabel) => void;
- dayToWeekday: number[];
-}) {
- const weekday = dayToWeekday[dayLabel - 1];
- return (
- <div className="mb-1.5 flex items-center justify-between px-2.5 pt-2.5">
- <div className="flex items-center gap-1">
- <span
- className={cn(
-"flex h-5 w-5 items-center justify-center rounded text-xs font-bold tabular-nums transition-colors",
- isToday
- ?"bg-primary text-primary-foreground"
- :"bg-muted/50 text-muted-foreground group-hover/day:bg-muted/80",
- isHidden &&"opacity-40",
- )}
- >
- {dayLabel}
- </span>
- <span
- className={cn(
-"text-xs font-semibold",
- isToday ?"text-primary" :"text-foreground/80",
- isHidden &&"text-muted-foreground/40 line-through",
- )}
- >
- Day {dayLabel}
- {weekday !== undefined && (
- <span className="ml-1 text-caption font-normal text-muted-foreground/60">
- · {WEEKDAY_SHORT[weekday]}
- </span>
- )}
- </span>
- {isToday && isDayOverridden && (
- <Pin className="h-2.5 w-2.5 text-primary" aria-label="Pinned" />
- )}
- </div>
- <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/day:opacity-100 group-focus-within/day:opacity-100 [@media(hover:none)]:opacity-100">
- <Button
- variant="ghost"
- size="icon-xs"
- onClick={onToggleHide}
- aria-label={isHidden ?"Show day" :"Hide day"}
- title={isHidden ?"Show day" :"Hide day"}
- >
- {isHidden ? (
- <Eye className="h-2.5 w-2.5" />
- ) : (
- <EyeOff className="h-2.5 w-2.5" />
- )}
- </Button>
- <Popover>
- <PopoverTrigger asChild>
- <Button
- variant="ghost"
- size="icon-xs"
- aria-label={`Copy Day ${dayLabel}`}
- title="Copy to another day"
- >
- <Copy className="h-2.5 w-2.5" />
- </Button>
- </PopoverTrigger>
- <PopoverContent className="w-44 p-2" align="start">
- <p className="mb-1 px-1 text-caption font-medium text-muted-foreground/70">
- Copy Day {dayLabel} to…
- </p>
- <div
- className={cn("grid gap-1", dayPickerCols(dayToWeekday.length))}
- >
- {allDayLabels(dayToWeekday.length).map((d) => (
- <Button
- key={d}
- variant="outline"
- size="icon-sm"
- onClick={() => onCopyTo(d)}
- disabled={d === dayLabel}
- >
- {d}
- </Button>
- ))}
- </div>
- </PopoverContent>
- </Popover>
- <Button
- variant="ghost"
- size="icon-xs"
- onClick={onEdit}
- aria-label={`Edit Day ${dayLabel}`}
- title="Edit day"
- >
- <Edit3 className="h-2.5 w-2.5" />
- </Button>
- </div>
- </div>
- );
-}
-
-function DayTimelineCard({
- dayLabel,
- entries,
- isToday,
- isDayOverridden,
- isHidden,
- timelineStart,
- timelineEnd,
- todayPeriodInfo,
- now,
- use24Hour,
- showLocation,
- showBreaks,
- dayToWeekday,
- allDayLabels,
- customSubjects,
- onEditDay,
- onToggleHide,
- onCopyTo,
- onDeletePeriod,
- onSavePeriod,
- onMovePeriod,
- onDropPeriod,
- onStartPeriodDrag,
- periodDrag,
- onQuickAdd,
-}: {
- dayLabel: TimetableDayLabel;
- entries: { periods: TimetablePeriod[] }[];
- isToday: boolean;
- isDayOverridden: boolean;
- isHidden: boolean;
- timelineStart: number;
- timelineEnd: number;
- todayPeriodInfo: {
- current: TimetablePeriod | null;
- next: TimetablePeriod | null;
- };
- now: Date;
- use24Hour?: boolean;
- showLocation?: boolean;
- showBreaks?: boolean;
- dayToWeekday: number[];
- allDayLabels?: TimetableDayLabel[];
- customSubjects?: Subject[];
- onEditDay: () => void;
- onToggleHide: () => void;
- onCopyTo: (day: TimetableDayLabel) => void;
- onDeletePeriod: (entryIdx: number, periodIdx: number) => void;
- onSavePeriod?: (
- entryIdx: number,
- periodIdx: number,
- updated: TimetablePeriod,
- ) => void;
- onMovePeriod?: (
- fromEntryIdx: number,
- fromPeriodIdx: number,
- toDay: TimetableDayLabel,
- ) => void;
- onDropPeriod?: (source: PeriodDragSource, target: PeriodDropTarget) => void;
- onStartPeriodDrag?: (
- e: ReactPointerEvent<HTMLElement>,
- source: PeriodDragSource,
- ) => void;
- periodDrag?: PeriodDragState | null;
- onQuickAdd?: () => void;
-}) {
- const hourMarkers = useMemo(
- () => getHourMarkers(timelineStart, timelineEnd),
- [timelineStart, timelineEnd],
- );
-
- const filteredPeriods = useMemo(() => {
- let periods =
- entries.length > 0
- ? entries.flatMap((entry, entryIdx) =>
- entry.periods.map((period, periodIdx) => ({
- period,
- periodIdx,
- entryIdx,
- })),
- )
- : [];
- if (!showBreaks) {
- periods = periods.filter(({ period }) => !isBreakLabel(period.period));
- }
- return periods;
- }, [entries, showBreaks]);
-
- const periodLayouts = useMemo(
- () => getPeriodLayouts(filteredPeriods, timelineStart, timelineEnd),
- [filteredPeriods, timelineStart, timelineEnd],
- );
- const sortedVisiblePeriods = useMemo(
- () =>
- [...filteredPeriods].sort((a, b) =>
- comparePeriodsByStart(a.period, b.period),
- ),
- [filteredPeriods],
- );
-
- const isDragTarget = periodDrag?.target?.dayLabel === dayLabel;
- const isDragSourceDay = periodDrag?.dayLabel === dayLabel;
-
- return (
- <motion.div
- variants={staggerItem}
- data-timetable-day={dayLabel}
- className={cn(
-"group/day relative flex flex-col overflow-hidden rounded-lg",
- isToday &&"",
- isHidden &&"opacity-40",
- isDragTarget &&"ring-2 ring-primary/40 bg-primary/5",
- isDragSourceDay && !isDragTarget &&"ring-1 ring-border/70",
- )}
- >
- <DayHeader
- dayLabel={dayLabel}
- isToday={isToday}
- isDayOverridden={isDayOverridden}
- isHidden={isHidden}
- onEdit={onEditDay}
- onToggleHide={onToggleHide}
- onCopyTo={onCopyTo}
- dayToWeekday={dayToWeekday}
- />
-
- {/* Timeline area */}
- <div
- data-timetable-day-body
- className="relative min-h-115 flex-1 overflow-hidden border-t border-border/35 bg-background/22 px-1.5 pb-2.5 pt-2"
- >
- <AnimatePresence>
- {isDragTarget && periodDrag?.target && onDropPeriod && (
- <motion.div
- key="drop-indicator"
- initial={{ opacity: 0, scaleX: 0.9 }}
- animate={{
- opacity: 1,
- scaleX: 1,
- top: `${periodDrag.target.yPercent}%`,
- }}
- exit={{ opacity: 0, scaleX: 0.9 }}
- transition={{ duration: MOTION_DURATION.fast, ease: MOTION_EASE }}
- className="pointer-events-none absolute left-9 right-2 z-20 h-0.5 origin-center rounded-full bg-primary/75 shadow-[0_0_14px_var(--primary)]"
- />
- )}
- </AnimatePresence>
-
- {/* Hour markers and grid lines */}
- {hourMarkers.map((hour) => {
- const minutes = hour * 60;
- const top =
- ((minutes - timelineStart) / (timelineEnd - timelineStart)) * 100;
- return (
- <div
- key={hour}
- className="pointer-events-none absolute left-0 right-0 flex items-center gap-1"
- style={{ top: `${top}%` }}
- >
- <span className="w-8 text-right text-caption tabular-nums text-muted-foreground/58">
- {formatTime(minutesToTimeString(minutes), use24Hour ?? false)}
- </span>
- <div className="h-px flex-1 bg-border/32" />
- </div>
- );
- })}
- {filteredPeriods.length > 1 && (
- <div className="pointer-events-none absolute bottom-1.5 right-2 z-10 rounded-md bg-background/72 px-1.5 py-0.5 text-caption text-muted-foreground/55 opacity-0 ring-1 ring-border/25 backdrop-blur-sm transition-opacity group-hover/day:opacity-100 group-focus-within/day:opacity-100">
- Drag handle or use Up/Down
- </div>
- )}
-
- {/* Period blocks */}
- {filteredPeriods.length > 0 ? (
- <>
- {filteredPeriods.map(({ period, periodIdx, entryIdx }) => {
- const renderedIndex = sortedVisiblePeriods.findIndex(
- (item) =>
- item.entryIdx === entryIdx && item.periodIdx === periodIdx,
- );
- const subject = getSubjectById(period.subject);
- const isCurrentPeriod =
- isToday &&
- todayPeriodInfo.current?.startTime === period.startTime &&
- todayPeriodInfo.current?.subject === period.subject;
- const isNextPeriod =
- isToday &&
- !isCurrentPeriod &&
- todayPeriodInfo.next?.startTime === period.startTime &&
- todayPeriodInfo.next?.subject === period.subject;
-
- return (
- <TimelineBlock
- key={`${entryIdx}-${periodIdx}`}
- layout={
- periodLayouts.get(`${entryIdx}-${periodIdx}`) ?? {
- top: 0,
- height: PERIOD_MIN_HEIGHT_PERCENT,
- }
- }
- period={period}
- subject={subject}
- isCurrentPeriod={isCurrentPeriod}
- isNextPeriod={isNextPeriod}
- now={now}
- use24Hour={use24Hour}
- showLocation={showLocation}
- onEdit={onEditDay}
- onDelete={() => onDeletePeriod(entryIdx, periodIdx)}
- onSavePeriod={
- onSavePeriod
- ? (updated: TimetablePeriod) =>
- onSavePeriod(entryIdx, periodIdx, updated)
- : undefined
- }
- onMovePeriod={
- onMovePeriod
- ? (toDay: TimetableDayLabel) =>
- onMovePeriod(entryIdx, periodIdx, toDay)
- : undefined
- }
- onStartDrag={onStartPeriodDrag}
- onKeyboardReorder={
- onDropPeriod && renderedIndex !== -1
- ? (direction) => {
- const targetIndex =
- direction < 0
- ? renderedIndex - 1
- : renderedIndex + 2;
- if (
- targetIndex < 0 ||
- targetIndex > sortedVisiblePeriods.length
- )
- return;
- onDropPeriod(
- {
- dayLabel,
- entryIdx,
- periodIdx,
- period,
- periodLabel:
- (subject?.name ?? period.subject) ||
- period.period,
- timeLabel: `${formatTime(period.startTime, use24Hour ?? false)}-${formatTime(period.endTime, use24Hour ?? false)}`,
- color: subject?.color,
- },
- {
- dayLabel,
- insertIndex: targetIndex,
- yPercent: clampNumber(
- ((renderedIndex + direction + 0.5) /
- Math.max(sortedVisiblePeriods.length, 1)) *
- 100,
- 1,
- 99,
- ),
- },
- );
- }
- : undefined
- }
- dragState={periodDrag}
- dayLabel={dayLabel}
- allDayLabels={allDayLabels}
- customSubjects={customSubjects}
- entryIdx={entryIdx}
- periodIdx={periodIdx}
- />
- );
- })}
-
- {/* Current time indicator */}
- {isToday && (
- <CurrentTimeIndicator
- now={now}
- timelineStart={timelineStart}
- timelineEnd={timelineEnd}
- use24Hour={use24Hour}
- />
- )}
- </>
- ) : (
- <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-4 text-center">
- {isHidden ? (
- <EyeOff className="h-3.5 w-3.5 text-muted-foreground/30" />
- ) : (
- <Sun className="h-3.5 w-3.5 text-muted-foreground/30" />
- )}
- <p className="text-caption font-medium text-muted-foreground/55">
- {isHidden ?"Hidden from view" :"No classes"}
- </p>
- {!isHidden && onQuickAdd && (
- <Button
- variant="ghost"
- size="xs"
- onClick={(e) => {
- e.stopPropagation();
- onQuickAdd();
- }}
- className="mt-1 h-6 gap-1 rounded-md text-xs text-muted-foreground/60 hover:text-foreground"
- >
- <Plus className="h-3 w-3" />
- Add period
- </Button>
- )}
- </div>
- )}
- </div>
- </motion.div>
- );
-}
-
-// --- Main view ---
-
-export const TimetableView = memo(function TimetableView({
- customSubjects,
-}: TimetableViewProps) {
- const [config, setConfig] = useState(getTimetableConfig);
- const [editorOpen, setEditorOpen] = useState(false);
- const [editDayOpen, setEditDayOpen] = useState(false);
- const [editDayLabel, setEditDayLabel] = useState<TimetableDayLabel>(1);
- const [dayPickerOpen, setDayPickerOpen] = useState(false);
- const [now, setNow] = useState(() => new Date());
- const reduceMotion = useReducedMotion() === true;
- const [periodDrag, setPeriodDrag] = useState<PeriodDragState | null>(null);
- const periodDragRef = useRef<PeriodDragState | null>(null);
-
- useEffect(() => {
- periodDragRef.current = periodDrag;
- }, [periodDrag]);
-
- useEffect(() => {
- const id = setInterval(() => setNow(new Date()), 60_000);
- return () => clearInterval(id);
- }, []);
-
- // Merge view settings with defaults so new fields always have values
- const viewSettings: TimetableViewSettings = useMemo(
- () => ({ ...DEFAULT_VIEW_SETTINGS, ...config.viewSettings }),
- [config.viewSettings],
- );
-
- const cycleLength = useMemo(() => getCycleLength(config), [config]);
- const dayToWeekday = useMemo(() => getDayToWeekday(config), [config]);
- const weekendTimetables = useMemo(
- () => getWeekendTimetables(config),
- [config],
- );
- const allDaysList = useMemo(() => allDayLabels(cycleLength), [cycleLength]);
-
- const autoDayLabel = useMemo(() => {
- if (!config.enabled || !config.day1Starts) return null;
- return getDayLabelForDate(
- now,
- config.day1Starts,
- config.holidays,
- cycleLength,
- weekendTimetables,
- );
- }, [config, now, cycleLength, weekendTimetables]);
-
- const currentDayLabel = useMemo<TimetableDayLabel | null>(() => {
- if (!config.enabled) return null;
- if (config.currentDayOverride != null) {
- return config.currentDayOverride;
- }
- return autoDayLabel;
- }, [config, autoDayLabel]);
-
- // The 5+5 block model only makes sense for the default 10-day cycle.
- // For other cycle lengths, fall back to showing all days.
- const useBlockModel = cycleLength === 10;
-
- const effectiveBlock = useMemo(() => {
- if (!useBlockModel) return 1;
- if (viewSettings.manualBlock !== null) return viewSettings.manualBlock;
- const cur = currentDayLabel;
- if (cur === null) return 1;
- return cur <= 5 ? 1 : 2;
- }, [currentDayLabel, viewSettings.manualBlock, useBlockModel]);
-
- // If showAllDays (or non-10-day cycle), show all. Otherwise show only the current block.
- const days = useMemo(() => {
- if (!config.enabled || config.entries.length === 0) return [];
- const showAll = viewSettings.showAllDays || !useBlockModel;
- const startDay = showAll ? 1 : effectiveBlock === 1 ? 1 : 6;
- const count = showAll ? cycleLength : 5;
- return dayLabelsInRange(startDay, count, cycleLength)
- .filter((d) => !viewSettings.hiddenDays.includes(d))
- .map((dayLabel) => {
- const entries = getTimetableEntriesForDay(dayLabel, config.entries);
- return { dayLabel, entries };
- });
- }, [
- config,
- effectiveBlock,
- useBlockModel,
- cycleLength,
- viewSettings.showAllDays,
- viewSettings.hiddenDays,
- ]);
-
- const todayPeriods = useMemo(() => {
- if (currentDayLabel === null) return [];
- const entries = getTimetableEntriesForDay(currentDayLabel, config.entries);
- return entries
- .flatMap((e) => e.periods)
- .sort((a, b) => a.startTime.localeCompare(b.startTime));
- }, [currentDayLabel, config]);
-
- const todayPeriodInfo = useMemo(
- () => getCurrentPeriodInfo(todayPeriods, now),
- [todayPeriods, now],
- );
-
- const isDayOverridden = config.currentDayOverride != null;
-
- // Global timeline range for all shown days
- const timelineRange = useMemo(() => getTimelineRange(days), [days]);
-
- const handleSetDay = useCallback((day: TimetableDayLabel) => {
- setTimetableCurrentDayOverride(day);
- setConfig(getTimetableConfig());
- setDayPickerOpen(false);
- }, []);
-
- const handleResetDay = useCallback(() => {
- setTimetableCurrentDayOverride(null);
- setConfig(getTimetableConfig());
- setDayPickerOpen(false);
- }, []);
-
- const handleUpdateViewSettings = useCallback(
- (updated: Partial<TimetableViewSettings>) => {
- const newConfig = {
- ...config,
- viewSettings: { ...viewSettings, ...updated },
- };
- setTimetableConfig(newConfig);
- window.dispatchEvent(new Event("focal-timetable-updated"));
- setConfig(getTimetableConfig());
- },
- [config, viewSettings],
- );
-
- const handleToggleHideDay = useCallback(
- (dayLabel: TimetableDayLabel) => {
- const hidden = viewSettings.hiddenDays.includes(dayLabel)
- ? viewSettings.hiddenDays.filter((d) => d !== dayLabel)
- : [...viewSettings.hiddenDays, dayLabel];
- handleUpdateViewSettings({ hiddenDays: hidden });
- },
- [viewSettings, handleUpdateViewSettings],
- );
-
- const handleCopyDay = useCallback(
- (fromDay: TimetableDayLabel, toDay: TimetableDayLabel) => {
- if (fromDay === toDay) return;
- const fromEntries = getTimetableEntriesForDay(fromDay, config.entries);
- if (fromEntries.length === 0) return;
-
- // Deep-copy periods from the source day
- const sourcePeriods = fromEntries.flatMap((e) =>
- e.periods.map((p) => ({ ...p })),
- );
-
- // Remove existing entries for the target day, then add the copied ones
- const filtered = config.entries.filter((e) => e.dayLabel !== toDay);
- const newEntry = {
- dayLabel: toDay,
- periods: sourcePeriods,
- };
- const updatedEntries = [...filtered, newEntry];
- const newConfig = {
- ...config,
- entries: updatedEntries,
- enabled: updatedEntries.length > 0,
- };
- setTimetableConfig(newConfig);
- window.dispatchEvent(new Event("focal-timetable-updated"));
- setConfig(getTimetableConfig());
- },
- [config],
- );
-
- const handleDeletePeriod = useCallback(
- (dayLabel: TimetableDayLabel, entryIdx: number, periodIdx: number) => {
- // Find the Nth entry for this day (entries with the same dayLabel are rare but possible)
- const dayEntryIndices = config.entries
- .map((e, i) => (e.dayLabel === dayLabel ? i : -1))
- .filter((i) => i !== -1);
- const globalEntryIdx = dayEntryIndices[entryIdx];
- if (globalEntryIdx === undefined) return;
-
- const entry = config.entries[globalEntryIdx];
- const newPeriods = entry.periods.filter((_, i) => i !== periodIdx);
-
- const newEntries =
- newPeriods.length === 0
- ? config.entries.filter((_, i) => i !== globalEntryIdx)
- : config.entries.map((e, i) =>
- i === globalEntryIdx ? { ...e, periods: newPeriods } : e,
- );
-
- const updatedConfig = {
- ...config,
- entries: newEntries,
- enabled: newEntries.length > 0,
- };
- setTimetableConfig(updatedConfig);
- window.dispatchEvent(new Event("focal-timetable-updated"));
- setConfig(getTimetableConfig());
- },
- [config],
- );
-
- const handleUpdatePeriod = useCallback(
- (
- dayLabel: TimetableDayLabel,
- entryIdx: number,
- periodIdx: number,
- updated: TimetablePeriod,
- ) => {
- const dayEntryIndices = config.entries
- .map((e, i) => (e.dayLabel === dayLabel ? i : -1))
- .filter((i) => i !== -1);
- const globalEntryIdx = dayEntryIndices[entryIdx];
- if (globalEntryIdx === undefined) return;
-
- const newEntries = config.entries.map((e, i) =>
- i === globalEntryIdx
- ? {
- ...e,
- periods: e.periods.map((p, pi) =>
- pi === periodIdx ? updated : p,
- ),
- }
- : e,
- );
- const updatedConfig = { ...config, entries: newEntries };
- setTimetableConfig(updatedConfig);
- window.dispatchEvent(new Event("focal-timetable-updated"));
- setConfig(getTimetableConfig());
- },
- [config],
- );
-
- const handleMovePeriod = useCallback(
- (
- dayLabel: TimetableDayLabel,
- entryIdx: number,
- periodIdx: number,
- toDay: TimetableDayLabel,
- ) => {
- if (dayLabel === toDay) return;
-
- const dayEntryIndices = config.entries
- .map((e, i) => (e.dayLabel === dayLabel ? i : -1))
- .filter((i) => i !== -1);
- const globalEntryIdx = dayEntryIndices[entryIdx];
- if (globalEntryIdx === undefined) return;
-
- const entry = config.entries[globalEntryIdx];
- const periodToMove = entry.periods[periodIdx];
- if (!periodToMove) return;
-
- // Remove from source
- const sourcePeriods = entry.periods.filter((_, i) => i !== periodIdx);
- let newEntries = config.entries.map((e, i) => {
- if (i !== globalEntryIdx) return e;
- return { ...e, periods: sourcePeriods };
- });
-
- // Remove empty source entries
- newEntries = newEntries.filter((e) => e.periods.length > 0);
-
- // Add to destination
- const destIdx = newEntries.findIndex((e) => e.dayLabel === toDay);
- if (destIdx === -1) {
- newEntries.push({
- dayLabel: toDay,
- periods: [periodToMove],
- });
- } else {
- newEntries = newEntries.map((e, i) =>
- i === destIdx ? { ...e, periods: [...e.periods, periodToMove] } : e,
- );
- }
-
- const updatedConfig = {
- ...config,
- entries: newEntries,
- enabled: newEntries.length > 0,
- };
- setTimetableConfig(updatedConfig);
- window.dispatchEvent(new Event("focal-timetable-updated"));
- setConfig(getTimetableConfig());
- },
- [config],
- );
-
- const handleReorderPeriod = useCallback(
- (source: PeriodDragSource, target: PeriodDropTarget) => {
- const globalEntryIdx = findDayEntryIndex(
- config.entries,
- source.dayLabel,
- source.entryIdx,
- );
- if (globalEntryIdx === -1) return;
-
- const sourceEntry = config.entries[globalEntryIdx];
- const periodToMove = sourceEntry.periods[source.periodIdx];
- if (!periodToMove) return;
-
- const sourceRenderedIndex =
- source.dayLabel === target.dayLabel
- ? getTimetableEntriesForDay(source.dayLabel, config.entries)
- .flatMap((entry, entryIdx) =>
- entry.periods.map((period, periodIdx) => ({
- period,
- entryIdx,
- periodIdx,
- })),
- )
- .sort((a, b) => comparePeriodsByStart(a.period, b.period))
- .filter(
- ({ period }) =>
- viewSettings.showBreaks || !isBreakLabel(period.period),
- )
- .findIndex(({ entryIdx, periodIdx }) =>
- sameDragSource(source, source.dayLabel, entryIdx, periodIdx),
- )
- : -1;
-
- const sourcePeriodCount = sourceEntry.periods.length;
- let newEntries = config.entries.map((entry, index) =>
- index === globalEntryIdx
- ? {
- ...entry,
- periods: entry.periods.filter((_, i) => i !== source.periodIdx),
- }
- : entry,
- );
-
- if (sourcePeriodCount === 1) {
- newEntries = newEntries.filter((_, index) => index !== globalEntryIdx);
- }
-
- // ponytail: same-day duplicate entries are technically possible, but this
- // view already treats the first matching day entry as canonical. If imports
- // start creating meaningful duplicates, normalize them before drag/drop.
- const destEntryIdx = newEntries.findIndex(
- (entry) => entry.dayLabel === target.dayLabel,
- );
-
- let insertIndex = target.insertIndex;
- if (
- source.dayLabel === target.dayLabel &&
- sourceRenderedIndex !== -1 &&
- insertIndex > sourceRenderedIndex
- ) {
- insertIndex--;
- }
-
- if (destEntryIdx === -1) {
- newEntries = [
- ...newEntries,
- {
- dayLabel: target.dayLabel,
- periods: [{ ...periodToMove }],
- },
- ];
- } else {
- newEntries = newEntries.map((entry, index) => {
- if (index !== destEntryIdx) return entry;
- return {
- ...entry,
- periods: reorderPeriodsIntoSlots({
- periods: entry.periods,
- periodToMove,
- insertIndex,
- showBreaks: viewSettings.showBreaks,
- }),
- };
- });
- }
-
- const updatedConfig = {
- ...config,
- entries: newEntries,
- enabled: newEntries.length > 0,
- };
- setTimetableConfig(updatedConfig);
- window.dispatchEvent(new Event("focal-timetable-updated"));
- setConfig(getTimetableConfig());
- },
- [config, viewSettings.showBreaks],
- );
-
- const handleStartPeriodDrag = useCallback(
- (e: ReactPointerEvent<HTMLElement>, source: PeriodDragSource) => {
- if (e.button !== 0) return;
- const blockEl = e.currentTarget.closest<HTMLElement>(
-"[data-timetable-period]",
- );
- if (!blockEl) return;
-
- const rect = blockEl.getBoundingClientRect();
- const target = getPeriodDropTarget(e.clientX, e.clientY);
-
- setPeriodDrag({
- ...source,
- pointerId: e.pointerId,
- x: rect.left,
- y: rect.top,
- offsetX: e.clientX - rect.left,
- offsetY: e.clientY - rect.top,
- width: rect.width,
- height: rect.height,
- target,
- });
- },
- [],
- );
-
- useEffect(() => {
- const pointerId = periodDrag?.pointerId;
- if (pointerId === undefined) return;
-
- const prevUserSelect = document.body.style.userSelect;
- const prevCursor = document.body.style.cursor;
- document.body.style.userSelect ="none";
- document.body.style.cursor ="grabbing";
-
- const handlePointerMove = (e: PointerEvent) => {
- if (e.pointerId !== pointerId) return;
- e.preventDefault();
-
- const target = getPeriodDropTarget(e.clientX, e.clientY);
- setPeriodDrag((current) =>
- current?.pointerId === pointerId
- ? {
- ...current,
- x: e.clientX - current.offsetX,
- y: e.clientY - current.offsetY,
- target,
- }
- : current,
- );
- };
-
- const finishDrag = (commit: boolean) => {
- const current = periodDragRef.current;
- if (commit && current?.target) {
- handleReorderPeriod(current, current.target);
- }
- setPeriodDrag(null);
- };
-
- const handlePointerUp = (e: PointerEvent) => {
- if (e.pointerId !== pointerId) return;
- e.preventDefault();
- finishDrag(true);
- };
-
- const handlePointerCancel = (e: PointerEvent) => {
- if (e.pointerId !== pointerId) return;
- finishDrag(false);
- };
-
- window.addEventListener("pointermove", handlePointerMove, {
- passive: false,
- });
- window.addEventListener("pointerup", handlePointerUp, { passive: false });
- window.addEventListener("pointercancel", handlePointerCancel);
-
- return () => {
- document.body.style.userSelect = prevUserSelect;
- document.body.style.cursor = prevCursor;
- window.removeEventListener("pointermove", handlePointerMove);
- window.removeEventListener("pointerup", handlePointerUp);
- window.removeEventListener("pointercancel", handlePointerCancel);
- };
- }, [periodDrag?.pointerId, handleReorderPeriod]);
-
- const handleDropPeriod = useCallback(
- (source: PeriodDragSource, target: PeriodDropTarget) => {
- handleReorderPeriod(source, target);
- },
- [handleReorderPeriod],
- );
-
- const handleQuickAdd = useCallback((dayLabel: TimetableDayLabel) => {
- setEditDayLabel(dayLabel);
- setEditDayOpen(true);
- }, []);
-
- const allDaysListForProps = useMemo(() => allDaysList, [allDaysList]);
-
- const refreshConfig = useCallback(() => setConfig(getTimetableConfig()), []);
-
- const showDayPicker = config.enabled && !!config.day1Starts;
- const showLiveStatus = showDayPicker && currentDayLabel !== null;
-
- const currentDayWeekday =
- currentDayLabel !== null ? dayToWeekday[currentDayLabel - 1] : undefined;
-
- const blockLabel =
- viewSettings.showAllDays || !useBlockModel
- ? `All ${cycleLength} days`
- : `Block ${String.fromCharCode(64 + effectiveBlock)}`;
-
- const blockDaysLabel =
- viewSettings.showAllDays || !useBlockModel
- ? `Days 1–${cycleLength}`
- : effectiveBlock === 1
- ?"Days 1–5"
- :"Days 6–10";
-
- return (
- <>
- <ScrollArea className="h-full">
- {/* ponytail: `min-[1200px]:py-4` was a no-op since the unconditional `py-4` already applies at every breakpoint. */}
- <div className="px-4 py-4 min-[1200px]:px-8 space-y-3">
- {/* Header */}
- <motion.div
- initial={reduceMotion ? false : { opacity: 0, y: 4 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="flex flex-wrap items-start justify-between gap-2"
- >
- <div className="flex items-center gap-2 min-w-0">
- <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/15">
- <CalendarDays className="h-4 w-4 text-primary" />
- </div>
- <div className="min-w-0">
- <h2 className="font-heading text-sm font-semibold leading-tight">
- Timetable
- </h2>
- {showDayPicker ? (
- <p className="mt-px flex items-center text-micro text-muted-foreground">
- <Popover
- open={dayPickerOpen}
- onOpenChange={setDayPickerOpen}
- >
- <PopoverTrigger asChild>
- <Button
- variant="ghost"
- size="xs"
- className={cn(
-"-ml-1.5",
- isDayOverridden &&"text-primary",
- )}
- aria-label="Set current day"
- >
- <span className="font-medium">
- {currentDayLabel !== null
- ? `Day ${currentDayLabel}${currentDayWeekday !== undefined ? ` · ${WEEKDAY_SHORT[currentDayWeekday]}` :""}`
- :"No day"}
- </span>
- {isDayOverridden ? (
- <Pin className="h-3 w-3 fill-primary" aria-hidden />
- ) : (
- <ChevronDown
- className="h-3 w-3 text-muted-foreground/50"
- aria-hidden
- />
- )}
- </Button>
- </PopoverTrigger>
- <PopoverContent className="w-64 p-2" align="start">
- <div className="px-1.5 pb-1.5 pt-0.5">
- <p className="text-xs font-medium leading-none">
- Set current day
- </p>
- <p className="mt-0.5 text-xs text-muted-foreground/70">
- {isDayOverridden
- ?"Pinned to a specific cycle day."
- : autoDayLabel === null
- ? weekendTimetables
- ?"Today is a holiday. Pick a day to pin."
- :"Today is a weekend (no class) or a holiday. Pick a day to pin."
- :"Pick any day to pin the timetable to it."}
- </p>
- </div>
- <div
- className={cn(
-"grid gap-1",
- dayPickerCols(cycleLength),
- )}
- >
- {allDaysList.map((d) => {
- const isSelected = currentDayLabel === d;
- const isAuto = autoDayLabel === d;
- const wd = dayToWeekday[d - 1];
- return (
- <Button
- key={d}
- variant={isSelected ? "secondary" : "outline"}
- size="sm"
- onClick={() => handleSetDay(d)}
- className="relative h-9 flex-col gap-0"
- aria-pressed={isSelected}
- >
- <span className="tabular-nums leading-none">
- {d}
- </span>
- {wd !== undefined && (
- <span className="mt-0.5 text-caption font-normal text-muted-foreground/60 leading-none">
- {WEEKDAY_SHORT[wd]}
- </span>
- )}
- {isAuto && (
- <>
- <span
- className="absolute -bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary/70"
- aria-hidden
- />
- <span className="sr-only">
- , current cycle day
- </span>
- </>
- )}
- </Button>
- );
- })}
- </div>
- {isDayOverridden && (
- <Button
- variant="outline"
- size="sm"
- onClick={handleResetDay}
- className="mt-1.5 w-full"
- >
- <PinOff />
- Reset to auto
- </Button>
- )}
- </PopoverContent>
- </Popover>
- {currentDayLabel !== null && todayPeriods.length > 0 && (
- <>
- <span className="mx-1.5 text-muted-foreground/40">
- ·
- </span>
- {todayPeriods.length} period
- {todayPeriods.length !== 1 ?"s" :""}
- {weekendTimetables && (
- <span className="ml-1.5 inline-flex items-center gap-1 rounded-sm bg-primary/10 px-1.5 py-px text-caption font-medium text-primary/80">
- weekends on
- </span>
- )}
- </>
- )}
- </p>
- ) : (
- <p className="mt-px text-micro text-muted-foreground">
- {blockLabel} · {blockDaysLabel}
- </p>
- )}
- </div>
- </div>
-
- <div className="flex items-center gap-1.5">
- <ViewSettingsPopover
- viewSettings={viewSettings}
- onChange={handleUpdateViewSettings}
- isAutoBlock={
- currentDayLabel === null ? 1 : currentDayLabel <= 5 ? 1 : 2
- }
- useBlockModel={useBlockModel}
- cycleLength={cycleLength}
- />
- <Button
- variant="outline"
- size="sm"
- className="gap-1 rounded-lg h-7 px-2.5 text-xs"
- onClick={() => setEditorOpen(true)}
- >
- <Pencil className="h-3 w-3" />
- Edit
- </Button>
- </div>
- </motion.div>
-
- {/* Not configured state */}
- {!config.enabled || config.entries.length === 0 ? (
- <motion.div
- initial={reduceMotion ? false : { opacity: 0, y: 6 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{
- duration: MOTION_DURATION.medium,
- ease: MOTION_EASE,
- }}
- className="flex flex-col items-center justify-center py-10 text-center"
- >
- <motion.div
- animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
- transition={
- reduceMotion
- ? { duration: 0 }
- : { duration: 4, repeat: Infinity, ease:"easeInOut" }
- }
- className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-muted/30"
- >
- <Sun className="h-5 w-5 text-muted-foreground/35" />
- </motion.div>
- <p className="mb-1 text-xs font-medium">
- No timetable configured
- </p>
- <p className="mb-3 max-w-xs text-micro text-muted-foreground">
- Upload a photo of your school timetable and AI will parse it
- into a custom cycle. Default: 10 days (Mon–Fri, then Mon–Fri
- again).
- </p>
- <Button
- size="sm"
- className="gap-1 rounded-lg h-7 px-2.5 text-xs"
- onClick={() => setEditorOpen(true)}
- >
- <Pencil className="h-4 w-4" />
- Set up Timetable
- </Button>
- </motion.div>
- ) : (
- <AnimatePresence mode="popLayout">
- {showLiveStatus && (
- <motion.div
- key="live-status"
- initial={reduceMotion ? false : { opacity: 0, y: 6 }}
- animate={{ opacity: 1, y: 0 }}
- exit={{
- opacity: 0,
- y: -4,
- transition: { duration: MOTION_DURATION.fast },
- }}
- transition={{
- duration: MOTION_DURATION.medium,
- ease: MOTION_EASE,
- }}
- >
- <LiveStatusCard
- current={todayPeriodInfo.current}
- next={todayPeriodInfo.next}
- periods={todayPeriods}
- now={now}
- reduceMotion={reduceMotion}
- use24Hour={viewSettings.use24Hour}
- />
- </motion.div>
- )}
-
- {/* Day timeline grid */}
- <motion.div
- key={`timeline-grid-${viewSettings.showAllDays || !useBlockModel ?"all" : effectiveBlock}-${cycleLength}`}
- className={cn(
-"grid grid-cols-1 gap-2",
-// ponytail: previously gated by `(viewSettings.showAllDays || !useBlockModel) && cycleLength > 5` — both ternary branches returned this exact string, so the condition was dead. If grid layout ever needs to differ for short cycles or block view, restore the ternary at this site.
-"min-[700px]:grid-cols-2 min-[1100px]:grid-cols-5",
- )}
- variants={staggerContainer(0.04, 0.08)}
- initial="initial"
- animate="animate"
- >
- {days.map(({ dayLabel, entries }) => (
- <DayTimelineCard
- key={dayLabel}
- dayLabel={dayLabel}
- entries={entries}
- isToday={currentDayLabel === dayLabel}
- isDayOverridden={isDayOverridden}
- isHidden={viewSettings.hiddenDays.includes(dayLabel)}
- timelineStart={timelineRange.start}
- timelineEnd={timelineRange.end}
- todayPeriodInfo={todayPeriodInfo}
- now={now}
- use24Hour={viewSettings.use24Hour}
- showLocation={viewSettings.showLocations}
- showBreaks={viewSettings.showBreaks}
- dayToWeekday={dayToWeekday}
- allDayLabels={allDaysListForProps}
- customSubjects={customSubjects}
- onEditDay={() => {
- setEditDayLabel(dayLabel);
- setEditDayOpen(true);
- }}
- onToggleHide={() => handleToggleHideDay(dayLabel)}
- onCopyTo={(toDay) => handleCopyDay(dayLabel, toDay)}
- onDeletePeriod={(entryIdx, periodIdx) =>
- handleDeletePeriod(dayLabel, entryIdx, periodIdx)
- }
- onSavePeriod={(entryIdx, periodIdx, updated) =>
- handleUpdatePeriod(dayLabel, entryIdx, periodIdx, updated)
- }
- onMovePeriod={(entryIdx, periodIdx, toDay) =>
- handleMovePeriod(dayLabel, entryIdx, periodIdx, toDay)
- }
- onDropPeriod={handleDropPeriod}
- onStartPeriodDrag={handleStartPeriodDrag}
- periodDrag={periodDrag}
- onQuickAdd={() => handleQuickAdd(dayLabel)}
- />
- ))}
- </motion.div>
-
- {/* Holiday notice */}
- {config.holidays.length > 0 && (
- <motion.div
- key="holiday-notice"
- initial={reduceMotion ? false : { opacity: 0, y: 4 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{
- duration: MOTION_DURATION.medium,
- ease: MOTION_EASE,
- delay: reduceMotion ? 0 : 0.2,
- }}
- className="flex items-center gap-2 rounded-lg px-3 py-2"
- >
- <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15">
- <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
- </div>
- <p className="text-xs text-amber-700 dark:text-amber-300">
- {config.holidays.length} holiday period
- {config.holidays.length !== 1 ?"s" :""} active
- <span className="text-amber-700/60 dark:text-amber-300/60">
- {""}
- — timetable pauses during these dates
- </span>
- </p>
- </motion.div>
- )}
- </AnimatePresence>
- )}
- </div>
- </ScrollArea>
-
- <TimetableEditor
- open={editorOpen}
- onOpenChange={(open) => {
- setEditorOpen(open);
- if (!open) refreshConfig();
- }}
- customSubjects={customSubjects}
- />
-
- <InlineEditDayDialog
- key={editDayLabel}
- open={editDayOpen}
- onOpenChange={(open) => {
- setEditDayOpen(open);
- if (!open) refreshConfig();
- }}
- dayLabel={editDayLabel}
- customSubjects={customSubjects}
- />
-
- <AnimatePresence>
- {periodDrag && (
- <motion.div
- key="period-drag-ghost"
- initial={reduceMotion ? false : { opacity: 0, scale: 0.985 }}
- animate={{ opacity: 1, scale: 1 }}
- exit={{ opacity: 0, scale: 0.985 }}
- transition={
- reduceMotion
- ? { duration: 0 }
- : { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
- }
- className="pointer-events-none fixed left-0 top-0 z-1000 overflow-hidden rounded-lg border border-primary/40 bg-background/92 px-2 py-1.5 shadow-[0_16px_40px_-18px_var(--primary),0_8px_18px_-12px_oklch(0_0_0/0.55)] ring-1 ring-primary/15 backdrop-blur-md"
- style={{
- x: periodDrag.x,
- y: periodDrag.y,
- width: periodDrag.width,
- height: periodDrag.height,
- }}
- >
- <div className="flex h-full min-w-0 flex-col justify-center">
- <div className="flex min-w-0 items-center gap-1.5">
- {periodDrag.color && (
- <span
- className="h-1.5 w-1.5 shrink-0 rounded-full"
- style={{ backgroundColor: periodDrag.color }}
- aria-hidden
- />
- )}
- <span
- className="truncate text-xs font-semibold leading-tight"
- style={
- periodDrag.color ? { color: periodDrag.color } : undefined
- }
- >
- {periodDrag.periodLabel}
- </span>
- </div>
- <span className="mt-0.5 truncate text-caption tabular-nums leading-tight text-muted-foreground/80">
- {periodDrag.timeLabel}
- </span>
- </div>
- </motion.div>
- )}
- </AnimatePresence>
- </>
- );
-});
+export const TimetableView = memo(function TimetableView({ customSubjects }: TimetableViewProps) {
+  const [config, setConfig] = useState<TimetableConfig>(getTimetableConfig)
+  const [now, setNow] = useState(() => new Date())
+  const [selectedDay, setSelectedDay] = useState<TimetableDayLabel>(() => dayForDate(getTimetableConfig(), new Date()) ?? 1)
+  const [managerOpen, setManagerOpen] = useState(false)
+  const [editingDay, setEditingDay] = useState<TimetableDayLabel>(selectedDay)
+
+  useEffect(() => {
+    const refresh = () => setConfig(getTimetableConfig())
+    window.addEventListener("focal-timetable-updated", refresh)
+    window.addEventListener("focal-sync-data-changed", refresh)
+    return () => {
+      window.removeEventListener("focal-timetable-updated", refresh)
+      window.removeEventListener("focal-sync-data-changed", refresh)
+    }
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const cycleLength = getCycleLength(config)
+  const todayDay = dayForDate(config, now)
+  const computedCalendarDay = getDayLabelForDate(
+    now,
+    config.day1Starts,
+    config.holidays,
+    cycleLength,
+    getWeekendTimetables(config),
+  )
+  const weekdays = getDayToWeekday(config)
+  const days = blockDays(Math.min(selectedDay, cycleLength), cycleLength)
+  const blockNumber = Math.floor((days[0] - 1) / DAYS_PER_BLOCK) + 1
+  const blockCount = Math.ceil(cycleLength / DAYS_PER_BLOCK)
+  const viewSettings = { ...DEFAULT_VIEW_SETTINGS, ...config.viewSettings }
+  const subjects = useMemo(() => {
+    const byId = new Map(VCE_SUBJECTS.map((subject) => [subject.id, subject]))
+    for (const subject of customSubjects) byId.set(subject.id, subject)
+    return byId
+  }, [customSubjects])
+  const todayPeriods = todayDay ? getTimetablePeriodsForDay(todayDay, config.entries) : []
+  const liveInfo = getCurrentPeriodInfo(todayPeriods, now)
+  const liveSubject = liveInfo.current ? subjects.get(liveInfo.current.subject) : undefined
+  const nextSubject = liveInfo.next ? subjects.get(liveInfo.next.subject) : undefined
+
+  useEffect(() => {
+    if (selectedDay > cycleLength) setSelectedDay(cycleLength)
+  }, [cycleLength, selectedDay])
+
+  const openManager = (day = selectedDay) => {
+    setEditingDay(day)
+    setManagerOpen(true)
+  }
+
+  const selectAdjacentBlock = (direction: -1 | 1) => {
+    const nextBlock = (blockNumber - 1 + direction + blockCount) % blockCount
+    setSelectedDay(nextBlock * DAYS_PER_BLOCK + 1)
+  }
+
+  const goToToday = () => {
+    if (todayDay) setSelectedDay(todayDay)
+  }
+
+  const clearDayOverride = () => {
+    const next = { ...config, currentDayOverride: null }
+    setTimetableConfig(next)
+    setConfig(next)
+    emitTimetableUpdate()
+    if (computedCalendarDay) setSelectedDay(computedCalendarDay)
+  }
+
+  if (config.entries.length === 0) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center border bg-background p-5 min-[1200px]:p-8">
+        <div className="w-full max-w-xl rounded-xl border bg-card p-7 text-center shadow-sm min-[1200px]:p-9">
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <CalendarClock className="h-5 w-5" />
+          </span>
+          <h1 className="mt-5 text-xl font-semibold tracking-tight">Your school week, at a glance</h1>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+            Add your cycle once. Focal will show the right day, current class, next class, and rooms without turning your timetable into another planner.
+          </p>
+          <Button type="button" onClick={() => openManager(1)} className="mt-6">
+            <Plus />
+            Set up timetable
+          </Button>
+        </div>
+        <TimetableManager open={managerOpen} onOpenChange={setManagerOpen} customSubjects={customSubjects} initialDay={editingDay} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden border bg-background">
+      <header className="shrink-0 border-b border-border/70 px-4 py-3 min-[1200px]:px-6 min-[1200px]:py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-primary" />
+              <h1 className="text-lg font-semibold tracking-tight">Timetable</h1>
+              {!config.enabled && <Badge variant="outline">Hidden from Today</Badge>}
+            </div>
+            <p className="mt-1 text-caption text-muted-foreground">
+              {cycleLength}-day cycle{config.day1Starts ? ` · Day 1 started ${config.day1Starts}` : " · Start date needed"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={goToToday} disabled={!todayDay}>Today</Button>
+            <Button type="button" size="sm" onClick={() => openManager()}>
+              <Settings2 />
+              Manage
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 min-[920px]:grid-cols-[minmax(0,1fr)_auto] min-[920px]:items-center">
+          <div className="min-w-0 rounded-lg border bg-muted/25 px-3 py-2.5">
+            {todayDay === null ? (
+              <div className="flex items-center gap-2.5">
+                <CalendarOff className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">No timetable today</p>
+                  <p className="text-caption text-muted-foreground">Weekend, holiday, or before the cycle starts.</p>
+                </div>
+              </div>
+            ) : liveInfo.current ? (
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" style={liveSubject ? { backgroundColor: liveSubject.color } : undefined} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {liveSubject?.name ?? (liveInfo.current.subject ? liveInfo.current.subject : liveInfo.current.period)}
+                    <span className="font-normal text-muted-foreground"> · {liveInfo.remainingMinutes}m left</span>
+                  </p>
+                  <p className="truncate text-caption text-muted-foreground">
+                    Day {todayDay} · {liveInfo.current.period}{liveInfo.current.location ? ` · ${liveInfo.current.location}` : ""}
+                  </p>
+                </div>
+              </div>
+            ) : liveInfo.next ? (
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Clock3 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">Next: {nextSubject?.name ?? (liveInfo.next.subject ? liveInfo.next.subject : liveInfo.next.period)}</p>
+                  <p className="truncate text-caption text-muted-foreground">Day {todayDay} · {formatTime(liveInfo.next.startTime, viewSettings.use24Hour)}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <CalendarOff className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Classes are finished</p>
+                  <p className="text-caption text-muted-foreground">Day {todayDay} has no more entries today.</p>
+                </div>
+              </div>
+            )}
+          </div>
+          {config.currentDayOverride && (
+            <Button type="button" variant="ghost" size="sm" onClick={clearDayOverride} className="justify-self-start min-[920px]:justify-self-end">
+              Use calendar day
+            </Button>
+          )}
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 border-b border-border/70 px-4 py-2.5 min-[1200px]:px-6">
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="icon-sm" onClick={() => selectAdjacentBlock(-1)} disabled={blockCount <= 1} aria-label="Previous timetable block"><ChevronLeft /></Button>
+            <div className="min-w-0 flex-1">
+              <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex w-max min-w-full justify-center gap-1">
+                  {Array.from({ length: cycleLength }, (_, index) => index + 1).map((day) => (
+                    <Button
+                      key={day}
+                      type="button"
+                      size="sm"
+                      variant={selectedDay === day ? "secondary" : "ghost"}
+                      onClick={() => setSelectedDay(day)}
+                      aria-pressed={selectedDay === day}
+                      className={cn(todayDay === day && selectedDay !== day && "text-primary")}
+                    >
+                      Day {day}
+                    </Button>
+                  ))}
+                </div>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
+            </div>
+            <Button type="button" variant="outline" size="icon-sm" onClick={() => selectAdjacentBlock(1)} disabled={blockCount <= 1} aria-label="Next timetable block"><ChevronRight /></Button>
+          </div>
+        </div>
+
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="p-3 min-[1200px]:p-4 min-[1600px]:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-caption font-medium text-muted-foreground">Block {blockNumber} of {blockCount} · Days {days[0]}–{days[days.length - 1]}</p>
+              <p className="hidden text-caption text-muted-foreground min-[1050px]:block">Select any day to focus it</p>
+            </div>
+            <div className="grid items-start gap-3 min-[1050px]:grid-cols-2 min-[1280px]:grid-cols-3 min-[1550px]:grid-cols-5">
+              {days.map((day) => (
+                <div key={day} className={cn("min-w-0", day !== selectedDay && "hidden min-[1050px]:block")}>
+                  <DayCard
+                    dayLabel={day}
+                    weekday={weekdays[day - 1] ?? 1}
+                    periods={getTimetablePeriodsForDay(day, config.entries)}
+                    subjects={subjects}
+                    isSelected={selectedDay === day}
+                    isToday={todayDay === day}
+                    now={now}
+                    showLocations={viewSettings.showLocations}
+                    showBreaks={viewSettings.showBreaks}
+                    use24Hour={viewSettings.use24Hour}
+                    onSelect={() => setSelectedDay(day)}
+                    onEdit={() => openManager(day)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </ScrollArea>
+      </div>
+
+      <TimetableManager open={managerOpen} onOpenChange={setManagerOpen} customSubjects={customSubjects} initialDay={editingDay} />
+    </div>
+  )
+})

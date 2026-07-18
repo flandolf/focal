@@ -11,6 +11,7 @@ import {
 } from"@/components/ui/dialog"
 import { Button } from"@/components/ui/button"
 import { Input } from"@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { getSubjectById } from"@/lib/utils"
 import { getDeadlineTypeInfo } from"@/lib/utils"
 import type { ProjectTemplate } from"@/lib/types"
@@ -70,7 +71,9 @@ export function ProjectTemplateDialog({
  </DialogDescription>
  </DialogHeader>
 
- <DialogBody className="grid gap-4 py-1">
+ <DialogBody className="flex">
+ <ScrollArea className="min-h-0 flex-1">
+ <div className="grid gap-4 py-1 pr-1">
  {isSaving && (
  <div className="flex items-end gap-2">
  <div className="flex-1">
@@ -172,6 +175,8 @@ export function ProjectTemplateDialog({
  })}
  </div>
  )}
+ </div>
+ </ScrollArea>
  </DialogBody>
 
  <DialogFooter>

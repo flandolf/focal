@@ -516,7 +516,7 @@ export const Sidebar = memo(function Sidebar({
         <div
           className={cn(
             "gap-1 rounded-md border bg-background p-1",
-            isCollapsed ? "flex flex-col" : "grid grid-cols-2",
+            isCollapsed ? "flex flex-col items-center" : "grid grid-cols-2",
           )}
         >
           {filterItems.map(({ mode, label, icon: Icon, count }) => (

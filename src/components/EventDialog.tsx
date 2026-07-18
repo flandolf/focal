@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
 import TimePicker from "@/components/ui/time-picker"
 import { VCE_SUBJECTS, type CalendarEvent, type EventType, type Subject } from"@/lib/types"
@@ -309,7 +310,9 @@ function EventForm({
 
  return (
  <form onSubmit={handleSubmit} className="grid min-h-0">
- <DialogBody className="grid max-h-[min(72vh,40rem)] gap-5 px-5 py-5">
+ <DialogBody className="flex max-h-[min(72vh,40rem)]">
+ <ScrollArea className="min-h-0 flex-1">
+ <div className="grid gap-5 px-5 py-5">
  <section className="grid gap-3">
  <FormField
  label="Event title"
@@ -533,6 +536,8 @@ function EventForm({
  </FormField>
  </div>
  </FormSection>
+ </div>
+ </ScrollArea>
  </DialogBody>
 
  <DialogFooter className={cn("m-0 rounded-none px-5 py-3", footerStart &&"sm:justify-between")}>

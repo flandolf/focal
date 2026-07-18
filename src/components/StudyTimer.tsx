@@ -191,6 +191,14 @@ export function closeRunningInterval(
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- exported for the runnable timer self-check
+export function getActiveSessionSubjectIds(
+  activeSessionId: string | null,
+  sessions: StudySession[],
+) {
+  return sessions.find((session) => session.id === activeSessionId)?.subjectIds;
+}
+
 function getInitialState(settings: TimerSettings): TimerState {
   const fallback: TimerState = {
     running: false,
@@ -517,6 +525,8 @@ const StudyTimerInner = memo(function StudyTimerInner({
       ? sessions.find((session) => session.id === activeSessionId) ??
         activeSessionRef.current
       : null;
+    const restoredSubjectIds = getActiveSessionSubjectIds(activeSessionId, sessions);
+    if (restoredSubjectIds) setSelectedSubjectIds(restoredSubjectIds);
   }, [activeSessionId, sessions]);
 
   useEffect(() => {
@@ -1176,9 +1186,9 @@ const StudyTimerInner = memo(function StudyTimerInner({
                 </span>
               )}
               {expanded ? (
-                <ChevronDown className="h-3 w-3 ml-auto" />
+                <ChevronDown className="h-3 w-3" />
               ) : (
-                <ChevronUp className="h-3 w-3 ml-auto" />
+                <ChevronUp className="h-3 w-3" />
               )}
             </Button>
             <Button
@@ -1219,16 +1229,30 @@ const StudyTimerInner = memo(function StudyTimerInner({
                 expandedRef.current?.style.setProperty("overflow", "visible");
               }}
             >
-              <div className="space-y-2 px-3 py-2">
-                <div className={cn("text-xs font-medium", modeColor)}>
-                  {modeLabel} · Cycle {cycles + 1}
+              <div className="space-y-3 px-3 pb-3 pt-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className={cn("font-medium", modeColor)}>{modeLabel}</span>
+                  <span className="text-muted-foreground">Cycle {cycles + 1}</span>
                 </div>
 
-                <DurationInputs
-                  variant="sidebar"
-                  settings={settings}
-                  onChange={updateDuration}
-                />
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-1">
+                      <ChevronDown className="size-3 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+                      Durations
+                    </span>
+                    <span className="tabular-nums">
+                      {settings.workMinutes} / {settings.breakMinutes} / {settings.longBreakMinutes} min
+                    </span>
+                  </summary>
+                  <div className="pt-2">
+                    <DurationInputs
+                      variant="sidebar"
+                      settings={settings}
+                      onChange={updateDuration}
+                    />
+                  </div>
+                </details>
 
                 <SubjectPicker
                   variant="sidebar"
@@ -1238,45 +1262,26 @@ const StudyTimerInner = memo(function StudyTimerInner({
                   onSubjectClick={handleSubjectClick}
                 />
 
-                <div className="rounded-lg border border-sidebar-border p-2">
-                  <div className="mx-auto relative h-16 w-16">
-                    {/* Flow pressure indicator — pulsing dot when timer is running */}
-                    {running && (
-                      <div className="absolute -right-0.5 -top-0.5 z-10 h-2.5 w-2.5 rounded-full bg-primary motion-safe:animate-pulse" />
-                    )}
-                    <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
-                      <circle
-                        cx="40"
-                        cy="40"
-                        r="34"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        className="text-muted/20"
-                      />
-                      <circle
-                        cx="40"
-                        cy="40"
-                        r="34"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeDasharray={`${2 * Math.PI * 34}`}
-                        strokeDashoffset={`${2 * Math.PI * 34 * (1 - progress)}`}
-                        strokeLinecap="round"
-                        className={cn(
-                          "transition-[stroke-dashoffset] duration-1000 motion-reduce:transition-none",
-                          mode === "work" || isStudyOvertime
-                            ? "text-background"
-                            : "text-emerald-500",
-                        )}
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="font-heading text-lg font-semibold leading-tight tabular-nums">
-                        {timeDisplay}
-                      </span>
-                    </div>
+                <div className="pt-1">
+                  <div className="text-center font-heading text-3xl font-semibold leading-none tabular-nums">
+                    {timeDisplay}
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-label={`${modeLabel} progress`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={progressPercent}
+                    aria-valuetext={progressDetail}
+                    className="mt-3 h-1 overflow-hidden rounded-full bg-muted"
+                  >
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-[width] duration-1000 motion-reduce:transition-none",
+                        mode === "work" || isStudyOvertime ? "bg-primary" : "bg-emerald-500",
+                      )}
+                      style={{ width: `${progressPercent}%` }}
+                    />
                   </div>
 
                   <TimerControls
