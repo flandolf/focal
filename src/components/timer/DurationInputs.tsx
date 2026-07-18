@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 const MIN_DURATION_MINUTES = 1
 const MAX_DURATION_MINUTES = 180
@@ -37,58 +39,34 @@ function Stepper({
       >
         {label}
       </span>
-      <div
-        className={cn(
-          "group flex items-center overflow-hidden rounded-lg border border-border/60 bg-background/40 transition-all duration-200",
-          "hover:border-primary/30 hover:ring-1 hover:ring-primary/15",
-          "focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/25",
-          compact ? "h-7" : "h-8",
-        )}
-      >
-        <button
-          type="button"
+      <div className="flex items-center rounded-lg border">
+        <Button
+          variant="ghost"
+          size={compact ? "icon-sm" : "icon"}
           onClick={decrement}
           disabled={value <= MIN_DURATION_MINUTES}
-          className={cn(
-            "flex shrink-0 items-center justify-center text-muted-foreground transition-all duration-150",
-            "hover:bg-accent/50 hover:text-foreground",
-            "motion-safe:active:scale-90 active:bg-primary/10 active:text-primary",
-            "disabled:cursor-not-allowed disabled:opacity-30 disabled:active:scale-100",
-            compact ? "h-7 w-7 text-xs" : "h-8 w-8 text-sm",
-          )}
           aria-label={`Decrease ${label}`}
         >
           −
-        </button>
-        <input
+        </Button>
+        <Input
           type="number"
           min={MIN_DURATION_MINUTES}
           max={MAX_DURATION_MINUTES}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className={cn(
-            "min-w-0 flex-1 appearance-none bg-transparent px-0 text-center font-medium tabular-nums outline-none",
-            "[color-scheme:light] dark:[color-scheme:dark]",
-            "motion-safe:transition-colors motion-safe:duration-150",
-            compact ? "text-xs" : "text-sm",
-          )}
+          className="min-w-0 flex-1 appearance-none border-0 px-0 text-center tabular-nums shadow-none focus-visible:ring-0"
           aria-label={`${label} minutes`}
         />
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size={compact ? "icon-sm" : "icon"}
           onClick={increment}
           disabled={value >= MAX_DURATION_MINUTES}
-          className={cn(
-            "flex shrink-0 items-center justify-center text-muted-foreground transition-all duration-150",
-            "hover:bg-accent/50 hover:text-foreground",
-            "motion-safe:active:scale-90 active:bg-primary/10 active:text-primary",
-            "disabled:cursor-not-allowed disabled:opacity-30 disabled:active:scale-100",
-            compact ? "h-7 w-7 text-xs" : "h-8 w-8 text-sm",
-          )}
           aria-label={`Increase ${label}`}
         >
           +
-        </button>
+        </Button>
       </div>
     </div>
   )

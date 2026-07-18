@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react"
-import { motion } from "framer-motion"
 import { Link2, Plus, X, ChevronDown, ChevronRight, ExternalLink, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { staggerContainer, staggerItem } from "@/lib/motion"
 import { getSubjectById } from "@/lib/utils"
 import type { Project } from "@/lib/types"
 
@@ -27,7 +26,6 @@ export function ProjectDependenciesPanel({
   const [expanded, setExpanded] = useState((project.dependsOn?.length ?? 0) > 0)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const panelVariants = useMemo(() => staggerContainer(0.05, 0.03), [])
 
   const dependencies = useMemo(() => {
     return (project.dependsOn ?? [])
@@ -65,20 +63,17 @@ export function ProjectDependenciesPanel({
   }
 
   return (
-    <motion.div
-      variants={panelVariants}
-      initial="initial"
-      animate="animate"
-    >
+    <div>
       <div className="px-4 pb-2 min-[1200px]:px-5">
-        <motion.div variants={staggerItem}>
-          <button
-            type="button"
+        <div>
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => setExpanded((v) => !v)}
-            className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="w-full justify-start"
           >
-            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            <Link2 className="h-3 w-3" />
+            {expanded ? <ChevronDown /> : <ChevronRight />}
+            <Link2 />
             Dependencies
             {dependencies.length > 0 && (
               <span className="text-caption tabular-nums text-muted-foreground/60">
@@ -86,15 +81,16 @@ export function ProjectDependenciesPanel({
               </span>
             )}
             {unfinishedCount > 0 && (
-              <span
-                className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0 text-caption font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10"
+              <Badge
+                variant="warning"
+                className="ml-auto"
                 title={`${unfinishedCount} unfinished ${unfinishedCount === 1 ? "dependency" : "dependencies"}`}
               >
-                <AlertTriangle className="h-3 w-3" />
+                <AlertTriangle />
                 {unfinishedCount} blocking
-              </span>
+              </Badge>
             )}
-          </button>
+          </Button>
           {expanded && (
             <div className="mt-1 space-y-0.5 px-1">
               {dependencies.length === 0 && (
@@ -116,14 +112,15 @@ export function ProjectDependenciesPanel({
                   >
                     <span className="text-sm shrink-1">{dep.icon ?? "📁"}</span>
                     <div className="min-w-1 flex-1 flex items-center gap-1.5">
-                      <button
-                        type="button"
+                      <Button
+                        variant="link"
+                        size="xs"
                         onClick={() => onOpenProject(dep.id)}
-                        className="flex items-center gap-1 text-xs font-medium text-left hover:text-primary transition-colors"
+                        className="min-w-0 px-0"
                       >
                         <span className="truncate">{dep.name}</span>
-                        <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
-                      </button>
+                        <ExternalLink className="shrink-0 opacity-0 group-hover:opacity-60" />
+                      </Button>
                       {(subject ?? statusLabel) && (
                         <div className="hidden sm:flex items-center gap-1">
                           {subject && (
@@ -149,14 +146,15 @@ export function ProjectDependenciesPanel({
                         </div>
                       )}
                     </div>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
                       onClick={() => onRemoveDependency(dep.id)}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-all hover:text-destructive hover:bg-destructive/10 group-hover:opacity-100"
+                      className="shrink-0 text-destructive opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       aria-label={`Remove dependency ${dep.name}`}
                     >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
+                      <X />
+                    </Button>
                   </div>
                 )
               })}
@@ -173,12 +171,12 @@ export function ProjectDependenciesPanel({
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
-                    size="sm"
+                    size="xs"
                     variant="ghost"
                     disabled={addableProjects.length === 0}
-                    className="h-6 gap-1 rounded-md text-xs mt-0.5"
+                    className="mt-0.5"
                   >
-                    <Plus className="h-3 w-3" />
+                    <Plus />
                     Add dependency
                   </Button>
                 </PopoverTrigger>
@@ -205,11 +203,12 @@ export function ProjectDependenciesPanel({
                           filteredAddable.map((p) => {
                             const subject = p.subjectId ? getSubjectById(p.subjectId) : undefined
                             return (
-                              <button
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 key={p.id}
-                                type="button"
                                 onClick={() => handleSelect(p.id)}
-                                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted/60 transition-colors"
+                                className="w-full justify-start"
                               >
                                 <span className="text-base shrink-0">{p.icon ?? "📁"}</span>
                                 <span className="truncate flex-1">{p.name}</span>
@@ -221,7 +220,7 @@ export function ProjectDependenciesPanel({
                                     {subject.shortCode}
                                   </span>
                                 )}
-                              </button>
+                              </Button>
                             )
                           })
                         )}
@@ -232,8 +231,8 @@ export function ProjectDependenciesPanel({
               </Popover>
             </div>
           )}
-        </motion.div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

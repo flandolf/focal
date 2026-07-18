@@ -131,7 +131,7 @@ export function QuickLinks() {
  <>
  <div>
  <div className="flex items-center justify-between mb-3">
- <h3 className="font-heading text-sm font-semibold flex items-center gap-2">
+ <h3 className="flex items-center gap-2 text-sm font-semibold">
  <Link className="h-3.5 w-3.5 text-muted-foreground" />
  Quick Links
  </h3>
@@ -176,12 +176,13 @@ export function QuickLinks() {
  transition={{ type:"spring", stiffness: 480, damping: 32, mass: 0.6 }}
  className="group relative min-w-0"
  >
- <button
+ <Button
  type="button"
  onClick={() => void openUrl(link.url).catch(() => {
  toast.error(`Couldn't open "${link.label}". Check the saved URL and try again.`)
  })}
- className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-border/60 p-3 text-center transition-all hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+ variant="outline"
+ className="h-auto min-w-0 flex-col items-center gap-1.5 p-3 text-center whitespace-normal"
  style={{ backgroundColor: link.color +"18" }}
  aria-label={`Open ${link.label}: ${destination}`}
  >
@@ -192,15 +193,17 @@ export function QuickLinks() {
  <span className="w-full truncate text-micro leading-none text-muted-foreground/70">
  {destination}
  </span>
- </button>
- <button
+ </Button>
+ <Button
  type="button"
  onClick={() => handleEditLink(link)}
- className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-background/90 text-muted-foreground opacity-0 shadow-sm ring-1 ring-border/80 backdrop-blur transition-all hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 group-hover:opacity-100"
+ variant="outline"
+ size="icon-xs"
+ className="absolute right-1.5 top-1.5 z-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
  aria-label={`Edit ${link.label}`}
  >
  <Pencil className="h-3 w-3" />
- </button>
+ </Button>
  </motion.div>
  )
  })}
@@ -226,21 +229,18 @@ export function QuickLinks() {
  {ICON_OPTIONS.map((opt) => {
  const IconComp = opt.component
  return (
- <button
+ <Button
  key={opt.name}
  type="button"
  onClick={() => setLinkIcon(opt.name)}
- className={cn(
-"flex h-10 w-full items-center justify-center rounded-lg border transition-colors",
- linkIcon === opt.name
- ?"border-primary/35 bg-primary/10 text-primary"
- :"border-border/60 bg-background/40 text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground"
- )}
+ variant={linkIcon === opt.name ? "default" : "outline"}
+ size="icon-lg"
+ className="w-full"
  aria-label={opt.name}
  aria-pressed={linkIcon === opt.name}
  >
  <IconComp className="h-4 w-4" />
- </button>
+ </Button>
  )
  })}
  </div>
@@ -249,14 +249,13 @@ export function QuickLinks() {
  <label className="text-control font-medium text-muted-foreground">Color</label>
  <div className="flex flex-wrap gap-2">
  {COLOR_OPTIONS.map((opt) => (
- <button
+ <Button
  key={opt.value}
  type="button"
  onClick={() => setLinkColor(opt.value)}
- className={cn(
-"h-8 w-8 rounded-full border-2 transition-transform",
- linkColor === opt.value ?"scale-105 border-foreground" :"border-transparent hover:scale-105"
- )}
+ variant="outline"
+ size="icon"
+ className={cn("rounded-full", linkColor === opt.value && "ring-2 ring-ring")}
  style={{ backgroundColor: opt.value }}
  title={opt.name}
  aria-label={opt.name}

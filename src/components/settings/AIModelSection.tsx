@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Loader2,
   ExternalLink,
@@ -173,21 +175,19 @@ function ModelRow({
   isSelected: boolean
   onSelect: () => void
 }) {
-  const reduceMotion = useReducedMotion()
   const contextLength = formatContextLength(model.contextLength)
   const localMeta = localModelMeta(model)
   return (
-    <motion.button
+    <Button
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
-      whileHover={reduceMotion ? undefined : { x: 1 }}
-      transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.65 }}
+      variant="ghost"
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+        "h-auto w-full justify-start gap-2.5 px-2.5 py-1.5 text-left whitespace-normal",
         isSelected
-          ? "bg-primary/10 text-primary font-medium ring-1 ring-primary/30"
-          : "hover:bg-accent",
+          ? "bg-primary/10 text-primary"
+          : undefined,
       )}
     >
       <span
@@ -220,7 +220,7 @@ function ModelRow({
           </p>
         )}
       </div>
-    </motion.button>
+    </Button>
   )
 }
 
@@ -545,7 +545,7 @@ export function AIModelSection() {
 
   return (
     <div className="flex flex-col gap-3">
-      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+      <section className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">AI Provider</h2>
@@ -558,15 +558,13 @@ export function AIModelSection() {
           {providers.map((provider) => {
             const selected = provider.id === providerId
             return (
-              <button
+              <Button
                 key={provider.id}
                 type="button"
                 onClick={() => handleProviderChange(provider.id)}
                 aria-pressed={selected}
-                className={cn(
-                  "flex min-w-0 flex-1 basis-40 flex-col items-start gap-0.5 rounded-lg border bg-background/30 px-3 py-2 text-left text-xs transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                  selected ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/30" : "border-border",
-                )}
+                variant={selected ? "default" : "outline"}
+                className="h-auto min-w-0 flex-1 basis-40 flex-col items-start gap-0.5 px-3 py-2 text-left whitespace-normal"
               >
                 <span className="flex items-center gap-1.5 text-caption font-semibold">
                   {selected && <Check className="h-3 w-3" strokeWidth={3} />}
@@ -575,14 +573,14 @@ export function AIModelSection() {
                 <span className="line-clamp-2 text-micro text-muted-foreground/70">
                   {provider.summary}
                 </span>
-              </button>
+              </Button>
             )
           })}
         </div>
       </section>
 
       {isOpenRouter && (
-        <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <section className="rounded-lg border bg-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="flex items-center gap-1.5 text-sm font-medium">
@@ -665,7 +663,7 @@ export function AIModelSection() {
       )}
 
       {isOllama && (
-        <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <section className="rounded-lg border bg-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="flex items-center gap-1.5 text-sm font-medium">
@@ -676,17 +674,18 @@ export function AIModelSection() {
                 Point Focal at a running Ollama instance. Default is <code className="font-mono text-[10px]">http://localhost:11434</code> if Ollama is installed locally.
               </p>
             </div>
-            <button
+            <Button
               type="button"
               onClick={handleHealthcheck}
               disabled={healthStatus.status === "pending"}
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/30 px-2.5 text-caption transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+              variant="outline"
+              size="sm"
             >
               {healthStatus.status === "pending"
                 ? <Loader2 className="h-3 w-3 animate-spin" />
                 : <RefreshCw className="h-3 w-3" />}
               Test connection
-            </button>
+            </Button>
           </div>
           <Input
             id="ollama-base-url"
@@ -742,7 +741,7 @@ export function AIModelSection() {
         </section>
       )}
 
-      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+      <section className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">AI Model</h2>
@@ -753,15 +752,16 @@ export function AIModelSection() {
             </p>
           </div>
           {isOllama && (
-            <button
+            <Button
               type="button"
               onClick={handleRefreshModels}
               disabled={modelsLoading}
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/30 px-2.5 text-caption transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+              variant="outline"
+              size="sm"
             >
               {modelsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
               Refresh
-            </button>
+            </Button>
           )}
         </div>
         {isOllama && (
@@ -866,7 +866,7 @@ export function AIModelSection() {
         )}
       </section>
 
-      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+      <section className="rounded-lg border bg-card p-4">
         <div>
           <h2 className="text-sm font-medium">Assistant personality</h2>
           <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
@@ -877,27 +877,25 @@ export function AIModelSection() {
           {ASSISTANT_PERSONALITIES.map((option) => {
             const selected = assistantPersonality === option.id
             return (
-              <button
+              <Button
                 key={option.id}
                 type="button"
                 role="radio"
                 aria-checked={selected}
                 onClick={() => handleAssistantPersonalityChange(option.id)}
-                className={cn(
-                  "min-w-0 flex-1 basis-36 rounded-lg border bg-background/30 px-3 py-2 text-left outline-none transition-colors hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                  selected ? "border-primary bg-primary/10 ring-1 ring-primary/30" : "border-border",
-                )}
+                variant={selected ? "default" : "outline"}
+                className="h-auto min-w-0 flex-1 basis-36 flex-col items-start px-3 py-2 text-left whitespace-normal"
               >
-                <span className={cn("block text-xs font-medium", selected && "text-primary")}>{option.label}</span>
-                <span className="mt-0.5 block text-micro leading-relaxed text-muted-foreground/70">{option.description}</span>
-              </button>
+                <span className="block text-xs font-medium">{option.label}</span>
+                <span className={cn("mt-0.5 block text-micro leading-relaxed", selected ? "text-primary-foreground/75" : "text-muted-foreground/70")}>{option.description}</span>
+              </Button>
             )
           })}
         </div>
         <label className="mt-4 block text-caption text-muted-foreground/70" htmlFor="assistant-custom-instructions">
           Additional instructions <span className="text-muted-foreground/50">(optional)</span>
         </label>
-        <textarea
+        <Textarea
           id="assistant-custom-instructions"
           value={assistantCustomInstructions}
           maxLength={500}
@@ -905,7 +903,7 @@ export function AIModelSection() {
           onChange={(event) => handleAssistantCustomInstructionsChange(event.target.value)}
           onBlur={notifyUserSettingsChanged}
           placeholder="Example: Use Australian English and keep plans under five steps."
-          className="mt-1.5 w-full resize-y rounded-lg border border-input bg-background/55 px-3 py-2 text-xs leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="mt-1.5 text-xs"
         />
         <p className="mt-1 text-right text-micro tabular-nums text-muted-foreground/60">
           {assistantCustomInstructions.length}/500
@@ -913,7 +911,7 @@ export function AIModelSection() {
       </section>
 
       {activeProvider.supportsReasoning && (
-        <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <section className="rounded-lg border bg-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-sm font-medium">Reasoning Tokens</h2>
@@ -921,15 +919,16 @@ export function AIModelSection() {
                 Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
               </p>
             </div>
-            <button
+            <Button
               type="button"
               onClick={() => setReasoningHelpOpen((v) => !v)}
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+              variant="ghost"
+              size="icon-xs"
               aria-label="What do these levels mean?"
               aria-expanded={reasoningHelpOpen}
             >
               <HelpCircle className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           </div>
           <AnimatePresence initial={false}>
             {reasoningHelpOpen && (
@@ -958,21 +957,17 @@ export function AIModelSection() {
           <p className="mt-3 block text-caption text-muted-foreground/70">Effort Level</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {(["xhigh", "high", "medium", "low", "minimal", "none"] as const).map((level) => (
-              <button
+              <Button
                 type="button"
                 key={level}
                 onClick={() => handleReasoningEffortChange(level)}
                 aria-pressed={reasoningEffort === level}
                 title={REASONING_BLURB[level]}
-                className={cn(
-                  "rounded-lg border bg-background/30 px-2.5 py-1 text-xs transition-colors outline-none hover:border-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                  reasoningEffort === level
-                    ? "border-primary bg-primary/10 text-primary font-medium"
-                    : "border-border text-muted-foreground hover:text-foreground",
-                )}
+                variant={reasoningEffort === level ? "default" : "outline"}
+                size="sm"
               >
                 {level === "xhigh" ? "Max" : level.charAt(0).toUpperCase() + level.slice(1)}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -998,11 +993,10 @@ export function AIModelSection() {
               </div>
 
               <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 bg-background/30 p-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:border-muted-foreground/30">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={reasoningExclude}
-                  onChange={(e) => handleReasoningExcludeChange(e.target.checked)}
-                  className="h-4 w-4 shrink-0 accent-primary mt-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  onCheckedChange={(checked) => handleReasoningExcludeChange(checked === true)}
+                  className="mt-0.5"
                 />
                 <div className="min-w-0">
                   <p className="text-sm">Exclude reasoning from response</p>

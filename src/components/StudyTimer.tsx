@@ -31,6 +31,8 @@ import { TimerControls } from "@/components/timer/TimerControls";
 import { SubjectPicker } from "@/components/timer/SubjectPicker";
 import { DurationInputs } from "@/components/timer/DurationInputs";
 import { RecoveryDialog } from "@/components/timer/RecoveryDialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 const TIMER_SETTINGS_KEY = "focal-pomodoro-settings";
 const TIMER_STATE_KEY = "focal-pomodoro-state";
@@ -1112,14 +1114,11 @@ const StudyTimerInner = memo(function StudyTimerInner({
           onDiscard={handleRecoveryDiscard}
         />
         <div className="flex flex-col items-center gap-1 py-1">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onExpand}
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-xl outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/35",
-              running
-                ? modeColor
-                : "text-muted-foreground hover:text-foreground",
-            )}
+            className={running ? modeColor : undefined}
             aria-label="Expand Pomodoro timer"
             title={
               running
@@ -1127,16 +1126,17 @@ const StudyTimerInner = memo(function StudyTimerInner({
                 : "Pomodoro"
             }
           >
-            <Timer className="h-4 w-4" />
-          </button>
-          <button
+            <Timer />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={openFocusView}
-            className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
             aria-label="Open full screen timer"
             title="Open full screen timer"
           >
-            <Maximize2 className="h-4 w-4" />
-          </button>
+            <Maximize2 />
+          </Button>
         </div>
       </>
     );
@@ -1156,15 +1156,15 @@ const StudyTimerInner = memo(function StudyTimerInner({
       <div className="border-t border-sidebar-border/70">
         <div className="px-2 py-1.5">
           <div className="flex items-center gap-1">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => setExpanded(!expanded)}
-              className="flex min-h-8 flex-1 items-center gap-2 rounded-xl py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
+              className="flex-1 justify-start"
               aria-label={expanded ? "Collapse Pomodoro timer" : "Expand Pomodoro timer"}
               aria-expanded={expanded}
               aria-controls={expandedPanelId}
             >
-              <Timer className="h-3.5 w-3.5 shrink-0" />
+              <Timer />
               <span
                 className={cn("font-heading tabular-nums", running && modeColor)}
               >
@@ -1180,22 +1180,24 @@ const StudyTimerInner = memo(function StudyTimerInner({
               ) : (
                 <ChevronUp className="h-3 w-3 ml-auto" />
               )}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={openFocusView}
-              className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
               aria-label="Open full screen timer"
               title="Open full screen timer"
             >
-              <Maximize2 className="h-3 w-3" />
-            </button>
-            <button
+              <Maximize2 />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={handleReset}
-              className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
               aria-label="Reset timer"
             >
-              <RotateCcw className="h-3 w-3" />
-            </button>
+              <RotateCcw />
+            </Button>
           </div>
         </div>
         <AnimatePresence initial={false}>
@@ -1236,7 +1238,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
                   onSubjectClick={handleSubjectClick}
                 />
 
-                <div className="rounded-2xl border border-sidebar-border/70 bg-background/25 p-2">
+                <div className="rounded-lg border border-sidebar-border p-2">
                   <div className="mx-auto relative h-16 w-16">
                     {/* Flow pressure indicator — pulsing dot when timer is running */}
                     {running && (
@@ -1304,20 +1306,16 @@ const StudyTimerInner = memo(function StudyTimerInner({
                         </p>
                         <div className="grid grid-cols-5 gap-1">
                           {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
-                            <button
+                            <Button
                               key={score}
-                              type="button"
+                              variant={reflectionConfidence === score ? "secondary" : "outline"}
+                              size="sm"
                               onClick={() => setReflectionConfidence(score)}
                               aria-pressed={reflectionConfidence === score}
-                              className={cn(
-                                "h-7 rounded-md border text-xs font-medium transition-colors",
-                                reflectionConfidence === score
-                                  ? "border-primary bg-primary/10 text-primary"
-                                  : "border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                              )}
+                              className="w-full"
                             >
                               {score}
-                            </button>
+                            </Button>
                           ))}
                         </div>
                       </div>
@@ -1325,43 +1323,42 @@ const StudyTimerInner = memo(function StudyTimerInner({
                         <p className="text-micro font-medium text-muted-foreground mb-1">
                           Blockers
                         </p>
-                        <textarea
+                        <Textarea
                           placeholder="What felt unclear?"
                           value={reflectionBlockers}
                           onChange={(e) => setReflectionBlockers(e.target.value)}
                           rows={2}
-                          className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                          className="min-h-0 resize-none text-xs"
                         />
                       </div>
                       <div>
                         <p className="text-micro font-medium text-muted-foreground mb-1">
                           Next action
                         </p>
-                        <textarea
+                        <Textarea
                           placeholder="e.g. redo practice exam"
                           value={reflectionNextAction}
                           onChange={(e) => setReflectionNextAction(e.target.value)}
                           rows={2}
-                          className="min-h-0 w-full resize-none rounded-lg border border-input bg-background/65 px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                          className="min-h-0 resize-none text-xs"
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
+                        <Button
                           onClick={saveReflection}
                           disabled={saving}
-                          className="flex-1 h-7 rounded-lg bg-primary text-primary-foreground text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                          className="flex-1"
                         >
                           {saving ? "Saving..." : "Save"}
-                        </button>
-                        <button
-                          type="button"
+                        </Button>
+                        <Button
+                          variant="outline"
                           onClick={dismissReflection}
                           disabled={saving}
-                          className="flex-1 h-7 rounded-lg border border-border/70 bg-background/45 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                          className="flex-1"
                         >
                           Dismiss
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}

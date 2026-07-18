@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useId } from "react"
 import { Plus, Trash2, Copy, ChevronUp, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -70,9 +71,10 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-input bg-background px-2 text-xs outline-none hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-w-0 flex-1 justify-start"
         >
           {selected ? (
             <>
@@ -87,46 +89,40 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
           ) : (
             <span className="text-muted-foreground/50">Subject</span>
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="w-52 p-2" align="start">
-        <input
+        <Input
           type="text"
           value={open ? search : ""}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search subjects…"
-          className="mb-1.5 h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="mb-1.5 h-7 text-xs"
           autoFocus
         />
         <ScrollArea className="max-h-36">
         <div className="space-y-0.5">
-          <button
-            type="button"
+          <Button
+            variant={value === "" ? "secondary" : "ghost"}
+            size="sm"
             onClick={() => { onChange(""); setOpen(false) }}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
-              value === ""
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-accent/50",
-            )}
+            className="w-full justify-start"
           >
             <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />
             No subject
-          </button>
+          </Button>
           {filtered.map((s) => (
-            <button
+            <Button
               key={s.id}
-              type="button"
+              variant={value === s.id ? "secondary" : "ghost"}
+              size="sm"
               onClick={() => { onChange(s.id); setOpen(false) }}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
-                value === s.id ? "bg-primary/10 text-primary" : "hover:bg-accent/50",
-              )}
+              className="w-full justify-start"
             >
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
               <span className="flex-1 truncate text-left">{s.name}</span>
               <span className="text-muted-foreground/50">{s.shortCode}</span>
-            </button>
+            </Button>
           ))}
           {filtered.length === 0 && search && (
             <p className="py-2 text-center text-xs text-muted-foreground">No subjects found</p>
@@ -140,7 +136,7 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
             <span className="text-caption">✎</span>
             Custom label
           </label>
-          <input
+          <Input
             type="text"
             value={customValue}
             onChange={(e) => setCustomValue(e.target.value)}
@@ -151,16 +147,16 @@ function SubjectPicker({ value, onChange, subjects }: SubjectPickerProps) {
               }
             }}
             placeholder="e.g. Roll Call, Assembly…"
-            className="h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="h-7 text-xs"
           />
           {customValue.trim() && customValue.trim() !== value && (
-            <button
-              type="button"
+            <Button
+              size="sm"
               onClick={() => { onChange(customValue.trim()); setOpen(false) }}
-              className="mt-1 flex w-full items-center gap-2 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+              className="mt-1 w-full"
             >
               Set "{customValue.trim()}"
-            </button>
+            </Button>
           )}
         </div>
       </PopoverContent>
@@ -198,13 +194,13 @@ function PeriodNameInput({ value, onChange, onPickBreak }: PeriodNameInputProps)
 
   return (
     <>
-      <input
+      <Input
         type="text"
         value={value}
         onChange={handleChange}
         placeholder="Period name"
         list={listId}
-        className="h-7 w-full min-w-0 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="h-7 min-w-0 text-xs"
       />
       <datalist id={listId}>
         {allSuggestions.map((s) => (
@@ -245,24 +241,24 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
         <div className="flex shrink-0 flex-col items-center gap-0 pt-0.5">
           <span className="text-caption font-medium text-muted-foreground/50 tabular-nums">{index + 1}</span>
           <div className="flex flex-col gap-0">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={() => onMove(-1)}
               disabled={index === 0}
-              className="flex h-3 w-4 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground focus-visible:text-foreground disabled:opacity-30"
               aria-label="Move up"
             >
-              <ChevronUp className="h-2.5 w-2.5" />
-            </button>
-            <button
-              type="button"
+              <ChevronUp />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={() => onMove(1)}
               disabled={index === total - 1}
-              className="flex h-3 w-4 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground focus-visible:text-foreground disabled:opacity-30"
               aria-label="Move down"
             >
-              <ChevronDown className="h-2.5 w-2.5" />
-            </button>
+              <ChevronDown />
+            </Button>
           </div>
         </div>
 
@@ -275,12 +271,12 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
               onPickBreak={(label) => onUpdate("isBreak", isBreakLabel(label))}
             />
             <SubjectPicker value={period.subject} onChange={(v) => onUpdate("subject", v)} subjects={subjects} />
-            <input
+            <Input
               type="text"
               value={period.location}
               onChange={(e) => onUpdate("location", e.target.value)}
               placeholder="Room"
-              className="h-7 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="h-7 text-xs"
             />
           </div>
 
@@ -289,41 +285,38 @@ function PeriodRow({ period, index, total, onUpdate, onMove, onDuplicate, onDele
             <span className="text-xs text-muted-foreground/50" aria-hidden>–</span>
             <TimePicker value={period.endTime} onChange={(e) => onUpdate("endTime", e.target.value)} aria-label="End time" showIcon={false} className="h-7 w-22 text-xs" />
 
-            <button
-              type="button"
+            <Button
+              variant={period.isBreak ? "secondary" : "outline"}
+              size="xs"
               onClick={() => onUpdate("isBreak", !period.isBreak)}
-              className={cn(
-                "ml-auto flex h-6 items-center gap-1 rounded-full border px-2 text-caption font-medium transition-colors",
-                period.isBreak
-                  ? "border-amber-400/40 bg-amber-100/50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/50 dark:text-amber-400"
-                  : "border-input bg-background/60 text-muted-foreground/50 hover:border-amber-400/30 hover:text-amber-600 dark:hover:text-amber-400",
-              )}
+              className="ml-auto"
               aria-pressed={period.isBreak}
               title="Mark as break / recess / lunch"
             >
               {period.isBreak ? "Break" : "Break?"}
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex shrink-0 flex-col gap-0.5 pt-1">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={onDuplicate}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground focus-visible:text-foreground"
             aria-label="Duplicate period"
           >
-            <Copy className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
+            <Copy />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={onDelete}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:text-foreground"
+            className="text-destructive"
             aria-label="Delete period"
           >
-            <Trash2 className="h-3 w-3" />
-          </button>
+            <Trash2 />
+          </Button>
         </div>
       </div>
 

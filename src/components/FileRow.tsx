@@ -2,8 +2,10 @@ import { formatFileSize, formatDate } from "@/lib/utils";
 import { memo, useState, useRef, useCallback, useMemo } from "react";
 import type { FileInfo, FileTag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { FileTypeIcon } from "@/components/FileTypeIcon";
 import {
   Popover,
@@ -188,7 +190,7 @@ function FileRowInner({
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             {isRenaming ? (
               <div className="flex items-center gap-1.5">
-                <input
+                <Input
                   ref={renameInputRef}
                   type="text"
                   value={renameValue}
@@ -199,10 +201,12 @@ function FileRowInner({
                     if (e.key === "Escape") cancelRename();
                   }}
                   onBlur={confirmRename}
-                  className="text-sm font-medium bg-background border border-primary/50 rounded-md px-2 py-0.5 w-full max-w-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                  className="h-7 max-w-sm"
                   autoFocus
                 />
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -211,12 +215,14 @@ function FileRowInner({
                     e.stopPropagation();
                     confirmRename();
                   }}
-                  className="flex size-7 shrink-0 items-center justify-center rounded-lg text-emerald-600 transition-colors hover:bg-accent dark:text-emerald-400"
+                  className="shrink-0 text-success"
                   aria-label="Confirm rename"
                 >
-                  <Check className="h-3.5 w-3.5" />
-                </button>
-                <button
+                  <Check />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -225,36 +231,40 @@ function FileRowInner({
                     e.stopPropagation();
                     cancelRename();
                   }}
-                  className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="shrink-0"
                   aria-label="Cancel rename"
                 >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                  <X />
+                </Button>
               </div>
             ) : (
               <>
                 <p className="text-sm font-medium truncate">{file.name}</p>
                 {onRename && (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={(e) => {
                       e.stopPropagation();
                       startRename();
                     }}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                     aria-label={`Rename ${file.name}`}
                   >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
+                    <Pencil />
+                  </Button>
                 )}
                 {onToggleFavorite && (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleFavorite(file);
                     }}
                     className={cn(
-                      "flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors",
+                      "shrink-0",
                       isFavorite
                         ? "text-amber-500 hover:text-amber-600"
                         : "text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-amber-500 focus-visible:opacity-100",
@@ -262,10 +272,9 @@ function FileRowInner({
                     aria-label={isFavorite ? "Unfavorite" : "Favorite"}
                   >
                     <Star
-                      className="h-3.5 w-3.5"
                       fill={isFavorite ? "currentColor" : "none"}
                     />
-                  </button>
+                  </Button>
                 )}
               </>
             )}
@@ -322,20 +331,24 @@ function FileRowInner({
                 }}
               >
                 <PopoverTrigger asChild>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={(e: React.MouseEvent) => {
                       e.stopPropagation();
                       setShowActions(false);
                     }}
-                    className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-[opacity,color,background-color] hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                     aria-label="Add tag"
                   >
-                    <Plus className="h-3 w-3" />
-                  </button>
+                    <Plus />
+                  </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-32 gap-1 p-1">
                   {availableTags.map((tag) => (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       key={tag}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -343,12 +356,12 @@ function FileRowInner({
                         setShowTagMenu(false);
                       }}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent",
+                        "w-full justify-start",
                         TAG_COLORS[tag],
                       )}
                     >
                       {TAG_LABELS[tag]}
-                    </button>
+                    </Button>
                   ))}
                 </PopoverContent>
               </Popover>
@@ -366,56 +379,64 @@ function FileRowInner({
                 }}
               >
                 <PopoverTrigger asChild>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={(e: React.MouseEvent) => {
                       e.stopPropagation();
                       setShowTagMenu(false);
                     }}
-                    className="flex size-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                     aria-label="File actions"
                   >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
+                    <MoreHorizontal />
+                  </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-44 gap-0 p-1">
                   {onOpen && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       onClick={(e) => {
                         e.stopPropagation();
                         onOpen(file);
                         setShowActions(false);
                       }}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent"
+                      className="w-full justify-start"
                     >
-                      <FolderOpen className="h-3.5 w-3.5" />
+                      <FolderOpen />
                       Open
-                    </button>
+                    </Button>
                   )}
                   {onShowInFinder && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       onClick={(e) => {
                         e.stopPropagation();
                         onShowInFinder(file);
                         setShowActions(false);
                       }}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent"
+                      className="w-full justify-start"
                     >
-                      <FolderOpen className="h-3.5 w-3.5" />
+                      <FolderOpen />
                       Show in Finder
-                    </button>
+                    </Button>
                   )}
                   {onCopyPath && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       onClick={(e) => {
                         e.stopPropagation();
                         onCopyPath(file);
                         setShowActions(false);
                       }}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent"
+                      className="w-full justify-start"
                     >
-                      <Copy className="h-3.5 w-3.5" />
+                      <Copy />
                       Copy Path
-                    </button>
+                    </Button>
                   )}
                   {onMoveFile && subfolders.length > 0 && (
                     <>
@@ -426,18 +447,20 @@ function FileRowInner({
                       {subfolders.map((folder) => {
                         const displayName = folder.split("/").pop() ?? folder
                         return (
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="xs"
                             key={folder}
                             onClick={(e) => {
                               e.stopPropagation();
                               onMoveFile(file, folder);
                               setShowActions(false);
                             }}
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent"
+                            className="w-full justify-start"
                           >
-                            <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
+                            <ArrowRight />
                             {displayName}
-                          </button>
+                          </Button>
                         )
                       })}
                     </>

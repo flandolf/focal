@@ -7,6 +7,8 @@ import { FolderInput, Database, Loader2, FileBox, ArrowUpRight, FolderOpen, Rota
 import { cn } from "@/lib/utils"
 import { getProjectsRootPath, setProjectsRootPath } from "@/lib/settings"
 import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface DataSectionProps {
   onOpenExport?: () => void
@@ -211,13 +213,14 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
   const isBusy = importing || scanning || linking
 
   return (
-    <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
-      <div>
-        <h2 className="text-sm font-medium">Data</h2>
-        <p className="mt-1 text-caption text-muted-foreground/70 text-wrap-balance">
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Data</CardTitle>
+        <CardDescription>
           Move your files in and out of Focal.
-        </p>
-      </div>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
 
       {/* Projects root folder setting */}
       <div className="mt-4 rounded-lg border border-border/60 bg-background/30 p-3">
@@ -232,28 +235,29 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {projectsRoot && (
-              <button
+              <Button
                 type="button"
                 onClick={() => { void handleResetProjectsRoot() }}
                 disabled={isBusy}
                 aria-label="Reset projects folder to default"
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background/45 px-2.5 text-caption text-muted-foreground transition-colors hover:bg-background/60 disabled:cursor-not-allowed disabled:opacity-60"
+                variant="outline"
+                size="sm"
                 title="Reset to default"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 <span className="max-[500px]:hidden">Reset</span>
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               type="button"
               onClick={() => { void handlePickProjectsRoot() }}
               disabled={isBusy}
               aria-label="Choose projects folder"
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-primary/10 px-2.5 text-caption font-medium text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+              size="sm"
             >
               <FolderOpen className="h-3.5 w-3.5" />
               <span className="max-[500px]:hidden">Choose</span>
-            </button>
+            </Button>
           </div>
         </div>
         <p className="mt-2 text-caption text-muted-foreground/60">
@@ -269,17 +273,13 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
           const isLinkResult = action.id === "link" && linkResult
           const isScanResult = action.id === "scan" && scanResult
           return (
-            <button
+            <Button
               key={action.id}
               type="button"
               onClick={action.onSelect}
               disabled={isBusy}
-              className={cn(
-                "group/action relative flex w-full items-start gap-3 rounded-lg border border-border/60 bg-background/30 p-3 text-left transition-colors outline-none",
-                "hover:border-muted-foreground/35 hover:bg-background/45",
-                "focus-visible:ring-3 focus-visible:ring-ring/50",
-                "disabled:cursor-not-allowed disabled:opacity-60",
-              )}
+              variant="outline"
+              className="group/action h-auto w-full items-start justify-start gap-3 p-3 text-left whitespace-normal"
             >
               <div
                 className={cn(
@@ -369,10 +369,11 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
                 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover/action:opacity-100"
                 aria-hidden="true"
               />
-            </button>
+            </Button>
           )
         })}
       </div>
-    </section>
+      </CardContent>
+    </Card>
   )
 }

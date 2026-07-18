@@ -31,6 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -262,13 +263,15 @@ export const AssessmentRow = memo(function AssessmentRow({
             <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
+                  <Button
                     aria-label={`Assessment actions for ${project.name}`}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground focus-visible:opacity-100 focus-visible:outline-none data-[state=open]:bg-accent data-[state=open]:text-accent-foreground data-[state=open]:opacity-100 group-hover:opacity-100"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                     onClick={(event) => event.stopPropagation()}
                   >
                     <MoreHorizontal className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   {onOpenProjectSettings && (

@@ -2,6 +2,7 @@ import { format } from"date-fns"
 import { useId } from"react"
 import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
 import { ChevronRight, Activity } from"lucide-react"
+import { Button } from "@/components/ui/button"
 import { staggerContainer, staggerItem, REDUCED_TRANSITION, hoverNudgeRight } from"@/lib/motion"
 import type { StudySession, CalendarEvent } from"@/lib/types"
 
@@ -51,14 +52,15 @@ export function RecentActivity({
  const contentId = useId()
  return (
  <div>
- <button
+ <Button
  type="button"
  onClick={onToggle}
  aria-expanded={isOpen}
  aria-controls={contentId}
- className="flex w-full items-center justify-between gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+ variant="ghost"
+ className="w-full justify-between px-0 text-left"
  >
- <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
+ <h3 className="flex items-center gap-2 text-sm font-semibold">
  <Activity className="h-3.5 w-3.5 text-muted-foreground" />
  Recent Activity
  </h3>
@@ -69,7 +71,7 @@ export function RecentActivity({
  >
  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
  </motion.span>
- </button>
+ </Button>
  <AnimatePresence initial={false}>
  {isOpen && (
  <motion.div

@@ -525,7 +525,7 @@ export function GlobalSearch({
  {visibleQuickActions.map((action, index) => {
  const Icon = action.icon;
  return (
- <button
+ <Button
  ref={(el) => {
  resultRefs.current[index] = el;
  }}
@@ -533,10 +533,8 @@ export function GlobalSearch({
  id={getResultId(index)}
  role="option"
  aria-selected={selectedIndex === index}
- className={cn(
-"group flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-accent/45 focus-visible:bg-accent/55 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45",
- selectedIndex === index &&"bg-accent/80",
- )}
+ variant="ghost"
+ className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === index &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(index)}
  onClick={() => handleSelect(action)}
  >
@@ -563,7 +561,7 @@ export function GlobalSearch({
  ) : (
  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
  )}
- </button>
+ </Button>
  );
  })}
  </div>
@@ -579,7 +577,7 @@ export function GlobalSearch({
  const deadline = formatSearchDate(project.deadline,"MMM d");
  const globalIdx = actionOffset + idx;
  return (
- <button
+ <Button
  ref={(el) => {
  resultRefs.current[globalIdx] = el;
  }}
@@ -587,10 +585,8 @@ export function GlobalSearch({
  id={getResultId(globalIdx)}
  role="option"
  aria-selected={selectedIndex === globalIdx}
- className={cn(
-"group flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-accent/45 focus-visible:bg-accent/55 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45",
- selectedIndex === globalIdx &&"bg-accent/80",
- )}
+ variant="ghost"
+ className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"project", data: project })
@@ -623,7 +619,7 @@ export function GlobalSearch({
  </span>
  </div>
  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
- </button>
+ </Button>
  );
  })}
  </div>
@@ -647,7 +643,7 @@ export function GlobalSearch({
  const sessionDate = formatSearchDate(session.startTime);
  const globalIdx = actionOffset + results.projects.length + idx;
  return (
- <button
+ <Button
  ref={(el) => {
  resultRefs.current[globalIdx] = el;
  }}
@@ -655,10 +651,8 @@ export function GlobalSearch({
  id={getResultId(globalIdx)}
  role="option"
  aria-selected={selectedIndex === globalIdx}
- className={cn(
-"group flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-accent/45 focus-visible:bg-accent/55 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45",
- selectedIndex === globalIdx &&"bg-accent/80",
- )}
+ variant="ghost"
+ className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"session", data: session })
@@ -678,7 +672,7 @@ export function GlobalSearch({
  </p>
  </div>
  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
- </button>
+ </Button>
  );
  })}
  </div>
@@ -696,7 +690,7 @@ export function GlobalSearch({
  const globalIdx =
  actionOffset + results.projects.length + results.sessions.length + idx;
  return (
- <button
+ <Button
  ref={(el) => {
  resultRefs.current[globalIdx] = el;
  }}
@@ -704,10 +698,8 @@ export function GlobalSearch({
  id={getResultId(globalIdx)}
  role="option"
  aria-selected={selectedIndex === globalIdx}
- className={cn(
-"group flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-accent/45 focus-visible:bg-accent/55 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45",
- selectedIndex === globalIdx &&"bg-accent/80",
- )}
+ variant="ghost"
+ className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"event", data: event })
@@ -749,7 +741,7 @@ export function GlobalSearch({
  </div>
  </div>
  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
- </button>
+ </Button>
  );
  })}
  </div>
@@ -768,7 +760,7 @@ export function GlobalSearch({
  results.events.length +
  idx;
  return (
- <button
+ <Button
  ref={(el) => {
  resultRefs.current[globalIdx] = el;
  }}
@@ -776,10 +768,8 @@ export function GlobalSearch({
  id={getResultId(globalIdx)}
  role="option"
  aria-selected={selectedIndex === globalIdx}
- className={cn(
-"group flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-accent/45 focus-visible:bg-accent/55 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45",
- selectedIndex === globalIdx &&"bg-accent/80",
- )}
+ variant="ghost"
+ className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"file", data: result })
@@ -802,7 +792,7 @@ export function GlobalSearch({
  </div>
  </div>
  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 group-aria-selected:opacity-100" />
- </button>
+ </Button>
  );
  })}
  </div>

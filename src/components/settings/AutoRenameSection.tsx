@@ -13,6 +13,8 @@ import {
 } from "lucide-react"
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
 import { FileTypeIcon } from "@/components/FileTypeIcon"
@@ -34,10 +36,7 @@ import {
 } from "@/lib/autoRename"
 import { describeAiError } from "@/lib/aiAssistant"
 import { moveFileMetadata } from "@/lib/fileMetadata"
-import {
-  SETTINGS_SECTION_CLASS,
-  SETTINGS_CHECKBOX_CLASS,
-} from "./constants"
+import { SETTINGS_SECTION_CLASS } from "./constants"
 import {
   TRANSITION,
   REDUCED_TRANSITION,
@@ -391,11 +390,9 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
 
         {/* Compact toggle */}
         <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-md border border-border/50 bg-background/20 px-2.5 py-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/40 hover:border-muted-foreground/30">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={useFileContent}
-            onChange={(e) => handleUseFileContentChange(e.target.checked)}
-            className={cn(SETTINGS_CHECKBOX_CLASS, "shrink-0")}
+            onCheckedChange={(checked) => handleUseFileContentChange(checked === true)}
           />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium leading-tight">Use file content previews</p>
@@ -471,36 +468,28 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
                   aria-label="Filter files"
                   className="inline-flex w-fit shrink-0 rounded-md border border-border/60 bg-background/35 p-0.5"
                 >
-                  <button
+                  <Button
                     type="button"
                     role="tab"
                     aria-selected={!showUnchanged}
                     onClick={() => setShowUnchanged(false)}
-                    className={cn(
-                      "inline-flex h-6 items-center gap-1 rounded px-1.5 text-micro transition-colors",
-                      !showUnchanged
-                        ? "bg-foreground/8 font-medium text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
+                    variant={!showUnchanged ? "secondary" : "ghost"}
+                    size="xs"
                   >
                     <Eye className="h-3 w-3" />
                     Changed
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     role="tab"
                     aria-selected={showUnchanged}
                     onClick={() => setShowUnchanged(true)}
-                    className={cn(
-                      "inline-flex h-6 items-center gap-1 rounded px-1.5 text-micro transition-colors",
-                      showUnchanged
-                        ? "bg-foreground/8 font-medium text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
+                    variant={showUnchanged ? "secondary" : "ghost"}
+                    size="xs"
                   >
                     <EyeOff className="h-3 w-3" />
                     All
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -521,23 +510,25 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
                     />
                   </div>
                   <div className="flex shrink-0 items-center gap-0.5 text-caption">
-                    <button
+                    <Button
                       type="button"
                       onClick={approveAll}
-                      className="rounded px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                      variant="ghost"
+                      size="xs"
                     >
                       Approve all
-                    </button>
+                    </Button>
                     <span className="text-muted-foreground/25" aria-hidden="true">
                       ·
                     </span>
-                    <button
+                    <Button
                       type="button"
                       onClick={rejectAll}
-                      className="rounded px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                      variant="ghost"
+                      size="xs"
                     >
                       Reject all
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -581,27 +572,14 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
                                 !isChanged && "opacity-45"
                               )}
                             >
-                              <button
-                                type="button"
-                                onClick={() => isChanged && toggleApproved(entry.file.path)}
+                              <Checkbox
+                                onCheckedChange={() => isChanged && toggleApproved(entry.file.path)}
                                 disabled={!isChanged}
                                 aria-label={
                                   entry.approved ? "Disapprove rename" : "Approve rename"
                                 }
-                                aria-pressed={entry.approved}
-                                className={cn(
-                                  "flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors",
-                                  !isChanged
-                                    ? "cursor-default border-muted-foreground/20"
-                                    : entry.approved
-                                      ? "border-emerald-500 bg-emerald-500 text-white"
-                                      : "border-muted-foreground/30 hover:border-muted-foreground"
-                                )}
-                              >
-                                {entry.approved && isChanged && (
-                                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                                )}
-                              </button>
+                                checked={entry.approved && isChanged}
+                              />
 
                               <FileTypeIcon
                                 extension={entry.file.extension}
@@ -616,14 +594,14 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
                                       {entry.file.name}
                                     </p>
                                     <span className="text-micro text-muted-foreground/35 max-[520px]:hidden">→</span>
-                                    <input
+                                    <Input
                                       value={entry.newName}
                                       onChange={(event) => updateEntryName(entry.file.path, event.target.value)}
                                       onBlur={() => normalizeEntryName(entry.file.path)}
                                       onFocus={(event) => event.currentTarget.select()}
                                       aria-label={`New filename for ${entry.file.name}`}
                                       spellCheck={false}
-                                      className="h-6 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-caption font-medium leading-tight text-foreground outline-none transition-colors hover:border-border focus:border-ring focus:ring-2 focus:ring-ring/30"
+                                      className="h-6 min-w-0 px-1 text-xs"
                                     />
                                   </div>
                                 ) : (
@@ -646,14 +624,16 @@ export function AutoRenameSection({ projects, onFilesChanged }: AutoRenameSectio
                               </div>
 
                               {isChanged && (
-                                <button
+                                <Button
                                   type="button"
                                   onClick={() => resetEntry(entry.file.path)}
                                   aria-label="Reset rename"
-                                  className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100 hover:bg-foreground/5 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  className="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
                                 >
                                   <X className="h-3.5 w-3.5" />
-                                </button>
+                                </Button>
                               )}
                             </motion.div>
                           )

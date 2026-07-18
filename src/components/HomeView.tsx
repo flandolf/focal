@@ -23,7 +23,7 @@ import {
   getCurrentPeriodInfo,
 } from "@/lib/timetable";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   formatDeadline,
@@ -885,7 +885,7 @@ export const HomeView = memo(function HomeView({
               <p className="mb-1 text-xs font-medium text-foreground/60 tabular-nums">
                 {format(new Date(), "EEEE · d MMMM")}
               </p>
-              <h1 className="text-3xl font-semibold min-[1200px]:text-[2.5rem] min-[1200px]:leading-none">
+              <h1 className="text-xl font-semibold">
                 Today
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -923,9 +923,9 @@ export const HomeView = memo(function HomeView({
                   variant="ghost"
                   size="sm"
                   onClick={onOpenAiAssistant}
-                  className="h-8 gap-1.5 text-muted-foreground"
+                  className="text-muted-foreground"
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
+                  <Sparkles />
                   AI Assistant
                 </Button>
               )}
@@ -933,36 +933,34 @@ export const HomeView = memo(function HomeView({
                 variant="ghost"
                 size="sm"
                 onClick={handleOpenTextPlanner}
-                className="h-8 gap-1.5 text-muted-foreground"
+                className="text-muted-foreground"
               >
-                <Wand2 className="h-3.5 w-3.5" />
+                <Wand2 />
                 Text to Events
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onNewProject}
-                className="h-8 gap-1.5 min-[1080px]:ml-3"
+                className="min-[1080px]:ml-3"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus />
                 Assessment
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onNewEvent(selectedCalendarDate)}
-                className="h-8 gap-1.5"
               >
-                <CalendarPlus className="h-3.5 w-3.5" />
+                <CalendarPlus />
                 Event
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onNewSession(selectedCalendarDate)}
-                className="h-8 gap-1.5 px-3"
               >
-                <Calendar className="h-3.5 w-3.5" />
+                <Calendar />
                 Plan Session
               </Button>
             </div>
@@ -979,24 +977,26 @@ export const HomeView = memo(function HomeView({
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {overdueProjects.map((p) => (
-                  <button
+                  <Button
                     key={p.id}
                     onClick={() => onSelectProject(p.id)}
-                    className="rounded-md px-2.5 py-1 text-left text-xs font-medium transition-colors hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    variant="destructive"
+                    size="sm"
                   >
                     {p.name}
                     <span className="ml-1.5 text-destructive/70">
                       {formatDeadline(p.deadline!)}
                     </span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-3 min-[1200px]:gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
-            <Card className="rounded-lg border border-border bg-card p-3 min-[1200px]:p-4">
-              <div className="flex h-full flex-col gap-3 min-[1200px]:gap-4">
+            <Card size="sm">
+              <CardContent>
+                <div className="flex h-full flex-col gap-3">
                 <CalendarGrid
                   currentMonth={currentMonth}
                   calendarView={calendarView}
@@ -1062,7 +1062,8 @@ export const HomeView = memo(function HomeView({
                   onSelectItem={handlePrepBalanceSelect}
                   onPlanSession={() => onNewSession(selectedCalendarDate)}
                 />
-              </div>
+                </div>
+              </CardContent>
             </Card>
 
             <div className="space-y-3">
@@ -1090,12 +1091,14 @@ export const HomeView = memo(function HomeView({
                       <h3 className="mb-2.5 flex items-center gap-1.5 text-sm font-semibold">
                         <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                         Today&apos;s Timetable · Day {dayLabel}
-                        <button
+                        <Button
                           onClick={onGoTimetable}
-                          className="ml-auto text-xs text-muted-foreground hover:underline transition-colors"
+                          variant="link"
+                          size="xs"
+                          className="ml-auto text-muted-foreground"
                         >
                           View timetable
-                        </button>
+                        </Button>
                         <ArrowRight className="h-3 w-3 text-muted-foreground" />
                       </h3>
                       <div className="space-y-1">
@@ -1229,10 +1232,11 @@ export const HomeView = memo(function HomeView({
                     {dueThisWeek.map((p) => {
                       const subject = getSubjectById(p.subjectId);
                       return (
-                        <button
+                        <Button
                           key={p.id}
                           onClick={() => onSelectProject(p.id)}
-                          className="group w-full rounded-md px-3 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          variant="ghost"
+                          className="group h-auto w-full justify-start px-3 py-2 text-left whitespace-normal"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -1255,7 +1259,7 @@ export const HomeView = memo(function HomeView({
                               </div>
                             )}
                           </div>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -1280,10 +1284,11 @@ export const HomeView = memo(function HomeView({
                         )
                         .join(", ");
                       return (
-                        <button
+                        <Button
                           key={session.id}
                           onClick={() => onSelectSession(session)}
-                          className="w-full rounded-md px-3 py-2 text-left transition-colors hover:bg-accent"
+                          variant="ghost"
+                          className="h-auto w-full justify-start px-3 py-2 text-left whitespace-normal"
                         >
                           <p className="text-xs font-medium truncate">
                             {session.title}
@@ -1297,7 +1302,7 @@ export const HomeView = memo(function HomeView({
                               "MMM d, h:mm a",
                             )}
                           </p>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -1315,10 +1320,11 @@ export const HomeView = memo(function HomeView({
                       const subject = getSubjectById(event.subjectId);
                       const eventInfo = getEventTypeInfo(event.eventType);
                       return (
-                        <button
+                        <Button
                           key={event.id}
                           onClick={() => onSelectEvent(event)}
-                          className="w-full rounded-md px-3 py-2 text-left transition-colors hover:bg-accent"
+                          variant="ghost"
+                          className="h-auto w-full justify-start px-3 py-2 text-left whitespace-normal"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -1363,7 +1369,7 @@ export const HomeView = memo(function HomeView({
                               )}
                             </div>
                           </div>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>

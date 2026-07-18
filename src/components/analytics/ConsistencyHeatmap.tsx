@@ -183,10 +183,10 @@ export function ConsistencyHeatmap({ days, stats }: ConsistencyHeatmapProps) {
   const hasAnyData = stats.totalStudyDays > 0
 
   return (
-    <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
+    <Card className="p-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-heading text-sm font-semibold">Study Consistency</h3>
+          <h3 className="text-sm font-semibold">Study Consistency</h3>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-micro text-muted-foreground/70">Less</span>

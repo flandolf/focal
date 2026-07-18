@@ -20,7 +20,7 @@ export function PrepBalance({
     <div className="mt-4 border-t border-border/55 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-heading text-sm font-semibold">Prep Balance</h3>
+          <h3 className="text-sm font-semibold">Prep Balance</h3>
           <p className="mt-0.5 text-caption text-muted-foreground">
             {items.length > 0
               ? `${needsAttention} subject${needsAttention === 1 ? "" : "s"} need more planned time`
@@ -44,11 +44,12 @@ export function PrepBalance({
             const progress = targetMinutes > 0 ? Math.min(100, Math.round(item.plannedMinutes / targetMinutes * 100)) : 100
             const nextDateLabel = item.nextDate ? format(item.nextDate, "MMM d") : "No date"
             return (
-              <button
+              <Button
                 key={item.subjectId}
                 type="button"
                 onClick={() => onSelectItem(item)}
-                className="min-w-0 rounded-xl border border-border/55 bg-background/24 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                variant="outline"
+                className="h-auto min-w-0 flex-col items-stretch px-3 py-2.5 text-left whitespace-normal"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -77,7 +78,7 @@ export function PrepBalance({
                     }}
                   />
                 </div>
-              </button>
+              </Button>
             )
           })}
         </div>

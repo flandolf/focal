@@ -1,4 +1,4 @@
-export const SETTINGS_SECTION_CLASS = "rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur"
+export const SETTINGS_SECTION_CLASS = "rounded-lg border bg-card p-4"
 export const SETTINGS_CHECKBOX_CLASS = "h-4 w-4 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 
 export function formatTimeAgo(timestamp: number): string {

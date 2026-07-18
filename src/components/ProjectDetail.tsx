@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react"
 import { AlertCircle, Plus, Loader2, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { openPath } from "@tauri-apps/plugin-opener"
 import { join } from "@tauri-apps/api/path"
 import { exists } from "@tauri-apps/plugin-fs"
@@ -627,12 +628,10 @@ export const ProjectDetail = memo(function ProjectDetail({
   return (
     <div className="relative flex h-full flex-col">
       {isDragging && (
-        <div className="absolute inset-4 z-modal-backdrop flex items-center justify-center rounded-lg border border-primary/40 bg-background/85 pointer-events-none">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-primary/12 flex items-center justify-center shadow-[0_0_40px_-12px_color-mix(in_oklch,var(--primary)_30%,transparent)]">
-              <Plus className="h-7 w-7 text-primary/70" />
-            </div>
-            <p className="text-sm font-medium text-primary/80">
+        <div className="pointer-events-none absolute inset-4 z-modal-backdrop flex items-center justify-center rounded-lg border bg-background/90">
+          <div className="flex items-center gap-2">
+            <Plus className="size-5" />
+            <p className="text-sm font-medium">
               {isShiftPressed ? "Copy files here" : "Drop files here"}
             </p>
           </div>
@@ -683,14 +682,14 @@ export const ProjectDetail = memo(function ProjectDetail({
           <div role="alert" className="mx-3 mt-2 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate" title={error}>Couldn&apos;t load project files.</span>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => void loadFiles()}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw />
               Retry
-            </button>
+            </Button>
           </div>
         )}
         {viewMode === "sessions" ? (

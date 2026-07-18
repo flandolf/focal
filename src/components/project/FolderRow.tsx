@@ -1,6 +1,7 @@
 import { memo, useState, type DragEvent } from "react"
 import { Folder, ChevronRight, Tag } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   ContextMenu,
@@ -12,7 +13,6 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import { POPOVER_ITEM_BUTTON_CLASS } from "./shared"
 import type { FileTag } from "@/lib/types"
 
 const ALL_TAGS: FileTag[] = ["sac", "notes", "past-paper", "exam", "resource", "other"]
@@ -144,30 +144,32 @@ function FolderRowInner({ name, fileCount, totalFileCount, onClick, onTagAll, is
                 onOpenChange={setShowTagMenu}
               >
                 <PopoverTrigger asChild>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={(e) => e.stopPropagation()}
-                    className="flex size-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                     aria-label={`Tag all files in ${name}`}
                     title={`Tag all files in ${name}`}
                   >
-                    <Tag className="h-3.5 w-3.5" />
-                  </button>
+                    <Tag />
+                  </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-36 gap-1 p-1">
                   {ALL_TAGS.map((tag) => (
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       key={tag}
                       onClick={(e) => {
                         e.stopPropagation()
                         onTagAll(tag)
                         setShowTagMenu(false)
                       }}
-                      className={cn(POPOVER_ITEM_BUTTON_CLASS, "capitalize")}
+                      className="w-full justify-start capitalize"
                     >
                       {TAG_LABELS[tag]}
-                    </button>
+                    </Button>
                   ))}
                 </PopoverContent>
               </Popover>

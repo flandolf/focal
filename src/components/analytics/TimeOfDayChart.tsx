@@ -49,8 +49,8 @@ export function TimeOfDayChart({ data }: TimeOfDayChartProps) {
   }
 
   return (
-    <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
-      <h3 className="font-heading text-sm font-semibold mb-4">Study Time of Day</h3>
+    <Card className="p-4">
+      <h3 className="text-sm font-semibold mb-4">Study Time of Day</h3>
       {hasData ? (
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>

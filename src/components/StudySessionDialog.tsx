@@ -26,6 +26,7 @@ import { DatePickerField, FormField, FormSection, SelectField } from "@/componen
 import TimePicker from "@/components/ui/time-picker"
 import { ScrollArea } from"@/components/ui/scroll-area"
 import { Input } from"@/components/ui/input"
+import { Textarea } from"@/components/ui/textarea"
 import { cn, getSessionSubjectIds, getSubjectById } from"@/lib/utils"
 import {
  VCE_SUBJECTS,
@@ -42,7 +43,6 @@ const sectionIconClass ="h-3.5 w-3.5 text-muted-foreground"
 const panelClass ="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-4 dark:border-input/70 dark:bg-input/20"
 const inputClass ="h-10 rounded-lg bg-background/65 dark:bg-input/30"
 const inputWithIconClass ="flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background/65 px-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
-const textareaClass ="min-h-20 resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 interface StudySessionDialogProps {
  open: boolean
@@ -461,12 +461,12 @@ export function StudySessionDialog({
  </FormField>
  </div>
  <FormField label="Notes" labelClassName={fieldLabelClass}>
- <textarea
+ <Textarea
  placeholder="Key concepts, resources, reminders, or follow-up work."
  value={notes}
  onChange={(event) => setNotes(event.target.value)}
  rows={4}
- className={textareaClass}
+ className="resize-none"
  />
  </FormField>
  </FormSection>
@@ -483,13 +483,14 @@ export function StudySessionDialog({
  {subjectIds.length > 0 ? `${subjectIds.length} selected` :"Choose at least one"}
  </p>
  {subjectIds.length > 0 && (
- <button
+ <Button
  type="button"
  onClick={() => setSubjectIds([])}
- className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+ variant="ghost"
+ size="xs"
  >
  Clear
- </button>
+ </Button>
  )}
  </div>
 
@@ -605,14 +606,15 @@ export function StudySessionDialog({
  {formatDurationStr(activeMin)}
  </span>
  {segments.length > 1 && (
- <button
+ <Button
  type="button"
  onClick={() => removeSegment(idx)}
- className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
+ variant="ghost"
+ size="icon-xs"
  aria-label={`Remove block ${idx + 1}`}
  >
  <Trash2 className="h-3 w-3" />
- </button>
+ </Button>
  )}
  </div>
  </div>
@@ -625,31 +627,28 @@ export function StudySessionDialog({
  <div className="flex items-center gap-1.5">
  <span className="text-micro font-medium text-muted-foreground/60">Rest:</span>
  {REST_OPTIONS.map((opt) => (
- <button
+ <Button
  key={opt}
  type="button"
  onClick={() => setRestDuration(opt)}
  aria-pressed={restDuration === opt}
- className={cn(
-"h-6 rounded-md border px-2 text-micro font-medium transition-colors",
- restDuration === opt
- ?"border-primary/35 bg-primary/10 text-primary"
- :"border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
- )}
+ variant={restDuration === opt ? "default" : "outline"}
+ size="xs"
  >
  {opt}m
- </button>
+ </Button>
  ))}
  </div>
  <div className="flex items-center gap-2">
- <button
+ <Button
  type="button"
  onClick={addSegment}
- className="flex items-center gap-1 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+ variant="outline"
+ size="sm"
  >
  <Plus className="h-3 w-3" />
  Add block
- </button>
+ </Button>
  </div>
  </div>
 
@@ -670,41 +669,36 @@ export function StudySessionDialog({
  <FormField label="Confidence" labelClassName={fieldLabelClass}>
  <div className="grid grid-cols-5 gap-1.5">
  {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
- <button
+ <Button
  key={score}
  type="button"
  onClick={() => setConfidence(score)}
  aria-pressed={confidence === score}
- className={cn(
-"h-9 rounded-lg border text-xs font-medium transition-colors",
- confidence === score
- ?"border-primary bg-primary/10 text-primary"
- :"border-border/70 bg-background/45 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
- )}
+ variant={confidence === score ? "default" : "outline"}
  >
  {score}
- </button>
+ </Button>
  ))}
  </div>
  </FormField>
 
  <div className="grid gap-3">
  <FormField label="Blockers" labelClassName={fieldLabelClass}>
- <textarea
+ <Textarea
  placeholder="What still feels unclear?"
  value={blockers}
  onChange={(event) => setBlockers(event.target.value)}
  rows={3}
- className={textareaClass}
+ className="resize-none"
  />
  </FormField>
  <FormField label="Next action" labelClassName={fieldLabelClass}>
- <textarea
+ <Textarea
  placeholder="e.g. redo exam Q4"
  value={nextAction}
  onChange={(event) => setNextAction(event.target.value)}
  rows={3}
- className={textareaClass}
+ className="resize-none"
  />
  </FormField>
  </div>
