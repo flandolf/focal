@@ -79,8 +79,8 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
           0,
         )
         const entry: DailyPoint = { date, label, total }
-        subjectMap.forEach((minutes, sid) => {
-          entry[sid] = minutes
+        sorted.forEach(([sid]) => {
+          entry[sid] = subjectMap.get(sid) ?? 0
         })
         return entry
       })
@@ -158,6 +158,7 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
                 fill={color}
                 fillOpacity={0.3}
                 strokeWidth={1.5}
+                dot={chartData.length === 1}
                 isAnimationActive={!reduceMotion}
                 animationDuration={200}
               />

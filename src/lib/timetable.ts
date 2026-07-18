@@ -7,12 +7,12 @@ import type { TimetablePeriod } from "@/lib/types"
 // --- Types ---
 
 const TIMETABLE_BREAK_LABELS = new Set([
-  "Recess",
-  "Lunch",
-  "Homeroom",
-  "Assembly",
-  "Form",
-  "Free",
+  "recess",
+  "lunch",
+  "homeroom",
+  "assembly",
+  "form",
+  "free",
 ])
 
 export interface TimetableParseDraft {
@@ -35,9 +35,7 @@ export interface TimetableParseResult {
 // --- Helpers ---
 
 function timeStringToMinutes(t: string): number {
-  const [h, m] = t.split(":").map(Number)
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0
-  return h * 60 + m
+  return timetableTimeToMinutes(t) ?? Number.POSITIVE_INFINITY
 }
 
 function comparePeriodsByStart(a: TimetablePeriod, b: TimetablePeriod): number {
@@ -83,7 +81,38 @@ function normaliseSubject(rawSubject: string, subjects: string[]): string {
 }
 
 export function isTimetableBreakLabel(label: string): boolean {
-  return TIMETABLE_BREAK_LABELS.has(label)
+  return TIMETABLE_BREAK_LABELS.has(label.trim().toLowerCase())
+}
+
+/** Parse a persisted HH:mm value without accepting partial or out-of-range times. */
+export function timetableTimeToMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (hours > 23 || minutes > 59) return null
+  return hours * 60 + minutes
+}
+
+/** Return a user-facing validation error for a timetable period, or null when valid. */
+export function getTimetablePeriodError(period: TimetablePeriod): string | null {
+  if (!period.period.trim()) return "Add a period name."
+  const start = timetableTimeToMinutes(period.startTime)
+  const end = timetableTimeToMinutes(period.endTime)
+  if (start === null || end === null) return "Use a valid start and end time."
+  if (end <= start) return "End time must be after start time."
+  return null
+}
+
+/** Merge duplicate day entries and return periods in start-time order. */
+export function getTimetablePeriodsForDay(
+  dayLabel: TimetableDayLabel,
+  entries: TimetableEntry[],
+): TimetablePeriod[] {
+  return entries
+    .filter((entry) => entry.dayLabel === dayLabel)
+    .flatMap((entry) => entry.periods)
+    .sort(comparePeriodsByStart)
 }
 
 export function reorderPeriodsIntoSlots({
@@ -390,23 +419,35 @@ export function isDateInHoliday(date: Date, holidays: SchoolHoliday[]): boolean 
  * Count weekdays (Mon–Fri) between two local-midnight dates, excluding the start date
  * and including the end date. Counts only school days, skipping weekends.
  */
-function countWeekdaysBetween(start: Date, end: Date): number {
-  const msPerDay = 24 * 60 * 60 * 1000
-  const totalDays = Math.round((end.getTime() - start.getTime()) / msPerDay)
-  if (totalDays <= 0) return 0
+function countSchoolDaysBetween(
+  start: Date,
+  end: Date,
+  holidays: SchoolHoliday[],
+  weekendTimetables: boolean,
+): number {
+  let count = 0
+  const cursor = new Date(start)
 
-  const fullWeeks = Math.floor(totalDays / 7)
-  let count = fullWeeks * 5
-
-  const remaining = totalDays % 7
-  for (let i = 1; i <= remaining; i++) {
-    const d = new Date(start)
-    d.setDate(d.getDate() + i)
-    const dayOfWeek = d.getDay()
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) count++
+  // ponytail: a day-by-day scan keeps overlapping holidays correct. School
+  // cycles are short; upgrade to merged date ranges only if multi-decade spans matter.
+  while (cursor < end) {
+    cursor.setDate(cursor.getDate() + 1)
+    const weekend = cursor.getDay() === 0 || cursor.getDay() === 6
+    if ((weekendTimetables || !weekend) && !isDateInHoliday(cursor, holidays)) count++
   }
 
   return count
+}
+
+function parseLocalDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2]) - 1
+  const day = Number(match[3])
+  const date = new Date(year, month, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null
+  return date
 }
 
 /**
@@ -428,8 +469,8 @@ export function getDayLabelForDate(
 ): TimetableDayLabel | null {
   if (isDateInHoliday(date, holidays)) return null
 
-  const start = new Date(day1Starts)
-  if (Number.isNaN(start.getTime())) return null
+  const start = parseLocalDate(day1Starts)
+  if (!start) return null
 
   const msPerDay = 24 * 60 * 60 * 1000
   // Compare in local-midnight space so the diff isn't skewed by time-of-day or timezone.
@@ -443,9 +484,7 @@ export function getDayLabelForDate(
 
   // Count school days since day1Starts. When weekend timetables are on, count
   // every day; otherwise only Mon–Fri.
-  const schoolDayCount = weekendTimetables
-    ? diffDays
-    : countWeekdaysBetween(startLocal, dateLocal)
+  const schoolDayCount = countSchoolDaysBetween(startLocal, dateLocal, holidays, weekendTimetables)
   const length = Number.isInteger(cycleLength) && cycleLength >= 1 ? cycleLength : 10
   return (schoolDayCount % length) + 1
 }

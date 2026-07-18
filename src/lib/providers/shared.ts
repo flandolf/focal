@@ -218,7 +218,7 @@ export function validateJsonRootShape(
   const record = parsed as Record<string, unknown>
   const presentRootKeys = Object.keys(record)
   const required = Array.isArray(schema?.required)
-    ? (schema?.required as unknown[]).filter((key): key is string => typeof key === "string")
+    ? schema.required.filter((key): key is string => typeof key === "string")
     : []
   if (required.length === 0) return { matches: true, missingRootKeys: [], presentRootKeys }
   const missingRootKeys = required.filter((key) => !Object.prototype.hasOwnProperty.call(record, key))

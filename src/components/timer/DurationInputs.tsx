@@ -29,20 +29,32 @@ function Stepper({
   const decrement = () => onChange(String(Math.max(MIN_DURATION_MINUTES, value - 1)))
   const increment = () => onChange(String(Math.min(MAX_DURATION_MINUTES, value + 1)))
 
+  if (compact) {
+    return (
+      <label className="flex flex-col gap-1">
+        <span className="text-micro font-medium text-muted-foreground">{label}</span>
+        <Input
+          type="number"
+          min={MIN_DURATION_MINUTES}
+          max={MAX_DURATION_MINUTES}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-7 px-2 text-center text-xs tabular-nums shadow-none"
+          aria-label={`${label} minutes`}
+        />
+      </label>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-1">
-      <span
-        className={cn(
-          "block font-semibold uppercase tracking-wider text-muted-foreground/70",
-          compact ? "text-[10px]" : "text-micro",
-        )}
-      >
+      <span className="block text-micro font-semibold uppercase tracking-wider text-muted-foreground/70">
         {label}
       </span>
       <div className="flex items-center rounded-lg border">
         <Button
           variant="ghost"
-          size={compact ? "icon-sm" : "icon"}
+          size="icon"
           onClick={decrement}
           disabled={value <= MIN_DURATION_MINUTES}
           aria-label={`Decrease ${label}`}
@@ -60,7 +72,7 @@ function Stepper({
         />
         <Button
           variant="ghost"
-          size={compact ? "icon-sm" : "icon"}
+          size="icon"
           onClick={increment}
           disabled={value >= MAX_DURATION_MINUTES}
           aria-label={`Increase ${label}`}

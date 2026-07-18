@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -62,9 +63,12 @@ function ErrorScreen({
           The app hit an unexpected error. You can try again, or reload if it persists.
         </p>
         {error?.message && (
-          <pre className="mt-4 max-h-40 overflow-auto rounded-md border bg-muted p-3 text-left font-mono text-xs text-muted-foreground">
-            {error.message}
-          </pre>
+          <ScrollArea className="mt-4 max-h-40 rounded-md border bg-muted">
+            <pre className="p-3 text-left font-mono text-xs text-muted-foreground">
+              {error.message}
+            </pre>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
         )}
         <div className="mt-6 flex items-center justify-center gap-2">
           <Button variant="outline" size="sm" onClick={onReset}>

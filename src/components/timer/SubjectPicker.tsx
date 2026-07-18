@@ -19,28 +19,26 @@ export function SubjectPicker({
 }: SubjectPickerProps) {
   if (variant === "sidebar") {
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-micro font-semibold uppercase text-muted-foreground/70">Studying</span>
+          <span className="text-xs font-medium">Subject</span>
           {activeSessionId && (
-            <span className="text-micro font-medium text-background">Logging now</span>
+            <span className="text-micro text-muted-foreground">Logging now</span>
           )}
         </div>
         <ScrollArea className="w-full whitespace-nowrap">
-          <div className="flex w-max gap-1.5 pb-2">
+          <div className="flex w-max gap-1 pb-1">
             {subjects.map((subject) => {
               const selected = selectedSubjectIds.includes(subject.id)
               return (
                 <Button
                   key={subject.id}
-                  variant={selected ? "secondary" : "outline"}
-                  size="sm"
+                  variant={selected ? "secondary" : "ghost"}
+                  size="xs"
                   aria-pressed={selected}
                   onClick={() => onSubjectClick(subject.id)}
                   style={selected ? {
                     backgroundColor: `${subject.color}18`,
-                    borderColor: `${subject.color}40`,
-                    color: subject.color,
                   } : undefined}
                   title={activeSessionId && selected ? `${subject.name} is logged for this session` : subject.name}
                 >

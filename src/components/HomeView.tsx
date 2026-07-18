@@ -1315,58 +1315,67 @@ export const HomeView = memo(function HomeView({
                     <CalendarPlus className="h-3.5 w-3.5 text-muted-foreground" />
                     Events
                   </h3>
-                  <div className="space-y-1">
+                  <div className="divide-y divide-border/60">
                     {upcomingEvents.slice(0, 5).map((event) => {
                       const subject = getSubjectById(event.subjectId);
                       const eventInfo = getEventTypeInfo(event.eventType);
+                      const startTime = parseISO(event.startTime);
                       return (
                         <Button
                           key={event.id}
                           onClick={() => onSelectEvent(event)}
                           variant="ghost"
-                          className="h-auto w-full justify-start px-3 py-2 text-left whitespace-normal"
+                          className="group h-auto w-full items-stretch justify-start rounded-md px-2 py-2.5 text-left whitespace-normal"
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="truncate text-xs font-medium">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <time
+                              dateTime={event.startTime}
+                              className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-md bg-muted/70 leading-none transition-colors group-hover:bg-background"
+                            >
+                              <span className="text-micro font-medium text-muted-foreground">
+                                {format(startTime, "MMM")}
+                              </span>
+                              <span className="mt-1 text-sm font-semibold tabular-nums">
+                                {format(startTime, "d")}
+                              </span>
+                            </time>
+                            <div className="min-w-0 flex-1 pt-0.5">
+                              <p className="truncate text-sm font-medium leading-tight">
                                 {event.title}
                               </p>
-                              <p className="text-sm text-muted-foreground mt-0.5">
-                                {format(
-                                  parseISO(event.startTime),
-                                  "MMM d, h:mm a",
-                                )}
-                              </p>
-                              {event.location && (
-                                <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
-                                  <MapPin className="h-2.5 w-2.5" />
-                                  <span className="truncate">
-                                    {event.location}
-                                  </span>
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex shrink-0 flex-col items-end gap-1">
-                              <span
-                                className="text-sm px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                                style={{
-                                  backgroundColor: eventInfo.color + "14",
-                                  color: eventInfo.color,
-                                }}
-                              >
-                                {eventInfo.label}
-                              </span>
-                              {subject && (
-                                <span
-                                  className="text-sm px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                                  style={{
-                                    backgroundColor: subject.color + "14",
-                                    color: subject.color,
-                                  }}
-                                >
-                                  {subject.shortCode}
+                              <div className="mt-1 flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                <span className="shrink-0">
+                                  {format(startTime, "EEE, h:mm a")}
                                 </span>
-                              )}
+                                {event.location && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <MapPin className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">
+                                      {event.location}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro font-medium text-muted-foreground">
+                                <span className="flex items-center gap-1.5">
+                                  <span
+                                    className="h-1.5 w-1.5 rounded-full"
+                                    style={{ backgroundColor: eventInfo.color }}
+                                  />
+                                  {eventInfo.label}
+                                </span>
+                                {subject && (
+                                  <span className="flex items-center gap-1.5">
+                                    <span
+                                      className="h-1.5 w-1.5 rounded-full"
+                                      style={{ backgroundColor: subject.color }}
+                                    />
+                                    {subject.shortCode}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </Button>

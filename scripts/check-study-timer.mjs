@@ -1,4 +1,8 @@
-import { advanceTimer, closeRunningInterval } from "../src/components/StudyTimer.tsx";
+import {
+  advanceTimer,
+  closeRunningInterval,
+  getActiveSessionSubjectIds,
+} from "../src/components/StudyTimer.tsx";
 import { isTimerShortcutTarget } from "../src/components/timer/FocusView.tsx";
 
 const settings = { workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15 };
@@ -44,6 +48,10 @@ check(closeRunningInterval([
   { start: "2026-07-12T10:00:00.000Z", end: "2026-07-12T10:05:00.000Z", source: "pomodoro" },
   { start: "2026-07-12T10:10:00.000Z", source: "pomodoro", end: "2026-07-12T10:20:00.000Z" },
 ]);
+check(getActiveSessionSubjectIds("active", [
+  { id: "other", subjectIds: ["english"] },
+  { id: "active", subjectIds: ["methods", "physics"] },
+]), ["methods", "physics"]);
 
 check(isTimerShortcutTarget(null), false);
 check(isTimerShortcutTarget({ tagName: "INPUT" }), true);
