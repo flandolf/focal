@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 
 type SyncStatus = "idle" | "syncing" | "error" | "success"
 
@@ -77,15 +78,15 @@ export function NotionSyncIndicator({
   })()
 
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
       disabled={disabled || status === "syncing"}
       title={tooltipText}
+      variant="ghost"
+      size="icon-sm"
       className={cn(
-        "relative flex h-7 w-7 items-center justify-center rounded-lg p-1.5 transition-all duration-200 motion-reduce:transition-none",
-        "focus-visible:outline-2 focus-visible:outline-ring",
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        "relative",
         status === "syncing"
           ? "text-primary"
           : status === "error"
@@ -99,6 +100,6 @@ export function NotionSyncIndicator({
     >
       <NotionLogo className={cn("h-4 w-4", status === "syncing" && "animate-pulse motion-reduce:animate-none")} />
       <StatusDot status={status} />
-    </button>
+    </Button>
   )
 }

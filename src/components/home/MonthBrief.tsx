@@ -40,7 +40,7 @@ export function MonthBrief({
     <div className="border-t border-border/70 pt-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-heading text-sm font-semibold">Month Brief</h3>
+          <h3 className="text-sm font-semibold">Month Brief</h3>
           <p className="mt-0.5 text-caption text-muted-foreground">
             {items.length > 0
               ? `${items.length} scheduled item${items.length === 1 ? "" : "s"} in ${format(currentMonth, "MMMM")}`
@@ -66,11 +66,12 @@ export function MonthBrief({
       {previewItems.length > 0 ? (
         <div className="mt-3 grid gap-2 min-[1350px]:grid-cols-2">
           {previewItems.map((item) => (
-            <button
+            <Button
               key={item.id}
               type="button"
               onClick={() => onSelectItem(item)}
-              className="flex min-w-0 items-center gap-3 rounded-xl border border-border/55 bg-background/24 px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              variant="outline"
+              className="h-auto min-w-0 justify-start gap-3 px-3 py-2 text-left whitespace-normal"
             >
               <div className="flex h-9 w-10 shrink-0 flex-col items-center justify-center rounded-lg bg-muted/55 text-center">
                 <span className="text-micro font-medium uppercase leading-none text-muted-foreground">{format(item.date, "MMM")}</span>
@@ -83,13 +84,13 @@ export function MonthBrief({
                 </div>
                 <p className="mt-0.5 truncate text-micro text-muted-foreground">{item.meta}</p>
               </div>
-            </button>
+            </Button>
           ))}
         </div>
       ) : (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-background/24 px-3 py-3">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3">
           <p className="text-xs text-muted-foreground">Use this month to get ahead before the next assessment cluster.</p>
-          <Button variant="outline" size="sm" onClick={onPlanSession} className="h-7 rounded-xl px-2.5 text-xs">
+          <Button variant="outline" size="sm" onClick={onPlanSession}>
             <Calendar className="mr-1.5 h-3 w-3" />
             Plan session
           </Button>

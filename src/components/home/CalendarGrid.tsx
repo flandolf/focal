@@ -18,7 +18,6 @@ import {
 import {
   motion,
   AnimatePresence,
-  useReducedMotion,
   useMotionValue,
 } from "framer-motion";
 import {
@@ -39,7 +38,6 @@ import {
 } from "@/components/ui/context-menu";
 import { getSubjectById, getEventTypeInfo, cn } from "@/lib/utils";
 import { getCalendarSessionIndicators } from "@/lib/groupSessions";
-import { hoverLift } from "@/lib/motion";
 import type { CalendarEvent, Project, StudySession } from "@/lib/types";
 
 const CALENDAR_FALLBACK_COLOR = "var(--muted-foreground)";
@@ -140,7 +138,6 @@ export function CalendarGrid({
   const hoveredDateKeyRef = useRef<string | null>(null);
   const ghostX = useMotionValue(0);
   const ghostY = useMotionValue(0);
-  const reduceMotion = useReducedMotion() === true;
 
   // Stable refs so the document-level listeners never reference stale callbacks
   const onMoveEventRef = useRef(onMoveEvent);
@@ -446,75 +443,51 @@ export function CalendarGrid({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-heading text-lg font-semibold">
-            Assessment Calendar
-          </h2>
-          <p className="text-caption text-muted-foreground">
-            Deadlines, events, and planned sessions share the same grid.
-          </p>
+          <h2 className="text-base font-semibold">Calendar</h2>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex gap-0.5 rounded-xl border border-border/70 bg-background/55 p-0.5">
-            <button
-              type="button"
+          <div className="flex gap-0.5 rounded-lg bg-muted p-0.5">
+            <Button
+              variant={calendarView === "month" ? "secondary" : "ghost"}
+              size="xs"
               onClick={() => onSetCalendarView("month")}
-              className={cn(
-                "rounded-lg px-2 py-1 text-xs font-medium transition-colors",
-                calendarView === "month"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
             >
               Month
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant={calendarView === "week" ? "secondary" : "ghost"}
+              size="xs"
               onClick={() => onSetCalendarView("week")}
-              className={cn(
-                "rounded-lg px-2 py-1 text-xs font-medium transition-colors",
-                calendarView === "week"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
             >
               Week
-            </button>
+            </Button>
           </div>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             onClick={onPrevMonth}
-            className="h-8 w-8 rounded-xl p-0"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft />
           </Button>
           <Button
-            variant="ghost"
+            variant={isSameMonth(currentMonth, new Date()) ? "secondary" : "ghost"}
             size="sm"
             onClick={onToday}
-            className={cn(
-              "h-8 rounded-xl px-3 text-xs",
-              isSameMonth(currentMonth, new Date()) &&
-                "bg-accent text-accent-foreground",
-            )}
           >
             Today
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             onClick={onNextMonth}
-            className="h-8 w-8 rounded-xl p-0"
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight />
           </Button>
         </div>
       </div>
 
       {calendarView === "month" && (
-        <motion.div
-          className="grid grid-cols-7 gap-0 rounded-2xl border border-border/35 bg-background/16"
-        >
+        <div className="grid grid-cols-7 gap-0 rounded-lg border bg-background/16">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
               key={day}
@@ -582,8 +555,7 @@ export function CalendarGrid({
             const overflow = regularItems.length - 3;
 
             return (
-              <motion.div
-                animate={isHovered ? { scale: 1.018 } : { scale: 1 }}
+              <div
                 role="button"
                 tabIndex={0}
                 key={dateKey}
@@ -885,10 +857,10 @@ export function CalendarGrid({
                     </div>
                   )}
                 </div>
-              </motion.div>
+              </div>
             );
           })}
-        </motion.div>
+        </div>
       )}
 
       {calendarView === "week" && (
@@ -899,9 +871,7 @@ export function CalendarGrid({
               {format(weekDays[6], "MMM d, yyyy")}
             </h3>
           </div>
-          <motion.div
-            className="grid grid-cols-7 gap-1"
-          >
+          <div className="grid grid-cols-7 gap-1">
             {weekDays.map((date) => {
               const dateKey = format(date, "yyyy-MM-dd");
               const dayDeadlines = deadlinesByDate[dateKey] || [];
@@ -953,13 +923,11 @@ export function CalendarGrid({
               ];
 
               return (
-                <motion.div
-                  animate={isHovered ? { scale: 1.018 } : { scale: 1 }}
-                  whileHover={hoverLift(reduceMotion)}
+                <div
                   key={dateKey}
                   data-date-key={dateKey}
                   className={cn(
-                    "min-h-40 rounded-2xl border p-2 transition-colors",
+                    "min-h-40 rounded-lg border p-2 transition-colors",
                     selectedDate === dateKey
                       ? "border-primary/65 bg-primary/8 ring-1 ring-primary/25"
                       : "border-border/35 bg-background/16 hover:border-border hover:bg-accent/24",
@@ -1109,10 +1077,10 @@ export function CalendarGrid({
                         </div>
                       )}
                   </div>
-                </motion.div>
+                </div>
               );
             })}
-          </motion.div>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 import type { Subject } from "@/lib/types"
 
 interface SubjectPickerProps {
@@ -31,17 +31,12 @@ export function SubjectPicker({
             {subjects.map((subject) => {
               const selected = selectedSubjectIds.includes(subject.id)
               return (
-                <button
+                <Button
                   key={subject.id}
-                  type="button"
+                  variant={selected ? "secondary" : "outline"}
+                  size="sm"
                   aria-pressed={selected}
                   onClick={() => onSubjectClick(subject.id)}
-                  className={cn(
-                    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
-                    selected
-                      ? "border-transparent text-foreground shadow-xs"
-                      : "border-sidebar-border bg-background/35 text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
-                  )}
                   style={selected ? {
                     backgroundColor: `${subject.color}18`,
                     borderColor: `${subject.color}40`,
@@ -54,7 +49,7 @@ export function SubjectPicker({
                     style={{ backgroundColor: subject.color }}
                   />
                   {subject.shortCode}
-                </button>
+                </Button>
               )
             })}
           </div>
@@ -74,17 +69,12 @@ export function SubjectPicker({
         {subjects.map((subject) => {
           const selected = selectedSubjectIds.includes(subject.id)
           return (
-            <button
+            <Button
               key={subject.id}
-              type="button"
+              variant={selected ? "secondary" : "outline"}
+              size="sm"
               aria-pressed={selected}
               onClick={() => onSubjectClick(subject.id)}
-              className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
-                selected
-                  ? "border-transparent bg-primary/10 text-background"
-                  : "border-border/70 bg-background/40 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-              )}
               style={selected ? {
                 backgroundColor: `${subject.color}18`,
                 borderColor: `${subject.color}40`,
@@ -93,7 +83,7 @@ export function SubjectPicker({
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: subject.color }} />
               {subject.shortCode}
-            </button>
+            </Button>
           )
         })}
       </div>

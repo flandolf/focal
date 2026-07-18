@@ -143,7 +143,7 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
 
   return (
     <div className="flex flex-col gap-3">
-      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+      <section className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">Notion Calendar Sync</h2>
@@ -169,12 +169,13 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
         </div>
 
         {/* Step indicator */}
-        <button
+        <Button
           type="button"
           onClick={() => setStepsOpen((v) => !v)}
           aria-expanded={stepsOpen}
           aria-controls="notion-setup-steps"
-          className="mt-3 flex w-full items-center gap-2 rounded-lg border border-border/60 bg-background/30 px-2.5 py-2 text-left transition-colors hover:border-muted-foreground/30"
+          variant="outline"
+          className="mt-3 h-auto w-full justify-start px-2.5 py-2 text-left whitespace-normal"
         >
           <div className="flex shrink-0 items-center" aria-hidden="true">
             {steps.map((step, i) => (
@@ -210,7 +211,7 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
           >
             <ArrowRight className="h-3 w-3" />
           </motion.span>
-        </button>
+        </Button>
         <AnimatePresence initial={false}>
           {stepsOpen && (
             <motion.ol
@@ -270,7 +271,7 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
         </AnimatePresence>
       </section>
 
-      <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+      <section className="rounded-lg border bg-card p-4">
         <div className="grid gap-2">
           <label className="text-caption text-muted-foreground/70" htmlFor="notion-token">Integration token</label>
           <Input

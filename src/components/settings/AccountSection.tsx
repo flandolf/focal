@@ -255,38 +255,30 @@ function AuthForm({
         aria-label="Authentication mode"
         className="inline-flex w-full rounded-md border border-border/60 bg-background/40 p-0.5"
       >
-        <button
+        <Button
           type="button"
           role="tab"
           aria-selected={mode === "sign-in"}
           onClick={() => setMode("sign-in")}
-          className={cn(
-            "inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded text-caption font-medium transition-colors outline-none",
-            "focus-visible:ring-2 focus-visible:ring-ring/50",
-            mode === "sign-in"
-              ? "bg-foreground/8 text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
+          variant={mode === "sign-in" ? "secondary" : "ghost"}
+          size="sm"
+          className="flex-1"
         >
           <Mail className="h-3 w-3" />
           Sign in
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           role="tab"
           aria-selected={mode === "sign-up"}
           onClick={() => setMode("sign-up")}
-          className={cn(
-            "inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded text-caption font-medium transition-colors outline-none",
-            "focus-visible:ring-2 focus-visible:ring-ring/50",
-            mode === "sign-up"
-              ? "bg-foreground/8 text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
+          variant={mode === "sign-up" ? "secondary" : "ghost"}
+          size="sm"
+          className="flex-1"
         >
           <UserPlus className="h-3 w-3" />
           Create account
-        </button>
+        </Button>
       </div>
 
       <form
@@ -535,7 +527,7 @@ export function AccountSection({
           Sync is disabled in this build. Set the Supabase environment variables to enable it.
         </p>
       ) : email ? (
-        <section className="rounded-xl border border-border/70 bg-background/40 p-5 shadow-sm backdrop-blur">
+        <section className="rounded-lg border bg-card p-4">
           {/* Header: identity + quiet status */}
           <div className="flex items-center justify-between gap-2">
             <p className="min-w-0 truncate text-sm font-medium">{email}</p>
@@ -739,11 +731,12 @@ export function AccountSection({
 
           {/* Force push — collapsed, separated, destructive intent visible */}
           <div className="mt-4 border-t border-border/40 pt-3">
-            <button
+            <Button
               type="button"
               onClick={() => setShowForcePush((v) => !v)}
               aria-expanded={showForcePush}
-              className="flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-foreground outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+              variant="ghost"
+              size="sm"
             >
               <CloudCog className="h-3 w-3" />
               {showForcePush ? "Hide force push options" : "Force push options"}
@@ -754,7 +747,7 @@ export function AccountSection({
                 )}
                 aria-hidden="true"
               />
-            </button>
+            </Button>
             {showForcePush && (
               <div className="mt-2 space-y-2 rounded-md border border-amber-500/25 bg-amber-500/[0.05] px-3 py-2.5">
                 <p className="text-xs text-amber-700 dark:text-amber-400 text-wrap-balance">

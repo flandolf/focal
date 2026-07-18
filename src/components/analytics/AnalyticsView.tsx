@@ -169,7 +169,7 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  variants={staggerItem}
  className="flex items-center justify-between"
  >
- <h2 className="font-heading text-lg font-semibold">Analytics</h2>
+ <h2 className="text-lg font-semibold">Analytics</h2>
  <RangeToggle value={range} onChange={setRange} reduceMotion={reduceMotion} />
  </motion.div>              <motion.div variants={staggerItem}>
  <KpiStrip
@@ -357,9 +357,9 @@ function KpiCard({
  return (
  <motion.div
  whileHover={hoverLift(reduceMotion)}
- className="relative rounded-2xl"
+ className="relative rounded-lg"
  >
- <Card className="rounded-2xl bg-background/48 border-border/70 px-4 py-3 backdrop-blur shadow-sm">
+ <Card className="px-4 py-3">
  <div className="text-2xl font-semibold tabular-nums leading-tight">
  {value}
  </div>

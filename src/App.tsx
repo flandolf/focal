@@ -21,7 +21,6 @@ import {
 import {
   MOTION_DURATION,
   MOTION_EASE,
-  REDUCED_TRANSITION,
   pressable as pressableMotion,
   staggerContainer,
   staggerItem,
@@ -123,92 +122,16 @@ const AIAssistantPanel = lazy(() =>
 );
 
 function ViewFallback({ label }: { label?: string }) {
-  const reduceMotion = useReducedMotion() === true;
   return (
     <div
       role="status"
       aria-live="polite"
       aria-busy="true"
       aria-label={label ? `Loading ${label}` : "Loading"}
-      className="flex h-full items-center justify-center px-6"
+      className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"
     >
-      <motion.div
-        className="flex w-full max-w-xs flex-col items-center gap-5 overflow-hidden rounded-2xl p-8"
-        variants={staggerContainer(0.05, 0.06)}
-        initial="initial"
-        animate="animate"
-      >
-        {/* Spinner icon */}
-        <motion.div
-          variants={staggerItem}
-          className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/30"
-        >
-          <motion.div
-            animate={reduceMotion ? undefined : { rotate: 360 }}
-            transition={
-              reduceMotion
-                ? REDUCED_TRANSITION
-                : { duration: 2.5, repeat: Infinity, ease: "linear" }
-            }
-          >
-            <Loader2 className="h-5 w-5 text-muted-foreground/40" aria-hidden />
-          </motion.div>
-        </motion.div>
-
-        {/* Skeleton bars */}
-        <motion.div
-          variants={staggerItem}
-          className="flex w-full flex-col gap-2.5"
-        >
-          <motion.div
-            className="h-3 w-2/5 rounded-md bg-muted/40"
-            animate={reduceMotion ? undefined : { opacity: [0.4, 0.8, 0.4] }}
-            transition={
-              reduceMotion
-                ? REDUCED_TRANSITION
-                : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
-            }
-          />
-          <motion.div
-            className="h-2.5 w-full rounded-md bg-muted/30"
-            animate={reduceMotion ? undefined : { opacity: [0.3, 0.65, 0.3] }}
-            transition={
-              reduceMotion
-                ? REDUCED_TRANSITION
-                : {
-                    duration: 1.6,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 0.12,
-                  }
-            }
-          />
-          <motion.div
-            className="h-2.5 w-5/6 rounded-md bg-muted/25"
-            animate={reduceMotion ? undefined : { opacity: [0.25, 0.55, 0.25] }}
-            transition={
-              reduceMotion
-                ? REDUCED_TRANSITION
-                : {
-                    duration: 1.6,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 0.24,
-                  }
-            }
-          />
-        </motion.div>
-
-        {/* Label */}
-        {label && (
-          <motion.span
-            variants={staggerItem}
-            className="text-caption text-muted-foreground/60"
-          >
-            Loading {label}…
-          </motion.span>
-        )}
-      </motion.div>
+      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+      {label ? `Loading ${label}…` : "Loading…"}
     </div>
   );
 }
@@ -2442,7 +2365,7 @@ function App() {
                         <motion.div
                           variants={staggerItem}
                           transition={EMPTY_STATE_TRANSITION}
-                          className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30"
+                          className="mb-4 flex size-12 items-center justify-center rounded-lg bg-muted"
                         >
                           <motion.div
                             animate={

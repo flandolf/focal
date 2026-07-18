@@ -13,16 +13,16 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
 
   if (data.length === 0) {
     return (
-      <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
-        <h3 className="font-heading text-sm font-semibold mb-1">Study Efficiency</h3>
+      <Card className="p-4">
+        <h3 className="text-sm font-semibold mb-1">Study Efficiency</h3>
         <p className="text-xs text-muted-foreground">No completed sessions for this period.</p>
       </Card>
     )
   }
 
   return (
-    <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
-      <h3 className="font-heading text-sm font-semibold mb-4">Study Efficiency</h3>
+    <Card className="p-4">
+      <h3 className="text-sm font-semibold mb-4">Study Efficiency</h3>
       <p className="text-xs text-muted-foreground mb-4">
         Minutes studied vs. confidence level (1-5)
       </p>

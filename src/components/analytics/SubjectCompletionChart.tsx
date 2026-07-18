@@ -10,16 +10,16 @@ interface SubjectCompletionChartProps {
 export function SubjectCompletionChart({ data }: SubjectCompletionChartProps) {
   if (data.length === 0) {
     return (
-      <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
-        <h3 className="font-heading text-sm font-semibold mb-1">Completion Rate</h3>
+      <Card className="p-4">
+        <h3 className="text-sm font-semibold mb-1">Completion Rate</h3>
         <p className="text-xs text-muted-foreground">No session data for this period.</p>
       </Card>
     )
   }
 
   return (
-    <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
-      <h3 className="font-heading text-sm font-semibold mb-4">Completion Rate by Subject</h3>
+    <Card className="p-4">
+      <h3 className="text-sm font-semibold mb-4">Completion Rate by Subject</h3>
 
       <div className="space-y-3">
         {data.map((item) => {

@@ -112,7 +112,7 @@ export function DayDetail({
   }
 
   return (
-    <div className="rounded-2xl border border-border/70 bg-muted/18 p-3 data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-2">
+    <div className="rounded-lg border bg-muted/20 p-3">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">
@@ -177,10 +177,11 @@ export function DayDetail({
           {deadlines.map((p) => {
             const subject = getSubjectById(p.subjectId)
             return (
-              <button
+              <Button
                 key={p.id}
+                variant="outline"
                 onClick={() => onSelectProject(p.id)}
-                className="w-full rounded-xl border border-border/70 bg-background/30 p-2 text-left transition-colors hover:border-primary/50 hover:bg-accent/30"
+                className="h-auto w-full justify-start whitespace-normal p-2 text-left"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -201,7 +202,7 @@ export function DayDetail({
                     </div>
                   )}
                 </div>
-              </button>
+              </Button>
             )
           })}
           {subjectGroups.map((group) => {
@@ -209,10 +210,10 @@ export function DayDetail({
             const sessionLabel = group.count === 1 ? "session" : "sessions"
             return (
               <div key={group.subjectId} className="rounded-xl border border-border/40 bg-background/20 overflow-hidden">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
                   onClick={() => toggleSubject(group.subjectId)}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/20"
+                  className="h-auto w-full justify-start px-3 py-2.5 text-left"
                 >
                   <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
                   <span className="text-xs font-semibold" style={{ color: group.color }}>
@@ -230,7 +231,7 @@ export function DayDetail({
                       isExpanded && "rotate-180",
                     )}
                   />
-                </button>
+                </Button>
                 {isExpanded && group.projectGroups.map((pg) => (
                   <div key={pg.projectId ?? "__none__"} className="border-t border-border/30">
                     {group.projectGroups.length > 1 && (
@@ -251,7 +252,8 @@ export function DayDetail({
                         return (
                           <ContextMenu key={s.id}>
                             <ContextMenuTrigger asChild>
-                          <button
+                          <Button
+                            variant="outline"
                             onClick={() => {
                               if (calendarSelectionMode) {
                                 onToggleSessionSelection(s.id)
@@ -260,10 +262,10 @@ export function DayDetail({
                               onSelectSession(s)
                             }}
                             className={cn(
-                              "w-full rounded-lg border p-2 text-left transition-colors",
+                              "h-auto w-full justify-start whitespace-normal p-2 text-left",
                               selected
-                                ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
-                                : "border-transparent bg-background/40 hover:bg-accent/20",
+                                ? "border-primary/65 bg-primary/10"
+                                : "border-transparent",
                               s.status === "completed" && "opacity-75 hover:opacity-95",
                             )}
                           >
@@ -304,7 +306,7 @@ export function DayDetail({
                                 </p>
                               </div>
                             </div>
-                          </button>
+                          </Button>
                             </ContextMenuTrigger>
                             <ContextMenuContent className="w-40">
                               <CtxMenuItem onSelect={() => onSelectSession(s)}>
@@ -348,7 +350,8 @@ export function DayDetail({
                   return (
                     <ContextMenu key={event.id}>
                       <ContextMenuTrigger asChild>
-                    <button
+                    <Button
+                      variant="outline"
                       onClick={() => {
                         if (calendarSelectionMode) {
                           onToggleEventSelection(event.id)
@@ -357,10 +360,10 @@ export function DayDetail({
                         onSelectEvent(event)
                       }}
                       className={cn(
-                        "w-full rounded-xl border p-2 text-left transition-colors",
+                        "h-auto w-full justify-start whitespace-normal p-2 text-left",
                         selected
-                          ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
-                          : "border-border/70 bg-background/30 hover:border-primary/50 hover:bg-accent/30"
+                          ? "border-primary/65 bg-primary/10"
+                          : "border-border/70"
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -410,7 +413,7 @@ export function DayDetail({
                           </span>
                         </div>
                       </div>
-                    </button>
+                    </Button>
                       </ContextMenuTrigger>
                       <ContextMenuContent className="w-40">
                         <CtxMenuItem onSelect={() => onSelectEvent(event)}>
@@ -450,7 +453,8 @@ export function DayDetail({
                       return (
                         <ContextMenu key={event.id}>
                           <ContextMenuTrigger asChild>
-                        <button
+                        <Button
+                          variant="outline"
                           onClick={() => {
                             if (calendarSelectionMode) {
                               onToggleEventSelection(event.id)
@@ -459,9 +463,9 @@ export function DayDetail({
                             onSelectEvent(event)
                           }}
                           className={cn(
-                            "w-full rounded-xl border p-2 text-left transition-colors opacity-60 hover:opacity-80",
+                            "h-auto w-full justify-start whitespace-normal p-2 text-left opacity-60 hover:opacity-80",
                             selected
-                              ? "border-primary/65 bg-primary/10 ring-1 ring-primary/25"
+                              ? "border-primary/65 bg-primary/10"
                               : "border-border/70 bg-background/30"
                           )}
                         >
@@ -515,7 +519,7 @@ export function DayDetail({
                               </span>
                             </div>
                           </div>
-                        </button>
+                        </Button>
                           </ContextMenuTrigger>
                           <ContextMenuContent className="w-40">
                             <CtxMenuItem onSelect={() => onSelectEvent(event)}>

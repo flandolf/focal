@@ -1,6 +1,7 @@
 import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
 import { useId } from"react"
 import { ChevronRight, Target } from"lucide-react"
+import { Button } from "@/components/ui/button"
 import { getSubjectById, cn } from"@/lib/utils"
 import { getUrgencyLabel, getUrgencyClassName } from"@/lib/planning"
 import { staggerContainer, staggerItem, REDUCED_TRANSITION, hoverNudgeRight } from"@/lib/motion"
@@ -23,14 +24,15 @@ export function StudyPriorities({
  const contentId = useId()
  return (
  <div>
- <button
+ <Button
  type="button"
  onClick={onToggle}
  aria-expanded={isOpen}
  aria-controls={contentId}
- className="flex w-full items-center justify-between gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+ variant="ghost"
+ className="w-full justify-between px-0 text-left"
  >
- <h3 className="flex items-center gap-2 font-heading text-sm font-semibold">
+ <h3 className="flex items-center gap-2 text-sm font-semibold">
  <Target className="h-3.5 w-3.5 text-muted-foreground" />
  Study Priorities
  </h3>
@@ -44,7 +46,7 @@ export function StudyPriorities({
  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
  </motion.span>
  </div>
- </button>
+ </Button>
  <AnimatePresence initial={false}>
  {isOpen && (
  <motion.div

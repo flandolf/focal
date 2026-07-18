@@ -329,7 +329,7 @@ export function SettingsView({
  <ArrowLeft className="h-4 w-4" />
  </Button>
  <div className="min-w-0 flex-1">
- <h1 className="font-heading text-lg font-semibold leading-none">
+ <h1 className="text-lg font-semibold leading-none">
  Settings
  </h1>
  <p className="mt-1 truncate text-caption text-muted-foreground">
@@ -377,33 +377,13 @@ export function SettingsView({
  const Icon = item.icon;
  const isActive = activeSection === item.id;
  return (
- <button
+ <Button
  key={item.id}
  onClick={() => goToSection(item.id)}
- className={cn(
-"group/nav relative flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none transition-colors",
-"focus-visible:ring-3 focus-visible:ring-ring/50",
- isActive
- ?"bg-sidebar-accent text-sidebar-accent-foreground font-medium"
- :"text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
- )}
+ variant={isActive ? "secondary" : "ghost"}
+ className="group/nav w-full min-w-0 justify-start gap-2.5"
  >
- {/* Leading dot — fades in when active. NOT a side stripe. */}
- <span
- aria-hidden="true"
- className={cn(
-"flex h-1.5 w-1.5 shrink-0 items-center justify-center rounded-full transition-all duration-200 ease-out",
- isActive
- ?"scale-100 bg-primary opacity-100"
- :"scale-0 bg-primary opacity-0",
- )}
- />
- <Icon
- className={cn(
-"h-4 w-4 shrink-0 transition-transform duration-200 ease-out",
- isActive &&"scale-[1.06]",
- )}
- />
+ <Icon />
  <span className="min-w-0 flex-1 truncate text-left">
  {item.label}
  </span>
@@ -418,7 +398,7 @@ export function SettingsView({
  >
  {item.shortcut}
  </kbd>
- </button>
+ </Button>
  );
  })}
  </div>

@@ -166,30 +166,24 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
 
  <div className="grid gap-5 py-1">
  <div className="flex items-center gap-2">
- <button
+ <Button
  type="button"
  onClick={() => setFormat("json")}
- className={`min-h-10 flex-1 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
- format ==="json"
- ?"border-primary/35 bg-primary/10 font-medium text-primary"
- :"border-border text-muted-foreground hover:bg-accent/50"
- }`}
+ variant={format === "json" ? "default" : "outline"}
+ className="min-h-10 flex-1"
  aria-pressed={format ==="json"}
  >
  JSON backup
- </button>
- <button
+ </Button>
+ <Button
  type="button"
  onClick={() => setFormat("csv")}
- className={`min-h-10 flex-1 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
- format ==="csv"
- ?"border-primary/35 bg-primary/10 font-medium text-primary"
- :"border-border text-muted-foreground hover:bg-accent/50"
- }`}
+ variant={format === "csv" ? "default" : "outline"}
+ className="min-h-10 flex-1"
  aria-pressed={format ==="csv"}
  >
  CSV spreadsheet
- </button>
+ </Button>
  </div>
  <p className="text-xs text-muted-foreground">
  {format ==="json"

@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { Wand2, Loader2, X, Check, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -182,7 +184,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
       <Button
         onClick={handleOpen}
         size="sm"
-        className="fixed bottom-6 right-6 z-40 shadow-lg gap-1.5 rounded-full px-4 h-10 bg-primary hover:bg-primary/90 text-primary-foreground"
+        className="fixed bottom-6 right-6 z-40"
       >
         <Wand2 className="h-4 w-4" />
         <span className="text-sm font-medium">Auto Rename</span>
@@ -229,15 +231,13 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                   Reads up to 1,000 characters per supported file. Content is sent to your selected AI provider.
                 </p>
               </div>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={useFileContent}
-                onChange={(e) => {
-                  const enabled = e.target.checked
+                onCheckedChange={(checked) => {
+                  const enabled = checked === true
                   setUseFileContent(enabled)
                   setAutoRenameUseFileContent(enabled)
                 }}
-                className="h-4 w-4 shrink-0"
               />
             </label>
 
@@ -280,16 +280,17 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                   <div className="flex-1" />
                   {changedCount > 0 && (
                     <div className="flex gap-2">
-                      <button
+                      <Button
                         type="button"
                         onClick={() =>
                           setEntries((prev) => prev.map((e) => ({ ...e, approved: true, error: undefined })))
                         }
-                        className="text-xs text-muted-foreground hover:text-foreground"
+                        variant="ghost"
+                        size="xs"
                       >
                         Approve all
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
                         onClick={() =>
                           setEntries((prev) =>
@@ -300,10 +301,11 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                             })),
                           )
                         }
-                        className="text-xs text-muted-foreground hover:text-foreground"
+                        variant="ghost"
+                        size="xs"
                       >
                         Reject all
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </>
@@ -314,35 +316,35 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
             {entries.length === 0 && (
               <>
                 <div className="flex shrink-0 items-center gap-3">
-                  <button
+                  <Button
                     type="button"
                     onClick={selectAll}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    variant="ghost"
+                    size="xs"
                   >
                     Select all
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     onClick={deselectAll}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    variant="ghost"
+                    size="xs"
                   >
                     Deselect all
-                  </button>
+                  </Button>
                 </div>
                 <ScrollArea className="min-h-0 flex-1 rounded-lg border">
                   <div className="grid grid-cols-1 gap-px bg-border/30 md:grid-cols-2">
                     {files.map((file) => {
                       const isSelected = selectedPaths.has(file.path)
                       return (
-                        <button
+                        <Button
                           type="button"
                           key={file.path}
                           aria-pressed={isSelected}
                           aria-label={`${isSelected ? "Deselect" : "Select"} ${file.name}`}
-                          className={cn(
-                            "flex min-w-0 items-center gap-2.5 bg-background px-3 py-2 text-left transition-colors hover:bg-accent/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
-                            !isSelected && "opacity-40"
-                          )}
+                          variant="ghost"
+                          className={cn("h-auto min-w-0 justify-start rounded-none px-3 py-2 text-left whitespace-normal", !isSelected && "opacity-40")}
                           onClick={() => toggleSelected(file.path)}
                         >
                           <FileTypeIcon
@@ -365,7 +367,7 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                               {file.name}
                             </p>
                           </div>
-                        </button>
+                        </Button>
                       )
                     })}
                   </div>
@@ -392,42 +394,31 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                           className="size-7 shrink-0 rounded-md"
                           iconClassName="size-3.5"
                         />
-                        <button
-                          type="button"
-                          onClick={() => isChanged && toggleApproved(i)}
+                        <Checkbox
+                          onCheckedChange={() => isChanged && toggleApproved(i)}
                           disabled={!isChanged}
                           aria-label={entry.approved ? `Reject rename for ${entry.file.name}` : `Approve rename for ${entry.file.name}`}
-                          aria-pressed={entry.approved}
-                          className={cn(
-                            "flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                            !isChanged
-                              ? "border-muted-foreground/20 cursor-default"
-                              : entry.approved
-                                ? "bg-emerald-500 border-emerald-500 text-white"
-                                : "border-muted-foreground/30 hover:border-muted-foreground"
-                          )}
-                        >
-                          {entry.approved && isChanged && <Check className="h-2.5 w-2.5" />}
-                        </button>
+                          checked={entry.approved && isChanged}
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-caption text-muted-foreground/50 truncate line-through leading-tight">
                             {entry.file.name}
                           </p>
-                          <input
+                          <Input
                             value={entry.newName}
                             onChange={(event) => updateEntryName(i, event.target.value)}
                             onBlur={() => normalizeEntryName(i)}
                             onFocus={(event) => event.currentTarget.select()}
                             aria-label={`New filename for ${entry.file.name}`}
                             spellCheck={false}
-                            className="h-6 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-xs font-medium leading-tight outline-none transition-colors hover:border-border focus:border-ring focus:ring-2 focus:ring-ring/30"
+                            className="h-6 min-w-0 px-1 text-xs"
                           />
                           {entry.error && (
                             <p className="text-micro text-destructive mt-0.5">{entry.error}</p>
                           )}
                         </div>
                         {isChanged && (
-                          <button
+                          <Button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
@@ -440,10 +431,11 @@ export function AutoRenameButton({ files, onApplyRenames }: AutoRenameButtonProp
                               )
                             }}
                             aria-label={`Keep original filename for ${entry.file.name}`}
-                            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                            variant="ghost"
+                            size="icon-xs"
                           >
                             <X className="h-3.5 w-3.5" />
-                          </button>
+                          </Button>
                         )}
                       </div>
                     )

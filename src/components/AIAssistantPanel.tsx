@@ -21,6 +21,7 @@ import {
  X,
 } from"lucide-react";
 import { Button } from"@/components/ui/button";
+import { Textarea } from"@/components/ui/textarea";
 import {
  Tooltip,
  TooltipContent,
@@ -3068,7 +3069,7 @@ ${text}`,
  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 20 }}
  transition={panelTransition}
  style={{ width: `${width}px` }}
- className="relative flex h-full shrink-0 flex-col overflow-hidden rounded-2xl border border-sidebar-border text-sidebar-foreground min-[1200px]:rounded-[1.35rem]"
+ className="relative flex h-full shrink-0 flex-col overflow-hidden rounded-lg border border-sidebar-border text-sidebar-foreground"
  role="complementary"
  aria-label="AI Assistant"
  >
@@ -3200,15 +3201,16 @@ ${text}`,
  {overview.detail}
  </p>
  {overview.hasFocalContext && (
- <button
+ <Button
  type="button"
  onClick={() => void send(overview.prompt)}
  disabled={pending || providerMissing}
- className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 disabled:cursor-not-allowed disabled:opacity-50"
+ size="sm"
+ className="mt-3"
  >
  <Wand2 className="h-3 w-3" />
  Choose my next block
- </button>
+ </Button>
  )}
  </div>
  <div className="space-y-2">
@@ -3302,13 +3304,15 @@ ${text}`,
  <p className="mt-0.5 text-destructive/70">{error.hint}</p>
  )}
  {onOpenSettings && (
- <button
+ <Button
  type="button"
  onClick={handleOpenAssistantSettings}
- className="mt-1.5 rounded-md px-1.5 py-1 font-medium text-destructive underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+ variant="link"
+ size="xs"
+ className="mt-1.5 text-destructive"
  >
  Open AI settings
- </button>
+ </Button>
  )}
  </div>
  </motion.div>
@@ -3337,7 +3341,7 @@ ${text}`,
  providerMissing &&"opacity-70",
  )}
  >
- <textarea
+ <Textarea
  ref={inputRef}
  value={input}
  onChange={(e) => setInput(e.target.value)}
@@ -3351,7 +3355,7 @@ ${text}`,
  }
  disabled={providerMissing || pending}
  rows={2}
- className="min-h-11 flex-1 resize-none bg-transparent px-1.5 py-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+ className="min-h-11 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
  />
  <div className="flex flex-col items-end gap-1.5">
  {costDisplay && (
@@ -3663,14 +3667,16 @@ function Bubble({
  {onFollowUp && message.followUps && message.followUps.length > 0 && (
  <div className="mt-2.5 flex flex-col items-start gap-1.5 border-t border-sidebar-border/70 pt-2.5">
  {message.followUps.map((prompt) => (
- <button
+ <Button
  key={prompt}
  type="button"
  onClick={() => onFollowUp(prompt)}
- className="max-w-full rounded-lg bg-primary/8 px-2 py-1.5 text-left text-xs font-medium leading-snug text-primary transition-colors hover:bg-primary/14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45"
+ variant="secondary"
+ size="sm"
+ className="h-auto max-w-full text-left whitespace-normal"
  >
  {prompt}
- </button>          ))}
+ </Button>          ))}
         </div>
         )}
  {!isUser && !isToolActivity && !message.pending && !message.cancelled && (
@@ -3682,18 +3688,19 @@ function Bubble({
  >
  <Tooltip>
  <TooltipTrigger asChild>
- <button
+ <Button
  type="button"
  onClick={onCopy}
  aria-label={isCopied ?"Copied" :"Copy message"}
- className="rounded p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45"
+ variant="ghost"
+ size="icon-xs"
  >
  {isCopied ? (
  <Check className="h-3 w-3 text-primary" />
  ) : (
  <ClipboardCopy className="h-3 w-3" />
  )}
- </button>
+ </Button>
  </TooltipTrigger>
  <TooltipContent side="bottom">
  {isCopied ?"Copied" :"Copy"}
@@ -3701,18 +3708,16 @@ function Bubble({
  </Tooltip>
  <Tooltip>
  <TooltipTrigger asChild>
- <button
+ <Button
  type="button"
  onClick={onRegenerate}
  disabled={!canRegenerate}
  aria-label="Regenerate reply"
- className={cn(
-"rounded p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45",
-"disabled:cursor-not-allowed disabled:opacity-40",
- )}
+ variant="ghost"
+ size="icon-xs"
  >
  <RefreshCw className="h-3 w-3" />
- </button>
+ </Button>
  </TooltipTrigger>
  <TooltipContent side="bottom">Regenerate</TooltipContent>
  </Tooltip>
@@ -3797,36 +3802,32 @@ function QuickActionChips({
  )}
  >
  {QUICK_ACTION_PROMPTS.map(({ label, prompt }) => (
- <button
+ <Button
  key={prompt}
  type="button"
  disabled={disabled}
  onClick={() => onPick(prompt)}
- className={cn(
-"snap-start inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-sidebar-border/80 bg-background/45 px-2.5 py-1 text-xs font-medium text-foreground transition-colors",
-"hover:border-primary/30 hover:bg-sidebar-accent/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45",
-"disabled:cursor-not-allowed disabled:opacity-50",
- )}
+ variant="outline"
+ size="sm"
+ className="snap-start"
  >
  <Wand2 className="h-3 w-3 text-primary" />
  {label}
- </button>
+ </Button>
  ))}
  {CREATION_QUICK_ACTIONS.map(({ label, icon: Icon, intent, prompt }) => (
- <button
+ <Button
  key={intent}
  type="button"
  disabled={disabled}
  onClick={() => onCreate({ intent, prompt })}
- className={cn(
-"snap-start inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-sidebar-border/80 bg-background/45 px-2.5 py-1 text-xs font-medium text-foreground transition-colors",
-"hover:border-primary/30 hover:bg-sidebar-accent/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45",
-"disabled:cursor-not-allowed disabled:opacity-50",
- )}
+ variant="outline"
+ size="sm"
+ className="snap-start"
  >
  <Icon className="h-3 w-3 text-primary" />
  {label}
- </button>
+ </Button>
  ))}
  </div>
  <ScrollBar orientation="horizontal" />

@@ -5,7 +5,7 @@ import {
   BriefcaseBusiness, Folder,
 } from "lucide-react"
 import { toast } from "sonner"
-import { cn, getErrorMessage } from "@/lib/utils"
+import { getErrorMessage } from "@/lib/utils"
 
 export const PROJECT_ICONS: Record<string, LucideIcon> = {
   eng: BookOpen,
@@ -28,20 +28,6 @@ export function getProjectIcon(subjectId?: string): LucideIcon {
   if (subjectId && PROJECT_ICONS[subjectId]) return PROJECT_ICONS[subjectId]
   return Folder
 }
-
-export const SEGMENTED_BUTTON_CLASS = "rounded-md px-2.5 py-1 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-const SEGMENTED_ACTIVE_CLASS = "bg-background text-foreground font-medium shadow-sm"
-const SEGMENTED_IDLE_CLASS = "text-muted-foreground hover:bg-background/40 hover:text-foreground"
-
-export function getSegmentedButtonClassName(selected: boolean, className?: string) {
-  return cn(
-    SEGMENTED_BUTTON_CLASS,
-    selected ? SEGMENTED_ACTIVE_CLASS : SEGMENTED_IDLE_CLASS,
-    className,
-  )
-}
-
-export const POPOVER_ITEM_BUTTON_CLASS = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35"
 
 export function notifyProjectActionError(message: string, error: unknown) {
   toast.error(`${message}: ${getErrorMessage(error)}`)

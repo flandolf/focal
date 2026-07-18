@@ -11,7 +11,6 @@ import { Breadcrumb } from "./Breadcrumb"
 import type { FileInfo, FileTag } from "@/lib/types"
 import type { SortKey } from "@/hooks/useProjectFiles"
 import { cn } from "@/lib/utils"
-import { getSegmentedButtonClassName, POPOVER_ITEM_BUTTON_CLASS } from "./shared"
 
 export type ListItem =
   | { type: "file"; data: FileInfo; isExiting?: boolean }
@@ -144,13 +143,13 @@ export const FileTree = memo(function FileTree({
             : "Drag and drop files here, or select them from your computer."}
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={onAddFiles} className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
+          <Button variant="secondary" size="sm" onClick={onAddFiles}>
+            <Plus />
             Add Files
           </Button>
           {onCreateFolder && (
-            <Button variant="outline" size="sm" onClick={onCreateFolder} className="gap-1.5">
-              <FolderPlus className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" onClick={onCreateFolder}>
+              <FolderPlus />
               New Folder
             </Button>
           )}
@@ -176,50 +175,50 @@ export const FileTree = memo(function FileTree({
 
           {/* New folder */}
           {onCreateFolder && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={onCreateFolder}
-              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
               title="Create new folder"
             >
-              <FolderPlus className="h-3.5 w-3.5" />
+              <FolderPlus />
               <span className="hidden min-[900px]:inline">New Folder</span>
-            </button>
+            </Button>
           )}
 
           {/* View toggle: Folders vs All */}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
-            <button
-              type="button"
+            <Button
+              variant={selectedSubfolder !== null ? "secondary" : "ghost"}
+              size="icon-xs"
               onClick={() => setSelectedSubfolder("__root__")}
               aria-pressed={selectedSubfolder !== null}
-              className={getSegmentedButtonClassName(selectedSubfolder !== null)}
               title="Folder view"
             >
-              <FolderOpen className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
+              <FolderOpen />
+            </Button>
+            <Button
+              variant={selectedSubfolder === null ? "secondary" : "ghost"}
+              size="icon-xs"
               onClick={() => setSelectedSubfolder(null)}
               aria-pressed={selectedSubfolder === null}
-              className={getSegmentedButtonClassName(selectedSubfolder === null)}
               title="All files"
             >
-              <LayoutList className="h-3.5 w-3.5" />
-            </button>
+              <LayoutList />
+            </Button>
           </div>
 
           {/* Sort indicator */}
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={() => setSortAsc(!sortAsc)}
-              className={getSegmentedButtonClassName(false, "flex items-center gap-1 px-2")}
               title={`Sort ${sortAsc ? "descending" : "ascending"}`}
               aria-label={`Sort ${sortAsc ? "descending" : "ascending"}`}
             >
-              {sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-            </button>
+              {sortAsc ? <ArrowUp /> : <ArrowDown />}
+            </Button>
           </div>
         </div>
 
@@ -232,7 +231,7 @@ export const FileTree = memo(function FileTree({
               placeholder="Search files..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-7 rounded-lg bg-background/45 pl-8 text-xs"
+              className="pl-8"
             />
           </div>
           <span className="hidden items-center gap-1 text-caption text-muted-foreground/60 min-[900px]:inline-flex">
@@ -242,37 +241,35 @@ export const FileTree = memo(function FileTree({
             search
           </span>
           {searchQuery && (
-            <Button variant="ghost" size="sm" onClick={() => setSearchQuery("")} className="h-7 w-7 rounded-lg p-0">
-              <X className="h-3.5 w-3.5" />
+            <Button variant="ghost" size="icon-sm" onClick={() => setSearchQuery("")}>
+              <X />
             </Button>
           )}
           <div className="mx-0.5 h-4 w-px bg-border/40" />
           {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
-            <button
-              type="button"
+            <Button
               key={tag}
+              variant={selectedTags.includes(tag) ? "secondary" : "ghost"}
+              size="xs"
               onClick={() => setSelectedTags(
                 selectedTags.includes(tag)
                   ? selectedTags.filter(t => t !== tag)
                   : [...selectedTags, tag]
               )}
               aria-pressed={selectedTags.includes(tag)}
-              className={getSegmentedButtonClassName(
-                selectedTags.includes(tag),
-                "px-2 py-0.5 text-caption capitalize",
-              )}
+              className="capitalize"
             >
               {tag}
-            </button>
+            </Button>
           ))}
           {selectedTags.length > 0 && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => setSelectedTags([])}
-              className="rounded-md px-1.5 py-0.5 text-caption text-muted-foreground transition-colors outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/35"
             >
               Clear
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -283,14 +280,13 @@ export const FileTree = memo(function FileTree({
           <span className="text-xs font-medium">{selectedFiles.size} selected</span>
           <Button
             variant="ghost"
-            size="sm"
+            size="xs"
             onClick={onSelectAll}
-            className="h-7 px-2 text-xs"
             title="Select all visible files (Ctrl/Cmd+A)"
           >
             Select All
           </Button>
-          <Button variant="ghost" size="sm" onClick={onClearSelection} className="h-7 px-2 text-xs">
+          <Button variant="ghost" size="xs" onClick={onClearSelection}>
             Clear
           </Button>
           <span className="hidden items-center gap-1 text-caption text-muted-foreground/60 min-[900px]:inline-flex">
@@ -299,8 +295,8 @@ export const FileTree = memo(function FileTree({
             </kbd>
             clears
           </span>
-          <Button variant="ghost" size="sm" onClick={onCopySelectedPaths} className="h-7 gap-1 px-2 text-xs">
-            <Copy className="h-3 w-3" />
+          <Button variant="ghost" size="xs" onClick={onCopySelectedPaths}>
+            <Copy />
             Copy Paths
           </Button>
 
@@ -315,23 +311,23 @@ export const FileTree = memo(function FileTree({
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
+                size="xs"
               >
-                <Tag className="h-3 w-3" />
+                <Tag />
                 Tag
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-36 gap-1 p-1">
               {(["sac", "notes", "past-paper", "exam", "resource", "other"] as FileTag[]).map((tag) => (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="xs"
                   key={tag}
                   onClick={() => { void onBulkTag(tag); setShowBulkTagMenu(false) }}
-                  className={cn(POPOVER_ITEM_BUTTON_CLASS, "capitalize")}
+                  className="w-full justify-start capitalize"
                 >
                   {tag}
-                </button>
+                </Button>
               ))}
             </PopoverContent>
           </Popover>
@@ -347,10 +343,9 @@ export const FileTree = memo(function FileTree({
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
+                size="xs"
               >
-                <MoveRight className="h-3 w-3" />
+                <MoveRight />
                 Move
               </Button>
             </PopoverTrigger>
@@ -358,14 +353,15 @@ export const FileTree = memo(function FileTree({
               {allSubfolders.map((folder) => {
                 const displayName = folder.split("/").pop() ?? folder
                 return (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="xs"
                     key={folder}
                     onClick={() => { void onBulkMove(folder); setShowBulkMoveMenu(false) }}
-                    className={POPOVER_ITEM_BUTTON_CLASS}
+                    className="w-full justify-start"
                   >
                     {displayName}
-                  </button>
+                  </Button>
                 )
               })}
             </PopoverContent>
@@ -373,12 +369,11 @@ export const FileTree = memo(function FileTree({
 
           <div className="flex-1" />
           <Button
-            variant="ghost"
-            size="sm"
+            variant="destructive"
+            size="xs"
             onClick={onDeleteSelected}
-            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            <Trash2 />
             Delete
           </Button>
         </div>
@@ -404,66 +399,71 @@ export const FileTree = memo(function FileTree({
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border/60 bg-muted/30 text-caption text-muted-foreground min-[1200px]:px-6">
         <div className="w-6 shrink-0" />
         <div className="w-8 shrink-0" />
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => {
             if (sortKey === "name") setSortAsc(!sortAsc)
             else { setSortKey("name"); setSortAsc(true) }
           }}
           aria-sort={sortKey === "name" ? (sortAsc ? "ascending" : "descending") : "none"}
-          className="flex flex-1 min-w-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+          className="min-w-0 flex-1 justify-start"
         >
           Name
-          {sortKey === "name" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-        </button>
-        <button
-          type="button"
+          {sortKey === "name" && (sortAsc ? <ArrowUp /> : <ArrowDown />)}
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => {
             if (sortKey === "modified") setSortAsc(!sortAsc)
             else { setSortKey("modified"); setSortAsc(true) }
           }}
           aria-sort={sortKey === "modified" ? (sortAsc ? "ascending" : "descending") : "none"}
-          className="flex w-28 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+          className="w-28 shrink-0 justify-start"
         >
           Date
-          {sortKey === "modified" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-        </button>
-        <button
-          type="button"
+          {sortKey === "modified" && (sortAsc ? <ArrowUp /> : <ArrowDown />)}
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => {
             if (sortKey === "size") setSortAsc(!sortAsc)
             else { setSortKey("size"); setSortAsc(true) }
           }}
           aria-sort={sortKey === "size" ? (sortAsc ? "ascending" : "descending") : "none"}
-          className="flex w-20 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+          className="w-20 shrink-0 justify-start"
         >
           Size
-          {sortKey === "size" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-        </button>
-        <button
-          type="button"
+          {sortKey === "size" && (sortAsc ? <ArrowUp /> : <ArrowDown />)}
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => {
             if (sortKey === "extension") setSortAsc(!sortAsc)
             else { setSortKey("extension"); setSortAsc(true) }
           }}
           aria-sort={sortKey === "extension" ? (sortAsc ? "ascending" : "descending") : "none"}
-          className="flex w-16 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+          className="w-16 shrink-0 justify-start"
         >
           Type
-          {sortKey === "extension" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-        </button>
-        <button
-          type="button"
+          {sortKey === "extension" && (sortAsc ? <ArrowUp /> : <ArrowDown />)}
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => {
             if (sortKey === "tags") setSortAsc(!sortAsc)
             else { setSortKey("tags"); setSortAsc(true) }
           }}
           aria-sort={sortKey === "tags" ? (sortAsc ? "ascending" : "descending") : "none"}
-          className="flex w-24 shrink-0 items-center gap-1 text-left hover:text-foreground transition-colors"
+          className="w-24 shrink-0 justify-start"
         >
           Tags
-          {sortKey === "tags" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-        </button>
+          {sortKey === "tags" && (sortAsc ? <ArrowUp /> : <ArrowDown />)}
+        </Button>
         <div className="w-8 shrink-0" />
       </div>
 

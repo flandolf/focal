@@ -3,7 +3,6 @@ import {
   type ReactNode,
   useEffect,
   useRef,
-  useState,
 } from "react";
 import {
   BarChart3,
@@ -11,7 +10,6 @@ import {
   Coffee,
   Gauge,
   Minimize2,
-  PenLine,
   RotateCcw,
   Target,
   Timer,
@@ -26,7 +24,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { Project, Subject } from "@/lib/types";
@@ -163,6 +160,20 @@ function formatMinutes(totalMinutes: number) {
   return `${hours}h ${minutes}m`;
 }
 
+function formatFinishTime(secondsLeft: number) {
+  return new Date(Date.now() + Math.max(0, secondsLeft) * 1000)
+    .toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- exported for the runnable timer self-check
+export function isTimerShortcutTarget(target: EventTarget | null) {
+  const element = target as HTMLElement | null;
+  return !!element && (
+    element.isContentEditable
+    || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(element.tagName)
+  );
+}
+
 export function FocusView({
   running,
   mode,
@@ -208,7 +219,7 @@ export function FocusView({
 }: FocusViewProps) {
   const closeButtonRefInternal = useRef<HTMLButtonElement | null>(null);
   const resolvedCloseRef = closeButtonRef ?? closeButtonRefInternal;
-  const [sessionIntention, setSessionIntention] = useState("");
+  const originalTitleRef = useRef(document.title);
 
   useEffect(() => {
     const focusTimeout = window.setTimeout(
@@ -218,6 +229,15 @@ export function FocusView({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      if (
+        event.code === "Space"
+        && !event.repeat
+        && !saving
+        && !isTimerShortcutTarget(event.target)
+      ) {
+        event.preventDefault();
+        onToggle();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -225,7 +245,7 @@ export function FocusView({
       window.clearTimeout(focusTimeout);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose, resolvedCloseRef]);
+  }, [onClose, onToggle, resolvedCloseRef, saving]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -233,6 +253,14 @@ export function FocusView({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
+  }, []);
+
+  useEffect(() => {
+    document.title = `${timeDisplay} · ${running ? "Studying" : "Paused"} · Focal`;
+  }, [running, timeDisplay]);
+
+  useEffect(() => () => {
+    document.title = originalTitleRef.current;
   }, []);
 
   const safeProgress = Number.isFinite(progress)
@@ -246,6 +274,9 @@ export function FocusView({
     : hasActiveSession
       ? "Paused"
       : "Ready";
+  const finishTime = running && !isStudyOvertime
+    ? formatFinishTime(secondsLeft)
+    : null;
   const kineticStyle = {
     "--focus-progress": safeProgress,
   } as CSSProperties;
@@ -282,9 +313,11 @@ export function FocusView({
           <div className="flex shrink-0 items-center gap-2 min-[680px]:justify-end">
             <Button
               onClick={onReset}
+              disabled={saving}
               variant="outline"
               size="icon"
-              aria-label="Reset timer"
+              aria-label={hasActiveSession ? "Finish and reset timer" : "Reset timer"}
+              title={hasActiveSession ? "Finish and save this session, then reset" : "Reset timer"}
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
@@ -310,7 +343,9 @@ export function FocusView({
               </CardTitle>
               <CardDescription className="truncate">
                 {activeSessionId
-                  ? isStudyOvertime
+                  ? !running
+                    ? "Study time is paused and no time is being added."
+                    : isStudyOvertime
                     ? "Overtime is extending the current study block."
                     : "Calendar logging is active for this block."
                   : mode === "work"
@@ -319,7 +354,11 @@ export function FocusView({
               </CardDescription>
               <CardAction>
                 <Badge variant={hasActiveSession ? "success" : "secondary"}>
-                  {hasActiveSession ? "Logging" : "Not logged"}
+                  {running && hasActiveSession
+                    ? "Logging"
+                    : hasActiveSession
+                      ? "Paused"
+                      : "Not logged"}
                 </Badge>
               </CardAction>
             </CardHeader>
@@ -337,14 +376,14 @@ export function FocusView({
                   detail={currentBlockDetail}
                 />
                 <FocusMetric
-                  label="Logged"
-                  value={hasActiveSession ? "Active" : "Ready"}
+                  label="Finish"
+                  value={finishTime ?? (isStudyOvertime ? "Open ended" : "—")}
                   detail={
-                    hasActiveSession
-                      ? isStudyOvertime
-                        ? "Overtime session"
-                        : "Calendar session"
-                      : "Awaiting start"
+                    isStudyOvertime
+                      ? "Return to break when ready"
+                      : running
+                        ? "Projected at the current pace"
+                        : "Starts projecting when the timer runs"
                   }
                 />
               </div>
@@ -536,7 +575,9 @@ export function FocusView({
                     </div>
                     <p className="mt-1 text-sm font-medium text-foreground">
                       {hasActiveSession
-                        ? isStudyOvertime
+                        ? !running
+                          ? "Paused — calendar time is not increasing"
+                          : isStudyOvertime
                           ? "Overtime is extending calendar study"
                           : "Session is writing to the calendar"
                         : mode === "work"
@@ -558,28 +599,6 @@ export function FocusView({
                 </CardContent>
               </Card>
 
-              <Card size="sm" className="bg-card">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <PenLine className="h-4 w-4 text-muted-foreground" />
-                    Focus Intention
-                  </CardTitle>
-                  <CardDescription>
-                    A short note for this block.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <label className="sr-only" htmlFor="focus-intention">
-                    Focus intention
-                  </label>
-                  <Input
-                    id="focus-intention"
-                    placeholder="What should this session finish?"
-                    value={sessionIntention}
-                    onChange={(event) => setSessionIntention(event.target.value)}
-                  />
-                </CardContent>
-              </Card>
             </aside>
           </ScrollArea>
           </div>
@@ -601,6 +620,9 @@ export function FocusView({
           onStartStudyOvertime={onStartStudyOvertime}
           onMoreBreakTime={onMoreBreakTime}
         />
+        <p className="pointer-events-none fixed bottom-1 left-1/2 z-50 hidden -translate-x-1/2 text-xs text-muted-foreground sm:block">
+          Space to {running ? "pause" : timerActionLabel.toLowerCase()} · Esc to exit focus view
+        </p>
       </div>
     </div>
   );

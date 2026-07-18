@@ -255,13 +255,13 @@ function ViewSettingsPopover({
  return (
  <Popover>
  <PopoverTrigger asChild>
- <button
- type="button"
- className="flex h-7 w-7 items-center justify-center rounded-lg border border-input bg-background/60 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+ <Button
+ variant="outline"
+ size="icon-sm"
  aria-label="View settings"
  >
- <Settings2 className="h-3.5 w-3.5" />
- </button>
+ <Settings2 />
+ </Button>
  </PopoverTrigger>
  <PopoverContent className="w-60 p-3 space-y-3" align="end">
  {/* View section */}
@@ -326,22 +326,18 @@ function ViewSettingsPopover({
  </p>
  <div className="flex gap-1">
  {([null, 1, 2] as const).map((block) => (
- <button
+ <Button
  key={block === null ?"auto" : `block-${block}`}
- type="button"
+ variant={viewSettings.manualBlock === block ? "secondary" : "outline"}
+ size="sm"
  onClick={() => onChange({ manualBlock: block })}
- className={cn(
-"flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
- viewSettings.manualBlock === block
- ?"border-primary/30 bg-primary/10 text-primary"
- :"border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
- )}
+ className="flex-1"
  aria-pressed={viewSettings.manualBlock === block}
  >
  {block === null
  ?"Auto"
  : `Block ${String.fromCharCode(64 + block)}`}
- </button>
+ </Button>
  ))}
  </div>
  <p className="text-xs text-muted-foreground/50">
@@ -383,7 +379,7 @@ function LiveStatusCard({
  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
  animate={{ opacity: 1, y: 0 }}
  transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="flex items-center gap-3 rounded-2xl px-3.5 py-2.5"
+ className="flex items-center gap-3 rounded-lg px-3 py-2"
  >
  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/40">
  <Sparkles className="h-4 w-4 text-muted-foreground/60" />
@@ -405,7 +401,7 @@ function LiveStatusCard({
  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
  animate={{ opacity: 1, y: 0 }}
  transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="flex items-center gap-3 rounded-2xl px-3.5 py-2.5"
+ className="flex items-center gap-3 rounded-lg px-3 py-2"
  >
  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/12">
  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
@@ -436,7 +432,7 @@ function LiveStatusCard({
  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
  animate={{ opacity: 1, y: 0 }}
  transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="relative overflow-hidden rounded-2xl px-3.5 py-2.5"
+ className="relative overflow-hidden rounded-lg px-3 py-2"
  >
  <div className="flex items-start justify-between gap-3">
  <div className="min-w-0 flex-1 space-y-1">
@@ -522,7 +518,7 @@ function LiveStatusCard({
  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
  animate={{ opacity: 1, y: 0 }}
  transition={{ duration: MOTION_DURATION.medium, ease: MOTION_EASE }}
- className="flex items-center gap-2 rounded-2xl px-3 py-2"
+ className="flex items-center gap-2 rounded-lg px-3 py-2"
  >
  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40">
  <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
@@ -877,9 +873,10 @@ function TimelineBlock({
  dayLabel !== undefined &&
  entryIdx !== undefined &&
  periodIdx !== undefined && (
- <button
- type="button"
- className="flex h-5 w-5 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/45 transition-colors hover:bg-accent hover:text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-ring"
+ <Button
+ variant="ghost"
+ size="icon-xs"
+ className="cursor-grab touch-none active:cursor-grabbing"
  title="Drag to move. Use Up or Down when focused."
  aria-label="Move period"
  onKeyDown={(e) => {
@@ -902,33 +899,34 @@ function TimelineBlock({
  });
  }}
  >
- <GripVertical className="h-3 w-3" />
- </button>
+ <GripVertical />
+ </Button>
  )}
- <button
- type="button"
+ <Button
+ variant="ghost"
+ size="icon-xs"
  onClick={(e) => {
  e.stopPropagation();
  onEdit();
  }}
- className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
  aria-label="Edit period"
  title="Edit period"
  >
- <Pencil className="h-3 w-3" />
- </button>
- <button
- type="button"
+ <Pencil />
+ </Button>
+ <Button
+ variant="ghost"
+ size="icon-xs"
  onClick={(e) => {
  e.stopPropagation();
  onDelete();
  }}
- className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-destructive/15 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring"
+ className="text-destructive"
  aria-label="Delete period"
  title="Delete period"
  >
- <Trash2 className="h-3 w-3" />
- </button>
+ <Trash2 />
+ </Button>
  </div>
 
  {/* Current period progress */}
@@ -1054,10 +1052,10 @@ function DayHeader({
  )}
  </div>
  <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/day:opacity-100 group-focus-within/day:opacity-100 [@media(hover:none)]:opacity-100">
- <button
- type="button"
+ <Button
+ variant="ghost"
+ size="icon-xs"
  onClick={onToggleHide}
- className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-accent hover:text-foreground"
  aria-label={isHidden ?"Show day" :"Hide day"}
  title={isHidden ?"Show day" :"Hide day"}
  >
@@ -1066,17 +1064,17 @@ function DayHeader({
  ) : (
  <EyeOff className="h-2.5 w-2.5" />
  )}
- </button>
+ </Button>
  <Popover>
  <PopoverTrigger asChild>
- <button
- type="button"
- className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-accent hover:text-foreground"
+ <Button
+ variant="ghost"
+ size="icon-xs"
  aria-label={`Copy Day ${dayLabel}`}
  title="Copy to another day"
  >
  <Copy className="h-2.5 w-2.5" />
- </button>
+ </Button>
  </PopoverTrigger>
  <PopoverContent className="w-44 p-2" align="start">
  <p className="mb-1 px-1 text-caption font-medium text-muted-foreground/70">
@@ -1086,33 +1084,28 @@ function DayHeader({
  className={cn("grid gap-1", dayPickerCols(dayToWeekday.length))}
  >
  {allDayLabels(dayToWeekday.length).map((d) => (
- <button
+ <Button
  key={d}
- type="button"
+ variant="outline"
+ size="icon-sm"
  onClick={() => onCopyTo(d)}
  disabled={d === dayLabel}
- className={cn(
-"flex h-7 items-center justify-center rounded border text-xs font-medium transition-colors",
- d === dayLabel
- ?"border-border/30 bg-muted/30 text-muted-foreground/30 cursor-not-allowed"
- :"border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
- )}
  >
  {d}
- </button>
+ </Button>
  ))}
  </div>
  </PopoverContent>
  </Popover>
- <button
- type="button"
+ <Button
+ variant="ghost"
+ size="icon-xs"
  onClick={onEdit}
- className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-accent hover:text-foreground"
  aria-label={`Edit Day ${dayLabel}`}
  title="Edit day"
  >
  <Edit3 className="h-2.5 w-2.5" />
- </button>
+ </Button>
  </div>
  </div>
  );
@@ -1227,7 +1220,7 @@ function DayTimelineCard({
  variants={staggerItem}
  data-timetable-day={dayLabel}
  className={cn(
-"group/day relative flex flex-col overflow-hidden rounded-2xl",
+"group/day relative flex flex-col overflow-hidden rounded-lg",
  isToday &&"",
  isHidden &&"opacity-40",
  isDragTarget &&"ring-2 ring-primary/40 bg-primary/5",
@@ -1965,10 +1958,11 @@ export const TimetableView = memo(function TimetableView({
  onOpenChange={setDayPickerOpen}
  >
  <PopoverTrigger asChild>
- <button
- type="button"
+ <Button
+ variant="ghost"
+ size="xs"
  className={cn(
-"inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:bg-accent/40",
+"-ml-1.5",
  isDayOverridden &&"text-primary",
  )}
  aria-label="Set current day"
@@ -1986,7 +1980,7 @@ export const TimetableView = memo(function TimetableView({
  aria-hidden
  />
  )}
- </button>
+ </Button>
  </PopoverTrigger>
  <PopoverContent className="w-64 p-2" align="start">
  <div className="px-1.5 pb-1.5 pt-0.5">
@@ -2014,16 +2008,12 @@ export const TimetableView = memo(function TimetableView({
  const isAuto = autoDayLabel === d;
  const wd = dayToWeekday[d - 1];
  return (
- <button
+ <Button
  key={d}
- type="button"
+ variant={isSelected ? "secondary" : "outline"}
+ size="sm"
  onClick={() => handleSetDay(d)}
- className={cn(
-"relative flex h-9 flex-col items-center justify-center rounded-md border text-xs font-semibold transition-colors",
- isSelected
- ?"border-primary bg-primary/10 text-primary"
- :"border-input bg-background/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
- )}
+ className="relative h-9 flex-col gap-0"
  aria-pressed={isSelected}
  >
  <span className="tabular-nums leading-none">
@@ -2045,19 +2035,20 @@ export const TimetableView = memo(function TimetableView({
  </span>
  </>
  )}
- </button>
+ </Button>
  );
  })}
  </div>
  {isDayOverridden && (
- <button
- type="button"
+ <Button
+ variant="outline"
+ size="sm"
  onClick={handleResetDay}
- className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-input bg-background/60 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+ className="mt-1.5 w-full"
  >
- <PinOff className="h-3 w-3" />
+ <PinOff />
  Reset to auto
- </button>
+ </Button>
  )}
  </PopoverContent>
  </Popover>
@@ -2237,7 +2228,7 @@ export const TimetableView = memo(function TimetableView({
  ease: MOTION_EASE,
  delay: reduceMotion ? 0 : 0.2,
  }}
- className="flex items-center gap-2 rounded-2xl px-3 py-2"
+ className="flex items-center gap-2 rounded-lg px-3 py-2"
  >
  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15">
  <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400" />

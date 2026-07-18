@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogBody,
@@ -25,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import TimePicker from "@/components/ui/time-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -128,20 +130,16 @@ function TabBar({
   return (
     <div className="flex gap-1 rounded-lg bg-muted/40 p-0.5">
       {tabs.map((tab) => (
-        <button
+        <Button
           key={tab.id}
-          type="button"
+          variant={active === tab.id ? "secondary" : "ghost"}
+          size="sm"
           onClick={() => onChange(tab.id)}
-          className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
-            active === tab.id
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground/70 hover:text-foreground",
-          )}
+          className="flex-1"
         >
           {tab.icon}
           {tab.label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -182,20 +180,11 @@ function CycleEditor({
   return (
     <div className="space-y-2">
       <label className="flex items-start gap-2 cursor-pointer rounded-md border border-border/40 bg-background/40 px-2 py-1.5">
-        <button
-          type="button"
-          onClick={() => onWeekendTimetablesChange(!weekendTimetables)}
-          className={cn(
-            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-            weekendTimetables
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-muted-foreground/50",
-          )}
-          role="checkbox"
-          aria-checked={weekendTimetables}
-        >
-          {weekendTimetables && <Check className="h-3 w-3" />}
-        </button>
+        <Checkbox
+          checked={weekendTimetables}
+          onCheckedChange={(checked) => onWeekendTimetablesChange(checked === true)}
+          className="mt-0.5"
+        />
         <span className="flex-1 text-xs leading-snug">
           <span className="font-medium">Weekend timetables</span>
           <span className="mt-0.5 block text-caption text-muted-foreground/70">
@@ -235,19 +224,19 @@ function CycleEditor({
           <span className="text-sm font-medium leading-none">
             Day → weekday
           </span>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() =>
               onDayToWeekdayChange(
                 defaultDayToWeekday(cycleLength, weekendTimetables),
               )
             }
             disabled={isDefault}
-            className="flex h-6 items-center gap-1 rounded-md px-1.5 text-caption text-muted-foreground/80 hover:bg-accent hover:text-foreground disabled:opacity-40"
           >
-            <RotateCcw className="h-2.5 w-2.5" />
+            <RotateCcw />
             Reset
-          </button>
+          </Button>
         </div>
         <ScrollArea className="max-h-36 rounded-lg border border-border/50 bg-background/30">
           <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-3">
@@ -305,12 +294,12 @@ function PeriodEditRow({
       <span className="text-center text-caption font-medium text-muted-foreground/50 tabular-nums">
         {index + 1}
       </span>
-      <input
+      <Input
         type="text"
         value={period.period}
         onChange={(e) => onChange("period", e.target.value)}
         placeholder={`Period ${index + 1}`}
-        className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+        className="h-6 text-xs"
       />
       <Select
         value={period.subject || "_none"}
@@ -343,21 +332,22 @@ function PeriodEditRow({
           className="h-6 w-[5rem] rounded bg-background px-1 text-xs"
         />
       </div>
-      <input
+      <Input
         type="text"
         value={period.location}
         onChange={(e) => onChange("location", e.target.value)}
         placeholder="Room"
-        className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 max-[760px]:col-start-2"
+        className="h-6 text-xs max-[760px]:col-start-2"
       />
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={onDelete}
-        className="ml-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+        className="ml-1 text-destructive"
         aria-label="Remove period"
       >
-        <X className="h-3 w-3" />
-      </button>
+        <X />
+      </Button>
     </div>
   );
 }
@@ -403,19 +393,11 @@ function EntryCard({
       )}
     >
       <div className="flex items-center gap-2 px-3 py-2.5">
-        <button
-          type="button"
-          onClick={onToggle}
-          className={cn(
-            "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
-            draft.approved
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-muted-foreground/50",
-          )}
+        <Checkbox
+          checked={draft.approved}
+          onCheckedChange={onToggle}
           aria-label={draft.approved ? "Exclude day" : "Include day"}
-        >
-          {draft.approved && <Check className="h-3 w-3" />}
-        </button>
+        />
         <Select
           value={String(draft.dayLabel)}
           onValueChange={(v) => onUpdateDay(Number(v))}
@@ -438,10 +420,10 @@ function EntryCard({
           {draft.periods.length}{" "}
           {draft.periods.length === 1 ? "period" : "periods"}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={() => setExpanded((e) => !e)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-accent hover:text-foreground"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? (
@@ -449,15 +431,16 @@ function EntryCard({
           ) : (
             <ChevronDown className="h-3.5 w-3.5" />
           )}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={onDelete}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+          className="text-destructive"
           aria-label="Remove day"
         >
           <Trash2 className="h-3 w-3" />
-        </button>
+        </Button>
       </div>
       {expanded && (
         <div className="border-t border-border/50 px-3 pb-3 pt-2">
@@ -926,12 +909,12 @@ export function TimetableEditor({
           >
             Day 1 starts
           </label>
-          <input
+          <Input
             id="editor-day1"
             type="date"
             value={day1Starts}
             onChange={(e) => setDay1Starts(e.target.value)}
-            className="h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+            className="h-7 text-xs"
           />
         </div>
         <CycleEditor
@@ -966,27 +949,28 @@ export function TimetableEditor({
                 onChange={(e) => updateHoliday(h.id, "name", e.target.value)}
                 className="h-6 min-w-0 text-xs"
               />
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => deleteHoliday(h.id)}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+                className="shrink-0 text-destructive"
                 aria-label="Remove holiday"
               >
                 <X className="h-2.5 w-2.5" />
-              </button>
-              <input
+              </Button>
+              <Input
                 type="date"
                 value={h.startDate}
                 onChange={(e) =>
                   updateHoliday(h.id, "startDate", e.target.value)
                 }
-                className="h-6 min-w-0 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring"
+                className="h-6 min-w-0 text-xs"
               />
-              <input
+              <Input
                 type="date"
                 value={h.endDate}
                 onChange={(e) => updateHoliday(h.id, "endDate", e.target.value)}
-                className="h-6 min-w-0 rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring"
+                className="h-6 min-w-0 text-xs"
               />
             </div>
           ))}
@@ -1121,12 +1105,12 @@ export function TimetableEditor({
                             Describe changes in natural language.
                           </p>
                         </div>
-                        <textarea
+                        <Textarea
                           id="ai-instruction-editor"
                           value={aiInstruction}
                           onChange={(e) => setAiInstruction(e.target.value)}
                           placeholder='e.g. "Swap English and Chemistry on Day 2"'
-                          className="min-h-[7rem] w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                          className="min-h-[7rem] resize-none"
                           autoFocus
                         />
                       </div>
@@ -1279,14 +1263,15 @@ export function TimetableEditor({
                                 alt="Timetable preview"
                                 className="mx-auto max-h-44 rounded-lg object-contain"
                               />
-                              <button
-                                type="button"
+                              <Button
+                                variant="destructive"
+                                size="icon-xs"
                                 onClick={() => setPhotoImage(null)}
-                                className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                                className="absolute right-1.5 top-1.5"
                                 aria-label="Remove"
                               >
                                 <X className="h-2.5 w-2.5" />
-                              </button>
+                              </Button>
                             </div>
                           ) : (
                             <>

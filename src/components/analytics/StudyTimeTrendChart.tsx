@@ -105,16 +105,16 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
 
   if (chartData.length === 0) {
     return (
-      <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
-        <h3 className="font-heading text-sm font-semibold mb-1">Study Time Trends</h3>
+      <Card className="p-4">
+        <h3 className="text-sm font-semibold mb-1">Study Time Trends</h3>
         <p className="text-xs text-muted-foreground">No study data for this period.</p>
       </Card>
     )
   }
 
   return (
-    <Card className="rounded-2xl bg-background/48 border-border/70 p-5 backdrop-blur shadow-sm">
-      <h3 className="font-heading text-sm font-semibold mb-4">Study Time Trends</h3>
+    <Card className="p-4">
+      <h3 className="text-sm font-semibold mb-4">Study Time Trends</h3>
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />

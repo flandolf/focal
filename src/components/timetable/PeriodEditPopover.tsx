@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react"
-import { motion, useReducedMotion } from "framer-motion"
 import {
   Trash2,
   MoveRight,
@@ -7,6 +6,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Popover,
   PopoverContent,
@@ -22,7 +22,6 @@ import {
 import { cn } from "@/lib/utils"
 import TimePicker from "@/components/ui/time-picker"
 import { VCE_SUBJECTS, type TimetablePeriod, type TimetableDayLabel, type Subject } from "@/lib/types"
-import { MOTION_DURATION, MOTION_EASE_SNAPPY } from "@/lib/motion"
 import { isMacOS } from "@/lib/platform"
 
 interface PeriodEditPopoverProps {
@@ -47,7 +46,6 @@ export function PeriodEditPopover({
   onMove,
   children,
 }: PeriodEditPopoverProps) {
-  const reduceMotion = useReducedMotion() === true
   const [open, setOpen] = useState(false)
 
   const [periodName, setPeriodName] = useState(period.period)
@@ -107,11 +105,8 @@ export function PeriodEditPopover({
         side="right"
         onKeyDown={handleKeyDown}
       >
-        <motion.div
+        <div
           key={`${open}-${period.period}-${period.startTime}-${period.endTime}-${period.subject}-${period.location ?? ""}`}
-          initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: MOTION_DURATION.fast, ease: MOTION_EASE_SNAPPY }}
           className="space-y-3"
         >
           {/* Header */}
@@ -119,14 +114,14 @@ export function PeriodEditPopover({
             <p className="text-xs font-semibold">
               Edit period — Day {dayLabel}
             </p>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={() => setOpen(false)}
-              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground"
               aria-label="Close"
             >
-              <X className="h-3 w-3" />
-            </button>
+              <X />
+            </Button>
           </div>
 
           {/* Period name */}
@@ -134,13 +129,13 @@ export function PeriodEditPopover({
             <label className="text-micro font-medium text-muted-foreground/80">
               Period name
             </label>
-            <input
+            <Input
               type="text"
               value={periodName}
               onChange={(e) => setPeriodName(e.target.value)}
               placeholder="Period 1"
               autoFocus
-              className="h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="h-7 text-xs"
             />
           </div>
 
@@ -230,12 +225,12 @@ export function PeriodEditPopover({
             <label className="text-micro font-medium text-muted-foreground/80">
               Location
             </label>
-            <input
+            <Input
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="Room"
-              className="h-7 w-full rounded border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="h-7 text-xs"
             />
           </div>
 
@@ -280,9 +275,9 @@ export function PeriodEditPopover({
                 onDelete()
                 setOpen(false)
               }}
-              className="h-7 gap-1 text-xs text-muted-foreground/70 hover:text-destructive"
+              className="text-destructive"
             >
-              <Trash2 className="h-3 w-3" />
+              <Trash2 />
               Delete
             </Button>
             <div className="flex items-center gap-1.5">
@@ -290,7 +285,6 @@ export function PeriodEditPopover({
                 variant="outline"
                 size="xs"
                 onClick={() => setOpen(false)}
-                className="h-7 text-xs"
               >
                 Cancel
               </Button>
@@ -298,9 +292,8 @@ export function PeriodEditPopover({
                 size="xs"
                 onClick={handleSave}
                 disabled={!isValid}
-                className="h-7 gap-1 text-xs"
               >
-                <Check className="h-3 w-3" />
+                <Check />
                 Save
               </Button>
             </div>
@@ -309,7 +302,7 @@ export function PeriodEditPopover({
           <p className="text-caption text-muted-foreground/40 text-center">
             {isMacOS ? "⌘" : "Ctrl"}+Enter to save
           </p>
-        </motion.div>
+        </div>
       </PopoverContent>
     </Popover>
   )

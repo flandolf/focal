@@ -115,14 +115,16 @@ export function CustomSubjects({
                     <span className="text-xs font-mono text-muted-foreground">
                       {subject.shortCode}
                     </span>
-                    <button
+                    <Button
                       type="button"
                       onClick={() => handleDelete(subject.id)}
-                      className="rounded p-1 opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       aria-label={`Delete ${subject.name}`}
                     >
                       <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </>
@@ -173,14 +175,13 @@ export function CustomSubjects({
               </label>
               <div className="flex flex-wrap gap-2">
                 {PRESET_COLORS.map((c) => (
-                  <button
+                  <Button
                     type="button"
                     key={c}
                     onClick={() => setFormData((f) => ({ ...f, color: c }))}
-                    className={cn(
-                      "h-8 w-8 rounded-full border-2 transition-transform hover:scale-105",
-                      formData.color === c && "scale-105 border-foreground"
-                    )}
+                    variant="outline"
+                    size="icon"
+                    className={cn("rounded-full", formData.color === c && "ring-2 ring-ring")}
                     style={{ backgroundColor: c }}
                     aria-label={`Use ${c}`}
                     aria-pressed={formData.color === c}

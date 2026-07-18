@@ -1,9 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { addMinutes } from "date-fns"
-import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Pencil, Square, SquareCheck, Wand2, X } from "lucide-react"
+import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Pencil, Wand2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import TimePicker from "@/components/ui/time-picker"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
@@ -34,7 +36,6 @@ interface TextEventDraft {
 
 const VALID_EVENT_TYPES = new Set<EventType>(["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"])
 const MAX_SOURCE_LENGTH = 20_000
-const textareaClass = "min-h-20 resize-none rounded-lg border border-input bg-background/65 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 // --- API / Parsing ---
 
@@ -640,14 +641,14 @@ export function TextEventPlanner({
 
           <div className="grid shrink-0 gap-2">
             <label className="text-control font-medium text-muted-foreground" htmlFor="text-event-planner-input">Source text</label>
-            <textarea
+            <Textarea
               id="text-event-planner-input"
               value={plannerText}
               onChange={(event) => setPlannerText(event.target.value)}
               placeholder="Paste dates, tasks, teacher notes, or a weekly plan..."
               maxLength={MAX_SOURCE_LENGTH}
               rows={4}
-              className={textareaClass}
+              className="resize-none"
             />
             <p className="text-xs text-muted-foreground/70">AI extracts events, SACs, study sessions, and deadlines.</p>
           </div>
@@ -687,16 +688,11 @@ export function TextEventPlanner({
           {hasDrafts && (
             <ScrollArea className="min-h-0 flex-1 rounded-lg border border-border/60">
               <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2 backdrop-blur-sm">
-                <button
-                  type="button"
-                  onClick={handleToggleAll}
-                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors"
+                <Checkbox
+                  onCheckedChange={handleToggleAll}
+                  checked={allApproved}
                   aria-label={allApproved ? "Deselect all" : "Select all"}
-                >
-                  {allApproved
-                    ? <SquareCheck className="h-3 w-3 text-primary" />
-                    : <Square className="h-3 w-3 text-muted-foreground/50" />}
-                </button>
+                />
                 <span className="text-xs font-medium text-muted-foreground">
                   {allApproved ? "All selected" : `${approvedCount} of ${plannerDrafts.length}`}
                 </span>
@@ -717,17 +713,11 @@ export function TextEventPlanner({
                       className="bg-background/40"
                     >
                       <div className={cn("flex items-center gap-3 px-3 py-2.5 transition-opacity", !draft.approved && "opacity-40")}>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleDraft(index)}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        <Checkbox
+                          onCheckedChange={() => handleToggleDraft(index)}
                           aria-label={draft.approved ? "Deselect" : "Select"}
-                          aria-pressed={draft.approved}
-                        >
-                          {draft.approved
-                            ? <SquareCheck className="h-3.5 w-3.5 text-primary" />
-                            : <Square className="h-3.5 w-3.5 text-muted-foreground/50" />}
-                        </button>
+                          checked={draft.approved}
+                        />
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
@@ -778,19 +768,17 @@ export function TextEventPlanner({
                           </p>
                         </div>
 
-                        <button
+                        <Button
                           type="button"
                           onClick={() => setEditingIndex(isEditing ? null : index)}
-                          className={cn(
-                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            isEditing && "bg-muted text-foreground",
-                            draftIssue && "text-destructive",
-                          )}
+                          variant="ghost"
+                          size="icon-sm"
+                          className={cn(isEditing && "bg-muted", draftIssue && "text-destructive")}
                           aria-label={`${isEditing ? "Close editor for" : "Edit"} ${draft.title || "untitled item"}`}
                           aria-expanded={isEditing}
                         >
                           {isEditing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                        </button>
+                        </Button>
                       </div>
 
                       {isEditing && (

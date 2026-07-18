@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -432,33 +433,31 @@ export const Sidebar = memo(function Sidebar({
               Study workspace
             </p>
           </CollapsibleBlock>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onToggleCollapse}
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              !isCollapsed && "ml-auto",
-            )}
+            className={cn("shrink-0", !isCollapsed && "ml-auto")}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {isCollapsed ? (
-              <PanelLeftOpen className="h-3.5 w-3.5" />
+              <PanelLeftOpen />
             ) : (
-              <PanelLeftClose className="h-3.5 w-3.5" />
+              <PanelLeftClose />
             )}
-          </button>
+          </Button>
         </div>
 
         <div className="mt-3 flex justify-center">
           <Button
             variant="outline"
             onClick={onNewProject}
-            className={cn(isCollapsed ? "w-8 px-0" : "w-full gap-1")}
-            size="sm"
+            className={isCollapsed ? undefined : "w-full"}
+            size={isCollapsed ? "icon" : "sm"}
             title={isCollapsed ? "New Assessment" : undefined}
           >
-            <Plus className="h-4 w-4 shrink-0" />
+            <Plus />
             <CollapsibleInline show={!isCollapsed}>
               New Assessment
             </CollapsibleInline>
@@ -472,89 +471,47 @@ export const Sidebar = memo(function Sidebar({
           isCollapsed ? "px-1.5 min-[1200px]:px-2" : "px-2.5 min-[1200px]:px-3",
         )}
       >
-        <button
-          type="button"
+        <Button
+          variant={homeSelected ? "secondary" : "ghost"}
           onClick={onSelectHome}
-          className={cn(
-            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
-            homeSelected
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            isCollapsed && "justify-center px-0",
-          )}
+          className={cn("w-full", !isCollapsed && "justify-start")}
+          size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Today (H)" : undefined}
         >
-          <Home
-            className={cn("h-4 w-4 shrink-0", homeSelected && "text-primary")}
-          />
+          <Home />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Today
           </CollapsibleInline>
           <CollapsibleInline show={!isCollapsed} className="ml-auto">
-            <span className="mr-1 hidden rounded border bg-background px-1 font-mono text-[10px] leading-relaxed text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
-              H
-            </span>
-            <span className="rounded-full px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
-              {activeCount}
-            </span>
+            <Badge variant="secondary">{activeCount}</Badge>
           </CollapsibleInline>
-        </button>
+        </Button>
 
-        <button
-          type="button"
+        <Button
+          variant={timetableSelected ? "secondary" : "ghost"}
           onClick={onSelectTimetable}
-          className={cn(
-            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
-            timetableSelected
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            isCollapsed && "justify-center px-0",
-          )}
+          className={cn("w-full", !isCollapsed && "justify-start")}
+          size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Timetable (T)" : undefined}
         >
-          <CalendarIcon
-            className={cn(
-              "h-4 w-4 shrink-0",
-              timetableSelected && "text-primary",
-            )}
-          />
+          <CalendarIcon />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Timetable
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="ml-auto">
-            <span className="hidden rounded border bg-background px-1 font-mono text-[10px] leading-relaxed text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
-              T
-            </span>
-          </CollapsibleInline>
-        </button>
+        </Button>
 
-        <button
-          type="button"
+        <Button
+          variant={analyticsSelected ? "secondary" : "ghost"}
           onClick={onSelectAnalytics}
-          className={cn(
-            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
-            analyticsSelected
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            isCollapsed && "justify-center px-0",
-          )}
+          className={cn("w-full", !isCollapsed && "justify-start")}
+          size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Analytics (A)" : undefined}
         >
-          <BarChart3
-            className={cn(
-              "h-4 w-4 shrink-0",
-              analyticsSelected && "text-primary",
-            )}
-          />
+          <BarChart3 />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Analytics
           </CollapsibleInline>
-          <CollapsibleInline show={!isCollapsed} className="ml-auto">
-            <span className="hidden rounded border bg-background px-1 font-mono text-[10px] leading-relaxed text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70 min-[1200px]:inline-block">
-              A
-            </span>
-          </CollapsibleInline>
-        </button>
+        </Button>
 
         <div
           className={cn(
@@ -563,22 +520,15 @@ export const Sidebar = memo(function Sidebar({
           )}
         >
           {filterItems.map(({ mode, label, icon: Icon, count }) => (
-            <button
-              type="button"
+            <Button
               key={mode}
               onClick={() => setFilterMode(mode)}
-              className={cn(
-                "relative flex h-7 items-center justify-center rounded-sm transition-colors",
-                isCollapsed ? "px-0" : "gap-1 px-2 py-1.5 text-xs",
-                filterMode === mode
-                  ? "bg-accent text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
+              variant={filterMode === mode ? "secondary" : "ghost"}
+              size={isCollapsed ? "icon-xs" : "xs"}
+              className={isCollapsed ? undefined : "w-full"}
               title={isCollapsed ? label : undefined}
             >
-              <Icon
-                className={cn("shrink-0", isCollapsed ? "h-4 w-4" : "h-3 w-3")}
-              />
+              <Icon />
               <CollapsibleInline show={!isCollapsed}>{label}</CollapsibleInline>
               {count != null && count > 0 && !isCollapsed && (
                 <CollapsibleInline
@@ -588,7 +538,7 @@ export const Sidebar = memo(function Sidebar({
                   {count}
                 </CollapsibleInline>
               )}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -596,14 +546,11 @@ export const Sidebar = memo(function Sidebar({
         {!isCollapsed && onSortChange && (
           <DropdownMenu open={showSortMenu} onOpenChange={setShowSortMenu}>
             <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none transition-colors"
-              >
-                <ArrowUpDown className="h-3 w-3 shrink-0" />
+              <Button variant="ghost" size="xs" className="w-full justify-start">
+                <ArrowUpDown />
                 <span>{sortLabel}</span>
-                <ChevronDown className="ml-auto h-3 w-3" />
-              </button>
+                <ChevronDown className="ml-auto" />
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-36">
               {SORT_OPTIONS.map((opt) => (
@@ -716,39 +663,39 @@ export const Sidebar = memo(function Sidebar({
             <div className="ml-auto flex items-center gap-0.5">
               {filterMode === "archived"
                 ? onBulkUnarchive && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       onClick={() => onBulkUnarchive(selectedIdsArray)}
-                      className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
                       Restore
-                    </button>
+                    </Button>
                   )
                 : onBulkArchive && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       onClick={() => onBulkArchive(selectedIdsArray)}
-                      className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
                       Archive
-                    </button>
+                    </Button>
                   )}
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => onBulkFinish(selectedIdsArray)}
-                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               >
                 Finish
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="destructive"
+                size="xs"
                 onClick={() => {
                   if (onBulkDelete) onBulkDelete(selectedIdsArray);
                 }}
-                className="rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors"
               >
                 Delete
-              </button>
+              </Button>
             </div>
           </div>
         )}

@@ -1,5 +1,4 @@
-import { createElement, useMemo } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { createElement } from "react";
 import {
   Clock,
   Download,
@@ -30,9 +29,7 @@ import type {
   Project,
   StudySession,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import { pressable, staggerContainer, staggerItem } from "@/lib/motion";
-import { getProjectIcon, getSegmentedButtonClassName } from "./shared";
+import { getProjectIcon } from "./shared";
 
 interface ProjectHeaderProps {
   project: Project;
@@ -66,24 +63,13 @@ export function ProjectHeader({
   const subject = getSubjectById(project.subjectId);
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType);
   const projectIcon = getProjectIcon(project.subjectId);
-  const headerVariants = useMemo(() => staggerContainer(0.06, 0.04), []);
-  const reduceMotion = useReducedMotion() === true;
-
   return (
-    <motion.div
-      className="border-b border-border/60"
-      variants={headerVariants}
-      initial="initial"
-      animate="animate"
-    >
+    <div className="border-b">
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 min-[1200px]:px-5">
         {/* Left: icon + title + inline metadata */}
-        <motion.div
-          variants={staggerItem}
-          className="flex min-w-0 items-center gap-2.5"
-        >
+        <div className="flex min-w-0 items-center gap-2.5">
           <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background/45 shadow-sm"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted"
             style={
               subject
                 ? {
@@ -94,7 +80,7 @@ export function ProjectHeader({
             }
           >
             {createElement(projectIcon, {
-              className: "h-4 w-4",
+              className: "size-4",
               "aria-hidden": true,
             })}
           </span>
@@ -102,17 +88,16 @@ export function ProjectHeader({
           <div className="flex min-w-0 items-center gap-2">
             <div className="group/left flex min-w-0 items-center gap-1.5">
               <h2 className="truncate text-base font-medium">{project.name}</h2>
-              <motion.button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={onOpenSettings}
-                whileHover={reduceMotion ? undefined : { rotate: -14 }}
-                transition={{ type: "spring", stiffness: 520, damping: 24 }}
-                className="flex h-5 w-5 shrink-0 origin-top-right items-center justify-center rounded text-muted-foreground opacity-0 transition-[opacity,background-color] duration-150 hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/left:opacity-100"
+                className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover/left:opacity-100"
                 aria-label={`Rename ${project.name}`}
                 title="Rename"
               >
-                <Pencil className="h-3 w-3" />
-              </motion.button>
+                <Pencil />
+              </Button>
             </div>
 
             <div className="hidden items-center gap-1 sm:flex">
@@ -123,7 +108,6 @@ export function ProjectHeader({
                       ? "destructive"
                       : "secondary"
                   }
-                  className="h-4 gap-0.5 border-0 px-1.5 text-[0.6rem] font-normal"
                   style={
                     project.deadlineType
                       ? {
@@ -137,65 +121,53 @@ export function ProjectHeader({
                 </Badge>
               )}
               {project.isLinked && (
-                <span className="hidden h-4 items-center gap-0.5 rounded bg-primary/10 px-1.5 text-[0.6rem] font-medium text-primary lg:flex">
-                  <Link className="h-2.5 w-2.5" aria-hidden="true" />
+                <Badge variant="outline" className="hidden lg:flex">
+                  <Link aria-hidden="true" />
                   Linked
-                </span>
+                </Badge>
               )}
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Right: view toggle + actions */}
-        <motion.div
-          variants={staggerItem}
-          className="flex shrink-0 items-center gap-1"
-        >
+        <div className="flex shrink-0 items-center gap-1">
           {/* View toggle */}
-          <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
-            <button
-              type="button"
+          <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+            <Button
+              variant={viewMode === "files" ? "secondary" : "ghost"}
+              size="xs"
               onClick={() => onViewModeChange("files")}
               aria-pressed={viewMode === "files"}
-              className={getSegmentedButtonClassName(
-                viewMode === "files",
-                "flex items-center gap-1",
-              )}
             >
-              <Folder className="h-3.5 w-3.5" />
+              <Folder />
               Files
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant={viewMode === "sessions" ? "secondary" : "ghost"}
+              size="xs"
               onClick={() => onViewModeChange("sessions")}
               aria-pressed={viewMode === "sessions"}
-              className={getSegmentedButtonClassName(
-                viewMode === "sessions",
-                "flex items-center gap-1",
-              )}
             >
-              <Clock className="h-3.5 w-3.5" />
+              <Clock />
               Sessions
               {sessions.length > 0 && (
-                <span className="tabular-nums text-micro">
-                  {sessions.length}
-                </span>
+                <span className="tabular-nums">{sessions.length}</span>
               )}
-            </button>
+            </Button>
           </div>
 
           <div className="mx-1 hidden h-4 w-px bg-border/60 sm:block" />
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-lg"
-                onClick={onOpenSettings}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onOpenSettings}
                 aria-label="Assessment details"
               >
-                <Settings className="h-4 w-4" />
+                <Settings />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Assessment details</TooltipContent>
@@ -207,25 +179,15 @@ export function ProjectHeader({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative h-8 w-8 rounded-lg"
+                  className="relative"
                   onClick={onRefresh}
                   aria-label={hasPendingChanges ? "Refresh files with external changes" : "Refresh files"}
                 >
-                  <RefreshCw className="h-4 w-4" />
+                  <RefreshCw />
                   {hasPendingChanges && (
-                    <motion.span
+                    <span
                       aria-hidden
-                      className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background"
-                      animate={
-                        reduceMotion
-                          ? undefined
-                          : { scale: [1, 1.3, 1], opacity: [1, 0.6, 1] }
-                      }
-                      transition={{
-                        duration: 1.6,
-                        repeat: 3,
-                        ease: "easeOut",
-                      }}
+                      className="absolute right-0 top-0 size-2 rounded-full bg-primary ring-2 ring-background"
                     />
                   )}
                 </Button>
@@ -244,44 +206,10 @@ export function ProjectHeader({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-lg"
                   onClick={() => onToggleFinished(project.id)}
                   aria-label={project.isFinished ? "Mark as current" : "Mark as complete"}
                 >
-                  <AnimatePresence initial={false}>
-                    <motion.span
-                      key={project.isFinished ? "done" : "todo"}
-                      initial={{
-                        scale: 0.55,
-                        opacity: 0,
-                        rotate: project.isFinished ? -8 : 6,
-                      }}
-                      animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                      exit={{
-                        scale: 0.55,
-                        opacity: 0,
-                        rotate: project.isFinished ? 6 : -8,
-                      }}
-                      transition={
-                        reduceMotion
-                          ? { duration: 0 }
-                          : {
-                              type: "spring",
-                              stiffness: 620,
-                              damping: 30,
-                              mass: 0.5,
-                            }
-                      }
-                      className="flex items-center justify-center"
-                    >
-                      <CheckCircle2
-                        className={cn(
-                          "h-4 w-4",
-                          project.isFinished && "text-green-500",
-                        )}
-                      />
-                    </motion.span>
-                  </AnimatePresence>
+                  <CheckCircle2 className={project.isFinished ? "text-success" : undefined} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -296,11 +224,10 @@ export function ProjectHeader({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-lg"
                   onClick={onSaveAsTemplate}
                   aria-label="Save as template"
                 >
-                  <Bookmark className="h-4 w-4" />
+                  <Bookmark />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Save as template</TooltipContent>
@@ -313,11 +240,10 @@ export function ProjectHeader({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-lg"
                   onClick={onExport}
                   aria-label="Export project"
                 >
-                  <Download className="h-4 w-4" />
+                  <Download />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Export project</TooltipContent>
@@ -330,27 +256,20 @@ export function ProjectHeader({
                 variant="outline"
                 size="sm"
                 onClick={onOpenFolder}
-                className="h-8 gap-1.5 rounded-lg bg-background/45"
               >
-                <FolderUp className="h-4 w-4" />
+                <FolderUp />
                 <span className="max-[950px]:hidden">Open</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Open in Finder</TooltipContent>
           </Tooltip>
 
-          <motion.span {...pressable(reduceMotion)} className="inline-flex">
-            <Button
-              size="sm"
-              onClick={onAddFiles}
-              className="h-8 gap-1.5 rounded-lg text-background shadow-[0_1px_0_oklch(0_0_0/0.06)] transition-shadow hover:shadow-[0_2px_4px_oklch(0_0_0/0.10)]"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Add</span>
-            </Button>
-          </motion.span>
-        </motion.div>
+          <Button size="sm" onClick={onAddFiles}>
+            <Plus />
+            <span>Add</span>
+          </Button>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

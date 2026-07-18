@@ -23,12 +23,12 @@ export function RecoveryDialog({
   if (!open) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-background p-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
+      <div className="mx-4 w-full max-w-sm rounded-lg border bg-background p-4">
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
           <Timer className="h-6 w-6 text-primary" />
         </div>
-        <h3 className="font-heading text-lg font-semibold">Recover Study Session</h3>
+        <h3 className="text-lg font-semibold">Recover Study Session</h3>
         <p className="mt-2 text-sm text-muted-foreground">
           You had an active Pomodoro session when the app was closed. What would you like to do?
         </p>
