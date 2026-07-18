@@ -35,8 +35,11 @@ import {
 import {
   getTimetablePeriodError,
   getTimetablePeriodsForDay,
+  timetableTimeFrom12HourParts,
+  timetableTimeTo12HourParts,
   timetableTimeToMinutes,
 } from "@/lib/timetable"
+import type { TimetableTimeParts } from "@/lib/timetable"
 import type {
   SchoolHoliday,
   Subject,
@@ -90,26 +93,8 @@ function addMinutes(time: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`
 }
 
-type Meridiem = "AM" | "PM"
-
 const HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1))
 const MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"))
-
-function timeParts(time: string): { hour: string; minute: string; meridiem: Meridiem } {
-  const total = timetableTimeToMinutes(time) ?? 9 * 60
-  const hour24 = Math.floor(total / 60)
-  return {
-    hour: String(hour24 % 12 || 12),
-    minute: String(total % 60).padStart(2, "0"),
-    meridiem: hour24 < 12 ? "AM" : "PM",
-  }
-}
-
-function to24HourTime(hour: string, minute: string, meridiem: Meridiem): string {
-  const hour12 = Number(hour)
-  const hour24 = (hour12 % 12) + (meridiem === "PM" ? 12 : 0)
-  return `${String(hour24).padStart(2, "0")}:${minute}`
-}
 
 function TimetableTimeInput({
   id,
@@ -122,17 +107,18 @@ function TimetableTimeInput({
   value: string
   onChange: (value: string) => void
 }) {
-  const parts = timeParts(value)
-  const update = (next: Partial<typeof parts>) => {
+  const parts = timetableTimeTo12HourParts(value) ?? { hour: 9, minute: 0, meridiem: "AM" as const }
+  const update = (next: Partial<TimetableTimeParts>) => {
     const merged = { ...parts, ...next }
-    onChange(to24HourTime(merged.hour, merged.minute, merged.meridiem))
+    const time = timetableTimeFrom12HourParts(merged.hour, merged.minute, merged.meridiem)
+    if (time) onChange(time)
   }
 
   return (
     <div className="grid min-w-0 gap-1.5">
       <Label id={`${id}-label`}>{label}</Label>
       <div className="grid min-w-0 grid-cols-[minmax(4.25rem,.7fr)_auto_minmax(4.25rem,.7fr)_minmax(4.75rem,.8fr)] items-center gap-1.5" role="group" aria-labelledby={`${id}-label`}>
-        <Select value={parts.hour} onValueChange={(hour) => update({ hour })}>
+        <Select value={String(parts.hour)} onValueChange={(hour) => update({ hour: Number(hour) })}>
           <SelectTrigger className="w-full font-medium tabular-nums" aria-label={`${label} hour`}>
             <SelectValue />
           </SelectTrigger>
@@ -141,7 +127,7 @@ function TimetableTimeInput({
           </SelectContent>
         </Select>
         <span className="text-sm font-semibold text-muted-foreground" aria-hidden="true">:</span>
-        <Select value={parts.minute} onValueChange={(minute) => update({ minute })}>
+        <Select value={String(parts.minute).padStart(2, "0")} onValueChange={(minute) => update({ minute: Number(minute) })}>
           <SelectTrigger className="w-full font-medium tabular-nums" aria-label={`${label} minute`}>
             <SelectValue />
           </SelectTrigger>
@@ -149,7 +135,7 @@ function TimetableTimeInput({
             {MINUTES.map((minute) => <SelectItem key={minute} value={minute}>{minute}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={parts.meridiem} onValueChange={(meridiem) => update({ meridiem: meridiem as Meridiem })}>
+        <Select value={parts.meridiem} onValueChange={(meridiem) => update({ meridiem: meridiem as TimetableTimeParts["meridiem"] })}>
           <SelectTrigger className="w-full font-semibold" aria-label={`${label} AM or PM`}>
             <SelectValue />
           </SelectTrigger>
