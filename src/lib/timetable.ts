@@ -94,6 +94,36 @@ export function timetableTimeToMinutes(value: string): number | null {
   return hours * 60 + minutes
 }
 
+export type TimetableMeridiem = "AM" | "PM"
+
+export interface TimetableTimeParts {
+  hour: number
+  minute: number
+  meridiem: TimetableMeridiem
+}
+
+export function timetableTimeTo12HourParts(value: string): TimetableTimeParts | null {
+  const total = timetableTimeToMinutes(value)
+  if (total === null) return null
+  const hour24 = Math.floor(total / 60)
+  return {
+    hour: hour24 % 12 || 12,
+    minute: total % 60,
+    meridiem: hour24 < 12 ? "AM" : "PM",
+  }
+}
+
+export function timetableTimeFrom12HourParts(
+  hour: number,
+  minute: number,
+  meridiem: TimetableMeridiem,
+): string | null {
+  if (!Number.isInteger(hour) || hour < 1 || hour > 12) return null
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null
+  const hour24 = (hour % 12) + (meridiem === "PM" ? 12 : 0)
+  return `${String(hour24).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+}
+
 /** Return a user-facing validation error for a timetable period, or null when valid. */
 export function getTimetablePeriodError(period: TimetablePeriod): string | null {
   if (!period.period.trim()) return "Add a period name."

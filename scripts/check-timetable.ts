@@ -3,6 +3,8 @@ import {
   getTimetablePeriodError,
   getTimetablePeriodsForDay,
   isTimetableBreakLabel,
+  timetableTimeFrom12HourParts,
+  timetableTimeTo12HourParts,
   timetableTimeToMinutes,
 } from "../src/lib/timetable.ts"
 
@@ -14,6 +16,11 @@ check(timetableTimeToMinutes("09:35") === 575, "valid time should parse")
 check(timetableTimeToMinutes("9:35") === null, "partial time should be rejected")
 check(timetableTimeToMinutes("24:00") === null, "out-of-range time should be rejected")
 check(isTimetableBreakLabel(" Lunch "), "break labels should ignore case and whitespace")
+check(timetableTimeFrom12HourParts(12, 15, "AM") === "00:15", "12 AM should convert to midnight")
+check(timetableTimeFrom12HourParts(12, 15, "PM") === "12:15", "12 PM should stay noon")
+check(timetableTimeFrom12HourParts(1, 45, "PM") === "13:45", "PM time should convert to 24-hour storage")
+check(timetableTimeTo12HourParts("00:15")?.hour === 12, "midnight should display as 12 AM")
+check(timetableTimeTo12HourParts("13:45")?.meridiem === "PM", "afternoon time should display as PM")
 
 check(
   getTimetablePeriodError({ period: "Period 1", subject: "eng", startTime: "10:00", endTime: "09:00" }) === "End time must be after start time.",
