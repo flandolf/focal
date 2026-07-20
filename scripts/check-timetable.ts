@@ -3,6 +3,8 @@ import {
   getTimetablePeriodError,
   getTimetablePeriodsForDay,
   isTimetableBreakLabel,
+  parseTimetableImport,
+  TIMETABLE_SCREENSHOT_PROMPT,
   timetableTimeFrom12HourParts,
   timetableTimeTo12HourParts,
   timetableTimeToMinutes,
@@ -33,6 +35,33 @@ const periods = getTimetablePeriodsForDay(2, [
   { dayLabel: 2, periods: [{ period: "Period 1", subject: "eng", startTime: "09:00", endTime: "10:00" }] },
 ])
 check(periods.map((period) => period.period).join(",") === "Period 1,Period 2", "duplicate day entries should merge and sort")
+
+const imported = parseTimetableImport(JSON.stringify({
+  cycleLength: 5,
+  entries: [
+    { dayLabel: 2, periods: [{ period: "Period 2", subject: "Chemistry", location: "Lab 1", startTime: "10:00", endTime: "11:00" }] },
+    { dayLabel: 2, periods: [{ period: "Period 1", subject: "English", location: "", startTime: "09:00", endTime: "10:00" }] },
+  ],
+}), "timetable.json", {
+  enabled: false,
+  day1Starts: "2026-01-26",
+  holidays: [],
+  entries: [],
+  cycleLength: 10,
+})
+check(imported.enabled, "an imported timetable should be enabled")
+check(imported.cycleLength === 5, "the imported cycle length should be used")
+check(imported.day1Starts === "2026-01-26", "calendar settings should be preserved")
+check(imported.entries[0]?.periods.map((period) => period.period).join(",") === "Period 1,Period 2", "duplicate imported days should merge and sort")
+check(TIMETABLE_SCREENSHOT_PROMPT.includes("Return only valid JSON"), "the copyable prompt should require raw JSON")
+
+let rejectedInvalidRange = false
+try {
+  parseTimetableImport('{"cycleLength":1,"entries":[{"dayLabel":1,"periods":[{"period":"P1","subject":"English","location":"","startTime":"10:00","endTime":"09:00"}]}]}', "bad.json", imported)
+} catch {
+  rejectedInvalidRange = true
+}
+check(rejectedInvalidRange, "imports should reject periods that end before they start")
 
 check(getDayLabelForDate(new Date(2026, 0, 30), "2026-01-26", [], 10) === 5, "weekdays should advance the cycle")
 check(getDayLabelForDate(new Date(2026, 0, 31), "2026-01-26", [], 10) === null, "weekends should be skipped")
