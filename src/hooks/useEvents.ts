@@ -1,9 +1,10 @@
-import { useCallback, useEffect } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import type { CalendarEvent, EventType } from "@/lib/types"
 import { generateId, safeString, safeStringOpt, safeBool, safeDateMeta, parseCalendarEventSource } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
+import { calendarEventFingerprint, dedupeCalendarEvents } from "@/lib/calendarEvents"
 
 const VALID_EVENT_TYPES: readonly string[] = ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"]
 
@@ -49,13 +50,29 @@ function normaliseEvent(raw: unknown): CalendarEvent {
 }
 
 export function useEvents() {
+  const duplicateIdsRef = useRef<string[]>([])
   const { data: events, loading, error, save: saveEvents, refresh } = usePersistedData({
     fileName: "events.json",
     normalize: normaliseEvent,
-    onLoad: (normalised) => markPastEventsFinished(normalised.filter((event) => !event.deleted_at)),
+    onLoad: (normalised) => {
+      const result = dedupeCalendarEvents(
+        markPastEventsFinished(normalised.filter((event) => !event.deleted_at)),
+      )
+      duplicateIdsRef.current = result.duplicateIds
+      return result.events
+    },
   })
 
   const eventsRef = useLatestRef(events)
+
+  useEffect(() => {
+    if (loading || duplicateIdsRef.current.length === 0) return
+    const duplicateIds = duplicateIdsRef.current
+    duplicateIdsRef.current = []
+    void saveEvents(eventsRef.current).then(() => {
+      duplicateIds.forEach((id) => void recordLocalSoftDelete("events", id))
+    })
+  }, [eventsRef, loading, saveEvents])
 
   const addEvent = useCallback(async (data: {
     title: string
@@ -67,6 +84,12 @@ export function useEvents() {
     location?: string
     source?: CalendarEvent["source"]
   }) => {
+    const fingerprint = calendarEventFingerprint(data)
+    const existing = eventsRef.current.find(
+      (event) => calendarEventFingerprint(event) === fingerprint,
+    )
+    if (existing) return null
+
     const now = new Date().toISOString()
     const event: CalendarEvent = {
       id: generateId(),
@@ -115,10 +138,19 @@ export function useEvents() {
       created_at: createdAt,
       updated_at: createdAt,
     }))
-    const updated = [...eventsRef.current, ...newEvents]
+    const existingFingerprints = new Set(
+      eventsRef.current.map(calendarEventFingerprint),
+    )
+    const uniqueNewEvents = newEvents.filter((event) => {
+      const fingerprint = calendarEventFingerprint(event)
+      if (existingFingerprints.has(fingerprint)) return false
+      existingFingerprints.add(fingerprint)
+      return true
+    })
+    const updated = [...eventsRef.current, ...uniqueNewEvents]
     await saveEvents(updated)
-    newEvents.forEach((event) => void recordLocalUpsert("events", event))
-    return newEvents
+    uniqueNewEvents.forEach((event) => void recordLocalUpsert("events", event))
+    return uniqueNewEvents
   }, [eventsRef, saveEvents])
 
   const updateEvent = useCallback(async (

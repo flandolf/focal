@@ -65,6 +65,7 @@ interface DayDetailProps {
   onClose: () => void
   onToggleSelectionMode: () => void
   onClearSelection: () => void
+  onSelectAll: () => void
   onToggleEventSelection: (eventId: string) => void
   onToggleSessionSelection: (sessionId: string) => void
   onSelectProject: (projectId: string) => void
@@ -86,6 +87,7 @@ export function DayDetail({
   onClose,
   onToggleSelectionMode,
   onClearSelection,
+  onSelectAll,
   onToggleEventSelection,
   onToggleSessionSelection,
   onSelectProject,
@@ -165,10 +167,13 @@ export function DayDetail({
         </div>
       </div>
       {calendarSelectionMode && (
-        <div className="mb-2 rounded-xl border border-primary/20 bg-primary/8 px-2.5 py-2">
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/8 px-2.5 py-2">
           <p className="text-micro font-medium text-primary">
-            Pick events or sessions below. Actions appear at the bottom of the window.
+            Pick items below, or select the whole day.
           </p>
+          <Button variant="ghost" size="xs" onClick={onSelectAll}>
+            Select all
+          </Button>
         </div>
       )}
 

@@ -1233,6 +1233,11 @@ function App() {
     }) => {
       try {
         const created = await addEvent(data);
+        if (!created) {
+          toast.info(`Event "${data.title}" already exists`);
+          setEventDialogOpen(false);
+          return true;
+        }
         toast.success(`Event "${data.title}" added`);
         setEventDialogOpen(false);
         void pushEventChange(created);
@@ -1248,10 +1253,12 @@ function App() {
   const handleCreateEvents = useCallback(
     async (items: Omit<CalendarEvent, "id" | "created_at">[]) => {
       try {
-        await addEvents(items);
-        toast.success(
-          `${items.length} event${items.length !== 1 ? "s" : ""} added`,
-        );
+        const created = await addEvents(items);
+        if (created.length === 0) {
+          toast.info("No events added — they already exist");
+          return;
+        }
+        toast.success(`${created.length} event${created.length !== 1 ? "s" : ""} added`);
         void requestNotionSync(false);
       } catch (e) {
         toast.error(`Failed to add events: ${String(e)}`);
