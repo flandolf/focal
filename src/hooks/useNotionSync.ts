@@ -195,43 +195,13 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     }, 500)
   }, [performNotionSync])
 
-  const pushEventChange = useCallback(async (event: CalendarEvent) => {
-    const settings = getNotionCalendarSettings()
-    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
-    setSyncStatus("syncing")
-    try {
-      const result = await pushEventToNotion(settings, event, allSubjectsRef.current)
-      if (result) {
-        await syncEvents([], [{ id: event.id, updates: { source: result.source } }])
-        setSyncStatus("idle")
-      } else {
-        // Fall back to full sync but pass the changed ID so fast-push is used
-        await performNotionSync(false, undefined, new Set([event.id]))
-      }
-    } catch (e) {
-      console.error("Failed to push event to Notion:", e)
-      setSyncStatus("error")
-    }
-  }, [syncEvents, performNotionSync])
+  const pushEventChange = useCallback((_event: CalendarEvent) => {
+    requestNotionSync(false)
+  }, [requestNotionSync])
 
-  const pushSessionChange = useCallback(async (session: StudySession) => {
-    const settings = getNotionCalendarSettings()
-    if (!settings.token.trim() || !settings.dataSourceId.trim()) return
-    setSyncStatus("syncing")
-    try {
-      const result = await pushSessionToNotion(settings, session, allSubjectsRef.current)
-      if (result) {
-        await syncSessions([], [{ id: session.id, updates: { source: result.source } }])
-        setSyncStatus("idle")
-      } else {
-        // Fall back to full sync but pass the changed ID so fast-push is used
-        await performNotionSync(false, undefined, undefined, new Set([session.id]))
-      }
-    } catch (e) {
-      console.error("Failed to push session to Notion:", e)
-      setSyncStatus("error")
-    }
-  }, [syncSessions, performNotionSync])
+  const pushSessionChange = useCallback((_session: StudySession) => {
+    requestNotionSync(false)
+  }, [requestNotionSync])
 
   const resolveConflicts = useCallback(async (resolutions: Record<string, "local" | "notion" | "skip">) => {
     const settings = getNotionCalendarSettings()

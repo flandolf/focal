@@ -1,0 +1,56 @@
+import type { CalendarEvent } from "@/lib/types"
+
+function instantKey(value?: string): string {
+  if (!value) return ""
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? value : String(time)
+}
+
+export function calendarEventFingerprint(
+  event: Pick<CalendarEvent, "title" | "description" | "startTime" | "endTime" | "eventType" | "subjectId" | "location">,
+): string {
+  return [
+    event.title.trim(),
+    event.description?.trim() ?? "",
+    instantKey(event.startTime),
+    instantKey(event.endTime),
+    event.eventType,
+    event.subjectId ?? "",
+    event.location?.trim() ?? "",
+  ].join("\u0000")
+}
+
+function updatedAt(event: CalendarEvent): number {
+  const value = new Date(event.updated_at ?? event.created_at ?? "").getTime()
+  return Number.isNaN(value) ? 0 : value
+}
+
+export function dedupeCalendarEvents(events: CalendarEvent[]): {
+  events: CalendarEvent[]
+  duplicateIds: string[]
+} {
+  const byFingerprint = new Map<string, CalendarEvent>()
+  const duplicateIds: string[] = []
+
+  for (const event of events) {
+    const fingerprint = calendarEventFingerprint(event)
+    const existing = byFingerprint.get(fingerprint)
+    if (!existing) {
+      byFingerprint.set(fingerprint, event)
+      continue
+    }
+
+    if (updatedAt(event) > updatedAt(existing)) {
+      duplicateIds.push(existing.id)
+      byFingerprint.set(fingerprint, event)
+    } else {
+      duplicateIds.push(event.id)
+    }
+  }
+
+  const keptIds = new Set(Array.from(byFingerprint.values(), (event) => event.id))
+  return {
+    events: events.filter((event) => keptIds.has(event.id)),
+    duplicateIds,
+  }
+}

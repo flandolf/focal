@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent, type ReactNode } from"react"
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from"react"
 import { addMinutes, format, parseISO, addWeeks, addMonths } from"date-fns"
 import { CalendarIcon, CheckCircle2, Clock, MapPin, Repeat, Tag, Trash2 } from"lucide-react"
 import {
@@ -568,10 +568,17 @@ export function EventDialog({
  onSubmitMultiple,
  onDelete,
 }: EventDialogProps) {
+ const submittingRef = useRef(false)
  const isEditMode = Boolean(event)
  const existingEvent = isEditMode ? event! : null
 
+ useEffect(() => {
+ if (open) submittingRef.current = false
+ }, [open])
+
  const handleSubmit = (values: EventFormValues) => {
+ if (submittingRef.current) return
+ submittingRef.current = true
  if (existingEvent) {
  const { id } = existingEvent
  onSubmit?.({

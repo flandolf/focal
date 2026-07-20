@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
-import { format, isSameMonth, parseISO, differenceInDays } from "date-fns";
+import { addDays, format, isSameMonth, parseISO, differenceInDays } from "date-fns";
 import {
   Plus,
   Calendar,
@@ -311,7 +311,7 @@ export const HomeView = memo(function HomeView({
         let current = parseISO(event.startTime);
         const _endDate = parseISO(event.endTime);
         while (true) {
-          current = new Date(current.getTime() + 24 * 60 * 60 * 1000);
+          current = addDays(current, 1);
           const dateKey = format(current, "yyyy-MM-dd");
           if (dateKey > endKey) break;
           if (!eventsByDate[dateKey]) eventsByDate[dateKey] = [];
@@ -382,6 +382,11 @@ export const HomeView = memo(function HomeView({
         ? current.filter((id) => id !== sessionId)
         : [...current, sessionId],
     );
+  };
+
+  const handleSelectAllCalendarItems = () => {
+    setSelectedEventIds(selectedDayEvents.map((event) => event.id));
+    setSelectedSessionIds(selectedDaySessions.map((session) => session.id));
   };
 
   const handleDeleteSelectedEvents = async () => {
@@ -793,9 +798,9 @@ export const HomeView = memo(function HomeView({
   };
 
   const eventBatchToolbar =
-    selectedBatchCount > 0
+    selectedBatchCount > 0 && !eventBatchSaving
       ? createPortal(
-          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-modal-backdrop)] flex justify-center px-2 min-[900px]:px-4">
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-2 min-[900px]:px-4">
             <div className="pointer-events-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-2 rounded-t-lg border border-b-0 bg-popover px-3 py-2 text-popover-foreground shadow-md">
               <div className="flex min-w-0 items-center gap-2">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -828,16 +833,17 @@ export const HomeView = memo(function HomeView({
                   <X className="h-3.5 w-3.5" />
                   Cancel
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 rounded-md px-2.5 text-xs"
-                  onClick={handleMergeSelectedEvents}
-                  disabled={eventBatchSaving || !canMergeSelectedItems}
-                >
-                  <Combine className="h-3.5 w-3.5" />
-                  Merge
-                </Button>
+                {canMergeSelectedItems && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1.5 rounded-md px-2.5 text-xs"
+                    onClick={handleMergeSelectedEvents}
+                  >
+                    <Combine className="h-3.5 w-3.5" />
+                    Merge
+                  </Button>
+                )}
                 <Button
                   variant="destructive"
                   size="sm"
@@ -1035,6 +1041,7 @@ export const HomeView = memo(function HomeView({
                     }}
                     onToggleSelectionMode={() => setCalendarSelectionMode(true)}
                     onClearSelection={clearEventSelection}
+                    onSelectAll={handleSelectAllCalendarItems}
                     onToggleEventSelection={handleToggleEventSelection}
                     onToggleSessionSelection={handleToggleSessionSelection}
                     onSelectProject={onSelectProject}
