@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Check, Clock3, LayoutList, Plus, Settings2, Trash2 } from "lucide-react"
+import { Check, Clipboard, Clock3, FileJson, LayoutList, Plus, Settings2, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -35,6 +36,8 @@ import {
 import {
   getTimetablePeriodError,
   getTimetablePeriodsForDay,
+  parseTimetableImport,
+  TIMETABLE_SCREENSHOT_PROMPT,
   timetableTimeFrom12HourParts,
   timetableTimeTo12HourParts,
   timetableTimeToMinutes,
@@ -52,7 +55,7 @@ import { cn } from "@/lib/utils"
 
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const
 
-type ManagerSection = "schedule" | "calendar"
+type ManagerSection = "schedule" | "calendar" | "import"
 
 interface TimetableManagerProps {
   open: boolean
@@ -287,6 +290,27 @@ export function TimetableManager({
     setError(null)
   }
 
+  const importFile = async (file: File) => {
+    try {
+      const next = parseTimetableImport(await file.text(), file.name, draft)
+      setDraft(next)
+      setSelectedDay(next.entries[0]?.dayLabel ?? 1)
+      setError(null)
+      toast.success(`${next.entries.length} timetable ${next.entries.length === 1 ? "day" : "days"} ready to review`)
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Could not import the timetable file.")
+    }
+  }
+
+  const copyScreenshotPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(TIMETABLE_SCREENSHOT_PROMPT)
+      toast.success("Screenshot prompt copied")
+    } catch {
+      setError("Focal could not copy the prompt. Select the prompt text and copy it manually.")
+    }
+  }
+
   const save = () => {
     const validationError = validateDraft(draft)
     if (validationError) {
@@ -349,6 +373,7 @@ export function TimetableManager({
             <aside className="flex gap-1 border-b border-border/70 p-2 min-[860px]:flex-col min-[860px]:border-r min-[860px]:border-b-0 min-[860px]:p-3">
               {sectionButton("schedule", "Schedule", LayoutList)}
               {sectionButton("calendar", "Cycle & display", Settings2)}
+              {sectionButton("import", "Import", Upload)}
               <div className="hidden flex-1 min-[860px]:block" />
               {draft.entries.length > 0 && (
                 <Button
@@ -494,7 +519,7 @@ export function TimetableManager({
                   </div>
                 </ScrollArea>
               </div>
-            ) : (
+            ) : section === "calendar" ? (
               <ScrollArea className="min-h-0">
                 <div className="mx-auto grid max-w-3xl gap-6 p-4 min-[1200px]:p-6">
                   <section className="grid gap-3">
@@ -614,6 +639,59 @@ export function TimetableManager({
                         )
                       })}
                     </div>
+                  </section>
+                </div>
+              </ScrollArea>
+            ) : (
+              <ScrollArea className="min-h-0">
+                <div className="mx-auto grid max-w-3xl gap-6 p-4 min-[1200px]:p-6">
+                  <section className="grid gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Import JSON or XML</h3>
+                      <p className="mt-0.5 text-caption text-muted-foreground">
+                        Importing replaces the schedule in this draft. You can review it before saving; calendar dates and display preferences stay unchanged.
+                      </p>
+                    </div>
+                    <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border/80 bg-background px-6 text-center hover:bg-muted/30">
+                      <FileJson className="mb-3 h-6 w-6 text-muted-foreground" />
+                      <span className="text-sm font-medium">Choose a timetable file</span>
+                      <span className="mt-1 text-caption text-muted-foreground">.json or .xml · up to 60 cycle days</span>
+                      <Input
+                        type="file"
+                        accept=".json,.xml,application/json,application/xml,text/xml"
+                        className="sr-only"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          if (file) void importFile(file)
+                          event.target.value = ""
+                        }}
+                      />
+                    </label>
+                    <p className="text-caption text-muted-foreground">
+                      JSON uses <code>cycleLength</code>, <code>entries</code>, <code>dayLabel</code>, and <code>periods</code>. XML uses a <code>&lt;timetable cycleLength=&quot;…&quot;&gt;</code> root with <code>&lt;day label=&quot;…&quot;&gt;</code> and <code>&lt;period&gt;</code> elements.
+                    </p>
+                  </section>
+
+                  <section className="grid gap-3 border-t border-border/70 pt-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-sm font-semibold">Convert a screenshot with an LLM</h3>
+                        <p className="mt-0.5 text-caption text-muted-foreground">
+                          Copy this prompt, attach your timetable screenshot in ChatGPT or another vision-capable LLM, then save its response as a JSON file.
+                        </p>
+                      </div>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void copyScreenshotPrompt()}>
+                        <Clipboard />
+                        Copy prompt
+                      </Button>
+                    </div>
+                    <Textarea
+                      readOnly
+                      value={TIMETABLE_SCREENSHOT_PROMPT}
+                      aria-label="Timetable screenshot conversion prompt"
+                      className="min-h-64 resize-y bg-background font-mono text-xs leading-relaxed"
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
                   </section>
                 </div>
               </ScrollArea>

@@ -1,5 +1,5 @@
 import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
-import type { TimetableEntry, TimetableDayLabel, SchoolHoliday } from "@/lib/types"
+import type { TimetableConfig, TimetableEntry, TimetableDayLabel, SchoolHoliday } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
 import type { TimetablePeriod } from "@/lib/types"
@@ -36,6 +36,168 @@ export interface TimetableParseResult {
 
 function timeStringToMinutes(t: string): number {
   return timetableTimeToMinutes(t) ?? Number.POSITIVE_INFINITY
+}
+
+export const TIMETABLE_SCREENSHOT_PROMPT = `I have attached a screenshot of my school timetable. Convert it into a Focal timetable import file.
+
+Return only valid JSON with no markdown fences, commentary, or citations. Use exactly this shape:
+{
+  "cycleLength": 10,
+  "entries": [
+    {
+      "dayLabel": 1,
+      "periods": [
+        {
+          "period": "Period 1",
+          "subject": "Mathematical Methods",
+          "location": "Room 12",
+          "startTime": "09:00",
+          "endTime": "10:00"
+        }
+      ]
+    }
+  ]
+}
+
+Requirements:
+- Read every visible timetable day and put each day in one entries item.
+- dayLabel must be a whole number starting at 1. Preserve numbered cycle days if shown; otherwise number the visible days from left to right.
+- cycleLength must equal the timetable cycle length. If the screenshot only shows one five-day school week, use 5. If it shows a two-week Day 1–10 cycle, use 10.
+- Use 24-hour HH:mm times with leading zeroes. Copy the displayed times precisely.
+- Include classes, study periods, homeroom/form, assembly, recess, lunch, and other visible fixed periods.
+- period is the row or period label. subject is the subject exactly as shown. location is the room exactly as shown, or an empty string when none is visible.
+- Do not invent unreadable subjects, rooms, days, or times. Use an empty string for an unreadable subject or location. If a start or end time is unreadable, stop and tell me which time needs clarification instead of producing JSON.
+- Do not include dates, holidays, colours, teachers, notes, or any keys not shown in the required shape.
+
+Before answering, silently check that every endTime is later than its startTime and that every dayLabel is between 1 and cycleLength. Your final answer must be only the raw JSON so I can save it as focal-timetable.json and import it.`
+
+function timetableImportError(message: string): never {
+  throw new Error(`Could not import timetable: ${message}`)
+}
+
+function readImportString(record: Record<string, unknown>, key: string, context: string): string {
+  const value = record[key]
+  if (typeof value !== "string") timetableImportError(`${context} is missing ${key}.`)
+  return value.trim()
+}
+
+function parseTimetableImportObject(value: unknown, current: TimetableConfig): TimetableConfig {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    timetableImportError("the file must contain one timetable object.")
+  }
+  const root = value as Record<string, unknown>
+  const cycleLength = root.cycleLength
+  if (typeof cycleLength !== "number" || !Number.isInteger(cycleLength) || cycleLength < 1 || cycleLength > 60) {
+    timetableImportError("cycleLength must be a whole number from 1 to 60.")
+  }
+  if (!Array.isArray(root.entries) || root.entries.length === 0) {
+    timetableImportError("entries must contain at least one day.")
+  }
+
+  const entries = root.entries.map((entry, entryIndex): TimetableEntry => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      timetableImportError(`entry ${entryIndex + 1} must be an object.`)
+    }
+    const record = entry as Record<string, unknown>
+    const dayLabel = record.dayLabel
+    if (typeof dayLabel !== "number" || !Number.isInteger(dayLabel) || dayLabel < 1 || dayLabel > cycleLength) {
+      timetableImportError(`entry ${entryIndex + 1} has a dayLabel outside 1-${cycleLength}.`)
+    }
+    if (!Array.isArray(record.periods) || record.periods.length === 0) {
+      timetableImportError(`Day ${dayLabel} must contain at least one period.`)
+    }
+    const periods = record.periods.map((period, periodIndex): TimetablePeriod => {
+      const context = `Day ${dayLabel}, period ${periodIndex + 1}`
+      if (typeof period !== "object" || period === null || Array.isArray(period)) {
+        timetableImportError(`${context} must be an object.`)
+      }
+      const periodRecord = period as Record<string, unknown>
+      const parsed = {
+        period: readImportString(periodRecord, "period", context),
+        subject: readImportString(periodRecord, "subject", context),
+        location: readImportString(periodRecord, "location", context),
+        startTime: readImportString(periodRecord, "startTime", context),
+        endTime: readImportString(periodRecord, "endTime", context),
+      }
+      const error = getTimetablePeriodError(parsed)
+      if (error) timetableImportError(`${context}: ${error}`)
+      return parsed
+    })
+    return { dayLabel, periods }
+  })
+
+  const mergedEntries = Array.from({ length: cycleLength }, (_, index) => ({
+    dayLabel: index + 1,
+    periods: entries
+      .filter((entry) => entry.dayLabel === index + 1)
+      .flatMap((entry) => entry.periods)
+      .sort(comparePeriodsByStart),
+  })).filter((entry) => entry.periods.length > 0)
+
+  return {
+    ...current,
+    enabled: true,
+    cycleLength,
+    dayToWeekday: undefined,
+    currentDayOverride: null,
+    entries: mergedEntries,
+  }
+}
+
+function directChild(element: Element, name: string): Element | undefined {
+  return Array.from(element.children).find((child) => child.tagName.toLowerCase() === name.toLowerCase())
+}
+
+function directChildren(element: Element, name: string): Element[] {
+  return Array.from(element.children).filter((child) => child.tagName.toLowerCase() === name.toLowerCase())
+}
+
+function xmlText(element: Element, name: string): string {
+  return directChild(element, name)?.textContent?.trim() ?? ""
+}
+
+function parseTimetableXml(content: string): unknown {
+  const document = new DOMParser().parseFromString(content, "application/xml")
+  if (document.querySelector("parsererror")) timetableImportError("the XML is malformed.")
+  const root = document.documentElement
+  if (root.tagName.toLowerCase() !== "timetable") timetableImportError("XML must use <timetable> as its root element.")
+  const entriesElement = directChild(root, "entries")
+  const dayElements = entriesElement ? directChildren(entriesElement, "day") : directChildren(root, "day")
+  return {
+    cycleLength: Number(root.getAttribute("cycleLength") ?? root.getAttribute("cycle-length")),
+    entries: dayElements.map((day) => {
+      const periodsElement = directChild(day, "periods")
+      const periodElements = periodsElement ? directChildren(periodsElement, "period") : directChildren(day, "period")
+      return {
+        dayLabel: Number(day.getAttribute("label") ?? day.getAttribute("dayLabel")),
+        periods: periodElements.map((period) => ({
+          period: xmlText(period, "name") || xmlText(period, "period"),
+          subject: xmlText(period, "subject"),
+          location: xmlText(period, "location"),
+          startTime: xmlText(period, "startTime"),
+          endTime: xmlText(period, "endTime"),
+        })),
+      }
+    }),
+  }
+}
+
+export function parseTimetableImport(
+  content: string,
+  fileName: string,
+  current: TimetableConfig,
+): TimetableConfig {
+  const trimmed = content.trim()
+  if (!trimmed) timetableImportError("the selected file is empty.")
+  const isXml = fileName.toLowerCase().endsWith(".xml") || trimmed.startsWith("<")
+  let parsed: unknown
+  try {
+    parsed = isXml ? parseTimetableXml(trimmed) : JSON.parse(trimmed)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Could not import timetable:")) throw error
+    timetableImportError(isXml ? "the XML is malformed." : "the JSON is malformed.")
+  }
+  return parseTimetableImportObject(parsed, current)
 }
 
 function comparePeriodsByStart(a: TimetablePeriod, b: TimetablePeriod): number {
