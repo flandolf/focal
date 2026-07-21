@@ -69,10 +69,9 @@ export function useEvents() {
     if (loading || duplicateIdsRef.current.length === 0) return
     const duplicateIds = duplicateIdsRef.current
     duplicateIdsRef.current = []
-    void saveEvents(eventsRef.current).then(() => {
-      duplicateIds.forEach((id) => void recordLocalSoftDelete("events", id))
-    })
-  }, [eventsRef, loading, saveEvents])
+    void Promise.all(duplicateIds.map((id) => recordLocalSoftDelete("events", id)))
+      .then(() => saveEvents(events))
+  }, [events, loading, saveEvents])
 
   const addEvent = useCallback(async (data: {
     title: string
@@ -108,7 +107,7 @@ export function useEvents() {
     }
     const updated = [...eventsRef.current, event]
     await saveEvents(updated)
-    void recordLocalUpsert("events", event)
+    await recordLocalUpsert("events", event)
     return event
   }, [eventsRef, saveEvents])
 
@@ -149,7 +148,7 @@ export function useEvents() {
     })
     const updated = [...eventsRef.current, ...uniqueNewEvents]
     await saveEvents(updated)
-    uniqueNewEvents.forEach((event) => void recordLocalUpsert("events", event))
+    await Promise.all(uniqueNewEvents.map((event) => recordLocalUpsert("events", event)))
     return uniqueNewEvents
   }, [eventsRef, saveEvents])
 
@@ -162,7 +161,7 @@ export function useEvents() {
     ))
     await saveEvents(updated)
     const event = updated.find((item) => item.id === id)
-    if (event) void recordLocalUpsert("events", event)
+    if (event) await recordLocalUpsert("events", event)
   }, [eventsRef, saveEvents])
 
   const updateEvents = useCallback(async (items: {
@@ -175,16 +174,16 @@ export function useEvents() {
       return updates ? { ...event, ...updates, updated_at: new Date().toISOString() } : event
     }))
     await saveEvents(updated)
-    items.forEach((item) => {
+    await Promise.all(items.map(async (item) => {
       const event = updated.find((candidate) => candidate.id === item.id)
-      if (event) void recordLocalUpsert("events", event)
-    })
+      if (event) await recordLocalUpsert("events", event)
+    }))
   }, [eventsRef, saveEvents])
 
   const deleteEvent = useCallback(async (id: string) => {
     const updated = eventsRef.current.filter((event) => event.id !== id)
+    await recordLocalSoftDelete("events", id)
     await saveEvents(updated)
-    void recordLocalSoftDelete("events", id)
   }, [eventsRef, saveEvents])
 
   const restoreEvent = useCallback(async (event: CalendarEvent) => {
@@ -193,14 +192,14 @@ export function useEvents() {
     const restored = { ...event, deleted_at: null, updated_at: new Date().toISOString() }
     const updated = [...eventsRef.current, restored]
     await saveEvents(updated)
-    void recordLocalUpsert("events", restored)
+    await recordLocalUpsert("events", restored)
   }, [eventsRef, saveEvents])
 
   const deleteEvents = useCallback(async (ids: string[]) => {
     const idSet = new Set(ids)
     const updated = eventsRef.current.filter((event) => !idSet.has(event.id))
+    await Promise.all(ids.map((id) => recordLocalSoftDelete("events", id)))
     await saveEvents(updated)
-    ids.forEach((id) => void recordLocalSoftDelete("events", id))
   }, [eventsRef, saveEvents])
 
   const restoreEvents = useCallback(async (eventsToRestore: CalendarEvent[]) => {
@@ -210,7 +209,7 @@ export function useEvents() {
     const restoredEvents = newEvents.map((event) => ({ ...event, deleted_at: null, updated_at: new Date().toISOString() }))
     const updated = [...eventsRef.current, ...restoredEvents]
     await saveEvents(updated)
-    restoredEvents.forEach((event) => void recordLocalUpsert("events", event))
+    await Promise.all(restoredEvents.map((event) => recordLocalUpsert("events", event)))
   }, [eventsRef, saveEvents])
 
   const updateAndDeleteEvents = useCallback(async (
@@ -228,16 +227,16 @@ export function useEvents() {
         const updates = updateMap.get(event.id)
         return updates ? { ...event, ...updates, updated_at: new Date().toISOString() } : event
       }))
+    await Promise.all(ids.map((id) => recordLocalSoftDelete("events", id)))
     await saveEvents(updated)
-    items.forEach((item) => {
+    await Promise.all(items.map(async (item) => {
       const event = updated.find((candidate) => candidate.id === item.id)
-      if (event) void recordLocalUpsert("events", event)
-    })
-    ids.forEach((id) => void recordLocalSoftDelete("events", id))
+      if (event) await recordLocalUpsert("events", event)
+    }))
   }, [eventsRef, saveEvents])
 
   const syncEvents = useCallback(async (
-    itemsToCreate: Omit<CalendarEvent, "id" | "created_at">[],
+    itemsToCreate: (Omit<CalendarEvent, "id" | "created_at"> & { id?: string })[],
     itemsToUpdate: {
       id: string
       updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
@@ -246,7 +245,7 @@ export function useEvents() {
     const updateMap = new Map(itemsToUpdate.map((item) => [item.id, item.updates]))
     const createdAt = new Date().toISOString()
     const newEvents: CalendarEvent[] = itemsToCreate.map((data) => ({
-      id: generateId(),
+      id: data.id ?? generateId(),
       title: data.title,
       description: data.description,
       startTime: data.startTime,
@@ -268,11 +267,11 @@ export function useEvents() {
       ...newEvents,
     ])
     await saveEvents(updated)
-    itemsToUpdate.forEach((item) => {
+    await Promise.all(itemsToUpdate.map(async (item) => {
       const event = updated.find((candidate) => candidate.id === item.id)
-      if (event) void recordLocalUpsert("events", event)
-    })
-    newEvents.forEach((event) => void recordLocalUpsert("events", event))
+      if (event) await recordLocalUpsert("events", event)
+    }))
+    await Promise.all(newEvents.map((event) => recordLocalUpsert("events", event)))
     return newEvents
   }, [eventsRef, saveEvents])
 

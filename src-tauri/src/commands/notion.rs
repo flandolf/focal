@@ -107,24 +107,49 @@ pub async fn fetch_notion_schema(token: String, data_source_id: String) -> Notio
         return page_error("VALIDATION_ERROR", "Notion database id is required");
     }
 
-    // Retrieve a single page (or empty results) from the database to get the schema.
-    // Notion's POST /databases/{id}/query returns property schema in the response even
-    // with no results, so we page_size=1 and stop immediately after the first batch.
-    let body = json!({ "page_size": 1 });
-
     let response = match HTTP_CLIENT
-        .post(format!(
-            "{}/databases/{}/query",
-            NOTION_BASE_URL, data_source_id
-        ))
+        .get(format!("{}/databases/{}", NOTION_BASE_URL, data_source_id))
         .bearer_auth(token)
         .header("Notion-Version", NOTION_API_VERSION)
-        .json(&body)
         .send()
         .await
     {
         Ok(r) => r,
         Err(e) => return page_error("NETWORK_ERROR", &format!("Network error: {}", e)),
+    };
+
+    parse_notion_response(response).await
+}
+
+#[tauri::command]
+pub async fn ensure_notion_sync_properties(
+    token: String,
+    data_source_id: String,
+) -> NotionPageResponse {
+    let token = token.trim();
+    let data_source_id = data_source_id.trim();
+    if token.is_empty() {
+        return page_error("VALIDATION_ERROR", "Notion integration token is required");
+    }
+    if data_source_id.is_empty() {
+        return page_error("VALIDATION_ERROR", "Notion database id is required");
+    }
+
+    let response = match HTTP_CLIENT
+        .patch(format!("{}/databases/{}", NOTION_BASE_URL, data_source_id))
+        .bearer_auth(token)
+        .header("Notion-Version", NOTION_API_VERSION)
+        .json(&json!({
+            "properties": {
+                "Focal ID": { "rich_text": {} },
+                "Focal Kind": { "rich_text": {} }
+            }
+        }))
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => return page_error("NETWORK_ERROR", &format!("Network error: {}", error)),
     };
 
     parse_notion_response(response).await
@@ -299,56 +324,127 @@ pub async fn update_notion_calendar_page(
 
     // Replace page children if new children were provided
     if let Some(children_val) = children {
-        replace_page_children(token, page_id, children_val).await;
+        if let Err(error) = replace_page_children(token, page_id, children_val).await {
+            return page_error(&error.code, &error.message);
+        }
+
+        // Re-read the page so last_edited_time includes the body change. Returning
+        // the pre-body timestamp causes a false conflict on the next sync.
+        let response = match HTTP_CLIENT
+            .get(format!("{}/pages/{}", NOTION_BASE_URL, page_id))
+            .bearer_auth(token)
+            .header("Notion-Version", NOTION_API_VERSION)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return page_error("NETWORK_ERROR", &format!("Network error: {}", e)),
+        };
+        return parse_notion_response(response).await;
     }
 
     page_response
 }
 
-async fn replace_page_children(token: &str, page_id: &str, new_children: Value) {
+async fn replace_page_children(
+    token: &str,
+    page_id: &str,
+    new_children: Value,
+) -> Result<(), NotionError> {
     let children_url = format!("{}/blocks/{}/children", NOTION_BASE_URL, page_id);
+    let mut block_ids: Vec<String> = Vec::new();
+    let mut cursor: Option<String> = None;
 
-    // Delete existing children in parallel
-    if let Ok(response) = HTTP_CLIENT
-        .get(&children_url)
-        .bearer_auth(token)
-        .header("Notion-Version", NOTION_API_VERSION)
-        .send()
-        .await
-    {
-        if let Ok(json) = response.json::<Value>().await {
-            if let Some(results) = json.get("results").and_then(|v| v.as_array()) {
-                let block_ids: Vec<String> = results
-                    .iter()
-                    .filter_map(|block| {
-                        block
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                    })
-                    .collect();
+    // Fetch every child before deleting; a page may contain more than one API page.
+    loop {
+        let mut request = HTTP_CLIENT
+            .get(&children_url)
+            .bearer_auth(token)
+            .header("Notion-Version", NOTION_API_VERSION)
+            .query(&[("page_size", "100")]);
+        if let Some(start_cursor) = &cursor {
+            request = request.query(&[("start_cursor", start_cursor)]);
+        }
 
-                // Delete all blocks concurrently
-                let delete_futures = block_ids.iter().map(|block_id| {
-                    HTTP_CLIENT
-                        .delete(format!("{}/blocks/{}", NOTION_BASE_URL, block_id))
-                        .bearer_auth(token)
-                        .header("Notion-Version", NOTION_API_VERSION)
-                        .send()
-                });
-                let _ = futures_util::future::join_all(delete_futures).await;
-            }
+        let response = request.send().await.map_err(|error| NotionError {
+            code: "NETWORK_ERROR".to_string(),
+            message: format!("Network error: {}", error),
+        })?;
+        if !response.status().is_success() {
+            return Err(parse_notion_response(response)
+                .await
+                .error
+                .unwrap_or(NotionError {
+                    code: "NOTION_ERROR".to_string(),
+                    message: "Failed to list Notion page content".to_string(),
+                }));
+        }
+        let response_json = response
+            .json::<Value>()
+            .await
+            .map_err(|error| NotionError {
+                code: "NOTION_ERROR".to_string(),
+                message: format!("Invalid response: {}", error),
+            })?;
+        if let Some(results) = response_json
+            .get("results")
+            .and_then(|value| value.as_array())
+        {
+            block_ids.extend(results.iter().filter_map(|block| {
+                block
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            }));
+        }
+        cursor = response_json
+            .get("next_cursor")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if cursor.is_none() {
+            break;
         }
     }
 
+    // Sequential deletes avoid creating a burst that Notion rate-limits.
+    for block_id in block_ids {
+        let response = HTTP_CLIENT
+            .delete(format!("{}/blocks/{}", NOTION_BASE_URL, block_id))
+            .bearer_auth(token)
+            .header("Notion-Version", NOTION_API_VERSION)
+            .send()
+            .await
+            .map_err(|error| NotionError {
+                code: "NETWORK_ERROR".to_string(),
+                message: format!("Network error: {}", error),
+            })?;
+        if let Some(error) = parse_notion_response(response).await.error {
+            return Err(error);
+        }
+    }
+
+    if new_children.as_array().is_some_and(Vec::is_empty) {
+        return Ok(());
+    }
+
     // Append new children
-    let _ = HTTP_CLIENT
+    let response = HTTP_CLIENT
         .patch(&children_url)
         .bearer_auth(token)
         .header("Notion-Version", NOTION_API_VERSION)
         .json(&json!({ "children": new_children }))
         .send()
-        .await;
+        .await
+        .map_err(|error| NotionError {
+            code: "NETWORK_ERROR".to_string(),
+            message: format!("Network error: {}", error),
+        })?;
+    if let Some(error) = parse_notion_response(response).await.error {
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 // -- Delete (archive) --

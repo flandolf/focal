@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { setCachedPreference } from "@/lib/storage/preferences"
 
 export type ThemeMode = "light" | "dark" | "system"
 
@@ -53,7 +54,7 @@ export function useTheme() {
   const resolvedDark = resolveDark(selection.mode)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(selection))
+    setCachedPreference(STORAGE_KEY, JSON.stringify(selection), true)
     document.documentElement.classList.toggle("dark", resolvedDark)
   }, [selection, resolvedDark])
 

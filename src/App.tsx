@@ -37,12 +37,14 @@ import { useNotionSync } from "@/hooks/useNotionSync";
 import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
 import { useSupabaseSync } from "@/hooks/useSupabaseSync";
 import { useTheme } from "@/lib/themes";
+import { setCachedPreference } from "@/lib/storage/preferences";
+import { useAppNavigation } from "@/features/shell/useAppNavigation";
+import { useSyncedPreferences } from "@/features/preferences/useSyncedPreferences";
 import { confirmDestructiveAction, confirmAction } from "@/lib/confirmToast";
 import { showUndoToast } from "@/lib/undoToast";
 import { sanitiseFolderName } from "@/lib/utils";
 import {
   getNotionCalendarSettings,
-  getTimetableConfig,
   getProjectsRootPath,
 } from "@/lib/settings";
 import {
@@ -57,8 +59,6 @@ import {
 } from "@/lib/pomodoro";
 import { deleteNotionPage } from "@/lib/notion/api";
 import {
-  recordLocalSoftDelete,
-  recordLocalUpsert,
   forcePushAndMerge,
   forcePushAndOverwrite,
   pullNow,
@@ -75,28 +75,17 @@ import type { SyncTable } from "@/lib/sync/types";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Sidebar } from "@/components/Sidebar";
 import { TitleBar } from "@/components/TitleBar";
-import { ProjectDetail } from "@/components/ProjectDetail";
-import { HomeView } from "@/components/HomeView";
-import { ProjectDialog } from "@/components/ProjectDialog";
-import { ProjectTemplateDialog } from "@/components/ProjectTemplateDialog";
-import { StudySessionDialog } from "@/components/StudySessionDialog";
-import { EventDialog } from "@/components/EventDialog";
-import { GlobalSearch } from "@/components/GlobalSearch";
-import { DataExport } from "@/components/DataExport";
-import { CustomSubjects } from "@/components/CustomSubjects";
-import { NotionConflictDialog } from "@/components/NotionConflictDialog";
+import type { EventDialogProps } from "@/components/EventDialog";
 import { NotionSyncIndicator } from "@/components/NotionSyncIndicator";
 import { SupabaseSyncIndicator } from "@/components/SupabaseSyncIndicator";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
-  VCE_SUBJECTS,
   type CalendarEvent,
   type ConfidenceScore,
   type EventType,
   type StudySession,
   type StudySessionStatus,
-  type Subject,
 } from "@/lib/types";
 import type { ProjectTemplate } from "@/lib/types";
 
@@ -120,6 +109,16 @@ const AIAssistantPanel = lazy(() =>
     default: m.AIAssistantPanel,
   })),
 );
+const ProjectDetail = lazy(() => import("@/components/ProjectDetail").then((m) => ({ default: m.ProjectDetail })));
+const HomeView = lazy(() => import("@/components/HomeView").then((m) => ({ default: m.HomeView })));
+const ProjectDialog = lazy(() => import("@/components/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+const ProjectTemplateDialog = lazy(() => import("@/components/ProjectTemplateDialog").then((m) => ({ default: m.ProjectTemplateDialog })));
+const StudySessionDialog = lazy(() => import("@/components/StudySessionDialog").then((m) => ({ default: m.StudySessionDialog })));
+const GlobalSearch = lazy(() => import("@/components/GlobalSearch").then((m) => ({ default: m.GlobalSearch })));
+const DataExport = lazy(() => import("@/components/DataExport").then((m) => ({ default: m.DataExport })));
+const CustomSubjects = lazy(() => import("@/components/CustomSubjects").then((m) => ({ default: m.CustomSubjects })));
+const NotionConflictDialog = lazy(() => import("@/components/NotionConflictDialog").then((m) => ({ default: m.NotionConflictDialog })));
+const EventDialog = lazy(() => import("@/components/EventDialog").then((m) => ({ default: m.EventDialog })));
 
 function ViewFallback({ label }: { label?: string }) {
   return (
@@ -142,8 +141,6 @@ const EMPTY_STATE_TRANSITION = {
   duration: MOTION_DURATION.slow,
   ease: MOTION_EASE,
 } as const;
-const HIDDEN_SUBJECTS_STORAGE_KEY = "focal-hidden-subjects";
-
 interface NotionSource {
   type: string;
   id?: string;
@@ -186,42 +183,6 @@ async function deleteNotionPagesIfLinked(
     toast.error(
       `${failedIds.length} item${failedIds.length === 1 ? "" : "s"} failed to delete from Notion — they may reappear on next sync`,
     );
-  }
-}
-
-function getStoredHiddenSubjectIds() {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = localStorage.getItem(HIDDEN_SUBJECTS_STORAGE_KEY);
-    const parsed: unknown = stored ? JSON.parse(stored) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function isStoredSubject(value: unknown): value is Subject {
-  if (typeof value !== "object" || value === null) return false;
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.name === "string" &&
-    typeof record.shortCode === "string" &&
-    typeof record.color === "string" &&
-    (record.icon === undefined || typeof record.icon === "string")
-  );
-}
-
-function getStoredCustomSubjects() {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = localStorage.getItem("focal-custom-subjects");
-    const parsed: unknown = stored ? JSON.parse(stored) : [];
-    return Array.isArray(parsed) ? parsed.filter(isStoredSubject) : [];
-  } catch {
-    return [];
   }
 }
 
@@ -302,8 +263,14 @@ function App() {
     updateAndDeleteEvents,
     syncEvents,
   } = useEvents();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [homeSelected, setHomeSelected] = useState(true);
+  const navigation = useAppNavigation();
+  const {
+    selectedId,
+    homeSelected,
+    settingsView,
+    analyticsView,
+    timetableView,
+  } = navigation;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<StudySession | null>(
@@ -327,10 +294,7 @@ function App() {
   const [subjectsOpen, setSubjectsOpen] = useState(false);
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [aiAssistantLoaded, setAiAssistantLoaded] = useState(false);
-  const [settingsView, setSettingsView] = useState(false);
-  const [analyticsView, setAnalyticsView] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [timetableView, setTimetableView] = useState(false);
   const [sidebarSortKey, setSidebarSortKey] =
     useState<ProjectSortKey>("deadline");
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(
@@ -343,7 +307,6 @@ function App() {
   const [templates, setTemplates] = useState<ProjectTemplate[]>(() =>
     getTemplates(),
   );
-  const [timetableConfig, setTimetableConfig] = useState(getTimetableConfig);
   const [zoom, setZoom] = useState(() => {
     try {
       const stored = localStorage.getItem("focal-app-scale");
@@ -358,7 +321,7 @@ function App() {
 
   // Persist zoom to localStorage and apply natively via Tauri webview zoom
   useEffect(() => {
-    localStorage.setItem("focal-app-scale", String(zoom));
+    setCachedPreference("focal-app-scale", String(zoom), false);
     invoke("window_set_zoom", { scale: zoom }).catch(() => {
       // Tauri not available (dev/browser mode)
     });
@@ -376,32 +339,21 @@ function App() {
     setZoom(1);
   }, []);
 
-  // Keep timetableConfig in sync with localStorage changes
-  useEffect(() => {
-    const handler = () => setTimetableConfig(getTimetableConfig());
-    window.addEventListener("focal-timetable-updated", handler);
-    return () => window.removeEventListener("focal-timetable-updated", handler);
-  }, []);
   const reduceMotion = useReducedMotion();
-  const [customSubjects, setCustomSubjects] = useState<Subject[]>(
-    getStoredCustomSubjects,
-  );
-  const [hiddenSubjectIds, setHiddenSubjectIds] = useState<string[]>(
-    getStoredHiddenSubjectIds,
-  );
+  const {
+    allSubjects,
+    availableSubjects,
+    customSubjects,
+    hiddenSubjectIds,
+    timetableConfig,
+    setCustomSubjects,
+    toggleSubjectVisibility: handleToggleSubjectVisibility,
+    showAllSubjects: handleShowAllSubjects,
+  } = useSyncedPreferences();
   const { mode, resolvedDark, setMode } = useTheme();
   const supabaseAuth = useSupabaseAuth();
   const supabaseSync = useSupabaseSync(supabaseAuth.session);
   const syncSessions = rawSyncSessions;
-  const allSubjects = useMemo(
-    () => [...VCE_SUBJECTS, ...customSubjects],
-    [customSubjects],
-  );
-  const availableSubjects = useMemo(
-    () =>
-      allSubjects.filter((subject) => !hiddenSubjectIds.includes(subject.id)),
-    [allSubjects, hiddenSubjectIds],
-  );
 
   const {
     syncStatus,
@@ -421,111 +373,6 @@ function App() {
     syncEvents,
     syncSessions,
   });
-
-  useEffect(() => {
-    localStorage.setItem(
-      "focal-custom-subjects",
-      JSON.stringify(customSubjects),
-    );
-  }, [customSubjects]);
-
-  useEffect(() => {
-    localStorage.setItem(
-      HIDDEN_SUBJECTS_STORAGE_KEY,
-      JSON.stringify(hiddenSubjectIds),
-    );
-  }, [hiddenSubjectIds]);
-
-  const suppressCustomSubjectSyncRef = useRef(false);
-  const suppressHiddenSubjectSyncRef = useRef(false);
-  const suppressTimetableSyncRef = useRef(false);
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const table = (event as CustomEvent<{ table?: string }>).detail?.table;
-      if (table === "custom_subjects") {
-        suppressCustomSubjectSyncRef.current = true;
-        setCustomSubjects(getStoredCustomSubjects());
-      }
-      if (table === "hidden_subjects") {
-        suppressHiddenSubjectSyncRef.current = true;
-        setHiddenSubjectIds(getStoredHiddenSubjectIds());
-      }
-      if (table === "timetable_config") {
-        suppressTimetableSyncRef.current = true;
-        setTimetableConfig(getTimetableConfig());
-      }
-    };
-    window.addEventListener("focal-sync-data-changed", handler);
-    return () => window.removeEventListener("focal-sync-data-changed", handler);
-  }, []);
-
-  const previousCustomSubjectIdsRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    const previous = previousCustomSubjectIdsRef.current;
-    const currentIds = new Set(customSubjects.map((subject) => subject.id));
-    if (suppressCustomSubjectSyncRef.current) {
-      suppressCustomSubjectSyncRef.current = false;
-      previousCustomSubjectIdsRef.current = currentIds;
-      return;
-    }
-    if (previous) {
-      customSubjects.forEach(
-        (subject) => void recordLocalUpsert("custom_subjects", subject),
-      );
-      previous.forEach((subjectId) => {
-        if (!currentIds.has(subjectId))
-          void recordLocalSoftDelete("custom_subjects", subjectId);
-      });
-    }
-    previousCustomSubjectIdsRef.current = currentIds;
-  }, [customSubjects]);
-
-  const previousHiddenSubjectIdsRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    const previous = previousHiddenSubjectIdsRef.current;
-    const currentIds = new Set(hiddenSubjectIds);
-    if (suppressHiddenSubjectSyncRef.current) {
-      suppressHiddenSubjectSyncRef.current = false;
-      previousHiddenSubjectIdsRef.current = currentIds;
-      return;
-    }
-    if (previous) {
-      hiddenSubjectIds.forEach(
-        (subjectId) => void recordLocalUpsert("hidden_subjects", subjectId),
-      );
-      previous.forEach((subjectId) => {
-        if (!currentIds.has(subjectId))
-          void recordLocalSoftDelete("hidden_subjects", subjectId);
-      });
-    }
-    previousHiddenSubjectIdsRef.current = currentIds;
-  }, [hiddenSubjectIds]);
-
-  const timetableSyncReadyRef = useRef(false);
-  useEffect(() => {
-    if (!timetableSyncReadyRef.current) {
-      timetableSyncReadyRef.current = true;
-      return;
-    }
-    if (suppressTimetableSyncRef.current) {
-      suppressTimetableSyncRef.current = false;
-      return;
-    }
-    void recordLocalUpsert("timetable_config", timetableConfig);
-  }, [timetableConfig]);
-
-  const handleToggleSubjectVisibility = useCallback((subjectId: string) => {
-    setHiddenSubjectIds((current) =>
-      current.includes(subjectId)
-        ? current.filter((id) => id !== subjectId)
-        : [...current, subjectId],
-    );
-  }, []);
-
-  const handleShowAllSubjects = useCallback(() => {
-    setHiddenSubjectIds([]);
-  }, []);
 
   const initialAutoSyncDoneRef = useRef(false);
   useEffect(() => {
@@ -662,44 +509,24 @@ function App() {
   }, [refreshFileCounts]);
 
   const handleSelectProject = useCallback((id: string) => {
-    setSelectedId(id);
-    setHomeSelected(false);
-    setSettingsView(false);
-    setAnalyticsView(false);
-    setTimetableView(false);
-  }, []);
+    navigation.selectProject(id);
+  }, [navigation]);
 
   const handleSelectHome = useCallback(() => {
-    setSelectedId(null);
-    setHomeSelected(true);
-    setSettingsView(false);
-    setTimetableView(false);
-    setAnalyticsView(false);
-  }, []);
+    navigation.selectHome();
+  }, [navigation]);
 
   const handleSelectTimetable = useCallback(() => {
-    setSelectedId(null);
-    setHomeSelected(false);
-    setSettingsView(false);
-    setAnalyticsView(false);
-    setTimetableView(true);
-  }, []);
+    navigation.selectTimetable();
+  }, [navigation]);
 
   const handleSelectAnalytics = useCallback(() => {
-    setSelectedId(null);
-    setHomeSelected(false);
-    setSettingsView(false);
-    setTimetableView(false);
-    setAnalyticsView(true);
-  }, []);
+    navigation.selectAnalytics();
+  }, [navigation]);
 
   const handleSelectSettings = useCallback(() => {
-    setSelectedId(null);
-    setHomeSelected(false);
-    setTimetableView(false);
-    setAnalyticsView(false);
-    setSettingsView(true);
-  }, []);
+    navigation.openSettings();
+  }, [navigation]);
 
   const handleOpenNewSession = useCallback((initialDate?: Date) => {
     setSelectedSession(null);
@@ -737,9 +564,9 @@ function App() {
   });
 
   const handleOpenAiSettings = useCallback(() => {
-    setSettingsView(true);
+    navigation.openSettings();
     setAiAssistantOpen(false);
-  }, []);
+  }, [navigation]);
 
   const handleAddFileFromSidebar = useCallback(
     async (projectId: string) => {
@@ -794,14 +621,13 @@ function App() {
           data.subjectId,
           data.unit,
         );
-        setSelectedId(project.id);
-        setHomeSelected(false);
+        navigation.selectProject(project.id);
         toast.success(`Assessment "${data.name}" created`);
       } catch (e) {
         toast.error(`Failed to create assessment: ${String(e)}`);
       }
     },
-    [addProject, setSelectedId, setHomeSelected],
+    [addProject, navigation],
   );
 
   const handleUpdateProject = useCallback(
@@ -865,8 +691,7 @@ function App() {
       try {
         await deleteProject(id);
         if (selectedId === id) {
-          setSelectedId(null);
-          setHomeSelected(true);
+          navigation.selectHome();
         }
         showUndoToast({
           message: `Assessment "${project.name}" deleted`,
@@ -880,7 +705,7 @@ function App() {
         toast.error(`Failed to delete assessment: ${String(e)}`);
       }
     },
-    [projects, deleteProject, selectedId, restoreProject, requestNotionSync],
+    [projects, deleteProject, selectedId, restoreProject, requestNotionSync, navigation],
   );
 
   const handleCreateStudySession = useCallback(
@@ -1733,14 +1558,13 @@ function App() {
           toast.success(`"${project.name}" archived`);
         } else {
           toast.success(`"${project.name}" restored`);
-          setSelectedId(project.id);
-          setHomeSelected(false);
+          navigation.selectProject(project.id);
         }
       } catch (e) {
         toast.error(`Failed to update assessment: ${String(e)}`);
       }
     },
-    [projects, updateProject, setSelectedId, setHomeSelected],
+    [projects, updateProject, navigation],
   );
 
   const handleToggleFinished = useCallback(
@@ -1806,13 +1630,9 @@ function App() {
   }, []);
 
   const handleOpenProjectSettings = useCallback((id: string) => {
-    setSelectedId(id);
-    setHomeSelected(false);
-    setSettingsView(false);
-    setAnalyticsView(false);
-    setTimetableView(false);
+    navigation.selectProject(id);
     setSettingsOpen(true);
-  }, []);
+  }, [navigation]);
 
   const handleDropFolder = useCallback(
     async (path: string) => {
@@ -1840,11 +1660,7 @@ function App() {
           result.folder_path,
           result.is_linked,
         );
-        setSelectedId(project.id);
-        setHomeSelected(false);
-        setSettingsView(false);
-        setAnalyticsView(false);
-        setTimetableView(false);
+        navigation.selectProject(project.id);
         toast.success(
           result.is_linked
             ? `Linked "${result.folder_path}"`
@@ -1854,7 +1670,7 @@ function App() {
         toast.error(`Failed to drop folder: ${String(e)}`);
       }
     },
-    [projects, addProject],
+    [projects, addProject, navigation],
   );
 
   // New project management handlers
@@ -1862,14 +1678,13 @@ function App() {
     async (id: string) => {
       try {
         const copy = await duplicateProject(id);
-        setSelectedId(copy.id);
-        setHomeSelected(false);
+        navigation.selectProject(copy.id);
         toast.success(`Duplicated as "${copy.name}"`);
       } catch (e) {
         toast.error(`Failed to duplicate: ${String(e)}`);
       }
     },
-    [duplicateProject],
+    [duplicateProject, navigation],
   );
 
   const handleToggleProjectSelection = useCallback((id: string) => {
@@ -1941,8 +1756,7 @@ function App() {
         await bulkDelete(ids);
         setSelectedProjectIds(new Set());
         if (selectedId && ids.includes(selectedId)) {
-          setSelectedId(null);
-          setHomeSelected(true);
+          navigation.selectHome();
         }
         toast.success(
           `${ids.length} assessment${ids.length > 1 ? "s" : ""} deleted`,
@@ -1951,7 +1765,7 @@ function App() {
         toast.error(`Failed to delete: ${String(e)}`);
       }
     },
-    [bulkDelete, selectedId],
+    [bulkDelete, selectedId, navigation],
   );
 
   const handleUpdateNotes = useCallback(
@@ -2052,14 +1866,13 @@ function App() {
     async (templateId: string) => {
       try {
         const project = await loadFromTemplate(templateId);
-        setSelectedId(project.id);
-        setHomeSelected(false);
+        navigation.selectProject(project.id);
         toast.success(`Created "${project.name}" from template`);
       } catch (e) {
         toast.error(`Failed to load template: ${String(e)}`);
       }
     },
-    [loadFromTemplate],
+    [loadFromTemplate, navigation],
   );
 
   const handleOpenTemplateDialog = useCallback(
@@ -2154,7 +1967,7 @@ function App() {
           <div className="relative flex h-full flex-col overflow-hidden text-foreground">
             <TitleBar
               onSearch={() => setSearchOpen(true)}
-              onSettings={() => setSettingsView(true)}
+              onSettings={navigation.openSettings}
             >
               <NotionSyncIndicator
                 status={syncStatus}
@@ -2208,7 +2021,7 @@ function App() {
                   onSelectTimetable={handleSelectTimetable}
                   timetableSelected={timetableView}
                   onSearch={() => setSearchOpen(true)}
-                  onSettings={() => setSettingsView(true)}
+                  onSettings={navigation.openSettings}
                   sortKey={sidebarSortKey}
                   onSortChange={setSidebarSortKey}
                   selectedProjectIds={selectedProjectIds}
@@ -2236,7 +2049,7 @@ function App() {
                     {settingsView ? (
                       <Suspense fallback={<ViewFallback label="settings" />}>
                         <SettingsView
-                          onBack={() => setSettingsView(false)}
+                          onBack={navigation.closeSettings}
                           mode={mode}
                           setMode={setMode}
                           zoom={zoom}
@@ -2313,7 +2126,8 @@ function App() {
                         />
                       </Suspense>
                     ) : homeSelected ? (
-                      <HomeView
+                      <Suspense fallback={<ViewFallback label="today" />}>
+                        <HomeView
                         projects={projects}
                         sessions={sessions}
                         events={events}
@@ -2335,9 +2149,11 @@ function App() {
                         onGoTimetable={handleSelectTimetable}
                         timetableConfig={timetableConfig}
                         onOpenAiAssistant={handleOpenAiAssistant}
-                      />
+                        />
+                      </Suspense>
                     ) : selectedProject ? (
-                      <ProjectDetail
+                      <Suspense fallback={<ViewFallback label="assessment" />}>
+                        <ProjectDetail
                         project={selectedProject}
                         sessions={selectedProjectSessions}
                         onFilesChanged={() =>
@@ -2361,7 +2177,8 @@ function App() {
                         onSaveAsTemplate={() =>
                           handleOpenTemplateDialog(selectedProject.id)
                         }
-                      />
+                        />
+                      </Suspense>
                     ) : (
                       <motion.div
                         className="flex h-full flex-col items-center justify-center px-8 text-center"
@@ -2438,14 +2255,17 @@ function App() {
                 </Suspense>
               )}
             </div>
-            <ProjectDialog
-              open={dialogOpen}
-              onOpenChange={setDialogOpen}
-              onSubmit={handleCreateProject}
-              customSubjects={customSubjects}
-              availableSubjects={availableSubjects}
-            />
-            <StudySessionDialog
+            {dialogOpen && <Suspense fallback={null}>
+              <ProjectDialog
+                open
+                onOpenChange={setDialogOpen}
+                onSubmit={handleCreateProject}
+                customSubjects={customSubjects}
+                availableSubjects={availableSubjects}
+              />
+            </Suspense>}
+            {sessionDialogOpen && <Suspense fallback={null}>
+              <StudySessionDialog
               key={selectedSession?.id ?? `new-session-${newItemDialogKey}`}
               open={sessionDialogOpen}
               onOpenChange={setSessionDialogOpen}
@@ -2460,35 +2280,39 @@ function App() {
                   : handleCreateStudySession
               }
               onDelete={selectedSession ? handleDeleteStudySession : undefined}
-            />
-            <EventDialog
-              key={`event-${selectedEvent?.id ?? `new-${newItemDialogKey}`}`}
-              open={eventDialogOpen}
-              onOpenChange={setEventDialogOpen}
-              event={selectedEvent}
-              customSubjects={customSubjects}
-              availableSubjects={availableSubjects}
-              initialDate={selectedEvent ? undefined : newItemInitialDate}
-              onSubmit={
-                (selectedEvent
-                  ? handleEditEvent
-                  : handleCreateEvent) as unknown as Parameters<
-                  typeof EventDialog
-                >[0]["onSubmit"]
-              }
-              onSubmitMultiple={handleCreateEvents}
-              onDelete={selectedEvent ? handleDeleteEvent : undefined}
-            />
-            <ProjectDialog
-              project={selectedProject}
-              open={settingsOpen}
-              onOpenChange={setSettingsOpen}
-              onSubmitEdit={handleUpdateProject}
-              onChangeFolder={handleChangeProjectFolder}
-              customSubjects={customSubjects}
-              availableSubjects={availableSubjects}
-            />
-            <GlobalSearch
+              />
+            </Suspense>}
+            {eventDialogOpen && <Suspense fallback={null}>
+              <EventDialog
+                key={`event-${selectedEvent?.id ?? `new-${newItemDialogKey}`}`}
+                open
+                onOpenChange={setEventDialogOpen}
+                event={selectedEvent}
+                customSubjects={customSubjects}
+                availableSubjects={availableSubjects}
+                initialDate={selectedEvent ? undefined : newItemInitialDate}
+                onSubmit={
+                  (selectedEvent
+                    ? handleEditEvent
+                    : handleCreateEvent) as unknown as EventDialogProps["onSubmit"]
+                }
+                onSubmitMultiple={handleCreateEvents}
+                onDelete={selectedEvent ? handleDeleteEvent : undefined}
+              />
+            </Suspense>}
+            {settingsOpen && <Suspense fallback={null}>
+              <ProjectDialog
+                project={selectedProject}
+                open
+                onOpenChange={setSettingsOpen}
+                onSubmitEdit={handleUpdateProject}
+                onChangeFolder={handleChangeProjectFolder}
+                customSubjects={customSubjects}
+                availableSubjects={availableSubjects}
+              />
+            </Suspense>}
+            {searchOpen && <Suspense fallback={null}>
+              <GlobalSearch
               projects={projects}
               sessions={sessions}
               events={events}
@@ -2505,21 +2329,27 @@ function App() {
               onOpenAiAssistant={handleOpenAiAssistant}
               open={searchOpen}
               onOpenChange={setSearchOpen}
-            />
-            <DataExport
-              projects={projects}
-              sessions={sessions}
-              events={events}
-              open={exportOpen}
-              onOpenChange={setExportOpen}
-            />
-            <CustomSubjects
-              customSubjects={customSubjects}
-              onSave={setCustomSubjects}
-              open={subjectsOpen}
-              onOpenChange={setSubjectsOpen}
-            />
-            <ProjectTemplateDialog
+              />
+            </Suspense>}
+            {exportOpen && <Suspense fallback={null}>
+              <DataExport
+                projects={projects}
+                sessions={sessions}
+                events={events}
+                open
+                onOpenChange={setExportOpen}
+              />
+            </Suspense>}
+            {subjectsOpen && <Suspense fallback={null}>
+              <CustomSubjects
+                customSubjects={customSubjects}
+                onSave={setCustomSubjects}
+                open
+                onOpenChange={setSubjectsOpen}
+              />
+            </Suspense>}
+            {templateDialogOpen && <Suspense fallback={null}>
+              <ProjectTemplateDialog
               open={templateDialogOpen}
               onOpenChange={setTemplateDialogOpen}
               templates={templates}
@@ -2532,13 +2362,16 @@ function App() {
                   ? projects.find((p) => p.id === templateSaveProjectId)?.name
                   : undefined
               }
-            />
-            <NotionConflictDialog
-              open={notionConflictDialogOpen}
-              onOpenChange={setNotionConflictDialogOpen}
-              conflicts={notionConflicts}
-              onResolve={handleResolveConflicts}
-            />{" "}
+              />
+            </Suspense>}
+            {notionConflictDialogOpen && <Suspense fallback={null}>
+              <NotionConflictDialog
+                open
+                onOpenChange={setNotionConflictDialogOpen}
+                conflicts={notionConflicts}
+                onResolve={handleResolveConflicts}
+              />
+            </Suspense>}
             <Toaster
               closeButton
               richColors

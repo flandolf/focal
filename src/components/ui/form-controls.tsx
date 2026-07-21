@@ -1,6 +1,7 @@
 import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
-import type { ComponentProps, ReactNode } from "react"
+import { useId, type ComponentProps, type ReactNode } from "react"
+import type { Matcher } from "react-day-picker"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -9,14 +10,15 @@ import { cn } from "@/lib/utils"
 
 interface FormFieldProps extends ComponentProps<"div"> {
   label: string
+  controlId?: string
   hint?: string
   labelAccessory?: ReactNode
   labelClassName?: string
   children: ReactNode
 }
 
-function FormField({ label, hint, labelAccessory, labelClassName, className, children, ...props }: FormFieldProps) {
-  const labelElement = <label className={cn("text-control font-medium text-muted-foreground", labelClassName)}>{label}</label>
+function FormField({ label, controlId, hint, labelAccessory, labelClassName, className, children, ...props }: FormFieldProps) {
+  const labelElement = <label htmlFor={controlId} className={cn("text-control font-medium text-muted-foreground", labelClassName)}>{label}</label>
 
   return (
     <div className={cn("grid gap-2", className)} {...props}>
@@ -63,9 +65,12 @@ function SelectField({ label, hint, labelClassName, className, placeholder, valu
 }
 
 interface DatePickerFieldProps {
+  id?: string
   label: string
   date?: Date
   onDateChange: (date: Date | undefined) => void
+  disabledDays?: Matcher | Matcher[]
+  invalid?: boolean
   placeholder?: string
   formatPattern?: string
   clearLabel?: string
@@ -74,24 +79,32 @@ interface DatePickerFieldProps {
 }
 
 function DatePickerField({
+  id,
   label,
   date,
   onDateChange,
+  disabledDays,
+  invalid,
   placeholder = "Pick date",
-  formatPattern = "MMM d",
+  formatPattern = "PPP",
   clearLabel,
   buttonClassName,
   labelClassName,
 }: DatePickerFieldProps) {
+  const generatedId = useId()
+  const controlId = id ?? generatedId
+
   return (
-    <FormField label={label} labelClassName={labelClassName}>
+    <FormField label={label} controlId={controlId} labelClassName={labelClassName}>
       <Popover>
         <PopoverTrigger asChild>
           <Button
+            id={controlId}
             type="button"
             variant="outline"
+            aria-invalid={invalid}
             className={cn(
-              "h-10 w-full justify-start rounded-lg bg-background/65 text-left font-normal",
+              "w-full justify-start bg-background/65 text-left font-normal",
               !date && "text-muted-foreground",
               buttonClassName
             )}
@@ -105,6 +118,7 @@ function DatePickerField({
             mode="single"
             selected={date}
             onSelect={onDateChange}
+            disabled={disabledDays}
             autoFocus
           />
         </PopoverContent>

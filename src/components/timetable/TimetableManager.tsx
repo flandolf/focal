@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { DatePickerField, FormField } from "@/components/ui/form-controls"
 import { Label } from "@/components/ui/label"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
@@ -51,7 +52,8 @@ import type {
   TimetablePeriod,
 } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import { cn, getLocalDateValue } from "@/lib/utils"
+import { parseISO } from "date-fns"
 
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const
 
@@ -203,6 +205,7 @@ export function TimetableManager({
   const [selectedDay, setSelectedDay] = useState<TimetableDayLabel>(1)
   const [section, setSection] = useState<ManagerSection>("schedule")
   const [error, setError] = useState<string | null>(null)
+  const [importText, setImportText] = useState("")
 
   useEffect(() => {
     if (!open) return
@@ -211,6 +214,7 @@ export function TimetableManager({
     setSelectedDay(clampDay(initialDay, getCycleLength(next)))
     setSection("schedule")
     setError(null)
+    setImportText("")
   }, [initialDay, open])
 
   const cycleLength = getCycleLength(draft)
@@ -290,15 +294,23 @@ export function TimetableManager({
     setError(null)
   }
 
-  const importFile = async (file: File) => {
+  const importContent = (content: string, name: string) => {
     try {
-      const next = parseTimetableImport(await file.text(), file.name, draft)
+      const next = parseTimetableImport(content, name, draft)
       setDraft(next)
       setSelectedDay(next.entries[0]?.dayLabel ?? 1)
       setError(null)
       toast.success(`${next.entries.length} timetable ${next.entries.length === 1 ? "day" : "days"} ready to review`)
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Could not import the timetable file.")
+    }
+  }
+
+  const importFile = async (file: File) => {
+    try {
+      importContent(await file.text(), file.name)
+    } catch {
+      setError("Could not read the selected timetable file.")
     }
   }
 
@@ -362,7 +374,7 @@ export function TimetableManager({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[min(50rem,calc(100dvh-2rem))] gap-0 p-0 sm:max-w-6xl">
+      <DialogContent className="flex h-[min(50rem,calc(100dvh-2rem))] flex-col gap-0 p-0 sm:max-w-6xl">
         <DialogHeader className="shrink-0 border-b border-border/70 px-5 py-4 pr-14">
           <DialogTitle>Manage timetable</DialogTitle>
           <DialogDescription>Set the cycle once, then keep each school day up to date.</DialogDescription>
@@ -528,17 +540,13 @@ export function TimetableManager({
                       <p className="mt-0.5 text-caption text-muted-foreground">Focal uses this to work out which timetable day applies today.</p>
                     </div>
                     <div className="grid gap-3 rounded-lg border bg-background p-4 min-[720px]:grid-cols-2">
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="timetable-day-one">Day 1 starts</Label>
-                        <Input
-                          id="timetable-day-one"
-                          type="date"
-                          value={draft.day1Starts}
-                          onChange={(event) => setDraft((current) => ({ ...current, day1Starts: event.target.value }))}
-                        />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="timetable-cycle-length">Days in cycle</Label>
+                      <DatePickerField
+                        id="timetable-day-one"
+                        label="Day 1 starts"
+                        date={draft.day1Starts ? parseISO(draft.day1Starts) : undefined}
+                        onDateChange={(date) => setDraft((current) => ({ ...current, day1Starts: date ? getLocalDateValue(date) : "" }))}
+                      />
+                      <FormField label="Days in cycle" controlId="timetable-cycle-length">
                         <Input
                           id="timetable-cycle-length"
                           type="number"
@@ -547,7 +555,7 @@ export function TimetableManager({
                           value={cycleLength}
                           onChange={(event) => changeCycleLength(Number(event.target.value))}
                         />
-                      </div>
+                      </FormField>
                       <label className="flex items-start gap-2 rounded-md bg-muted/40 p-3 min-[720px]:col-span-2">
                         <Checkbox
                           checked={weekendTimetables}
@@ -589,14 +597,19 @@ export function TimetableManager({
                           <Label htmlFor={`holiday-name-${index}`}>Name</Label>
                           <Input id={`holiday-name-${index}`} value={holiday.name} onChange={(event) => updateHoliday(index, { name: event.target.value })} placeholder="Term break" />
                         </div>
-                        <div className="grid gap-1.5">
-                          <Label htmlFor={`holiday-start-${index}`}>Starts</Label>
-                          <Input id={`holiday-start-${index}`} type="date" value={holiday.startDate} onChange={(event) => updateHoliday(index, { startDate: event.target.value })} />
-                        </div>
-                        <div className="grid gap-1.5">
-                          <Label htmlFor={`holiday-end-${index}`}>Ends</Label>
-                          <Input id={`holiday-end-${index}`} type="date" value={holiday.endDate} onChange={(event) => updateHoliday(index, { endDate: event.target.value })} />
-                        </div>
+                        <DatePickerField
+                          id={`holiday-start-${index}`}
+                          label="Starts"
+                          date={holiday.startDate ? parseISO(holiday.startDate) : undefined}
+                          onDateChange={(date) => updateHoliday(index, { startDate: date ? getLocalDateValue(date) : "" })}
+                        />
+                        <DatePickerField
+                          id={`holiday-end-${index}`}
+                          label="Ends"
+                          date={holiday.endDate ? parseISO(holiday.endDate) : undefined}
+                          onDateChange={(date) => updateHoliday(index, { endDate: date ? getLocalDateValue(date) : "" })}
+                          disabledDays={holiday.startDate ? { before: parseISO(holiday.startDate) } : undefined}
+                        />
                         <Button type="button" variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, holidays: current.holidays.filter((_, holidayIndex) => holidayIndex !== index) }))} aria-label={`Delete ${holiday.name || "holiday"}`} className="text-muted-foreground hover:text-destructive">
                           <Trash2 />
                         </Button>
@@ -667,6 +680,33 @@ export function TimetableManager({
                         }}
                       />
                     </label>
+                    <div className="flex items-center gap-3 text-caption text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+                      or paste the output
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="timetable-import-text">JSON or XML</Label>
+                      <Textarea
+                        id="timetable-import-text"
+                        value={importText}
+                        onChange={(event) => {
+                          setImportText(event.target.value)
+                          setError(null)
+                        }}
+                        placeholder="Paste the raw JSON or XML here…"
+                        spellCheck={false}
+                        className="min-h-36 resize-y bg-background font-mono text-xs leading-relaxed"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={!importText.trim()}
+                        onClick={() => importContent(importText, importText.trimStart().startsWith("<") ? "pasted.xml" : "pasted.json")}
+                        className="justify-self-end"
+                      >
+                        <Upload />
+                        Import pasted text
+                      </Button>
+                    </div>
                     <p className="text-caption text-muted-foreground">
                       JSON uses <code>cycleLength</code>, <code>entries</code>, <code>dayLabel</code>, and <code>periods</code>. XML uses a <code>&lt;timetable cycleLength=&quot;…&quot;&gt;</code> root with <code>&lt;day label=&quot;…&quot;&gt;</code> and <code>&lt;period&gt;</code> elements.
                     </p>

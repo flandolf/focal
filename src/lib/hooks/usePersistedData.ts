@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { appDataDir } from "@tauri-apps/api/path"
-import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-fs"
+import { readPersistedArray, writePersistedArray } from "@/lib/storage/database"
+import type { CoreDataFile } from "@/lib/storage/records"
 
 /**
  * Generic hook for reading/writing a JSON array from the Tauri app-data directory.
@@ -9,7 +9,7 @@ import { readTextFile, writeTextFile, mkdir, exists } from "@tauri-apps/plugin-f
  * in React state without reloading the page.
  */
 interface PersistedDataOptions<T> {
-  fileName: string
+  fileName: CoreDataFile
   normalize: (raw: unknown) => T
   onLoad?: (data: T[]) => T[]
 }
@@ -37,29 +37,15 @@ export function usePersistedData<T>({
   useEffect(() => { normalizeRef.current = normalize })
   useEffect(() => { onLoadRef.current = onLoad })
 
-  const getFilePath = useCallback(async () => {
-    const baseDir = await appDataDir()
-    return `${baseDir}/${fileName}`
-  }, [fileName])
-
   const refresh = useCallback(async () => {
     try {
       setError(null)
-      const filePath = await getFilePath()
-      if (await exists(filePath)) {
-        const content = await readTextFile(filePath)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const raw = JSON.parse(content)
-        let normalised: T[] = Array.isArray(raw) ? raw.map(normalizeRef.current) : []
-        if (onLoadRef.current) {
-          normalised = onLoadRef.current(normalised)
-        }
-        setData(normalised)
-      } else {
-        // File doesn't exist yet (e.g. new device before first sync writes).
-        // Clear data and stop loading so the UI isn't stuck in a loading state.
-        setData([])
+      const raw = await readPersistedArray(fileName)
+      let normalised = raw.map(normalizeRef.current)
+      if (onLoadRef.current) {
+        normalised = onLoadRef.current(normalised)
       }
+      setData(normalised)
     } catch (e) {
       const msg = `Failed to load ${fileName}: ${String(e)}`
       console.error(msg)
@@ -67,18 +53,12 @@ export function usePersistedData<T>({
     } finally {
       setLoading(false)
     }
-  }, [getFilePath, fileName])
+  }, [fileName])
 
   const save = useCallback(async (updated: T[]) => {
-    const baseDir = await appDataDir()
-    const dirExists = await exists(baseDir)
-    if (!dirExists) {
-      await mkdir(baseDir, { recursive: true })
-    }
-    const filePath = await getFilePath()
-    await writeTextFile(filePath, JSON.stringify(updated, null, 2))
+    await writePersistedArray(fileName, updated)
     setData(updated)
-  }, [getFilePath])
+  }, [fileName])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises

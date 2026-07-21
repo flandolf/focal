@@ -9,6 +9,7 @@ import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
 import { copyFileMetadataPrefix, moveFileMetadataPrefix } from "@/lib/fileMetadata"
+import { setCachedPreference } from "@/lib/storage/preferences"
 
 export type ProjectSortKey = "deadline" | "name" | "created-newest" | "created-oldest" | "fileCount"
 
@@ -48,7 +49,7 @@ function getStoredTemplates(): ProjectTemplate[] {
 }
 
 function saveTemplates(templates: ProjectTemplate[]) {
-  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates))
+  setCachedPreference(TEMPLATES_KEY, JSON.stringify(templates), false)
 }
 
 const VALID_UNITS: readonly string[] = ["1", "2", "3", "4"]
@@ -134,7 +135,7 @@ export function useProjects() {
     const updated = [...projectsRef.current, project]
     await saveProjects(updated)
     projectsRef.current = updated
-    void recordLocalUpsert("projects", project)
+    await recordLocalUpsert("projects", project)
     return project
   }, [projectsRef, saveProjects])
 
@@ -149,7 +150,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const project = updated.find((p) => p.id === id)
-    if (project) void recordLocalUpsert("projects", project)
+    if (project) await recordLocalUpsert("projects", project)
   }, [projectsRef, saveProjects])
 
   const renameProjectFolder = useCallback(async (id: string, newName: string) => {
@@ -188,7 +189,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const project = updated.find((p) => p.id === id)
-    if (project) void recordLocalUpsert("projects", project)
+    if (project) await recordLocalUpsert("projects", project)
   }, [projectsRef, saveProjects])
 
   const changeProjectFolder = useCallback(async (id: string, newFolderPath: string) => {
@@ -203,13 +204,13 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const project = updated.find((p) => p.id === id)
-    if (project) void recordLocalUpsert("projects", project)
+    if (project) await recordLocalUpsert("projects", project)
   }, [projectsRef, saveProjects])
 
   const deleteProject = useCallback(async (id: string) => {
     const updated = projectsRef.current.filter((p) => p.id !== id)
+    await recordLocalSoftDelete("projects", id)
     await saveProjects(updated)
-    void recordLocalSoftDelete("projects", id)
   }, [projectsRef, saveProjects])
 
   const restoreProject = useCallback(async (project: Project) => {
@@ -218,7 +219,7 @@ export function useProjects() {
     const restored = { ...project, deleted_at: null, updated_at: new Date().toISOString() }
     const updated = [...projectsRef.current, restored]
     await saveProjects(updated)
-    void recordLocalUpsert("projects", restored)
+    await recordLocalUpsert("projects", restored)
   }, [projectsRef, saveProjects])
 
   const linkFolderAsProject = useCallback(async (folderPath: string, isLinked = true) => {
@@ -285,7 +286,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const updatedProject = updated.find((p) => p.id === id)
-    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const removeCustomSubfolder = useCallback(async (id: string, folderName: string) => {
@@ -306,7 +307,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const updatedProject = updated.find((p) => p.id === id)
-    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const duplicateProject = useCallback(async (id: string) => {
@@ -367,7 +368,7 @@ export function useProjects() {
     }
     const updated = [...projectsRef.current, project]
     await saveProjects(updated)
-    void recordLocalUpsert("projects", project)
+    await recordLocalUpsert("projects", project)
     return project
   }, [projectsRef, saveProjects])
 
@@ -376,10 +377,10 @@ export function useProjects() {
       ids.includes(p.id) ? { ...p, isArchived: true, updated_at: new Date().toISOString() } : p
     )
     await saveProjects(updated)
-    ids.forEach((id) => {
+    await Promise.all(ids.map(async (id) => {
       const project = updated.find((p) => p.id === id)
-      if (project) void recordLocalUpsert("projects", project)
-    })
+      if (project) await recordLocalUpsert("projects", project)
+    }))
   }, [projectsRef, saveProjects])
 
   const bulkFinish = useCallback(async (ids: string[]) => {
@@ -387,16 +388,16 @@ export function useProjects() {
       ids.includes(p.id) ? { ...p, isFinished: true, isArchived: false, updated_at: new Date().toISOString() } : p
     )
     await saveProjects(updated)
-    ids.forEach((id) => {
+    await Promise.all(ids.map(async (id) => {
       const project = updated.find((p) => p.id === id)
-      if (project) void recordLocalUpsert("projects", project)
-    })
+      if (project) await recordLocalUpsert("projects", project)
+    }))
   }, [projectsRef, saveProjects])
 
   const bulkDelete = useCallback(async (ids: string[]) => {
     const updated = projectsRef.current.filter((p) => !ids.includes(p.id))
+    await Promise.all(ids.map((id) => recordLocalSoftDelete("projects", id)))
     await saveProjects(updated)
-    ids.forEach((id) => void recordLocalSoftDelete("projects", id))
   }, [projectsRef, saveProjects])
 
   const bulkUnarchive = useCallback(async (ids: string[]) => {
@@ -404,10 +405,10 @@ export function useProjects() {
       ids.includes(p.id) ? { ...p, isArchived: false, updated_at: new Date().toISOString() } : p
     )
     await saveProjects(updated)
-    ids.forEach((id) => {
+    await Promise.all(ids.map(async (id) => {
       const project = updated.find((p) => p.id === id)
-      if (project) void recordLocalUpsert("projects", project)
-    })
+      if (project) await recordLocalUpsert("projects", project)
+    }))
   }, [projectsRef, saveProjects])
 
   const addChecklistItem = useCallback(async (projectId: string, text: string) => {
@@ -421,7 +422,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const updatedProject = updated.find((p) => p.id === projectId)
-    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const toggleChecklistItem = useCallback(async (projectId: string, itemId: string) => {
@@ -435,7 +436,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const updatedProject = updated.find((p) => p.id === projectId)
-    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const removeChecklistItem = useCallback(async (projectId: string, itemId: string) => {
@@ -447,7 +448,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const updatedProject = updated.find((p) => p.id === projectId)
-    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const addDependency = useCallback(async (projectId: string, dependsOnId: string) => {
@@ -461,7 +462,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const updatedProject = updated.find((p) => p.id === projectId)
-    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const removeDependency = useCallback(async (projectId: string, dependsOnId: string) => {
@@ -473,7 +474,7 @@ export function useProjects() {
     )
     await saveProjects(updated)
     const updatedProject = updated.find((p) => p.id === projectId)
-    if (updatedProject) void recordLocalUpsert("projects", updatedProject)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
   const getDependencyProjects = useCallback((projectId: string): Project[] => {
@@ -544,7 +545,7 @@ export function useProjects() {
       const updatedProject = { ...project, checklist, updated_at: new Date().toISOString() }
       const updated = current.map((p) => p.id === project.id ? updatedProject : p)
       await saveProjects(updated)
-      void recordLocalUpsert("projects", updatedProject)
+      await recordLocalUpsert("projects", updatedProject)
       return updatedProject
     }
     return project

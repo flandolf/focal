@@ -5,6 +5,9 @@ import {
   getCachedSchema,
   setCachedSchema,
   getNotionSource,
+  focalIdentityProperties,
+  getFocalId,
+  getFocalKind,
   buildPageChildren,
   hashBody,
   bodyHasChanged,
@@ -61,6 +64,13 @@ function buildSessionBodyText(session: StudySession): string | undefined {
 const MAX_CONCURRENT_API_CALLS = 4
 const MAX_RETRIES = 2
 
+export function buildPageChildrenForSync(
+  text: string | undefined,
+  previousBodyHash: string | undefined,
+): unknown[] | undefined {
+  return buildPageChildren(text) ?? (previousBodyHash === undefined ? undefined : [])
+}
+
 async function withRetry<T>(
   label: string,
   fn: () => Promise<T>,
@@ -102,6 +112,7 @@ function buildNotionEventProperties(
   schema: Record<string, NotionProperty>,
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {
+    ...focalIdentityProperties(event.id, "event"),
     [settings.titleProperty]: { title: richTextValue(event.title) },
     [settings.dateProperty]: {
       date: {
@@ -140,6 +151,7 @@ function buildNotionSessionProperties(
   schema: Record<string, NotionProperty>,
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {
+    ...focalIdentityProperties(session.id, "session"),
     [settings.titleProperty]: { title: richTextValue(session.title) },
     [settings.dateProperty]: {
       date: {
@@ -210,7 +222,10 @@ export async function pushEventToNotion(
   }
 
   const properties = buildNotionEventProperties(settings, event, subjects, schema)
-  const children = buildPageChildren(event.description)
+  const children = buildPageChildrenForSync(
+    event.description,
+    event.source?.type === "notion" ? event.source.bodyHash : undefined,
+  )
   const bodyHash = hashBody(event.description)
 
   const page = event.source?.type === "notion"
@@ -235,7 +250,10 @@ export async function pushSessionToNotion(
   }
 
   const bodyText = buildSessionBodyText(session)
-  const children = buildPageChildren(bodyText)
+  const children = buildPageChildrenForSync(
+    bodyText,
+    session.source?.type === "notion" ? session.source.bodyHash : undefined,
+  )
   const properties = buildNotionSessionProperties(settings, session, subjects, schema)
   const bodyHash = hashBody(bodyText ?? "")
 
@@ -268,7 +286,10 @@ export function collectEventPushTasks(
     const isFastPush = fastPushIds?.has(event.id)
     if (!isFastPush && !event.source && ctx.matchedEventIds.has(event.id)) continue
     if (!isFastPush && !event.source && ctx.blockedEventFingerprints.has(eventFingerprint(event))) continue
-    const children = buildPageChildren(event.description)
+    const children = buildPageChildrenForSync(
+      event.description,
+      event.source?.type === "notion" ? event.source.bodyHash : undefined,
+    )
     const bodyHash = hashBody(event.description)
     const properties = buildNotionEventProperties(settings, event, subjects, schema)
     if (event.source?.type === "notion") {
@@ -316,7 +337,8 @@ export function collectEventPushTasks(
       if (remotePage) {
         const propertiesMatch = pageMatchesEvent(remotePage, event, settings, subjects, findSubjectIdFromValues)
         const bodyDiffers = bodyHasChanged(event.source.bodyHash, event.description)
-        if (propertiesMatch && !bodyDiffers) continue
+        const identityMatches = getFocalId(remotePage) === event.id && getFocalKind(remotePage) === "event"
+        if (propertiesMatch && !bodyDiffers && identityMatches) continue
         tasks.push({
           run: async () => {
             const page = await withRetry(
@@ -390,7 +412,10 @@ export function collectSessionPushTasks(
     if (!isFastPush && !session.source && ctx.matchedSessionIds.has(session.id)) continue
     if (!isFastPush && !session.source && ctx.blockedSessionFingerprints.has(sessionFingerprint(session))) continue
     const bodyText = buildSessionBodyText(session)
-    const children = buildPageChildren(bodyText)
+    const children = buildPageChildrenForSync(
+      bodyText,
+      session.source?.type === "notion" ? session.source.bodyHash : undefined,
+    )
     const bodyHash = hashBody(bodyText ?? "")
     const properties = buildNotionSessionProperties(settings, session, subjects, schema)
     if (session.source?.type === "notion") {
@@ -438,7 +463,8 @@ export function collectSessionPushTasks(
       if (remotePage) {
         const propertiesMatch = pageMatchesSession(remotePage, session, settings, subjects, findSubjectIdFromValues)
         const bodyDiffers = bodyHasChanged(session.source.bodyHash, bodyText)
-        if (propertiesMatch && !bodyDiffers) continue
+        const identityMatches = getFocalId(remotePage) === session.id && getFocalKind(remotePage) === "session"
+        if (propertiesMatch && !bodyDiffers && identityMatches) continue
         tasks.push({
           run: async () => {
             const page = await withRetry(
@@ -514,7 +540,36 @@ function getSyncedNotionIds(): Set<string> {
 }
 
 function setSyncedNotionIds(ids: Set<string>): void {
-  localStorage.setItem(SYNCED_NOTION_IDS_KEY, JSON.stringify([...ids]))
+  try {
+    localStorage.setItem(SYNCED_NOTION_IDS_KEY, JSON.stringify([...ids]))
+  } catch (error) {
+    console.error("Failed to save Notion cleanup state:", error)
+  }
+}
+
+export function taggedNotionOrphanIds(
+  pages: Iterable<NotionPage>,
+  localEventIds: ReadonlySet<string>,
+  localSessionIds: ReadonlySet<string>,
+  linkedPageIds: ReadonlySet<string>,
+): string[] {
+  const orphanIds: string[] = []
+  for (const page of pages) {
+    const focalId = getFocalId(page)
+    const kind = getFocalKind(page)
+    if (!focalId || !kind || linkedPageIds.has(page.id)) continue
+    const exists = kind === "event" ? localEventIds.has(focalId) : localSessionIds.has(focalId)
+    if (!exists) orphanIds.push(page.id)
+  }
+  return orphanIds
+}
+
+export function retainFailedNotionDeletes(
+  currentIds: ReadonlySet<string>,
+  orphanIds: readonly string[],
+  deletedIds: ReadonlySet<string>,
+): Set<string> {
+  return new Set([...currentIds, ...orphanIds.filter((id) => !deletedIds.has(id))])
 }
 
 export async function deleteOrphanPages(
@@ -539,7 +594,15 @@ export async function deleteOrphanPages(
     currentIds.add(id)
   }
 
-  const orphanIds = [...previousIds].filter((id) => !currentIds.has(id) && pagesById.has(id))
+  const orphanIds = [...new Set([
+    ...[...previousIds].filter((id) => !currentIds.has(id) && pagesById.has(id)),
+    ...taggedNotionOrphanIds(
+      pagesById.values(),
+      new Set(existingEvents.map((event) => event.id)),
+      new Set(existingSessions.map((session) => session.id)),
+      currentIds,
+    ),
+  ])]
   if (orphanIds.length === 0) {
     setSyncedNotionIds(currentIds)
     return deletedIds
@@ -558,7 +621,8 @@ export async function deleteOrphanPages(
     }
   }
 
-  setSyncedNotionIds(currentIds)
+  // Keep failed deletions in the ledger so the next sync retries them.
+  setSyncedNotionIds(retainFailedNotionDeletes(currentIds, orphanIds, deletedIds))
   return deletedIds
 }
 

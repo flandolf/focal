@@ -28,6 +28,7 @@ export type StudySessionExecution =
   | { state: "completed"; intervals: StudyInterval[]; completedAt: string; reportedMinutes?: number };
 
 export interface StudySessionDraft {
+  id?: string;
   projectId?: string;
   subjectIds: string[];
   title: string;
@@ -263,6 +264,15 @@ export interface UserSettings {
   ollama_model?: string
   assistant_personality?: string
   assistant_custom_instructions?: string
+  quick_links?: QuickLink[]
+}
+
+export interface QuickLink {
+  id: string
+  label: string
+  url: string
+  icon: string
+  color: string
 }
 
 export interface TimetableViewSettings {

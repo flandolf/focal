@@ -1,14 +1,22 @@
 import type { CalendarEvent, StudySession, Subject } from "@/lib/types"
 import type { NotionCalendarSettings } from "@/lib/settings"
-import type { NotionCalendarSyncResult, NotionPage, NotionProperty } from "@/lib/notion/schema"
+import type { NotionCalendarSyncResult, NotionPage } from "@/lib/notion/schema"
 import {
+  FOCAL_ID_PROPERTY,
+  FOCAL_KIND_PROPERTY,
   getCachedSchema,
+  getFocalId,
+  getFocalKind,
+  notionPageFingerprint,
   setCachedSchema,
   createSyncCtx,
 } from "@/lib/notion/schema"
-import { queryNotionCalendar } from "@/lib/notion/api"
+import { deleteNotionPage, ensureNotionSyncProperties, fetchNotionSchema, queryNotionCalendar } from "@/lib/notion/api"
 import { pullFromNotion } from "@/lib/notion/pull"
 import { executePush, deleteOrphanPages } from "@/lib/notion/push"
+import { dedupeCalendarEvents } from "@/lib/calendarEvents"
+import { repairDuplicateSessions } from "@/lib/sync/protocol"
+import { readState, writeState } from "@/lib/sync/persistence"
 
 export type { NotionCalendarSyncResult } from "@/lib/notion/schema"
 export type { PushSingleResult } from "@/lib/notion/push"
@@ -25,36 +33,41 @@ export async function syncNotionCalendar(
 ): Promise<NotionCalendarSyncResult> {
   if (!settings.token.trim()) throw new Error("Add a Notion integration token first.")
   if (!settings.dataSourceId.trim()) throw new Error("Add a Notion data source or database id first.")
-  const isFastPush = (changedEventIds?.size ?? 0) > 0 || (changedSessionIds?.size ?? 0) > 0
-  const fastPushEventIds = changedEventIds?.size ? changedEventIds : undefined
-  const fastPushSessionIds = changedSessionIds?.size ? changedSessionIds : undefined
-  let pagesById: Map<string, NotionPage>
-  let schema: Record<string, NotionProperty>
+  void changedEventIds
+  void changedSessionIds
+  const eventRepair = dedupeCalendarEvents(existingEvents)
+  const sessionRepair = repairDuplicateSessions(existingSessions)
+  const cleanEvents = eventRepair.events
+  const cleanSessions = sessionRepair.sessions
+  const knownDuplicatePageIds = new Set([
+    ...eventRepair.duplicateIds.flatMap((id) => {
+      const source = existingEvents.find((event) => event.id === id)?.source
+      return source?.type === "notion" ? [source.id] : []
+    }),
+    ...sessionRepair.duplicateNotionPageIds,
+    ...(await readState<string[]>("notion:duplicate-pages") ?? []),
+  ])
   const ctx = createSyncCtx()
-  if (isFastPush) {
-    schema = getCachedSchema(settings.dataSourceId) ?? {}
-    pagesById = new Map()
-  } else {
-    const pages = await queryNotionCalendar(settings)
-    onProgress?.(`Fetched ${pages.length} page${pages.length === 1 ? "" : "s"} from Notion`)
-    pagesById = new Map(pages.map((page) => [page.id, page]))
-    schema = pages.find((page) => page.properties)?.properties ?? {}
-    if (Object.keys(schema).length > 0) {
-      setCachedSchema(settings.dataSourceId, schema)
-    }
-    const deletedIds = await deleteOrphanPages(existingEvents, existingSessions, pagesById, settings, ctx, onProgress)
-    const activePages = deletedIds.size > 0
-      ? pages.filter((p) => !deletedIds.has(p.id))
-      : pages
-    pullFromNotion(activePages, existingEvents, existingSessions, settings, subjects, ctx)
-    const totalPulled = ctx.created.length + ctx.updatedEvents.size + ctx.createdSessions.length + ctx.updatedSessions.size
-    onProgress?.(
-      totalPulled > 0
-        ? `Found ${totalPulled} new or updated item${totalPulled === 1 ? "" : "s"}`
-        : "No new items from Notion",
-    )
+  let schema = getCachedSchema(settings.dataSourceId) ?? await fetchNotionSchema(settings) ?? {}
+  if (!(FOCAL_ID_PROPERTY in schema) || !(FOCAL_KIND_PROPERTY in schema)) {
+    onProgress?.("Adding stable Focal identity columns to Notion…")
+    schema = await ensureNotionSyncProperties(settings)
   }
-  await executePush(existingEvents, existingSessions, settings, subjects, schema, pagesById, ctx, fastPushEventIds, fastPushSessionIds)
+  setCachedSchema(settings.dataSourceId, schema)
+
+  const queriedPages = await queryNotionCalendar(settings)
+  onProgress?.(`Fetched ${queriedPages.length} page${queriedPages.length === 1 ? "" : "s"} from Notion`)
+  const pages = await removeDuplicateNotionPages(queriedPages, cleanEvents, cleanSessions, knownDuplicatePageIds, settings, ctx, onProgress)
+  let pagesById = new Map(pages.map((page) => [page.id, page]))
+  const deletedIds = await deleteOrphanPages(cleanEvents, cleanSessions, pagesById, settings, ctx, onProgress)
+  const activePages = deletedIds.size > 0 ? pages.filter((page) => !deletedIds.has(page.id)) : pages
+  pagesById = new Map(activePages.map((page) => [page.id, page]))
+
+  pullFromNotion(activePages, cleanEvents, cleanSessions, settings, subjects, ctx)
+  const totalPulled = ctx.created.length + ctx.updatedEvents.size + ctx.createdSessions.length + ctx.updatedSessions.size
+  onProgress?.(totalPulled > 0 ? `Found ${totalPulled} new or updated item${totalPulled === 1 ? "" : "s"}` : "No new items from Notion")
+
+  await executePush(cleanEvents, cleanSessions, settings, subjects, schema, pagesById, ctx)
   return {
     created: ctx.created,
     updated: [...ctx.updatedEvents.entries()].map(([id, updates]) => ({ id, updates })),
@@ -70,4 +83,107 @@ export async function syncNotionCalendar(
     conflictItems: ctx.conflictItems,
     pushErrors: ctx.pushErrors,
   }
+}
+
+async function removeDuplicateNotionPages(
+  pages: NotionPage[],
+  events: CalendarEvent[],
+  sessions: StudySession[],
+  knownDuplicatePageIds: ReadonlySet<string>,
+  settings: NotionCalendarSettings,
+  ctx: ReturnType<typeof createSyncCtx>,
+  onProgress?: (message: string) => void,
+): Promise<NotionPage[]> {
+  const linkedPageIds = new Set([
+    ...events.flatMap((event) => event.source?.type === "notion" ? [event.source.id] : []),
+    ...sessions.flatMap((session) => session.source?.type === "notion" ? [session.source.id] : []),
+  ])
+  const { archiveIds: duplicateIds, hiddenIds: hiddenDuplicateIds } = planDuplicateNotionPages(
+    pages,
+    linkedPageIds,
+    knownDuplicatePageIds,
+    settings,
+  )
+  if (duplicateIds.size === 0) {
+    await writeState("notion:duplicate-pages", [])
+    return pages.filter((page) => !hiddenDuplicateIds.has(page.id))
+  }
+
+  onProgress?.(`Archiving ${duplicateIds.size} duplicate Notion page${duplicateIds.size === 1 ? "" : "s"}…`)
+  const failedDuplicateIds: string[] = []
+  for (const pageId of duplicateIds) {
+    try {
+      await deleteNotionPage(settings, pageId)
+      ctx.deleted += 1
+    } catch (error) {
+      failedDuplicateIds.push(pageId)
+      ctx.pushErrors.push(`Archive duplicate page ${pageId}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    // Notion integrations average three write requests per second. Keep bulk
+    // repair below that limit so one 429 does not strand the rest of the batch.
+    await new Promise((resolve) => setTimeout(resolve, 350))
+  }
+  await writeState("notion:duplicate-pages", failedDuplicateIds)
+  return pages.filter((page) => !hiddenDuplicateIds.has(page.id))
+}
+
+export function planDuplicateNotionPages(
+  pages: NotionPage[],
+  linkedPageIds: ReadonlySet<string>,
+  knownDuplicatePageIds: ReadonlySet<string>,
+  settings: NotionCalendarSettings,
+): { archiveIds: Set<string>; hiddenIds: Set<string> } {
+  const identityGroups = new Map<string, NotionPage[]>()
+  const fingerprintGroups = new Map<string, NotionPage[]>()
+  for (const page of pages) {
+    const focalId = getFocalId(page)
+    const kind = getFocalKind(page)
+    if (focalId && kind) addToGroup(identityGroups, `${kind}:${focalId}`, page)
+    const fingerprint = notionPageFingerprint(page, settings)
+    if (fingerprint) addToGroup(fingerprintGroups, fingerprint, page)
+  }
+
+  const archiveIds = new Set<string>()
+  const hiddenIds = new Set<string>()
+  for (const group of identityGroups.values()) {
+    if (group.length < 2) continue
+    const canonical = chooseCanonicalNotionPage(group, linkedPageIds)
+    for (const page of group) {
+      if (page.id === canonical.id) continue
+      hiddenIds.add(page.id)
+      archiveIds.add(page.id)
+    }
+  }
+
+  for (const group of fingerprintGroups.values()) {
+    const visible = group.filter((page) => !hiddenIds.has(page.id))
+    const tagged = visible.filter((page) => Boolean(getFocalId(page) && getFocalKind(page)))
+    const untagged = visible.filter((page) => !getFocalId(page) || !getFocalKind(page))
+    if (tagged.length > 0) {
+      for (const page of untagged) {
+        hiddenIds.add(page.id)
+        archiveIds.add(page.id)
+      }
+      continue
+    }
+    if (untagged.length < 2) continue
+    const canonical = chooseCanonicalNotionPage(untagged, linkedPageIds)
+    for (const page of untagged) {
+      if (page.id === canonical.id) continue
+      hiddenIds.add(page.id)
+      if (knownDuplicatePageIds.has(page.id)) archiveIds.add(page.id)
+    }
+  }
+  return { archiveIds, hiddenIds }
+}
+
+function addToGroup(groups: Map<string, NotionPage[]>, key: string, page: NotionPage): void {
+  const group = groups.get(key) ?? []
+  group.push(page)
+  groups.set(key, group)
+}
+
+function chooseCanonicalNotionPage(group: NotionPage[], linkedPageIds: ReadonlySet<string>): NotionPage {
+  return group.find((page) => linkedPageIds.has(page.id))
+    ?? [...group].sort((a, b) => a.id.localeCompare(b.id))[0]
 }

@@ -3,6 +3,7 @@ import type { NotionCalendarSettings } from "@/lib/settings"
 import type { NotionPage, NotionProperty, SyncCtx } from "@/lib/notion/schema"
 import {
   getPageKind,
+  getFocalId,
   getPageTitle,
   getPropertyDateForEvent,
   getNotionSource,
@@ -35,7 +36,9 @@ function pullEvent(
   ctx: SyncCtx,
 ): void {
   const existing = eventBySourceId.get(page.id)
+    ?? (getFocalId(page) ? existingEvents.find((event) => event.id === getFocalId(page)) : undefined)
   if (existing) {
+    ctx.matchedEventIds.add(existing.id)
     const existingSource = existing.source?.type === "notion" ? existing.source : undefined
     if (!existingSource?.lastEditedTime || existingSource.lastEditedTime !== page.last_edited_time) {
       const fromPage = toEventFromPage(page, settings, subjects, findSubjectIdFromValues)
@@ -79,7 +82,7 @@ function pullEvent(
     return
   }
 
-  if (existingEvents.some((e) => e.source?.type === "notion" && e.source.id === page.id)) {
+  if (getFocalId(page) || existingEvents.some((e) => e.source?.type === "notion" && e.source.id === page.id)) {
     return
   }
 
@@ -99,7 +102,9 @@ function pullSession(
   ctx: SyncCtx,
 ): void {
   const existing = sessionBySourceId.get(page.id)
+    ?? (getFocalId(page) ? existingSessions.find((session) => session.id === getFocalId(page)) : undefined)
   if (existing) {
+    ctx.matchedSessionIds.add(existing.id)
     if (!existing.source?.lastEditedTime || existing.source.lastEditedTime !== page.last_edited_time) {
       const session = toSessionFromPage(page, settings, subjects, findSubjectIdFromValues)
       if (session) {
@@ -141,7 +146,7 @@ function pullSession(
     return
   }
 
-  if (existingSessions.some((s) => s.source?.type === "notion" && s.source.id === page.id)) {
+  if (getFocalId(page) || existingSessions.some((s) => s.source?.type === "notion" && s.source.id === page.id)) {
     return
   }
 

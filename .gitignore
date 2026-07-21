@@ -30,6 +30,7 @@ dist-ssr
 .mcp.json
 
 .env
+supabase/.temp/
 
 # Windows stray nul artifact (touches history shows untracked `nul` file)
 nul

@@ -4,6 +4,9 @@ import type { CalendarEvent, EventType, NotionSource, StudySession, StudySession
 
 export type NotionProperty = Record<string, unknown>
 
+export const FOCAL_ID_PROPERTY = "Focal ID"
+export const FOCAL_KIND_PROPERTY = "Focal Kind"
+
 export interface NotionPage {
   id: string
   url?: string
@@ -39,12 +42,12 @@ export interface NotionPageResponse {
 }
 
 export interface NotionCalendarSyncResult {
-  created: Omit<CalendarEvent, "id" | "created_at">[]
+  created: (Omit<CalendarEvent, "id" | "created_at"> & { id?: string })[]
   updated: {
     id: string
     updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
   }[]
-  createdSessions: StudySessionDraft[]
+  createdSessions: (StudySessionDraft & { id?: string })[]
   updatedSessions: {
     id: string
     updates: Partial<Omit<StudySession, "id" | "created_at">>
@@ -491,6 +494,41 @@ export function sessionFingerprint(s: StudySession | StudySessionDraft): string 
     s.endTime,
     (s.subjectIds ?? []).sort().join(","),
     s.status,
+  ].join("|")
+}
+
+export function getFocalId(page: NotionPage): string | undefined {
+  const value = getPropertyText(findProperty(page.properties ?? {}, FOCAL_ID_PROPERTY))?.trim()
+  return value?.length ? value : undefined
+}
+
+export function getFocalKind(page: NotionPage): "event" | "session" | undefined {
+  const value = getPropertyText(findProperty(page.properties ?? {}, FOCAL_KIND_PROPERTY))?.trim().toLowerCase()
+  return value === "event" || value === "session" ? value : undefined
+}
+
+export function focalIdentityProperties(id: string, kind: "event" | "session"): Record<string, unknown> {
+  return {
+    [FOCAL_ID_PROPERTY]: { rich_text: richTextValue(id) },
+    [FOCAL_KIND_PROPERTY]: { rich_text: richTextValue(kind) },
+  }
+}
+
+export function notionPageFingerprint(
+  page: NotionPage,
+  settings: { dateProperty: string; typeProperty: string; completedProperty: string; subjectProperty: string; titleProperty: string },
+): string | null {
+  const properties = page.properties ?? {}
+  const { startTime, endTime } = getPropertyDateForEvent(properties, settings)
+  if (!startTime) return null
+  const kind = getFocalKind(page) ?? getPageKind(properties, settings)
+  return [
+    kind,
+    getPageTitle(properties, settings.titleProperty),
+    String(new Date(startTime).getTime()),
+    String(new Date(endTime ?? startTime).getTime()),
+    getPropertyTexts(findProperty(properties, settings.subjectProperty)).sort().join(","),
+    isCompleted(properties, settings) ? "1" : "0",
   ].join("|")
 }
 
