@@ -4,6 +4,10 @@ import {
   getActiveSessionSubjectIds,
 } from "../src/features/timer/model.ts";
 import { isTimerShortcutTarget } from "../src/components/timer/FocusView.tsx";
+import {
+  getPomodoroDescription,
+  getPomodoroTitle,
+} from "../src/lib/pomodoro.ts";
 
 const settings = { workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15 };
 const runningWork = {
@@ -55,4 +59,7 @@ check(getActiveSessionSubjectIds("active", [
 
 check(isTimerShortcutTarget(null), false);
 check(isTimerShortcutTarget({ tagName: "INPUT" }), true);
+check(isTimerShortcutTarget({ tagName: "BUTTON" }), true);
 check(isTimerShortcutTarget({ tagName: "DIV" }), false);
+check(getPomodoroTitle(["mm"], "Methods SAC 1"), "Methods SAC 1 — MCM · Focus");
+check(getPomodoroDescription(25), "Pomodoro — 25m focused study");
