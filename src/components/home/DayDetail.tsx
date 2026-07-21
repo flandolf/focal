@@ -289,11 +289,11 @@ export function DayDetail({
                                 </span>
                               )}
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center justify-between gap-2">
                                   <p className="min-w-0 truncate text-xs font-medium">{s.title}</p>
                                   {s.status !== "planned" && (
                                     <span className={cn(
-                                      "rounded px-1.5 py-0.5 text-micro font-medium whitespace-nowrap",
+                                      "inline-flex h-3.5 shrink-0 items-center rounded-sm px-1 text-[9px] font-medium leading-none whitespace-nowrap",
                                       s.status === "completed"
                                         ? "bg-success/15 text-success"
                                         : "bg-primary/12 text-primary",
@@ -519,7 +519,7 @@ export function DayDetail({
                               >
                                 {eventInfo.label}
                               </span>
-                              <span className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium bg-success/15 text-success">
+                              <span className="inline-flex h-3.5 shrink-0 items-center rounded-sm bg-success/15 px-1 text-[9px] font-medium leading-none whitespace-nowrap text-success">
                                 Done
                               </span>
                             </div>

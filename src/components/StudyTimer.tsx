@@ -1,38 +1,38 @@
 import {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  useReducer,
-  useMemo,
-  useId,
   memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  Check,
   ChevronDown,
-  ChevronUp,
+  Coffee,
   Maximize2,
+  Pause,
+  Play,
+  Plus,
   RotateCcw,
+  SkipForward,
   Timer,
 } from "lucide-react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { MOTION_EASE, REDUCED_TRANSITION } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+import { FocusView } from "@/components/timer/FocusView";
+import { DurationInputs } from "@/components/timer/DurationInputs";
+import { RecoveryDialog } from "@/components/timer/RecoveryDialog";
+import { SubjectPicker } from "@/components/timer/SubjectPicker";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   VCE_SUBJECTS,
   type Project,
   type StudySession,
-  type ConfidenceScore,
   type Subject,
 } from "@/lib/types";
-import { FocusView } from "@/components/timer/FocusView";
-import { TimerControls } from "@/components/timer/TimerControls";
-import { SubjectPicker } from "@/components/timer/SubjectPicker";
-import { DurationInputs } from "@/components/timer/DurationInputs";
-import { RecoveryDialog } from "@/components/timer/RecoveryDialog";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { setCachedPreference } from "@/lib/storage/preferences";
 import {
   clampMinutes,
@@ -49,7 +49,6 @@ import {
   type StoredTimerState,
   type TimerSettings,
 } from "@/features/timer/model";
-
 
 interface StudyTimerProps {
   isCollapsed?: boolean;
@@ -73,30 +72,23 @@ interface StudyTimerProps {
   onDeleteSession?: (id: string) => Promise<void>;
 }
 
-function formatMinutes(totalMinutes: number) {
-  const safeMinutes = Math.max(0, Math.round(totalMinutes));
-  const hours = Math.floor(safeMinutes / 60);
-  const minutes = safeMinutes % 60;
-
-  if (hours === 0) return `${minutes}m`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
+function readStoredSessionId() {
+  try {
+    const stored = localStorage.getItem(TIMER_STATE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as Partial<StoredTimerState>;
+    return typeof parsed.activeSessionId === "string"
+      ? parsed.activeSessionId
+      : null;
+  } catch {
+    return null;
+  }
 }
 
-function getSessionMinutes(session: StudySession, now?: Date) {
-  return Math.round(session.execution.intervals.reduce((total, interval) => {
-    const start = new Date(interval.start).getTime();
-    const end = interval.end ? new Date(interval.end).getTime() : now?.getTime();
-    return total + (Number.isFinite(start) && end && end > start ? end - start : 0);
-  }, 0) / 60000);
-}
-
-function getTodayRange(now: Date) {
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 1);
-  return { startMs: start.getTime(), endMs: end.getTime() };
+function closedBlocks(intervals: StudySession["execution"]["intervals"]) {
+  return intervals.flatMap((interval) =>
+    interval.end ? [{ start: interval.start, end: interval.end }] : [],
+  );
 }
 
 const StudyTimerInner = memo(function StudyTimerInner({
@@ -113,246 +105,71 @@ const StudyTimerInner = memo(function StudyTimerInner({
   onDeleteSession,
 }: StudyTimerProps) {
   const [expanded, setExpanded] = useState(false);
-  const expandedPanelId = useId();
   const [focusViewOpen, setFocusViewOpen] = useState(false);
-  const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
   const [settings, setSettings] = useState<TimerSettings>(getInitialSettings);
   const [state, dispatch] = useReducer(timerReducer, settings, getInitialState);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(() =>
     selectedProject?.subjectId ? [selectedProject.subjectId] : [],
   );
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    readStoredSessionId,
+  );
+  const [saving, setSaving] = useState(false);
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(() => {
     try {
       const stored = localStorage.getItem(TIMER_STATE_KEY);
-      if (!stored) return null;
+      if (!stored) return false;
       const parsed = JSON.parse(stored) as Partial<StoredTimerState>;
-      return typeof parsed.activeSessionId === "string"
-        ? parsed.activeSessionId
-        : null;
+      return parsed.running === true && typeof parsed.activeSessionId === "string";
     } catch {
-      return null;
+      return false;
     }
   });
-  const [saving, setSaving] = useState(false);
-  const [reflectionSessionId, setReflectionSessionId] = useState<string | null>(
-    null,
-  );
-  const [reflectionConfidence, setReflectionConfidence] = useState<
-    ConfidenceScore | undefined
-  >(undefined);
-  const [reflectionBlockers, setReflectionBlockers] = useState("");
-  const [reflectionNextAction, setReflectionNextAction] = useState("");
-  const [recoverySessionId, setRecoverySessionId] = useState<string | null>(
-    () => {
-      try {
-        const stored = localStorage.getItem(TIMER_STATE_KEY);
-        if (!stored) return null;
-        const parsed = JSON.parse(stored) as Record<string, unknown>;
-        if (
-          parsed.running &&
-          typeof parsed.activeSessionId === "string" &&
-          parsed.activeSessionId
-        ) {
-          return parsed.activeSessionId;
-        }
-      } catch {
-        /* ignore parse errors */
-      }
-      return null;
-    },
-  );      const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(
-    recoverySessionId !== null,
-  );
-  const reduceMotion = useReducedMotion() === true;
-  const expandedRef = useRef<HTMLDivElement>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activeSessionIdRef = useRef<string | null>(null);
+  const activeSessionIdRef = useRef(activeSessionId);
   const activeSessionRef = useRef<StudySession | null>(null);
   const stateRef = useRef(state);
   const settingsRef = useRef(settings);
   const lastTickAtRef = useRef(Date.now());
-  const isInitialMountRef = useRef(true);
-  const completionInFlightRef = useRef(false);
   const savingRef = useRef(false);
+  const completionInFlightRef = useRef(false);
   const focusCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const selectedProjectSubjectId = selectedProject?.subjectId;
-
-  const setFocusViewWithTransition = useCallback((nextOpen: boolean) => {
-    const reduceMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-
-    // ponytail: broadcast focus-state changes so siblings (AI Assistant Panel)
-    // can react without prop-drilling through the Sidebar — same pattern as
-    // `focal-timetable-updated` / `focal-sync-data-changed`.
-    window.dispatchEvent(
-      new CustomEvent("focal-focus-mode-changed", { detail: { active: nextOpen } }),
-    )
-
-    const apply = () => setFocusViewOpen(nextOpen)
-
-    if (document.startViewTransition && !reduceMotion) {
-      document.startViewTransition(apply)
-      return;
-    }
-
-    apply()
-  }, []);
-
-  const openFocusView = useCallback(
-    () => setFocusViewWithTransition(true),
-    [setFocusViewWithTransition],
-  );
-  const closeFocusView = useCallback(
-    () => setFocusViewWithTransition(false),
-    [setFocusViewWithTransition],
-  );
 
   const subjects = useMemo(() => {
-    const baseSubjects = availableSubjects ?? [
-      ...VCE_SUBJECTS,
-      ...customSubjects,
-    ];
-    if (
-      !selectedProjectSubjectId ||
-      baseSubjects.some((subject) => subject.id === selectedProjectSubjectId)
-    ) {
-      return baseSubjects;
-    }
-    const projectSubject = [...VCE_SUBJECTS, ...customSubjects].find(
-      (subject) => subject.id === selectedProjectSubjectId,
-    );
-    return projectSubject ? [projectSubject, ...baseSubjects] : baseSubjects;
-  }, [availableSubjects, customSubjects, selectedProjectSubjectId]);
+    const base = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects];
+    const projectSubject = selectedProject?.subjectId
+      ? [...VCE_SUBJECTS, ...customSubjects].find(
+          (subject) => subject.id === selectedProject.subjectId,
+        )
+      : undefined;
+    return projectSubject && !base.some((subject) => subject.id === projectSubject.id)
+      ? [projectSubject, ...base]
+      : base;
+  }, [availableSubjects, customSubjects, selectedProject?.subjectId]);
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
     activeSessionRef.current = activeSessionId
       ? sessions.find((session) => session.id === activeSessionId) ??
         activeSessionRef.current
       : null;
-    const restoredSubjectIds = getActiveSessionSubjectIds(activeSessionId, sessions);
-    if (restoredSubjectIds) setSelectedSubjectIds(restoredSubjectIds);
+    const restoredSubjects = getActiveSessionSubjectIds(activeSessionId, sessions);
+    if (restoredSubjects?.length) setSelectedSubjectIds(restoredSubjects);
   }, [activeSessionId, sessions]);
 
   useEffect(() => {
-    const interval = window.setInterval(
-      () => setAnalyticsNow(new Date()),
-      60000,
-    );
-    return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     if (!selectedProject?.subjectId || activeSessionIdRef.current) return;
-    setSelectedSubjectIds((current) =>
-      current.length > 0 || !selectedProject.subjectId
-        ? current
-        : [selectedProject.subjectId],
-    );
+    setSelectedSubjectIds([selectedProject.subjectId]);
   }, [selectedProject?.subjectId]);
-
-  const completeActiveSession = useCallback(
-    async (nextEndTime = new Date()) => {
-      const sessionId = activeSessionIdRef.current;
-      if (!sessionId || completionInFlightRef.current) return false;
-      completionInFlightRef.current = true;
-
-      try {
-        const session =
-          activeSessionRef.current ??
-          sessions.find((item) => item.id === sessionId) ??
-          null;
-        if (!session) return false;
-        const endTime = nextEndTime.toISOString();
-        const intervals = closeRunningInterval(session.execution.intervals, endTime);
-        const blocks = intervals.flatMap((interval) => interval.end
-          ? [{ start: interval.start, end: interval.end }]
-          : [],
-        );
-        const updates = {
-          ...(blocks.length ? { schedule: { blocks } } : {}),
-          execution: { state: "completed", intervals, completedAt: endTime } as const,
-        } satisfies Partial<Omit<StudySession, "id" | "created_at">>;
-        await onUpdateSession(sessionId, updates);
-        activeSessionRef.current = session ? { ...session, ...updates } : null;
-        setReflectionSessionId(sessionId);
-        setReflectionConfidence(undefined);
-        setReflectionBlockers("");
-        setReflectionNextAction("");
-        activeSessionIdRef.current = null;
-        activeSessionRef.current = null;
-        setActiveSessionId(null);
-        setRecoverySessionId(null);
-        setRecoveryDialogOpen(false);
-        return true;
-      } catch (e) {
-        console.error("Failed to complete session:", e);
-        return false;
-      } finally {
-        completionInFlightRef.current = false;
-      }
-    },
-    [onUpdateSession, sessions],
-  );
-
-  const handleRecoveryResume = useCallback(() => {
-    setRecoveryDialogOpen(false);
-    setRecoverySessionId(null);
-  }, []);
-
-  const handleRecoveryFinish = useCallback(async () => {
-    if (!recoverySessionId) return;
-    try {
-      if (await completeActiveSession()) {
-        setRecoverySessionId(null);
-        setRecoveryDialogOpen(false);
-        dispatch({ type: "RESET", settings });
-      }
-    } catch (e) {
-      console.error("Failed to complete recovered session:", e);
-    }
-  }, [recoverySessionId, completeActiveSession, settings]);
-
-  const handleRecoveryDiscard = useCallback(async () => {
-    if (!recoverySessionId || !onDeleteSession) return;
-    try {
-      await onDeleteSession(recoverySessionId);
-      activeSessionIdRef.current = null;
-      activeSessionRef.current = null;
-      setActiveSessionId(null);
-      setRecoverySessionId(null);
-      setRecoveryDialogOpen(false);
-      dispatch({ type: "RESET", settings });
-    } catch (e) {
-      console.error("Failed to discard recovered session:", e);
-    }
-  }, [recoverySessionId, onDeleteSession, settings]);
-
-  useEffect(() => {
-    if (!isInitialMountRef.current) return;
-    isInitialMountRef.current = false;
-    if (
-      state.mode !== "work" &&
-      !state.studyOvertime &&
-      activeSessionIdRef.current
-    ) {
-      const session = sessions.find((item) => item.id === activeSessionIdRef.current);
-      const scheduledEnd = session ? new Date(session.endTime) : null;
-      void completeActiveSession(
-        scheduledEnd && Number.isFinite(scheduledEnd.getTime()) && scheduledEnd < new Date()
-          ? scheduledEnd
-          : new Date(),
-      );
-    }
-  }, [state.mode, state.studyOvertime, completeActiveSession, sessions]);
 
   useEffect(() => {
     setCachedPreference(TIMER_SETTINGS_KEY, JSON.stringify(settings), false);
@@ -366,11 +183,68 @@ const StudyTimerInner = memo(function StudyTimerInner({
     );
   }, [activeSessionId, settings, state]);
 
+  const setFocusView = useCallback((open: boolean) => {
+    setFocusViewOpen(open);
+    window.dispatchEvent(
+      new CustomEvent("focal-focus-mode-changed", { detail: { active: open } }),
+    );
+  }, []);
+
+  const completeActiveSession = useCallback(
+    async (endedAt = new Date()) => {
+      const sessionId = activeSessionIdRef.current;
+      if (!sessionId || completionInFlightRef.current) return false;
+      const session =
+        activeSessionRef.current ??
+        sessions.find((item) => item.id === sessionId) ??
+        null;
+      if (!session) return false;
+
+      completionInFlightRef.current = true;
+      try {
+        const end = endedAt.toISOString();
+        const intervals = closeRunningInterval(session.execution.intervals, end);
+        const blocks = closedBlocks(intervals);
+        const updates = {
+          ...(blocks.length > 0 ? { schedule: { blocks } } : {}),
+          execution: {
+            state: "completed",
+            intervals,
+            completedAt: end,
+          } as const,
+        } satisfies Partial<Omit<StudySession, "id" | "created_at">>;
+        await onUpdateSession(sessionId, updates);
+        activeSessionIdRef.current = null;
+        activeSessionRef.current = null;
+        setActiveSessionId(null);
+        setRecoveryDialogOpen(false);
+        return true;
+      } catch (error) {
+        console.error("Failed to finish focus session:", error);
+        return false;
+      } finally {
+        completionInFlightRef.current = false;
+      }
+    },
+    [onUpdateSession, sessions],
+  );
+
+  useEffect(() => {
+    if (state.mode === "work" || state.studyOvertime || !activeSessionId) return;
+    const session = sessions.find((item) => item.id === activeSessionId);
+    if (!session) return;
+    const scheduledEnd = session ? new Date(session.endTime) : null;
+    void completeActiveSession(
+      scheduledEnd && Number.isFinite(scheduledEnd.getTime()) && scheduledEnd < new Date()
+        ? scheduledEnd
+        : new Date(),
+    );
+  }, [activeSessionId, completeActiveSession, sessions, state.mode, state.studyOvertime]);
+
   const clearTimer = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    if (!intervalRef.current) return;
+    clearInterval(intervalRef.current);
+    intervalRef.current = null;
   }, []);
 
   const onTick = useCallback(() => {
@@ -384,9 +258,9 @@ const StudyTimerInner = memo(function StudyTimerInner({
       !current.studyOvertime &&
       elapsedSeconds >= current.secondsLeft
     ) {
-      void completeActiveSession(new Date(
-        lastTickAtRef.current + current.secondsLeft * 1000,
-      ));
+      void completeActiveSession(
+        new Date(lastTickAtRef.current + current.secondsLeft * 1000),
+      );
     }
     lastTickAtRef.current += elapsedSeconds * 1000;
     dispatch({
@@ -397,233 +271,99 @@ const StudyTimerInner = memo(function StudyTimerInner({
   }, [completeActiveSession]);
 
   useEffect(() => {
-    if (!state.running) {
-      clearTimer();
-      return;
-    }
-
     clearTimer();
+    if (!state.running) return;
     lastTickAtRef.current = Date.now();
     intervalRef.current = setInterval(onTick, 250);
     return clearTimer;
-  }, [state.running, onTick, clearTimer]);
+  }, [clearTimer, onTick, state.running]);
 
-  const { running, mode, secondsLeft, cycles, studyOvertime, overtimeSeconds } =
-    state;
+  const { running, mode, secondsLeft, cycles, studyOvertime, overtimeSeconds } = state;
   const isStudyOvertime = studyOvertime && mode !== "work";
+  const isFocus = mode === "work" || isStudyOvertime;
   const totalSeconds = getDurationSeconds(mode, settings);
   const progress = isStudyOvertime
     ? 1
     : Math.min(1, Math.max(0, 1 - secondsLeft / totalSeconds));
+  const progressPercent = Math.round(progress * 100);
   const timeDisplay = isStudyOvertime
     ? `+${formatTimer(overtimeSeconds)}`
     : formatTimer(secondsLeft);
   const modeLabel = isStudyOvertime
-    ? "Overtime"
+    ? "Extra focus"
     : mode === "work"
       ? "Focus"
       : mode === "long-break"
-        ? "Long Break"
+        ? "Long break"
         : "Break";
-  const modeColor =
-    mode === "work" || isStudyOvertime ? "" : "text-emerald-500";
-  const activeSubjects = subjects.filter((subject) =>
+  const selectedSubjects = subjects.filter((subject) =>
     selectedSubjectIds.includes(subject.id),
   );
-  const activeSubjectLabel =
-    activeSubjects.length === 0
-      ? "No subject"
-      : activeSubjects.length === 1
-        ? activeSubjects[0].shortCode
-        : `${activeSubjects.length} subjects`;
+  const subjectLabel = selectedSubjects[0]?.shortCode ?? "Choose subject";
   const activeProjectId =
-    selectedProject &&
-    selectedSubjectIds.includes(selectedProject.subjectId ?? "")
+    selectedProject?.subjectId && selectedSubjectIds.includes(selectedProject.subjectId)
       ? selectedProject.id
       : undefined;
   const canStartFocus = selectedSubjectIds.length > 0 && !saving;
-  const elapsedSeconds = isStudyOvertime
-    ? overtimeSeconds
-    : Math.max(0, totalSeconds - secondsLeft);
-  const nextModeLabel =
-    mode === "work"
-      ? (cycles + 1) % 4 === 0
-        ? "Long break next"
-        : "Break next"
-      : isStudyOvertime
-        ? "Break held"
-        : "Focus next";
-  const sessionStateLabel = activeSessionId
-    ? isStudyOvertime
-      ? "Overtime study is logging"
-      : "Timer is active"
-    : mode === "work"
-      ? "Start focus to create a study session"
-      : "Rest period is not logged";
-  const todayAnalytics = useMemo(() => {
-    const { startMs, endMs } = getTodayRange(analyticsNow);
-    const todaySessions = sessions.filter((session) => {
-      const startMsValue = new Date(session.startTime).getTime();
-      return (
-        Number.isFinite(startMsValue) &&
-        startMsValue >= startMs &&
-        startMsValue < endMs
-      );
-    });
-    const totalMinutes = todaySessions.reduce(
-      (sum, session) => sum + getSessionMinutes(session, analyticsNow),
-      0,
-    );
-    const completedBlocks = todaySessions.filter(
-      (session) => session.status === "completed",
-    ).length;
-    const activeBlocks = todaySessions.filter(
-      (session) => session.status === "in-progress",
-    ).length;
-    const subjectMinutes = new Map<string, number>();
-
-    todaySessions.forEach((session) => {
-      const minutes = getSessionMinutes(session, analyticsNow);
-      if (session.subjectIds.length === 0) return;
-      const minutesPerSubject = minutes / session.subjectIds.length;
-      session.subjectIds.forEach((subjectId) => {
-        subjectMinutes.set(
-          subjectId,
-          (subjectMinutes.get(subjectId) ?? 0) + minutesPerSubject,
-        );
-      });
-    });
-
-    const topSubject = Array.from(subjectMinutes.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([subjectId, minutes]) => {
-        const subject = subjects.find((item) => item.id === subjectId);
-        return { subject, minutes };
-      })[0];
-
-    return {
-      totalMinutes,
-      completedBlocks,
-      activeBlocks,
-      topSubject,
-    };
-  }, [analyticsNow, sessions, subjects]);
-  const projectedFocusMinutes =
-    mode === "work" ? Math.ceil(secondsLeft / 60) : settings.workMinutes;
-  const currentBlockDetail = isStudyOvertime
-    ? `${formatMinutes(Math.ceil(secondsLeft / 60))} break held`
-    : mode === "work"
-      ? `${formatMinutes(projectedFocusMinutes)} focus remaining`
-      : `${formatMinutes(Math.ceil(secondsLeft / 60))} rest remaining`;
-  const progressPercent = Math.round(progress * 100);
-  const progressDetail = isStudyOvertime
-    ? "overtime"
-    : `${progressPercent}% complete`;
-  const timerStageDetail = isStudyOvertime
-    ? "Break held · overtime"
-    : `${nextModeLabel} · ${progressPercent}% complete`;
-  const timerActionLabel =
-    selectedSubjectIds.length === 0
-      ? "Pick a subject"
-      : isStudyOvertime
-        ? "Resume overtime"
-        : secondsLeft === totalSeconds
-          ? "Start Focus"
-          : "Resume";
-  const workbenchTitle =
-    activeSubjects.length > 0
-      ? activeSubjects.map((subject) => subject.shortCode).join(" + ")
-      : "Focus timer";
-  const sessionScopeLabel = selectedProject
-    ? selectedProject.name
-    : activeSubjects.length > 0
-      ? activeSubjects.map((subject) => subject.name).join(", ")
-      : "No subject selected";
+  const timerActionLabel = saving
+    ? "Saving…"
+    : running
+      ? "Pause"
+      : activeSessionId
+        ? "Resume"
+        : "Start focus";
 
   const updateDuration = (key: keyof TimerSettings, value: string) => {
     const nextValue = clampMinutes(Number(value));
     setSettings((current) => {
       const next = { ...current, [key]: nextValue };
-      dispatch({
-        type: "SYNC_SETTINGS",
-        settings: next,
-        previousSettings: current,
-      });
+      dispatch({ type: "SYNC_SETTINGS", settings: next, previousSettings: current });
       return next;
     });
   };
-
-  const syncActiveSessionSubjects = useCallback(
-    async (nextSubjectIds: string[]) => {
-      const sessionId = activeSessionIdRef.current;
-      if (!sessionId) return;
-      try {
-        await onUpdateSession(sessionId, { subjectIds: nextSubjectIds });
-        if (activeSessionRef.current) {
-          activeSessionRef.current = {
-            ...activeSessionRef.current,
-            subjectIds: nextSubjectIds,
-          };
-        }
-      } catch (e) {
-        console.error("Failed to sync session subjects:", e);
-      }
-    },
-    [onUpdateSession],
-  );
 
   const handleSubjectClick = (subjectId: string) => {
-    setSelectedSubjectIds((current) => {
-      const next = activeSessionIdRef.current
-        ? current.includes(subjectId)
-          ? current
-          : [...current, subjectId]
-        : current.includes(subjectId)
-          ? current.filter((id) => id !== subjectId)
-          : [...current, subjectId];
-
-      if (activeSessionIdRef.current && next !== current) {
-        void syncActiveSessionSubjects(next);
+    const next = [subjectId];
+    setSelectedSubjectIds(next);
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) return;
+    void onUpdateSession(sessionId, { subjectIds: next }).then(() => {
+      if (activeSessionRef.current) {
+        activeSessionRef.current = { ...activeSessionRef.current, subjectIds: next };
       }
-
-      return next;
+    }).catch((error: unknown) => {
+      console.error("Failed to change focus subject:", error);
     });
   };
 
-  const startTimerSession = async (
-    durationSeconds: number,
-  ): Promise<boolean> => {
-    if (activeSessionIdRef.current || selectedSubjectIds.length === 0)
-      return false;
+  const startSession = async () => {
+    if (activeSessionIdRef.current || !canStartFocus) return false;
     const session = await onStartSession({
       subjectIds: selectedSubjectIds,
-      durationSeconds,
+      durationSeconds: secondsLeft,
       projectId: activeProjectId,
       cycleNumber: cycles + 1,
     });
     activeSessionIdRef.current = session.id;
     activeSessionRef.current = session;
     setActiveSessionId(session.id);
-    setReflectionSessionId(null);
     return true;
-  };
-
-  const startFocusSession = async (): Promise<boolean> => {
-    if (mode !== "work") return false;
-    return startTimerSession(secondsLeft);
   };
 
   const handleToggle = async () => {
     if (savingRef.current) return;
+
     if (!running && mode === "work" && !activeSessionIdRef.current) {
-      if (!canStartFocus) return;
+      if (!canStartFocus) {
+        setExpanded(true);
+        return;
+      }
       savingRef.current = true;
       setSaving(true);
       try {
-        const started = await startFocusSession();
-        if (started) dispatch({ type: "TOGGLE" });
-      } catch (e) {
-        console.error("Failed to start session:", e);
+        if (await startSession()) dispatch({ type: "TOGGLE" });
+      } catch (error) {
+        console.error("Failed to start focus session:", error);
       } finally {
         savingRef.current = false;
         setSaving(false);
@@ -631,33 +371,40 @@ const StudyTimerInner = memo(function StudyTimerInner({
       return;
     }
 
-    if (activeSessionIdRef.current && (mode === "work" || isStudyOvertime)) {
+    const session = activeSessionRef.current;
+    if (session && isFocus) {
       savingRef.current = true;
       setSaving(true);
       try {
-        const session = activeSessionRef.current;
-        if (!session) return;
         const now = new Date();
         const nowIso = now.toISOString();
         const intervals = running
           ? closeRunningInterval(session.execution.intervals, nowIso)
-          : [...session.execution.intervals, {
-              start: nowIso,
-              source: "pomodoro" as const,
-              cycleNumber: cycles + 1,
-            }];
-        const blocks = intervals.map((interval) => ({
-          start: interval.start,
-          end: interval.end ?? new Date(now.getTime() + secondsLeft * 1000).toISOString(),
-        }));
+          : [
+              ...session.execution.intervals,
+              {
+                start: nowIso,
+                source: "pomodoro" as const,
+                cycleNumber: cycles + 1,
+              },
+            ];
+        const blocks = [
+          ...closedBlocks(intervals),
+          ...(!running
+            ? [{
+                start: nowIso,
+                end: new Date(now.getTime() + secondsLeft * 1000).toISOString(),
+              }]
+            : []),
+        ];
         const updates = {
-          schedule: { blocks },
+          ...(blocks.length > 0 ? { schedule: { blocks } } : {}),
           execution: { state: "in-progress", intervals } as const,
         };
         await onUpdateSession(session.id, updates);
         activeSessionRef.current = { ...session, ...updates };
-      } catch (e) {
-        console.error(`Failed to ${running ? "pause" : "resume"} session:`, e);
+      } catch (error) {
+        console.error(`Failed to ${running ? "pause" : "resume"} focus session:`, error);
         return;
       } finally {
         savingRef.current = false;
@@ -672,9 +419,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
     savingRef.current = true;
     setSaving(true);
     try {
-      if (await completeActiveSession()) {
-        dispatch({ type: "RESET", settings });
-      }
+      if (await completeActiveSession()) dispatch({ type: "RESET", settings });
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -696,82 +441,30 @@ const StudyTimerInner = memo(function StudyTimerInner({
     dispatch({ type: "RESET", settings });
   };
 
-  const handleStartStudyOvertime = async () => {
-    if (
-      mode === "work" ||
-      isStudyOvertime ||
-      activeSessionIdRef.current ||
-      !canStartFocus
-    )
-      return;
-
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      const started = await startTimerSession(settings.workMinutes * 60);
-      if (started) {
-        dispatch({ type: "START_STUDY_OVERTIME", settings: settingsRef.current });
-      }
-    } catch (e) {
-      console.error("Failed to start overtime session:", e);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+  const handleRecoveryFinish = async () => {
+    if (await completeActiveSession()) dispatch({ type: "RESET", settings });
   };
 
-  const saveReflection = useCallback(async () => {
-    const sessionId = reflectionSessionId;
-    if (!sessionId) return;
-    setSaving(true);
+  const handleRecoveryDiscard = async () => {
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId || !onDeleteSession) return;
     try {
-      await onUpdateSession(sessionId, {
-        confidence: reflectionConfidence,
-        blockers: reflectionBlockers.trim() ? reflectionBlockers : undefined,
-        nextAction: reflectionNextAction.trim()
-          ? reflectionNextAction
-          : undefined,
-      });
-      setReflectionSessionId(null);
-    } catch (e) {
-      console.error("Failed to save reflection:", e);
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    reflectionSessionId,
-    reflectionConfidence,
-    reflectionBlockers,
-    reflectionNextAction,
-    onUpdateSession,
-  ]);
-
-  const dismissReflection = useCallback(() => {
-    setReflectionSessionId(null);
-  }, []);
-
-  const handleReturnToBreak = async () => {
-    if (!isStudyOvertime || savingRef.current) return;
-
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      if (await completeActiveSession()) {
-        dispatch({ type: "RETURN_TO_BREAK" });
-      }
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
+      await onDeleteSession(sessionId);
+      activeSessionIdRef.current = null;
+      activeSessionRef.current = null;
+      setActiveSessionId(null);
+      setRecoveryDialogOpen(false);
+      dispatch({ type: "RESET", settings });
+    } catch (error) {
+      console.error("Failed to discard recovered focus session:", error);
     }
   };
 
   const handleSkipBreak = () => {
-    if (mode === "work" || isStudyOvertime) return;
     dispatch({ type: "SKIP_BREAK", settings });
   };
 
   const handleMoreBreakTime = () => {
-    if (mode === "work" || isStudyOvertime) return;
     dispatch({ type: "ADD_BREAK_TIME", minutes: EXTRA_BREAK_MINUTES });
   };
 
@@ -782,42 +475,25 @@ const StudyTimerInner = memo(function StudyTimerInner({
           mode={mode}
           isStudyOvertime={isStudyOvertime}
           secondsLeft={secondsLeft}
-          overtimeSeconds={overtimeSeconds}
           totalSeconds={totalSeconds}
           progress={progress}
           timeDisplay={timeDisplay}
           modeLabel={modeLabel}
-          modeColor={modeColor}
-          nextModeLabel={nextModeLabel}
-          timerStageDetail={timerStageDetail}
           timerActionLabel={timerActionLabel}
           canStartFocus={canStartFocus}
           saving={saving}
           cycles={cycles}
           activeSessionId={activeSessionId}
-          elapsedSeconds={elapsedSeconds}
-          progressDetail={progressDetail}
-          currentBlockDetail={currentBlockDetail}
-          todayAnalytics={todayAnalytics}
-          subjects={subjects}
-          selectedSubjectIds={selectedSubjectIds}
-          settings={settings}
-          selectedProject={selectedProject}
-          workbenchTitle={workbenchTitle}
-          sessionScopeLabel={sessionScopeLabel}
-          sessionStateLabel={sessionStateLabel}
+          subjectLabel={subjectLabel}
+          projectLabel={selectedProject?.name}
           onSearch={onSearch}
           onSettings={onSettings}
           onToggle={handleToggle}
-          onReset={handleReset}
-          onReturnToBreak={handleReturnToBreak}
           onFinish={handleFinish}
+          onReset={handleReset}
           onSkipBreak={handleSkipBreak}
-          onStartStudyOvertime={handleStartStudyOvertime}
           onMoreBreakTime={handleMoreBreakTime}
-          onSubjectClick={handleSubjectClick}
-          onChangeDuration={updateDuration}
-          onClose={closeFocusView}
+          onClose={() => setFocusView(false)}
           closeButtonRef={focusCloseButtonRef}
         />,
         document.body,
@@ -831,8 +507,8 @@ const StudyTimerInner = memo(function StudyTimerInner({
         <RecoveryDialog
           open={recoveryDialogOpen}
           onOpenChange={setRecoveryDialogOpen}
-          sessionId={recoverySessionId ?? ""}
-          onResume={handleRecoveryResume}
+          sessionId={activeSessionId ?? ""}
+          onResume={() => setRecoveryDialogOpen(false)}
           onFinish={handleRecoveryFinish}
           onDiscard={handleRecoveryDiscard}
         />
@@ -841,22 +517,16 @@ const StudyTimerInner = memo(function StudyTimerInner({
             variant="ghost"
             size="icon"
             onClick={onExpand}
-            className={running ? modeColor : undefined}
-            aria-label="Expand Pomodoro timer"
-            title={
-              running
-                ? `${timeDisplay} - ${modeLabel} - ${activeSubjectLabel}`
-                : "Pomodoro"
-            }
+            aria-label="Expand focus timer"
+            title={running ? `${timeDisplay} · ${subjectLabel}` : "Focus timer"}
           >
             <Timer />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            onClick={openFocusView}
-            aria-label="Open full screen timer"
-            title="Open full screen timer"
+            onClick={() => setFocusView(true)}
+            aria-label="Open focus view"
           >
             <Maximize2 />
           </Button>
@@ -871,92 +541,163 @@ const StudyTimerInner = memo(function StudyTimerInner({
       <RecoveryDialog
         open={recoveryDialogOpen}
         onOpenChange={setRecoveryDialogOpen}
-        sessionId={recoverySessionId ?? ""}
-        onResume={handleRecoveryResume}
+        sessionId={activeSessionId ?? ""}
+        onResume={() => setRecoveryDialogOpen(false)}
         onFinish={handleRecoveryFinish}
         onDiscard={handleRecoveryDiscard}
       />
-      <div className="border-t border-sidebar-border/70">
-        <div className="px-2 py-1.5">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              onClick={() => setExpanded(!expanded)}
-              className="flex-1 justify-start"
-              aria-label={expanded ? "Collapse Pomodoro timer" : "Expand Pomodoro timer"}
-              aria-expanded={expanded}
-              aria-controls={expandedPanelId}
-            >
-              <Timer />
-              <span
-                className={cn("font-heading tabular-nums", running && modeColor)}
-              >
-                {running ? timeDisplay : "Pomodoro"}
-              </span>
-              {running && (
-                <span className={cn("text-micro font-medium ml-auto", modeColor)}>
-                  {activeSubjectLabel}
-                </span>
-              )}
-              {expanded ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronUp className="h-3 w-3" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={openFocusView}
-              aria-label="Open full screen timer"
-              title="Open full screen timer"
-            >
-              <Maximize2 />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleReset}
-              aria-label="Reset timer"
-            >
-              <RotateCcw />
-            </Button>
-          </div>
-        </div>
-        <AnimatePresence initial={false}>
-          {expanded && (
-            <motion.div
-              id={expandedPanelId}
-              ref={expandedRef}
-              key="expanded"
-              initial={reduceMotion ? "visible" : "hidden"}
-              animate="visible"
-              exit={reduceMotion ? "visible" : "hidden"}
-              variants={{
-                hidden: { height: 0, opacity: 0, overflow: "hidden" },
-                visible: { height: "auto", opacity: 1 },
-              }}
-              transition={reduceMotion ? REDUCED_TRANSITION : { duration: 0.22, ease: MOTION_EASE }}
-              className="overflow-hidden"
-              onAnimationComplete={() => {
-                expandedRef.current?.style.setProperty("overflow", "visible");
-              }}
-            >
-              <div className="space-y-3 px-3 pb-3 pt-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className={cn("font-medium", modeColor)}>{modeLabel}</span>
-                  <span className="text-muted-foreground">Cycle {cycles + 1}</span>
-                </div>
 
-                <details className="group">
-                  <summary className="flex cursor-pointer list-none items-center justify-between text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
-                    <span className="flex items-center gap-1">
-                      <ChevronDown className="size-3 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
-                      Durations
-                    </span>
-                    <span className="tabular-nums">
-                      {settings.workMinutes} / {settings.breakMinutes} / {settings.longBreakMinutes} min
-                    </span>
+      <section className="border-t border-sidebar-border/70" aria-label="Focus timer">
+        <div className="flex items-center gap-1 p-2">
+          <Button
+            variant="ghost"
+            className="min-w-0 flex-1 justify-start"
+            onClick={() => setExpanded((current) => !current)}
+            aria-expanded={expanded}
+          >
+            <Timer />
+            <span className="font-heading tabular-nums">
+              {running || activeSessionId || mode !== "work" ? timeDisplay : "Focus"}
+            </span>
+            <span className="ml-auto truncate text-xs text-muted-foreground">
+              {isFocus ? subjectLabel : modeLabel}
+            </span>
+            <ChevronDown className={cn("transition-transform", expanded && "rotate-180")} />
+          </Button>
+          <Button
+            size="icon-xs"
+            variant={running ? "outline" : "default"}
+            onClick={() => void handleToggle()}
+            disabled={saving || (isFocus && !canStartFocus && !activeSessionId)}
+            aria-label={timerActionLabel}
+          >
+            {running ? <Pause /> : <Play />}
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            onClick={() => setFocusView(true)}
+            aria-label="Open focus view"
+          >
+            <Maximize2 />
+          </Button>
+        </div>
+
+        {expanded && (
+          <div className="space-y-3 px-3 pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <Badge variant={activeSessionId ? "success" : "secondary"}>
+                {activeSessionId
+                  ? running
+                    ? "Logging"
+                    : "Paused"
+                  : mode === "work"
+                    ? "Ready"
+                    : "Not logged"}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {activeSessionId
+                  ? running
+                    ? "Calendar is recording study time"
+                    : "Calendar time is stopped"
+                  : mode === "work"
+                    ? "Starts a new calendar block"
+                    : `Focus block ${cycles} saved`}
+              </span>
+            </div>
+
+            {mode === "work" && !activeSessionId && (
+              <>
+                <SubjectPicker
+                  variant="sidebar"
+                  subjects={subjects}
+                  selectedSubjectIds={selectedSubjectIds}
+                  activeSessionId={null}
+                  onSubjectClick={handleSubjectClick}
+                />
+                <div className="space-y-1">
+                  <span className="text-xs font-medium">Focus length</span>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[25, 45, 60].map((minutes) => (
+                      <Button
+                        key={minutes}
+                        size="xs"
+                        variant={settings.workMinutes === minutes ? "secondary" : "outline"}
+                        onClick={() => updateDuration("workMinutes", String(minutes))}
+                      >
+                        {settings.workMinutes === minutes && <Check />}
+                        {minutes} min
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="py-1 text-center">
+              <p className="font-heading text-4xl font-semibold tabular-nums tracking-tight">
+                {timeDisplay}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {modeLabel}{isFocus ? ` · ${subjectLabel}` : " · breaks stay off your calendar"}
+              </p>
+              <div
+                role="progressbar"
+                aria-label={`${modeLabel} progress`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progressPercent}
+                className="mt-3 h-1 overflow-hidden rounded-full bg-muted"
+              >
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-[width] duration-1000 motion-reduce:transition-none",
+                    isFocus ? "bg-primary" : "bg-success",
+                  )}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {isFocus ? (
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button
+                  className={activeSessionId ? "" : "col-span-2"}
+                  onClick={() => void handleToggle()}
+                  disabled={saving || (!activeSessionId && !canStartFocus)}
+                >
+                  {running ? <Pause /> : <Play />}
+                  {timerActionLabel}
+                </Button>
+                {activeSessionId && (
+                  <Button variant="outline" onClick={() => void handleFinish()} disabled={saving}>
+                    <Check />
+                    Finish
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-1.5">
+                <Button onClick={() => void handleToggle()} disabled={saving}>
+                  {running ? <Pause /> : <Coffee />}
+                  {running ? "Pause" : "Resume"}
+                </Button>
+                <Button variant="outline" onClick={handleSkipBreak}>
+                  <SkipForward />
+                  Skip
+                </Button>
+                <Button variant="outline" onClick={handleMoreBreakTime}>
+                  <Plus />
+                  {EXTRA_BREAK_MINUTES} min
+                </Button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t pt-2">
+              {!activeSessionId && mode === "work" ? (
+                <details className="group flex-1">
+                  <summary className="cursor-pointer list-none text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+                    Custom durations
                   </summary>
                   <div className="pt-2">
                     <DurationInputs
@@ -966,126 +707,22 @@ const StudyTimerInner = memo(function StudyTimerInner({
                     />
                   </div>
                 </details>
-
-                <SubjectPicker
-                  variant="sidebar"
-                  subjects={subjects}
-                  selectedSubjectIds={selectedSubjectIds}
-                  activeSessionId={activeSessionId}
-                  onSubjectClick={handleSubjectClick}
-                />
-
-                <div className="pt-1">
-                  <div className="text-center font-heading text-3xl font-semibold leading-none tabular-nums">
-                    {timeDisplay}
-                  </div>
-                  <div
-                    role="progressbar"
-                    aria-label={`${modeLabel} progress`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={progressPercent}
-                    aria-valuetext={progressDetail}
-                    className="mt-3 h-1 overflow-hidden rounded-full bg-muted"
-                  >
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-[width] duration-1000 motion-reduce:transition-none",
-                        mode === "work" || isStudyOvertime ? "bg-primary" : "bg-emerald-500",
-                      )}
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-
-                  <TimerControls
-                    variant="sidebar"
-                    running={running}
-                    mode={mode}
-                    isStudyOvertime={isStudyOvertime}
-                    canStartFocus={canStartFocus}
-                    saving={saving}
-                    hasActiveSession={!!activeSessionId}
-                    timerActionLabel={timerActionLabel}
-                    onToggle={handleToggle}
-                    onReturnToBreak={handleReturnToBreak}
-                    onFinish={handleFinish}
-                    onSkipBreak={handleSkipBreak}
-                    onStartStudyOvertime={handleStartStudyOvertime}
-                    onMoreBreakTime={handleMoreBreakTime}
-                  />
-                  {reflectionSessionId && (
-                    <div className="mt-2 space-y-2 border-t border-border/30 pt-2">
-                      <p className="text-xs font-semibold text-foreground/80">
-                        Review this session
-                      </p>
-                      <div>
-                        <p className="text-micro font-medium text-muted-foreground mb-1.5">
-                          Confidence
-                        </p>
-                        <div className="grid grid-cols-5 gap-1">
-                          {([1, 2, 3, 4, 5] as ConfidenceScore[]).map((score) => (
-                            <Button
-                              key={score}
-                              variant={reflectionConfidence === score ? "secondary" : "outline"}
-                              size="sm"
-                              onClick={() => setReflectionConfidence(score)}
-                              aria-pressed={reflectionConfidence === score}
-                              className="w-full"
-                            >
-                              {score}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-micro font-medium text-muted-foreground mb-1">
-                          Blockers
-                        </p>
-                        <Textarea
-                          placeholder="What felt unclear?"
-                          value={reflectionBlockers}
-                          onChange={(e) => setReflectionBlockers(e.target.value)}
-                          rows={2}
-                          className="min-h-0 resize-none text-xs"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-micro font-medium text-muted-foreground mb-1">
-                          Next action
-                        </p>
-                        <Textarea
-                          placeholder="e.g. redo practice exam"
-                          value={reflectionNextAction}
-                          onChange={(e) => setReflectionNextAction(e.target.value)}
-                          rows={2}
-                          className="min-h-0 resize-none text-xs"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          onClick={saveReflection}
-                          disabled={saving}
-                          className="flex-1"
-                        >
-                          {saving ? "Saving..." : "Save"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={dismissReflection}
-                          disabled={saving}
-                          className="flex-1"
-                        >
-                          Dismiss
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Cycle {cycles + 1}</span>
+              )}
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => void handleReset()}
+                disabled={saving}
+              >
+                <RotateCcw />
+                Reset
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
     </>
   );
 });

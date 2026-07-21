@@ -50,10 +50,7 @@ import {
 import {
   isPomodoroSession,
   getPomodoroDescription,
-  getPomodoroNotes,
   getPomodoroTitle,
-  POMODORO_DESCRIPTION_PREFIX,
-  getAdjacentPomodoroSession,
   getUniqueStrings,
   getUniqueArrayItems,
 } from "@/lib/pomodoro";
@@ -803,54 +800,6 @@ function App() {
       try {
         const start = new Date();
         const end = new Date(start.getTime() + data.durationSeconds * 1000);
-        const adjacentSession = getAdjacentPomodoroSession(
-          sessions,
-          data,
-          start,
-          end,
-        );
-
-        if (adjacentSession) {
-          const newIntervals = [
-            ...adjacentSession.execution.intervals,
-            { start: start.toISOString(), source: "pomodoro" as const, cycleNumber: data.cycleNumber },
-          ];
-          const newActiveDurations = newIntervals.flatMap((interval) => interval.end
-            ? [{ start: interval.start, end: interval.end }]
-            : [],
-          );
-          const mergedDurationMin = Math.round(
-            (newActiveDurations.reduce((sum, d) => {
-              return (
-                sum + (new Date(d.end).getTime() - new Date(d.start).getTime())
-              );
-            }, 0) + data.durationSeconds * 1000) / 60000,
-          );
-
-          await updateSession(adjacentSession.id, {
-            schedule: { blocks: [
-              ...newActiveDurations,
-              { start: start.toISOString(), end: end.toISOString() },
-            ] },
-            execution: { state: "in-progress", intervals: newIntervals },
-            description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)`,
-          });
-          toast.success("Pomodoro session merged on calendar");
-          const updatedSession = {
-            ...adjacentSession,
-            schedule: { blocks: [
-              ...newActiveDurations,
-              { start: start.toISOString(), end: end.toISOString() },
-            ] },
-            execution: { state: "in-progress" as const, intervals: newIntervals },
-            status: "in-progress" as const,
-            completedAt: undefined,
-            description: `${POMODORO_DESCRIPTION_PREFIX} ${mergedDurationMin}m focus (extended)`,
-          };
-          void pushSessionChange(updatedSession);
-          return updatedSession;
-        }
-
         const durationMinutes = Math.round(data.durationSeconds / 60);
         const projectName = data.projectId
           ? projects.find((p) => p.id === data.projectId)?.name
@@ -860,15 +809,8 @@ function App() {
         const session = await addSession({
           projectId: data.projectId,
           subjectIds: data.subjectIds,
-          title: getPomodoroTitle(
-            data.subjectIds,
-            data.cycleNumber,
-            projectName,
-          ),
-          description: getPomodoroDescription(
-            durationMinutes,
-            data.cycleNumber,
-          ),
+          title: getPomodoroTitle(data.subjectIds, projectName),
+          description: getPomodoroDescription(durationMinutes),
           schedule: { blocks: [{ start: blockStart, end: blockEnd }] },
           execution: {
             state: "in-progress",
@@ -880,10 +822,8 @@ function App() {
               },
             ],
           },
-          reflection: { notes: getPomodoroNotes(data.cycleNumber) },
           createdVia: "manual",
         });
-        toast.success("Pomodoro session added to calendar");
         void pushSessionChange(session);
         return session;
       } catch (e) {
@@ -891,7 +831,7 @@ function App() {
         throw e;
       }
     },
-    [sessions, projects, addSession, updateSession, pushSessionChange],
+    [projects, addSession, pushSessionChange],
   );
 
   const handleUpdatePomodoroSession = useCallback(
@@ -903,17 +843,24 @@ function App() {
         const session = sessions.find((s) => s.id === id);
         const effectiveUpdates = { ...updates };
 
-        if (session && updates.subjectIds && isPomodoroSession(session)) {
-          const cycleMatch = /Focus #(\d+)/.exec(session.title);
-          const cycleNumber = cycleMatch ? parseInt(cycleMatch[1], 10) : 1;
+        if (session && isPomodoroSession(session)) {
+          const subjectIds = updates.subjectIds ?? session.subjectIds;
           const projectName = session.projectId
             ? projects.find((p) => p.id === session.projectId)?.name
             : undefined;
-          effectiveUpdates.title = getPomodoroTitle(
-            updates.subjectIds,
-            cycleNumber,
-            projectName,
-          );
+          effectiveUpdates.title = getPomodoroTitle(subjectIds, projectName);
+
+          if (updates.execution?.state === "completed") {
+            const durationMs = updates.execution.intervals.reduce((total, interval) => {
+              if (!interval.end) return total;
+              const start = new Date(interval.start).getTime();
+              const end = new Date(interval.end).getTime();
+              return total + (Number.isFinite(start) && end > start ? end - start : 0);
+            }, 0);
+            effectiveUpdates.description = getPomodoroDescription(
+              Math.max(1, Math.round(durationMs / 60000)),
+            );
+          }
         }
 
         await updateSession(id, effectiveUpdates);
