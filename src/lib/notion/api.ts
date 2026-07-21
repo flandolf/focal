@@ -11,6 +11,40 @@ function isNotionQueryError(value: unknown): value is { code: string; message: s
   )
 }
 
+const MAX_READ_RETRIES = 2
+
+export function isRetryableNotionReadError(code: string): boolean {
+  return [
+    "NETWORK_ERROR",
+    "rate_limited",
+    "internal_server_error",
+    "service_unavailable",
+    "database_connection_unavailable",
+    "gateway_timeout",
+  ].includes(code)
+}
+
+export function notionReadRetryDelay(attempt: number): number {
+  return 500 * (2 ** attempt)
+}
+
+export function isAlreadyArchivedNotionError(error: { code: string; message: string } | null | undefined): boolean {
+  return error?.code === "validation_error" && error.message.toLowerCase().includes("is archived")
+}
+
+async function retryNotionRead<T extends { error?: { code: string; message: string } | null }>(
+  read: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await read()
+    if (!response.error) return response
+    if (attempt === MAX_READ_RETRIES || !isRetryableNotionReadError(response.error.code)) {
+      throw new Error(response.error.message)
+    }
+    await new Promise((resolve) => setTimeout(resolve, notionReadRetryDelay(attempt)))
+  }
+}
+
 function isNotionQueryResponse(value: unknown): value is NotionQueryResponse {
   return (
     isRecord(value) &&
@@ -68,40 +102,54 @@ export async function deleteNotionPage(
   settings: NotionCalendarSettings,
   pageId: string,
 ): Promise<void> {
-  const response = await invoke<unknown>("delete_notion_page", {
-    token: settings.token,
-    pageId,
+  await retryNotionRead(async () => {
+    const response = await invoke<unknown>("delete_notion_page", {
+      token: settings.token,
+      pageId,
+    })
+    if (!isNotionPageResponse(response)) throw new Error("Invalid Notion delete response")
+    if (isAlreadyArchivedNotionError(response.error)) return { ...response, error: null }
+    return response
   })
-  if (!isNotionPageResponse(response)) throw new Error("Invalid Notion delete response")
-  if (response.error) throw new Error(response.error.message)
 }
 
 export async function queryNotionCalendar(settings: NotionCalendarSettings): Promise<NotionPage[]> {
-  const response = await invoke<unknown>("query_notion_calendar", {
-    token: settings.token,
-    dataSourceId: settings.dataSourceId,
+  const response = await retryNotionRead(async () => {
+    const value = await invoke<unknown>("query_notion_calendar", {
+      token: settings.token,
+      dataSourceId: settings.dataSourceId,
+    })
+    if (!isNotionQueryResponse(value)) throw new Error("Invalid Notion sync response")
+    return value
   })
-  if (!isNotionQueryResponse(response)) {
-    throw new Error("Invalid Notion sync response")
-  }
-  if (response.error) {
-    throw new Error(response.error.message)
-  }
   return (response.data ?? []).map(normalisePage).filter((page): page is NotionPage => page !== null)
 }
 
 /**
- * Lightweight schema fetch: retrieves a single page from the database to extract
- * the property schema, without paginating through all pages. This is much faster
- * than a full query when we only need the schema (e.g. for fast-push).
+ * Lightweight schema fetch: retrieves the database itself instead of querying
+ * all of its pages. This also works when the database is empty.
  */
 export async function fetchNotionSchema(settings: NotionCalendarSettings): Promise<Record<string, NotionProperty> | null> {
-  const response = await invoke<unknown>("fetch_notion_schema", {
+  const response = await retryNotionRead(async () => {
+    const value = await invoke<unknown>("fetch_notion_schema", {
+      token: settings.token,
+      dataSourceId: settings.dataSourceId,
+    })
+    if (!isNotionPageResponse(value)) throw new Error("Invalid Notion schema response")
+    return value
+  })
+  const page = normalisePage(response.data)
+  return page?.properties ?? null
+}
+
+export async function ensureNotionSyncProperties(settings: NotionCalendarSettings): Promise<Record<string, NotionProperty>> {
+  const response = await invoke<unknown>("ensure_notion_sync_properties", {
     token: settings.token,
     dataSourceId: settings.dataSourceId,
   })
-  if (!isNotionPageResponse(response)) return null
-  if (response.error) return null
+  if (!isNotionPageResponse(response)) throw new Error("Invalid Notion schema update response")
+  if (response.error) throw new Error(response.error.message)
   const page = normalisePage(response.data)
-  return page?.properties ?? null
+  if (!page?.properties) throw new Error("Notion schema update response missing properties")
+  return page.properties
 }

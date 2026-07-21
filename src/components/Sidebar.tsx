@@ -4,6 +4,8 @@ import {
   useCallback,
   useRef,
   useMemo,
+  lazy,
+  Suspense,
   type ReactNode,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -32,12 +34,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { StudyTimer } from "@/components/StudyTimer";
 import { AssessmentRow } from "@/components/AssessmentRow";
 import { cn, getSubjectById } from "@/lib/utils";
 import type { ProjectSortKey } from "@/hooks/useProjects";
 import { sortProjects } from "@/hooks/useProjects";
 import type { Project, StudySession, Subject } from "@/lib/types";
+
+const StudyTimer = lazy(() => import("@/components/StudyTimer").then((module) => ({ default: module.StudyTimer })));
 
 type FilterMode = "active" | "favorites" | "archived" | "finished";
 
@@ -492,11 +495,11 @@ export const Sidebar = memo(function Sidebar({
           onClick={onSelectTimetable}
           className={cn("w-full", !isCollapsed && "justify-start")}
           size={isCollapsed ? "icon" : "default"}
-          title={isCollapsed ? "Timetable (T)" : undefined}
+          title={isCollapsed ? "Plan (T)" : undefined}
         >
           <CalendarIcon />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
-            Timetable
+            Plan
           </CollapsibleInline>
         </Button>
 
@@ -505,11 +508,11 @@ export const Sidebar = memo(function Sidebar({
           onClick={onSelectAnalytics}
           className={cn("w-full", !isCollapsed && "justify-start")}
           size={isCollapsed ? "icon" : "default"}
-          title={isCollapsed ? "Analytics (A)" : undefined}
+          title={isCollapsed ? "Review (A)" : undefined}
         >
           <BarChart3 />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
-            Analytics
+            Review
           </CollapsibleInline>
         </Button>
 
@@ -603,7 +606,7 @@ export const Sidebar = memo(function Sidebar({
                   >
                     {item.type === "top-header" && !isCollapsed && (
                       <div className="px-2 text-xs font-semibold uppercase text-muted-foreground">
-                        Subjects
+                        Library
                       </div>
                     )}
                     {item.type === "group-header" && !isCollapsed && (
@@ -700,19 +703,21 @@ export const Sidebar = memo(function Sidebar({
           </div>
         )}
 
-      <StudyTimer
-        isCollapsed={isCollapsed}
-        onExpand={onToggleCollapse}
-        customSubjects={customSubjects}
-        availableSubjects={availableSubjects}
-        sessions={sessions}
-        selectedProject={selectedProject}
-        onSearch={onSearch}
-        onSettings={onSettings}
-        onStartSession={onStartPomodoroSession}
-        onUpdateSession={onUpdatePomodoroSession}
-        onDeleteSession={onDeletePomodoroSession}
-      />
+      <Suspense fallback={null}>
+        <StudyTimer
+          isCollapsed={isCollapsed}
+          onExpand={onToggleCollapse}
+          customSubjects={customSubjects}
+          availableSubjects={availableSubjects}
+          sessions={sessions}
+          selectedProject={selectedProject}
+          onSearch={onSearch}
+          onSettings={onSettings}
+          onStartSession={onStartPomodoroSession}
+          onUpdateSession={onUpdatePomodoroSession}
+          onDeleteSession={onDeletePomodoroSession}
+        />
+      </Suspense>
     </aside>
   );
 });

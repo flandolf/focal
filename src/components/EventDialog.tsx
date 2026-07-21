@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from"react"
-import { addMinutes, format, parseISO, addWeeks, addMonths } from"date-fns"
+import { addMinutes, format, parseISO, addWeeks, addMonths, startOfDay } from"date-fns"
 import { CalendarIcon, CheckCircle2, Clock, MapPin, Repeat, Tag, Trash2 } from"lucide-react"
 import {
  Dialog,
@@ -85,7 +85,7 @@ interface EventFormProps {
  showRecurrence?: boolean
 }
 
-interface EventDialogProps {
+export interface EventDialogProps {
  open: boolean
  onOpenChange: (open: boolean) => void
  event?: CalendarEvent | null
@@ -393,6 +393,7 @@ function EventForm({
  label="End date"
  date={endDate ?? eventDate}
  onDateChange={(date) => setEndDate(date)}
+ disabledDays={eventDate ? { before: startOfDay(eventDate) } : undefined}
  buttonClassName="h-10 rounded-lg bg-background/65"
  />
  </div>
@@ -497,6 +498,7 @@ function EventForm({
  label="End date (optional)"
  date={recurrenceEndDate}
  onDateChange={setRecurrenceEndDate}
+ disabledDays={eventDate ? { before: startOfDay(eventDate) } : undefined}
  buttonClassName="h-10 rounded-lg bg-background/65"
  />
  )}

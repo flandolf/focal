@@ -1,4 +1,6 @@
+import { invoke, isTauri } from "@tauri-apps/api/core"
 import type { TimetableConfig, TimetableDayLabel, TimetableEntry, TimetableViewSettings } from "@/lib/types"
+import { hydratePreferences, persistPreference, removePreference } from "@/lib/storage/preferences"
 export type { TimetableConfig } from "@/lib/types"
 
 const KEYS = {
@@ -30,6 +32,34 @@ const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 // ponytail: an empty default lets AIModelSection show the picker for Ollama without
 // committing to a model the user hasn't installed.
 const DEFAULT_OLLAMA_MODEL = ""
+const SECRET_KEYS = {
+  apiKey: "openrouter_api_key",
+  notionToken: "notion_token",
+} as const
+const NON_SYNCABLE_PREFERENCE_KEYS = new Set<string>([
+  KEYS.projectsRootPath,
+  KEYS.ollamaBaseUrl,
+  "focal-app-scale",
+  "focal-project-templates",
+  "focal-pomodoro-settings",
+])
+const SETTINGS_PREFERENCE_KEYS = [
+  ...Object.values(KEYS).filter((key) => key !== KEYS.apiKey && key !== KEYS.notionToken),
+  "focal-timetable-config",
+  "focal-app-scale",
+  "focal-custom-subjects",
+  "focal-hidden-subjects",
+  "focal-quick-links",
+  "focal-project-templates",
+  "focal-theme",
+  "focal-pomodoro-settings",
+]
+const LEGACY_KEY_BY_SECRET = {
+  [SECRET_KEYS.apiKey]: KEYS.apiKey,
+  [SECRET_KEYS.notionToken]: KEYS.notionToken,
+} as const
+let secretCache = { apiKey: "", notionToken: "" }
+let secretWriteLock: Promise<unknown> = Promise.resolve()
 export type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
 export type AssistantPersonality = "focused" | "encouraging" | "direct" | "socratic"
 
@@ -97,6 +127,61 @@ function getString(key: string, fallback?: string): string | null {
 
 function setString(key: string, value: string): void {
   localStorage.setItem(key, value)
+  persistPreference(key, value, !NON_SYNCABLE_PREFERENCE_KEYS.has(key))
+}
+
+function persistSecret(secretKey: keyof typeof LEGACY_KEY_BY_SECRET, value: string): void {
+  const legacyKey = LEGACY_KEY_BY_SECRET[secretKey]
+  if (!isTauri()) {
+    localStorage.setItem(legacyKey, value)
+    return
+  }
+  const result = secretWriteLock.then(async () => {
+    await invoke("set_secret", { key: secretKey, value })
+    localStorage.removeItem(legacyKey)
+  })
+  secretWriteLock = result.catch((error: unknown) => {
+    console.error(`Failed to persist ${secretKey}:`, error)
+  })
+}
+
+async function hydrateSecret(
+  secretKey: keyof typeof LEGACY_KEY_BY_SECRET,
+): Promise<string> {
+  const legacyKey = LEGACY_KEY_BY_SECRET[secretKey]
+  const legacyValue = localStorage.getItem(legacyKey) ?? ""
+  if (!isTauri()) return legacyValue
+  try {
+    let value = await invoke<string | null>("get_secret", { key: secretKey }) ?? ""
+    if (!value && legacyValue) {
+      await invoke("set_secret", { key: secretKey, value: legacyValue })
+      value = legacyValue
+    }
+    localStorage.removeItem(legacyKey)
+    return value
+  } catch (error) {
+    // Keep a pre-migration credential usable for this run if the OS credential
+    // service is temporarily unavailable. New credentials are never written back.
+    console.error(`Failed to hydrate ${secretKey}:`, error)
+    return legacyValue
+  }
+}
+
+export async function initializeSettingsStorage(): Promise<void> {
+  const hydrated = await hydratePreferences(
+    SETTINGS_PREFERENCE_KEYS.map((key) => ({
+      key,
+      legacyValue: localStorage.getItem(key),
+      syncable: !NON_SYNCABLE_PREFERENCE_KEYS.has(key),
+    })),
+  )
+  for (const [key, value] of hydrated) localStorage.setItem(key, value)
+
+  const [apiKey, notionToken] = await Promise.all([
+    hydrateSecret(SECRET_KEYS.apiKey),
+    hydrateSecret(SECRET_KEYS.notionToken),
+  ])
+  secretCache = { apiKey, notionToken }
 }
 
 function getBool(key: string, defaultValue: boolean): boolean {
@@ -105,7 +190,7 @@ function getBool(key: string, defaultValue: boolean): boolean {
 }
 
 function setBool(key: string, value: boolean): void {
-  localStorage.setItem(key, String(value))
+  setString(key, String(value))
 }
 
 // ---------------------------------------------------------------------------
@@ -113,11 +198,12 @@ function setBool(key: string, value: boolean): void {
 // ---------------------------------------------------------------------------
 
 export function getApiKey(): string | null {
-  return getString(KEYS.apiKey)
+  return secretCache.apiKey || null
 }
 
 export function setApiKey(key: string): void {
-  setString(KEYS.apiKey, key)
+  secretCache.apiKey = key
+  persistSecret(SECRET_KEYS.apiKey, key)
 }
 
 export function getModel(): string {
@@ -222,7 +308,7 @@ export function getAssistantPersonalityInstruction(): string {
 
 export function getNotionCalendarSettings(): NotionCalendarSettings {
   return {
-    token: getString(KEYS.notionToken, ""),
+    token: secretCache.notionToken,
     dataSourceId: getString(KEYS.notionDataSourceId, ""),
     titleProperty: getString(KEYS.notionTitleProperty, DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty),
     dateProperty: getString(KEYS.notionDateProperty, DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty),
@@ -233,7 +319,8 @@ export function getNotionCalendarSettings(): NotionCalendarSettings {
 }
 
 export function setNotionCalendarSettings(settings: NotionCalendarSettings): void {
-  setString(KEYS.notionToken, settings.token.trim())
+  secretCache.notionToken = settings.token.trim()
+  persistSecret(SECRET_KEYS.notionToken, secretCache.notionToken)
   setString(KEYS.notionDataSourceId, settings.dataSourceId.trim())
   setString(KEYS.notionTitleProperty, settings.titleProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty)
   setString(KEYS.notionDateProperty, settings.dateProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty)
@@ -248,7 +335,10 @@ export function getProjectsRootPath(): string | null {
 
 export function setProjectsRootPath(path: string | null): void {
   if (path) setString(KEYS.projectsRootPath, path)
-  else localStorage.removeItem(KEYS.projectsRootPath)
+  else {
+    localStorage.removeItem(KEYS.projectsRootPath)
+    removePreference(KEYS.projectsRootPath)
+  }
 }
 
 export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; max_tokens?: number; exclude?: boolean } } {
@@ -403,7 +493,7 @@ export function getTimetableConfig(): TimetableConfig {
 }
 
 export function setTimetableConfig(config: TimetableConfig): void {
-  localStorage.setItem("focal-timetable-config", JSON.stringify(config))
+  setString("focal-timetable-config", JSON.stringify(config))
 }
 
 /** Set or clear the manual current-day override. Pass null to clear. */

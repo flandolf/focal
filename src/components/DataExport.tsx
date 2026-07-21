@@ -1,8 +1,6 @@
 import { useState } from"react"
 import { invoke } from"@tauri-apps/api/core"
-import { appDataDir } from"@tauri-apps/api/path"
-import { writeTextFile } from"@tauri-apps/plugin-fs"
-import { Download, Check, Loader2, Upload } from"lucide-react"
+import { Download, Check, Loader2, Upload, Activity } from"lucide-react"
 import { toast } from"sonner"
 import { Button } from"@/components/ui/button"
 import {
@@ -14,6 +12,8 @@ import {
 } from"@/components/ui/dialog"
 import { confirmDestructiveAction } from"@/lib/confirmToast"
 import { parseBackup } from"@/lib/backup"
+import { writePersistedArray } from"@/lib/storage/database"
+import { createDiagnosticReport } from"@/lib/diagnostics"
 import { DEFAULT_SUBFOLDERS, type CalendarEvent, type Project, type StudySession } from"@/lib/types"
 
 interface DataExportProps {
@@ -26,14 +26,11 @@ interface DataExportProps {
 
 type ExportFormat ="json" |"csv"
 
-function getAppDataFilePath(baseDir: string, fileName: string) {
- return `${baseDir.replace(/\/+$/,"")}/${fileName}`
-}
-
 export function DataExport({ projects, sessions, events, open, onOpenChange }: DataExportProps) {
  const [exporting, setExporting] = useState(false)
  const [importing, setImporting] = useState(false)
  const [done, setDone] = useState(false)
+ const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
  const [format, setFormat] = useState<ExportFormat>("json")
 
  const handleExport = () => {
@@ -41,7 +38,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  try {
  const data = {
  exportedAt: new Date().toISOString(),
- version:"0.1.0",
+ backupSchemaVersion: 1,
  storageModel:"projects-as-assessments",
  assessments: projects,
  projects,
@@ -101,9 +98,7 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  })
  if (!confirmed) return
  setImporting(true)
- const baseDir = await appDataDir()
 
- // Assessments are stored in the legacy projects.json file for migration compatibility.
  if (data.projects) {
  for (const project of data.projects as { folder_path: string; customSubfolders?: unknown }[]) {
  if (!project.folder_path) continue
@@ -117,25 +112,15 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  ],
  })
  }
- await writeTextFile(
- getAppDataFilePath(baseDir,"projects.json"),
- JSON.stringify(data.projects, null, 2),
- )
+ await writePersistedArray("projects.json", data.projects)
  }
 
- // Restore sessions
  if (data.sessions) {
- await writeTextFile(
- getAppDataFilePath(baseDir,"sessions.json"),
- JSON.stringify(data.sessions, null, 2),
- )
+ await writePersistedArray("sessions.json", data.sessions)
  }
 
  if (data.events) {
- await writeTextFile(
- getAppDataFilePath(baseDir,"events.json"),
- JSON.stringify(data.events, null, 2),
- )
+ await writePersistedArray("events.json", data.events)
  }
 
  setDone(true)
@@ -152,6 +137,27 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  }
  }
  input.click()
+ }
+
+ const handleDiagnosticsExport = async () => {
+ setExportingDiagnostics(true)
+ try {
+ const report = await createDiagnosticReport()
+ const blob = new Blob([JSON.stringify(report, null, 2)], { type:"application/json;charset=utf-8" })
+ const url = URL.createObjectURL(blob)
+ const a = document.createElement("a")
+ a.href = url
+ a.download = `focal-diagnostics-${new Date().toISOString().slice(0, 10)}.json`
+ document.body.appendChild(a)
+ a.click()
+ document.body.removeChild(a)
+ URL.revokeObjectURL(url)
+ } catch (e) {
+ console.error("Diagnostics export failed:", e)
+ toast.error("Couldn't create the diagnostics report.")
+ } finally {
+ setExportingDiagnostics(false)
+ }
  }
 
  return (
@@ -229,6 +235,18 @@ export function DataExport({ projects, sessions, events, open, onOpenChange }: D
  Restore
  </Button>
  </div>
+ <Button
+ variant="ghost"
+ onClick={() => { void handleDiagnosticsExport() }}
+ disabled={exportingDiagnostics || importing || exporting}
+ className="w-full gap-2 text-muted-foreground"
+ >
+ {exportingDiagnostics ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Activity className="h-4 w-4" />}
+ Download privacy-safe diagnostics
+ </Button>
+ <p className="text-caption text-center text-muted-foreground">
+ Contains app health and record counts only—no study content, file paths, IDs, or account secrets.
+ </p>
  </div>
  </DialogContent>
  </Dialog>

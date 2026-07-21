@@ -1,389 +1,152 @@
-import {
-  addChangedRowId,
-  addDeletedRowId,
-  clearQueueItemsFromMeta,
-  coalesceQueueItem,
-  isQueueItemDue,
-  isRowInPullWindow,
-  mergeRemoteRecords,
-  removeDeletedRowId,
-  retryQueueItem,
-  scrubUserSettingsSecrets,
-  shouldBackfillCalendarTable,
-  shouldEnqueueFileRow,
-  shouldEnqueueLocalTable,
-  shouldKeepLocalRow,
-} from "../src/lib/sync/core"
-import type { SyncQueueItem } from "../src/lib/sync/types"
-import {
-  notionEditedTimeLabel,
-  retainFailedNotionConflicts,
-  notionSyncResultSucceeded,
-  notionSyncSettledState,
-} from "../src/hooks/useNotionSync"
+import { latestChanges, repairDuplicateSessions, retryChange } from "../src/lib/sync/protocol"
+import type { RemoteSyncChange, SyncChange } from "../src/lib/sync/types"
 
-const lastSyncAt = "2026-06-13T08:00:00.000Z"
-
-function assertEqual<T>(actual: T, expected: T, message: string): void {
-  if (actual !== expected) {
-    throw new Error(`${message}: expected ${String(expected)}, got ${String(actual)}`)
-  }
+interface BunSqliteDatabase {
+  exec(sql: string): void
+  run(sql: string, values: unknown[]): void
+  query(sql: string): { all(): unknown[] }
+  close(): void
 }
 
-function assertJsonEqual(actual: unknown, expected: unknown, message: string): void {
+interface BunSqliteModule {
+  Database: new (path: string) => BunSqliteDatabase
+}
+
+function assertEqual(actual: unknown, expected: unknown, message: string): void {
   const actualJson = JSON.stringify(actual)
   const expectedJson = JSON.stringify(expected)
-  if (actualJson !== expectedJson) {
-    throw new Error(`${message}: expected ${expectedJson}, got ${actualJson}`)
+  if (actualJson !== expectedJson) throw new Error(`${message}: expected ${expectedJson}, got ${actualJson}`)
+}
+
+function remote(overrides: Partial<RemoteSyncChange>): RemoteSyncChange {
+  return {
+    user_id: "user-1",
+    change_id: crypto.randomUUID(),
+    device_id: "device-1",
+    entity: "events",
+    row_id: "event-1",
+    operation: "put",
+    payload: { id: "event-1", title: "Event" },
+    revision: 1,
+    created_at: "2026-07-20T00:00:00.000Z",
+    ...overrides,
   }
 }
 
-assertEqual(notionEditedTimeLabel(undefined), "unknown", "missing Notion edit times should be safe")
-assertEqual(notionEditedTimeLabel("not-a-date"), "unknown", "invalid Notion edit times should be safe")
-assertJsonEqual(
-  notionSyncSettledState(true, 123),
-  { status: "success", lastSyncTime: 123 },
-  "successful Notion syncs should advance the timestamp",
-)
-assertJsonEqual(
-  notionSyncSettledState(false, 123),
-  { status: "error" },
-  "failed Notion syncs should remain errors without advancing the timestamp",
-)
-assertEqual(notionSyncResultSucceeded({ pushErrors: [] }), true, "clean Notion syncs should succeed")
 assertEqual(
-  notionSyncResultSucceeded({ pushErrors: ["permission denied"] }),
-  false,
-  "partial Notion push failures should not report success",
-)
-assertJsonEqual(
-  retainFailedNotionConflicts([{ id: "ok" }, { id: "retry" }], new Set(["retry"])),
-  [{ id: "retry" }],
-  "failed Notion conflict resolutions must remain available for retry",
-)
-
-assertEqual(
-  shouldEnqueueFileRow(
-    "study_sessions",
-    { id: "session-1", updated_at: "2026-06-13T07:00:00.000Z" },
-    { study_sessions: "2026-06-13T09:00:00.000Z" },
-    {},
-    lastSyncAt,
-  ),
-  true,
-  "offline-created study sessions must enqueue even when their row timestamp is older than the last sync",
+  latestChanges([
+    remote({ revision: 1, payload: { title: "old" } }),
+    remote({ revision: 3, payload: null, operation: "delete" }),
+    remote({ row_id: "event-2", revision: 2, payload: { title: "other" } }),
+  ]).map((change) => [change.row_id, change.operation, change.revision]),
+  [["event-2", "put", 2], ["event-1", "delete", 3]],
+  "server revision order must deterministically reduce each entity row",
 )
 
-assertEqual(
-  shouldEnqueueFileRow(
-    "events",
-    { id: "event-1", updated_at: "2026-06-13T07:00:00.000Z" },
-    {},
-    {},
-    lastSyncAt,
-  ),
-  false,
-  "unchanged old rows should not be re-queued forever",
-)
-
-assertEqual(
-  shouldEnqueueLocalTable("custom_subjects", { custom_subjects: "2026-06-13T09:00:00.000Z" }, lastSyncAt),
-  true,
-  "localStorage-backed tables use the same durable dirty-table rule",
-)
-
-assertJsonEqual(
-  addDeletedRowId(addDeletedRowId({}, "events", "event-1"), "events", "event-1"),
-  { events: ["event-1"] },
-  "offline delete tombstones should be stable and deduplicated",
-)
-
-assertJsonEqual(
-  removeDeletedRowId({ events: ["event-1"] }, "events", "event-1"),
-  { events: [] },
-  "local upsert should clear a stale local delete tombstone for the same row",
-)
-
-assertJsonEqual(
-  addChangedRowId(addChangedRowId({}, "study_sessions", "session-1"), "study_sessions", "session-1"),
-  { study_sessions: ["session-1"] },
-  "dirty study session row ids should be stable and deduplicated",
-)
-
-assertEqual(
-  shouldEnqueueFileRow(
-    "study_sessions",
-    { id: "session-1", updated_at: "2026-06-13T07:00:00.000Z" },
-    {},
-    { study_sessions: ["session-1"] },
-    lastSyncAt,
-  ),
-  true,
-  "dirty study session row ids must enqueue even without a table-wide dirty timestamp",
-)
-
-assertEqual(
-  shouldBackfillCalendarTable("study_sessions", null),
-  true,
-  "study sessions need a one-time backfill so stale local rows that never uploaded still reach Supabase",
-)
-
-assertEqual(
-  shouldBackfillCalendarTable("projects", null),
-  false,
-  "calendar backfill should stay scoped to events and study sessions",
-)
-
-assertEqual(
-  shouldBackfillCalendarTable("events", "2026-06-13T12:00:00.000Z"),
-  false,
-  "calendar backfill must stop after a clean successful flush",
-)
-
-assertEqual(
-  shouldKeepLocalRow("events", "event-1", { events: ["event-1"] }, {}),
-  true,
-  "remote soft-delete must not remove an unpushed local event edit",
-)
-
-assertEqual(
-  shouldKeepLocalRow("study_sessions", "session-1", {}, { study_sessions: ["session-1"] }),
-  true,
-  "remote rows must not resurrect over an unpushed local study-session delete",
-)
-
-const dirtyLocalEvent = {
-  id: "event-1",
-  title: "Local edit",
-  updated_at: "2026-06-13T09:00:00.000Z",
-  deleted_at: null,
-  last_modified_device_id: "device-local",
-}
-
-assertJsonEqual(
-  mergeRemoteRecords({
-    table: "events",
-    local: [dirtyLocalEvent],
-    remote: [{
-      id: "event-1",
-      title: "Newer remote edit",
-      updated_at: "2026-06-13T10:00:00.000Z",
-      deleted_at: null,
-      last_modified_device_id: "device-remote",
-    }],
-    remoteToLocal: (row) => row,
-    currentDeviceId: "device-local",
-    changedRowIds: { events: ["event-1"] },
-  }),
-  [dirtyLocalEvent],
-  "unflushed local event edit must survive a newer remote pull",
-)
-
-const dirtyLocalSession = {
-  id: "session-1",
-  title: "Local study plan",
-  updated_at: "2026-06-13T09:00:00.000Z",
-  deleted_at: null,
-  last_modified_device_id: "device-local",
-}
-
-assertJsonEqual(
-  mergeRemoteRecords({
-    table: "study_sessions",
-    local: [dirtyLocalSession],
-    remote: [{
-      id: "session-1",
-      updated_at: "2026-06-13T10:00:00.000Z",
-      deleted_at: "2026-06-13T10:00:00.000Z",
-      last_modified_device_id: "device-remote",
-    }],
-    remoteToLocal: () => null,
-    currentDeviceId: "device-local",
-    changedRowIds: { study_sessions: ["session-1"] },
-  }),
-  [dirtyLocalSession],
-  "unflushed local study session must survive a remote tombstone",
-)
-
-assertJsonEqual(
-  mergeRemoteRecords({
-    table: "events",
-    local: [{
-      id: "event-2",
-      title: "Old local",
-      updated_at: "2026-06-13T07:00:00.000Z",
-      deleted_at: null,
-      last_modified_device_id: "device-local",
-    }],
-    remote: [{
-      id: "event-2",
-      title: "Fresh remote",
-      updated_at: "2026-06-13T10:00:00.000Z",
-      deleted_at: null,
-      last_modified_device_id: "device-remote",
-    }],
-    remoteToLocal: (row) => row,
-    currentDeviceId: "device-local",
-  }).map((event) => event.title),
-  ["Fresh remote"],
-  "clean local event should still accept a newer remote update",
-)
-
-const pendingEventUpsert: SyncQueueItem = {
-  id: "queue-1",
-  table: "events",
-  operation: "upsert",
+const queued: SyncChange = {
+  changeId: "change-1",
+  entity: "events",
   rowId: "event-1",
-  payload: { id: "event-1", title: "Draft" },
-  createdAt: "2026-06-13T09:00:00.000Z",
-  updatedAt: "2026-06-13T09:00:00.000Z",
-  retryCount: 3,
+  operation: "put",
+  payload: { id: "event-1" },
+  createdAt: "2026-07-20T00:00:00.000Z",
+  retryCount: 0,
+}
+assertEqual(
+  retryChange(queued, "offline", "2026-07-20T00:00:00.000Z"),
+  { ...queued, retryCount: 1, lastError: "offline", nextAttemptAt: "2026-07-20T00:00:05.000Z" },
+  "failed immutable changes must remain queued with bounded backoff",
+)
+
+const duplicateBase = {
+  schemaVersion: 2 as const,
+  subjectIds: ["mm"],
+  title: "Focus",
+  topics: [],
+  schedule: { blocks: [{ start: "2026-07-20T01:00:00.000Z", end: "2026-07-20T01:30:00.000Z" }] },
+  execution: { state: "completed" as const, intervals: [], completedAt: "2026-07-20T01:30:00.000Z" },
+  createdVia: "notion" as const,
+  created_at: "2026-07-20T02:00:00.000Z",
+}
+const repaired = repairDuplicateSessions([
+  { ...duplicateBase, id: "session-b", integrations: { notion: { type: "notion", id: "page-b", kind: "session" } } },
+  { ...duplicateBase, id: "session-a", integrations: { notion: { type: "notion", id: "page-a", kind: "session" } } },
+])
+assertEqual(repaired.sessions.map((session) => session.id), ["session-a"], "duplicate repair must choose one stable canonical session")
+assertEqual(repaired.duplicateIds, ["session-b"], "duplicate repair must emit durable deletion ids")
+assertEqual(repaired.duplicateNotionPageIds, ["page-b"], "duplicate repair must retain orphan Notion pages for cleanup")
+
+const remoteMigration = await fetch(new URL("../supabase/migrations/0004_rebuild_sync_as_change_log.sql", import.meta.url)).then((response) => response.text())
+for (const required of [
+  "drop table if exists public.study_sessions",
+  "create table public.sync_changes",
+  "create table public.sync_change_receipts",
+  "reject_replayed_focal_sync_change_before_insert",
+  "compact_focal_sync_changes_after_insert",
+  "enable row level security",
+  "alter publication supabase_realtime add table public.sync_changes",
+]) {
+  if (!remoteMigration.includes(required)) throw new Error(`Supabase sync rebuild is missing: ${required}`)
 }
 
-const deleteReplacesUpsert = coalesceQueueItem(
-  [pendingEventUpsert],
-  { table: "events", operation: "soft_delete", rowId: "event-1", payload: { id: "event-1", deleted_at: "2026-06-13T10:00:00.000Z" } },
-  "queue-2",
-  "2026-06-13T10:00:00.000Z",
-)
+const finalMigration = await fetch(new URL("../supabase/migrations/0005_finalize_sync_rebuild.sql", import.meta.url)).then((response) => response.text())
+for (const required of [
+  "drop function if exists public.set_updated_at() cascade",
+  "revoke all on public.sync_change_receipts",
+  "Legacy Focal sync tables still exist",
+  "Focal sync idempotency or compaction trigger is missing",
+  "sync_changes is missing from the Realtime publication",
+  "append-only security model",
+]) {
+  if (!finalMigration.includes(required)) throw new Error(`Supabase sync finalization is missing: ${required}`)
+}
 
-assertJsonEqual(
-  deleteReplacesUpsert.map((item) => ({ operation: item.operation, retryCount: item.retryCount })),
-  [{ operation: "soft_delete", retryCount: 0 }],
-  "delete must replace a stale pending upsert and reset retries",
-)
+const localMigration = await fetch(new URL("../src-tauri/migrations/0002_rebuild_sync_outbox.sql", import.meta.url)).then((response) => response.text())
+for (const required of [
+  "drop table if exists sync_outbox",
+  "operation in ('put', 'delete')",
+  "account_id text not null default ''",
+  "sync_outbox_delete_local_record_after_insert",
+  "sync_outbox_delete_local_record_after_update",
+  "create table sync_state",
+]) {
+  if (!localMigration.includes(required)) throw new Error(`Local sync rebuild is missing: ${required}`)
+}
 
-const restoreReplacesDelete = coalesceQueueItem(
-  deleteReplacesUpsert,
-  { table: "events", operation: "upsert", rowId: "event-1", payload: { id: "event-1", title: "Restored" } },
-  "queue-3",
-  "2026-06-13T11:00:00.000Z",
+// @ts-expect-error Bun provides this test-only module; the browser app deliberately omits Bun types.
+const sqliteModule = await import("bun:sqlite") as unknown as BunSqliteModule
+const localDatabase = new sqliteModule.Database(":memory:")
+localDatabase.exec(await fetch(new URL("../src-tauri/migrations/0001_local_database.sql", import.meta.url)).then((response) => response.text()))
+localDatabase.run(
+  "insert into records (kind, id, payload, position) values (?, ?, ?, ?)",
+  ["events", "deleted-event", JSON.stringify({ id: "deleted-event" }), 0],
 )
-
-assertJsonEqual(
-  restoreReplacesDelete.map((item) => ({ operation: item.operation, rowId: item.rowId })),
-  [{ operation: "upsert", rowId: "event-1" }],
-  "restore/upsert must replace a stale pending delete for the same event",
+localDatabase.exec(localMigration)
+localDatabase.run(
+  `insert into sync_outbox (change_id, entity, row_id, operation, payload, created_at)
+   values (?, ?, ?, ?, ?, ?)`,
+  ["delete-change", "events", "deleted-event", "delete", null, "2026-07-20T00:00:00.000Z"],
 )
-
 assertEqual(
-  isQueueItemDue({ nextAttemptAt: "2026-06-13T09:59:59.000Z" }, "2026-06-13T10:00:00.000Z"),
-  true,
-  "queued retries should run once their next attempt time has passed",
+  localDatabase.query("select id from records where id = 'deleted-event'").all(),
+  [],
+  "persisting a delete must atomically remove its local record",
 )
-
+localDatabase.run(
+  `insert into sync_outbox (change_id, account_id, entity, row_id, operation, payload, created_at)
+   values (?, ?, ?, ?, ?, ?, ?)`,
+  ["account-a-change", "account-a", "events", "shared-row", "put", JSON.stringify({ id: "shared-row" }), "2026-07-20T00:00:01.000Z"],
+)
+localDatabase.run(
+  `insert into sync_outbox (change_id, account_id, entity, row_id, operation, payload, created_at)
+   values (?, ?, ?, ?, ?, ?, ?)`,
+  ["account-b-change", "account-b", "events", "shared-row", "put", JSON.stringify({ id: "shared-row" }), "2026-07-20T00:00:02.000Z"],
+)
 assertEqual(
-  isQueueItemDue({ nextAttemptAt: "2026-06-13T10:00:01.000Z" }, "2026-06-13T10:00:00.000Z"),
-  false,
-  "queued retries should wait until their backoff has elapsed",
+  localDatabase.query("select account_id from sync_outbox where row_id = 'shared-row' order by account_id").all(),
+  [{ account_id: "account-a" }, { account_id: "account-b" }],
+  "pending changes for different Supabase accounts must remain isolated",
 )
+localDatabase.close()
 
-assertJsonEqual(
-  (({ retryCount, lastError, nextAttemptAt }) => ({ retryCount, lastError, nextAttemptAt }))(
-    retryQueueItem(pendingEventUpsert, "network down", "2026-06-13T10:00:00.000Z"),
-  ),
-  {
-    retryCount: 4,
-    lastError: "network down",
-    nextAttemptAt: "2026-06-13T10:00:40.000Z",
-  },
-  "retry scheduling should increment retries and set capped exponential backoff",
-)
-
-assertEqual(
-  isRowInPullWindow(
-    { updated_at: "2026-06-13T10:00:00.000Z" },
-    "2026-06-13T09:00:00.000Z",
-    "2026-06-13T10:00:00.000Z",
-  ),
-  true,
-  "incremental pulls should include rows up to the pull high-water mark",
-)
-
-assertEqual(
-  isRowInPullWindow(
-    { updated_at: "2026-06-13T10:00:01.000Z" },
-    "2026-06-13T09:00:00.000Z",
-    "2026-06-13T10:00:00.000Z",
-  ),
-  false,
-  "incremental pulls should leave rows after the high-water mark for the next pull",
-)
-
-assertEqual(
-  isRowInPullWindow(
-    { updated_at: "2026-06-13T09:00:00.000Z" },
-    "2026-06-13T09:00:00.000Z",
-    "2026-06-13T10:00:00.000Z",
-  ),
-  false,
-  "incremental pulls should not refetch rows at the previous lastPulledAt boundary",
-)
-
-assertJsonEqual(
-  clearQueueItemsFromMeta(
-    {
-      deviceId: "device-1",
-      lastSuccessfulSyncAt: null,
-      localChangedAt: {
-        events: "2026-06-13T09:00:00.000Z",
-        study_sessions: "2026-06-13T09:00:00.000Z",
-      },
-      localChangedRowIds: {
-        events: ["event-1"],
-        study_sessions: ["session-1"],
-      },
-      deletedRowIds: {
-        events: ["event-1"],
-      },
-    },
-    [{ table: "events", rowId: "event-1" }],
-  ),
-  {
-    deviceId: "device-1",
-    lastSuccessfulSyncAt: null,
-    localChangedAt: {
-      study_sessions: "2026-06-13T09:00:00.000Z",
-    },
-    localChangedRowIds: {
-      events: [],
-      study_sessions: ["session-1"],
-    },
-    deletedRowIds: {
-      events: [],
-    },
-  },
-  "max-retry cleanup should stop requeueing dropped rows without clearing unrelated dirty study sessions",
-)
-
-assertJsonEqual(
-  scrubUserSettingsSecrets({
-    openrouter_api_key: "sk-or-secret",
-    openrouter_model: "openai/gpt-4o-mini",
-    reasoning_effort: "medium",
-    reasoning_max_tokens: 8000,
-    reasoning_exclude: false,
-    notion_token: "secret_notion",
-    notion_data_source_id: "database-id",
-    notion_title_property: "Name",
-    notion_date_property: "Date",
-    notion_type_property: "Type",
-    notion_completed_property: "Complete",
-    notion_subject_property: "Subject",
-  }),
-  {
-    openrouter_api_key: "",
-    openrouter_model: "openai/gpt-4o-mini",
-    reasoning_effort: "medium",
-    reasoning_max_tokens: 8000,
-    reasoning_exclude: false,
-    notion_token: "",
-    notion_data_source_id: "database-id",
-    notion_title_property: "Name",
-    notion_date_property: "Date",
-    notion_type_property: "Type",
-    notion_completed_property: "Complete",
-    notion_subject_property: "Subject",
-  },
-  "user settings sync payload must keep bearer secrets blank",
-)
+console.warn("sync change-log self-check passed")

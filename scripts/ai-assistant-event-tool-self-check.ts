@@ -1,4 +1,11 @@
-import { buildAssistantOverview, buildStudyOverviewToolResult, executeReadOnlyFocalToolCall, extractFollowUpPrompts, parseLooseEventCreateRequest, prepareStudySessionUpdate } from "../src/components/AIAssistantPanel"
+import { extractFollowUpPrompts } from "../src/components/AIAssistantPanel"
+import {
+  buildAssistantOverview,
+  buildStudyOverviewToolResult,
+  executeReadOnlyFocalToolCall,
+  parseLooseEventCreateRequest,
+  prepareStudySessionUpdate,
+} from "../src/features/assistant/agent"
 import { normalizeStudySession } from "../src/lib/studySessions"
 
 const draft = parseLooseEventCreateRequest("math methods sac 8 august 1:45pm", "2026-06-19", [

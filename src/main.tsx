@@ -2,9 +2,32 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import App from "./App"
 import "./index.css"
+import { initializeSettingsStorage } from "@/lib/settings"
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+const root = ReactDOM.createRoot(document.getElementById("root")!)
+
+function renderApp() {
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  )
+}
+
+function renderStartupError(error: unknown) {
+  root.render(
+    <main className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
+      <section className="max-w-md space-y-3 rounded-xl border bg-card p-6 shadow-sm">
+        <h1 className="font-display text-lg font-semibold">Focal could not open its local data</h1>
+        <p className="text-sm text-muted-foreground">
+          Your existing data has not been removed. Restart Focal, and if the problem continues, export the app logs before reinstalling.
+        </p>
+        <pre className="max-h-32 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
+          {error instanceof Error ? error.message : String(error)}
+        </pre>
+      </section>
+    </main>,
+  )
+}
+
+void initializeSettingsStorage().then(renderApp, renderStartupError)

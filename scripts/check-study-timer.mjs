@@ -2,7 +2,7 @@ import {
   advanceTimer,
   closeRunningInterval,
   getActiveSessionSubjectIds,
-} from "../src/components/StudyTimer.tsx";
+} from "../src/features/timer/model.ts";
 import { isTimerShortcutTarget } from "../src/components/timer/FocusView.tsx";
 
 const settings = { workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15 };

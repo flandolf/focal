@@ -6,18 +6,12 @@ import { Plus, Pencil, Trash2, Link, BookOpen, GraduationCap, FileText, Globe, V
 import { Button } from"@/components/ui/button"
 import { Input } from"@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from"@/components/ui/dialog"
-import { cn, isRecord } from"@/lib/utils"
+import { cn } from"@/lib/utils"
 import { staggerContainer, staggerItem, hoverLift } from"@/lib/motion"
-
-interface QuickLink {
- id: string
- label: string
- url: string
- icon: string
- color: string
-}
-
-const QUICK_LINKS_KEY ="focal-quick-links"
+import { notifyUserSettingsChanged } from"@/lib/sync/engine"
+import { getStoredQuickLinks, QUICK_LINKS_STORAGE_KEY } from"@/lib/quickLinks"
+import { setCachedPreference } from"@/lib/storage/preferences"
+import type { QuickLink } from"@/lib/types"
 
 const ICON_OPTIONS = [
  { name:"BookOpen", component: BookOpen },
@@ -61,25 +55,6 @@ function getQuickLinkDestination(url: string) {
  }
 }
 
-function getStoredQuickLinks(): QuickLink[] {
- try {
- const stored = localStorage.getItem(QUICK_LINKS_KEY)
- if (!stored) return []
- const parsed: unknown = JSON.parse(stored)
- return Array.isArray(parsed)
- ? parsed.filter(
- (link): link is QuickLink =>
- isRecord(link) &&
- ["id","label","url","icon","color"].every(
- (field) => typeof link[field] ==="string",
- ),
- )
- : []
- } catch {
- return []
- }
-}
-
 export function QuickLinks() {
  const [quickLinks, setQuickLinks] = useState<QuickLink[]>(getStoredQuickLinks)
  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
@@ -92,19 +67,31 @@ export function QuickLinks() {
  const fieldId = useId()
 
  useEffect(() => {
- localStorage.setItem(QUICK_LINKS_KEY, JSON.stringify(quickLinks))
- }, [quickLinks])
+ const handleSyncedSettings = (event: Event) => {
+ if ((event as CustomEvent<{ table?: string }>).detail?.table ==="user_settings") {
+ setQuickLinks(getStoredQuickLinks())
+ }
+ }
+ window.addEventListener("focal-sync-data-changed", handleSyncedSettings)
+ return () => window.removeEventListener("focal-sync-data-changed", handleSyncedSettings)
+ }, [])
+
+ const saveQuickLinks = (links: QuickLink[]) => {
+ setCachedPreference(QUICK_LINKS_STORAGE_KEY, JSON.stringify(links), true)
+ setQuickLinks(links)
+ notifyUserSettingsChanged()
+ }
 
  const handleSaveLink = () => {
  if (!linkLabel.trim() || !linkUrl.trim()) return
  const rawUrl = linkUrl.trim()
  const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
  if (editingLink) {
- setQuickLinks((prev) =>
- prev.map((l) => (l.id === editingLink.id ? { ...l, label: linkLabel.trim(), url, icon: linkIcon, color: linkColor } : l))
- )
+ saveQuickLinks(quickLinks.map((l) =>
+ l.id === editingLink.id ? { ...l, label: linkLabel.trim(), url, icon: linkIcon, color: linkColor } : l
+ ))
  } else {
- setQuickLinks((prev) => [...prev, { id: crypto.randomUUID(), label: linkLabel.trim(), url, icon: linkIcon, color: linkColor }])
+ saveQuickLinks([...quickLinks, { id: crypto.randomUUID(), label: linkLabel.trim(), url, icon: linkIcon, color: linkColor }])
  }
  setLinkDialogOpen(false)
  setEditingLink(null)
@@ -115,7 +102,7 @@ export function QuickLinks() {
  }
 
  const handleDeleteLink = (id: string) => {
- setQuickLinks((prev) => prev.filter((l) => l.id !== id))
+ saveQuickLinks(quickLinks.filter((l) => l.id !== id))
  }
 
  const handleEditLink = (link: QuickLink) => {
@@ -182,16 +169,16 @@ export function QuickLinks() {
  toast.error(`Couldn't open "${link.label}". Check the saved URL and try again.`)
  })}
  variant="outline"
- className="h-auto min-w-0 flex-col items-center gap-1.5 p-3 text-center whitespace-normal"
- style={{ backgroundColor: link.color +"18" }}
+ className="h-14 w-full min-w-0 justify-start gap-2.5 border-border/70 pl-2.5 pr-8 text-left whitespace-normal hover:border-border"
+ style={{ backgroundColor: link.color +"0D" }}
  aria-label={`Open ${link.label}: ${destination}`}
  >
- <IconComp className="h-5 w-5 transition-colors" style={{ color: link.color }} />
- <span className="text-micro w-full truncate transition-colors" style={{ color: link.color }}>
- {link.label}
+ <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-current/15" style={{ color: link.color, backgroundColor: link.color +"12" }}>
+ <IconComp className="h-4 w-4" />
  </span>
- <span className="w-full truncate text-micro leading-none text-muted-foreground/70">
- {destination}
+ <span className="min-w-0 flex-1">
+ <span className="block w-full truncate text-xs font-medium text-foreground">{link.label}</span>
+ <span className="mt-0.5 block w-full truncate text-micro leading-none text-muted-foreground">{destination}</span>
  </span>
  </Button>
  <Button

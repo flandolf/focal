@@ -9,8 +9,8 @@ interface UseNotionSyncOptions {
   events: CalendarEvent[]
   sessions: StudySession[]
   allSubjects: Subject[]
-  syncEvents: (created: Omit<CalendarEvent, "id" | "created_at">[], updated: { id: string; updates: Partial<Omit<CalendarEvent, "id" | "created_at">> }[]) => Promise<unknown>
-  syncSessions: (created: StudySessionDraft[], updated: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]) => Promise<unknown>
+  syncEvents: (created: (Omit<CalendarEvent, "id" | "created_at"> & { id?: string })[], updated: { id: string; updates: Partial<Omit<CalendarEvent, "id" | "created_at">> }[]) => Promise<CalendarEvent[]>
+  syncSessions: (created: StudySessionDraft[], updated: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[]) => Promise<StudySession[]>
 }
 
 export function notionEditedTimeLabel(value?: string): string {
@@ -44,7 +44,10 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
   const notionSyncInFlightRef = useRef(false)
   const notionSyncQueuedRef = useRef(false)
   const notionSyncQueuedNotifyRef = useRef(false)
-  const notionSyncQueuedResolverRef = useRef<{ resolve: (value: NotionCalendarSyncResult | null) => void; reject: (reason: unknown) => void } | null>(null)
+  const notionSyncQueuedResolversRef = useRef<{
+    resolve: (value: NotionCalendarSyncResult | null) => void
+    reject: (reason: unknown) => void
+  }[]>([])
   const notionSyncRunnerRef = useRef<((notify: boolean, onProgress?: (msg: string) => void) => Promise<NotionCalendarSyncResult | null>) | null>(null)
   const eventsRef = useRef(events)
   const sessionsRef = useRef(sessions)
@@ -68,7 +71,7 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
       notionSyncQueuedNotifyRef.current = notionSyncQueuedNotifyRef.current || notify
       if (notify) {
         return new Promise<NotionCalendarSyncResult | null>((resolve, reject) => {
-          notionSyncQueuedResolverRef.current = { resolve, reject }
+          notionSyncQueuedResolversRef.current.push({ resolve, reject })
         })
       }
       return null
@@ -81,10 +84,20 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     try {
       const result = await syncNotionCalendar(settings, eventsRef.current, sessionsRef.current, allSubjectsRef.current, onProgress, changedEventIds, changedSessionIds)
       if (result.created.length > 0 || result.updated.length > 0) {
-        await syncEvents(result.created, result.updated)
+        const created = await syncEvents(result.created, result.updated)
+        const updates = new Map(result.updated.map((item) => [item.id, item.updates]))
+        eventsRef.current = [
+          ...eventsRef.current.map((event) => updates.has(event.id) ? { ...event, ...updates.get(event.id) } : event),
+          ...created,
+        ]
       }
       if (result.createdSessions.length > 0 || result.updatedSessions.length > 0) {
-        await syncSessions(result.createdSessions, result.updatedSessions)
+        const created = await syncSessions(result.createdSessions, result.updatedSessions)
+        const updates = new Map(result.updatedSessions.map((item) => [item.id, item.updates]))
+        sessionsRef.current = [
+          ...sessionsRef.current.map((session) => updates.has(session.id) ? { ...session, ...updates.get(session.id) } : session),
+          ...created,
+        ]
       }
       const syncSucceeded = notionSyncResultSucceeded(result)
 
@@ -156,14 +169,15 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
         notionSyncQueuedRef.current = false
         const queuedNotify = notionSyncQueuedNotifyRef.current
         notionSyncQueuedNotifyRef.current = false
-        const queuedResolver = notionSyncQueuedResolverRef.current
-        notionSyncQueuedResolverRef.current = null
+        const queuedResolvers = notionSyncQueuedResolversRef.current.splice(0)
         const result = notionSyncRunnerRef.current?.(queuedNotify)
-        if (queuedResolver && result) {
+        if (result) {
           result.then(
-            (r) => queuedResolver.resolve(r),
-            (err) => queuedResolver.reject(err),
+            (syncResult) => queuedResolvers.forEach(({ resolve }) => resolve(syncResult)),
+            (error) => queuedResolvers.forEach(({ reject }) => reject(error)),
           )
+        } else {
+          queuedResolvers.forEach(({ resolve }) => resolve(null))
         }
       }
     }

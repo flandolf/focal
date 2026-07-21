@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
-import { addDays, format, isSameMonth, parseISO, differenceInDays } from "date-fns";
+import { format, isSameMonth, parseISO, differenceInDays } from "date-fns";
 import {
   Plus,
   Calendar,
@@ -27,7 +27,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   formatDeadline,
-  isOverdue,
   getSubjectById,
   getEventTypeInfo,
   getSessionSubjectIds,
@@ -37,8 +36,8 @@ import {
   formatTime12,
 } from "@/lib/utils";
 import { TextEventPlanner } from "@/components/TextEventPlanner";
-import { getPriorityItems } from "@/lib/studyPriority";
-import { getCompletedStudyMinutesBySubject, type PrepBalanceItem } from "@/lib/planning";
+import type { PrepBalanceItem } from "@/lib/planning";
+import { buildTodayOverview } from "@/features/home/todayOverview";
 import type { TimetableConfig } from "@/lib/settings";
 import type {
   CalendarEvent,
@@ -47,7 +46,6 @@ import type {
   StudySession,
   StudySessionDraft,
 } from "@/lib/types";
-import { VCE_SUBJECTS } from "@/lib/types";
 import { CalendarGrid } from "@/components/home/CalendarGrid";
 import { DayDetail } from "@/components/home/DayDetail";
 import { MonthBrief } from "@/components/home/MonthBrief";
@@ -70,18 +68,6 @@ interface MonthBriefItem {
 
 const CALENDAR_SESSION_COLOR = "var(--primary)";
 const PREP_COMPLETED_CREDIT_WINDOW_DAYS = 7;
-
-function getPlanningSubjects(projects: Project[]) {
-  const subjectsById = new Map(
-    VCE_SUBJECTS.map((subject) => [subject.id, subject]),
-  );
-  projects.forEach((project) => {
-    if (!project.subjectId || subjectsById.has(project.subjectId)) return;
-    const subject = getSubjectById(project.subjectId);
-    if (subject) subjectsById.set(subject.id, subject);
-  });
-  return Array.from(subjectsById.values());
-}
 
 interface HomeViewProps {
   projects: Project[];
@@ -160,166 +146,27 @@ export const HomeView = memo(function HomeView({
     ? parseISO(selectedDate)
     : undefined;
 
-  const activeProjects = projects.filter((p) => !p.isFinished);
-  const projectsWithDeadlines = activeProjects.filter((p) => p.deadline);
-  const overdueProjects = projectsWithDeadlines.filter(
-    (p) => p.deadline && isOverdue(p.deadline),
+  const {
+    activeProjects,
+    projectsWithDeadlines,
+    overdueProjects,
+    dueThisWeek,
+    completedSessions,
+    totalStudyHours,
+    priorityItems,
+    planningSubjects,
+    recentActivity,
+    topSubjects,
+    upcomingSessions,
+    upcomingEvents,
+    deadlinesByDate,
+    sessionsByDate,
+    eventsByDate,
+    now,
+  } = useMemo(
+    () => buildTodayOverview(projects, sessions, events),
+    [events, projects, sessions],
   );
-  const upcomingProjects = projectsWithDeadlines.filter(
-    (p) => p.deadline && !isOverdue(p.deadline),
-  );
-
-  const now = new Date();
-  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const dueThisWeek = upcomingProjects
-    .filter((p) => p.deadline && parseISO(p.deadline) <= nextWeek)
-    .sort(
-      (a, b) =>
-        parseISO(a.deadline!).getTime() - parseISO(b.deadline!).getTime(),
-    );
-
-  const completedSessionItems = sessions.filter(
-    (session) => session.status === "completed",
-  );
-  const totalStudyMinutes = completedSessionItems.reduce((acc, s) => {
-    return acc + getSessionEffectiveMinutes(s);
-  }, 0);
-  const totalStudyHours = Math.round((totalStudyMinutes / 60) * 10) / 10;
-
-  const completedSessions = completedSessionItems.length;
-  const priorityItems = useMemo(
-    () => getPriorityItems({ projects, sessions, events }),
-    [projects, sessions, events],
-  );
-  const planningSubjects = useMemo(
-    () => getPlanningSubjects(projects),
-    [projects],
-  );
-
-  const recentActivity = useMemo(() => {
-    interface ActivityItem {
-      id: string;
-      title: string;
-      subtitle: string;
-      timestamp: string;
-      kind: "session" | "event";
-      session?: StudySession;
-      event?: CalendarEvent;
-    }
-    const recentSessions: ActivityItem[] = sessions
-      .filter((s) => s.status === "completed" && s.completedAt)
-      .map((s) => {
-        const project = s.projectId
-          ? projects.find((p) => p.id === s.projectId)
-          : undefined;
-        const subjectLabels = getSessionSubjectIds(s, project)
-          .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
-          .join(", ");
-        return {
-          id: s.id,
-          title: s.title,
-          subtitle: project?.name ?? (subjectLabels || "Study session"),
-          timestamp: s.completedAt!,
-          kind: "session" as const,
-          session: s,
-        };
-      });
-    const recentEvents: ActivityItem[] = events
-      .filter((e) => e.isFinished && e.finishedAt)
-      .map((e) => {
-        const subject = getSubjectById(e.subjectId);
-        return {
-          id: e.id,
-          title: e.title,
-          subtitle: subject?.shortCode ?? e.eventType,
-          timestamp: e.finishedAt!,
-          kind: "event" as const,
-          event: e,
-        };
-      });
-    return [...recentSessions, ...recentEvents]
-      .sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-      )
-      .slice(0, 7);
-  }, [sessions, events, projects]);
-
-  const studyBySubject = Object.entries(
-    getCompletedStudyMinutesBySubject(sessions, projects),
-  ).map(([subjectId, minutes]) => {
-      const subject = getSubjectById(subjectId);
-      return [subjectId, {
-        minutes,
-        icon: subject?.icon ?? "",
-        shortCode: subject?.shortCode ?? subjectId,
-      }] as const;
-  });
-  const topSubjects = studyBySubject
-    .filter(([, info]) => info.minutes > 0)
-    .sort(([, a], [, b]) => b.minutes - a.minutes)
-    .slice(0, 3);
-  const upcomingSessions = sessions
-    .filter((s) => {
-      const sessionStart = new Date(s.startTime);
-      return (
-        sessionStart >= now &&
-        sessionStart <= nextWeek &&
-        s.status === "planned"
-      );
-    })
-    .sort(
-      (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
-  const upcomingEvents = events
-    .filter((event) => {
-      const eventStart = new Date(event.startTime);
-      return !event.isFinished && eventStart >= now && eventStart <= nextWeek;
-    })
-    .sort(
-      (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
-
-  const deadlinesByDate: Record<string, Project[]> = {};
-  projectsWithDeadlines.forEach((p) => {
-    if (p.deadline) {
-      const dateKey = format(parseISO(p.deadline), "yyyy-MM-dd");
-      if (!deadlinesByDate[dateKey]) deadlinesByDate[dateKey] = [];
-      deadlinesByDate[dateKey].push(p);
-    }
-  });
-
-  const sessionsByDate: Record<string, StudySession[]> = {};
-  sessions.forEach((s) => {
-    const dateKey = format(parseISO(s.startTime), "yyyy-MM-dd");
-    if (!sessionsByDate[dateKey]) sessionsByDate[dateKey] = [];
-    sessionsByDate[dateKey].push(s);
-  });
-
-  const eventsByDate: Record<string, CalendarEvent[]> = {};
-  events.forEach((event) => {
-    const startKey = format(parseISO(event.startTime), "yyyy-MM-dd");
-    if (!eventsByDate[startKey]) eventsByDate[startKey] = [];
-    eventsByDate[startKey].push(event);
-
-    // Index multi-day events on every date they span
-    if (event.endTime) {
-      const endKey = format(parseISO(event.endTime), "yyyy-MM-dd");
-      if (endKey !== startKey) {
-        let current = parseISO(event.startTime);
-        const _endDate = parseISO(event.endTime);
-        while (true) {
-          current = addDays(current, 1);
-          const dateKey = format(current, "yyyy-MM-dd");
-          if (dateKey > endKey) break;
-          if (!eventsByDate[dateKey]) eventsByDate[dateKey] = [];
-          eventsByDate[dateKey].push(event);
-        }
-      }
-    }
-  });
 
   const selectedEventIdSet = useMemo(
     () => new Set(selectedEventIds),

@@ -19,6 +19,8 @@
         }
       ]
     },
+    "opener:allow-open-url",
+    "opener:allow-default-urls",
     "dialog:default",
     "fs:allow-appdata-read",
     "fs:allow-appdata-read-recursive",
@@ -47,8 +49,10 @@
         }
       ]
     },
-  "notification:default",
+    "notification:default",
     "os:default",
+    "sql:default",
+    "sql:allow-execute",
     "updater:default"
   ]
 }

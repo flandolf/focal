@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react"
-import { addMinutes } from "date-fns"
+import { addMinutes, parseISO } from "date-fns"
 import { AlertCircle, BookOpen, CheckCircle2, ClipboardList, Loader2, Pencil, Wand2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { DatePickerField } from "@/components/ui/form-controls"
 import { Textarea } from "@/components/ui/textarea"
 import TimePicker from "@/components/ui/time-picker"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -792,15 +793,14 @@ export function TextEventPlanner({
                                 aria-invalid={!draft.title.trim()}
                               />
                             </label>
-                            <label className="grid gap-1 text-micro font-medium text-muted-foreground">
-                              Date
-                              <Input
-                                type="date"
-                                value={draft.date}
-                                onChange={(event) => handleUpdateDraft(index, { date: event.target.value })}
-                                aria-invalid={!isValidDateTime(draft.date, draft.startTime)}
-                              />
-                            </label>
+                            <DatePickerField
+                              id={`draft-date-${index}`}
+                              label="Date"
+                              date={draft.date ? parseISO(draft.date) : undefined}
+                              onDateChange={(date) => handleUpdateDraft(index, { date: date ? getLocalDateValue(date) : "" })}
+                              invalid={!isValidDateTime(draft.date, draft.startTime)}
+                              labelClassName="text-micro"
+                            />
                             <label className="grid gap-1 text-micro font-medium text-muted-foreground">
                               Time
                               <TimePicker
@@ -824,16 +824,15 @@ export function TextEventPlanner({
                             </label>
                           </div>
                           {draft.endDate && (
-                            <label className="mt-3 grid max-w-36 gap-1 text-micro font-medium text-muted-foreground">
-                              End date
-                              <Input
-                                type="date"
-                                value={draft.endDate}
-                                min={draft.date}
-                                onChange={(event) => handleUpdateDraft(index, { endDate: event.target.value || undefined })}
-                                aria-invalid={draft.endDate < draft.date}
-                              />
-                            </label>
+                            <DatePickerField
+                              id={`draft-end-date-${index}`}
+                              label="End date"
+                              date={draft.endDate ? parseISO(draft.endDate) : undefined}
+                              onDateChange={(date) => handleUpdateDraft(index, { endDate: date ? getLocalDateValue(date) : undefined })}
+                              disabledDays={draft.date ? { before: parseISO(draft.date) } : undefined}
+                              invalid={draft.endDate < draft.date}
+                              labelClassName="text-micro"
+                            />
                           )}
                           {draftIssue && <p className="mt-2 text-xs text-destructive">{draftIssue}</p>}
                         </div>
