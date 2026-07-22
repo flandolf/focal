@@ -186,6 +186,12 @@ export const HomeView = memo(function HomeView({
   const selectedDayEvents = selectedDate
     ? (eventsByDate[selectedDate] ?? [])
     : [];
+  const todayDateKey = getLocalDateValue(new Date());
+  const headingDateKey = selectedDate ?? todayDateKey;
+  const headingDate = parseISO(headingDateKey);
+  const selectedStudyHours = (sessionsByDate[headingDateKey] ?? [])
+    .filter((session) => session.status === "completed")
+    .reduce((total, session) => total + getSessionEffectiveMinutes(session), 0) / 60;
   const selectedBatchEvents = selectedDayEvents.filter((event) =>
     selectedEventIdSet.has(event.id),
   );
@@ -737,10 +743,13 @@ export const HomeView = memo(function HomeView({
           <div className="mb-4 grid gap-3 border-b border-border/70 pb-4 min-[1080px]:grid-cols-[minmax(12rem,0.7fr)_minmax(24rem,1.3fr)]">
             <div className="min-w-0">
               <p className="mb-1 text-xs font-medium text-foreground/60 tabular-nums">
-                {format(new Date(), "EEEE · d MMMM")}
+                {format(headingDate, "EEEE · d MMMM")}
               </p>
               <h1 className="text-xl font-semibold">
-                Today - {totalStudyHours.toFixed(1)} hours studied
+                {headingDateKey === todayDateKey
+                  ? "Today"
+                  : format(headingDate, "d MMMM")}{" "}
+                - {selectedStudyHours.toFixed(1)} hours studied
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {overdueProjects.length > 0 ? (
