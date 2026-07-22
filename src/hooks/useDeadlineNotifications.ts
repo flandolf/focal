@@ -6,6 +6,7 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification"
 import { toast } from "sonner"
+import { getDeadlineTypeInfo } from "@/lib/utils"
 import type { CalendarEvent, Project, StudySession } from "@/lib/types"
 
 type NotificationUrgency = "critical" | "warning" | "info"
@@ -116,7 +117,7 @@ function createProjectNotification(project: Project, now: Date): StudyNotificati
   if (!leadWindow) return null
 
   const relativeLead = getRelativeLead(hoursUntil, leadWindow)
-  const label = project.deadlineType?.toUpperCase() ?? "Assessment"
+  const label = project.deadlineType ? getDeadlineTypeInfo(project.deadlineType).label : "Assessment"
 
   return {
     id: `project:${project.id}`,

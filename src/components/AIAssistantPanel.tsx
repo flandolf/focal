@@ -29,7 +29,7 @@ import {
 } from"@/components/ui/tooltip";
 import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area";
 import { TRANSITION, staggerContainer, staggerItem } from"@/lib/motion";
-import { cn, getLocalDateValue } from"@/lib/utils";
+import { cn, getEventTypeInfo, getLocalDateValue } from"@/lib/utils";
 import { showUndoToast } from"@/lib/undoToast";
 import { toast } from"sonner";
 import {
@@ -107,6 +107,8 @@ const SUGGESTED_PROMPTS = [
  prompt:"Explain active recall vs spaced repetition in plain English.",
  },
 ] as const;
+
+const EVENT_TYPE_LABELS = EVENT_TYPE_ENUM.map((type) => getEventTypeInfo(type).label).join(", ");
 
 const QUICK_ACTION_PROMPTS = [
  {
@@ -282,7 +284,8 @@ function readPersistedConversation(): Message[] {
  content: record.content,
  followUps,
  },
- ];
+];
+
  });
  } catch {
  return [];
@@ -675,7 +678,7 @@ export function AIAssistantPanel({
  async (data: EventToolData): Promise<string> => {
  if (!onCreateEvent) return"Event creation is not available here.";
  if (!data.title || !data.eventType || !isIsoDateTime(data.startTime)) {
- return `I need a title, event type (${EVENT_TYPE_ENUM.join(", ")}), and date/time before I can create that event.`;
+ return `I need a title, event type (${EVENT_TYPE_LABELS}), and date/time before I can create that event.`;
  }
  if (data.endTime && !isIsoDateTime(data.endTime))
  return"The event end time was not a valid ISO date.";
@@ -1056,7 +1059,7 @@ ${text}`,
  const call = normaliseEventToolCall(raw);
  if (call.action ==="none") {
  return hasEventMutationIntent(text)
- ? `Yes. Tell me the event title, date/time, and type (${EVENT_TYPE_ENUM.join(", ")}), and I can add or update it in Focal.`
+ ? `Yes. Tell me the event title, date/time, and type (${EVENT_TYPE_LABELS}), and I can add or update it in Focal.`
  : null;
  }
  return executeEventToolCall(call, looseCreate);

@@ -30,10 +30,10 @@ export function StudyPriorities({
  aria-expanded={isOpen}
  aria-controls={contentId}
  variant="ghost"
- className="w-full justify-between px-0 text-left"
+ className="group w-full justify-between px-0 text-left hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
  >
- <h3 className="flex items-center gap-2 text-sm font-semibold">
- <Target className="h-3.5 w-3.5 text-muted-foreground" />
+ <h3 className="flex items-center gap-2 text-sm font-semibold leading-none underline-offset-4 group-hover:underline group-focus-visible:underline">
+ <Target className="size-3.5 text-muted-foreground" />
  Study Priorities
  </h3>
  <div className="flex items-center gap-2">
@@ -43,7 +43,7 @@ export function StudyPriorities({
  transition={reduceMotion ? REDUCED_TRANSITION : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
  className="inline-flex"
  >
- <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+ <ChevronRight className="size-3.5 text-muted-foreground" />
  </motion.span>
  </div>
  </Button>

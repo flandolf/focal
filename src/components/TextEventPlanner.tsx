@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import TimePicker from "@/components/ui/time-picker"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getActiveProvider, getEffectiveModel } from "@/lib/providers"
-import { getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
+import { getEventTypeInfo, getSubjectById, cn, combineDateAndTime, getLocalDateValue } from "@/lib/utils"
 import { aiChatCompletion, describeAiError, VCE_JSON_FORMAT_GUARD, type ChatTurn } from "@/lib/aiAssistant"
 import type { CalendarEvent, EventType, Project, StudySessionDraft, Subject } from "@/lib/types"
 
@@ -729,8 +729,8 @@ export function TextEventPlanner({
                                 Study
                               </span>
                             ) : (
-                              <span className="inline-flex shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-micro font-medium capitalize text-muted-foreground">
-                                {draft.eventType}
+                              <span className="inline-flex shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
+                                {getEventTypeInfo(draft.eventType).label}
                               </span>
                             )}
                           </div>

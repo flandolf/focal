@@ -1130,12 +1130,6 @@ function App() {
     async (id: string) => {
       const event = events.find((item) => item.id === id);
       if (!event) return false;
-      const confirmed = await confirmDestructiveAction({
-        title: `Delete "${event.title}"?`,
-        description: "This event will be removed from your calendar.",
-        actionLabel: "Delete",
-      });
-      if (!confirmed) return false;
       try {
         await deleteEvent(id);
         void deleteNotionPageIfLinked(event.source);
@@ -1169,12 +1163,10 @@ function App() {
     async (itemIds: { eventIds: string[]; sessionIds: string[] }) => {
       const total = itemIds.eventIds.length + itemIds.sessionIds.length;
       if (total === 0) return;
-      const confirmed = await confirmDestructiveAction({
-        title: `Delete ${total} selected calendar item${total === 1 ? "" : "s"}?`,
-        description: "Selected events and study sessions will be removed.",
-        actionLabel: "Delete",
-      });
-      if (!confirmed) return;
+      if (itemIds.eventIds.length === 1 && itemIds.sessionIds.length === 0) {
+        await handleDeleteEvent(itemIds.eventIds[0]);
+        return;
+      }
 
       const deletedEvents = itemIds.eventIds
         .map((id) => events.find((e) => e.id === id))
@@ -1223,6 +1215,7 @@ function App() {
     [
       events,
       sessions,
+      handleDeleteEvent,
       deleteEvents,
       deleteSessions,
       restoreEvents,

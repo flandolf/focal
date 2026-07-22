@@ -27,6 +27,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   formatDeadline,
+  getDeadlineTypeInfo,
   getSubjectById,
   getEventTypeInfo,
   getSessionSubjectIds,
@@ -308,7 +309,7 @@ export const HomeView = memo(function HomeView({
         return {
           id: `assessment-${project.id}`,
           title: project.name,
-          meta: `${project.deadlineType?.toUpperCase() ?? "Assessment"} · ${formatDeadline(project.deadline!)}`,
+          meta: `${project.deadlineType ? getDeadlineTypeInfo(project.deadlineType).label : "Assessment"} · ${formatDeadline(project.deadline!)}`,
           date: parseISO(project.deadline!),
           color: subject?.color ?? "var(--primary)",
           kind: "assessment" as const,
@@ -868,6 +869,7 @@ export const HomeView = memo(function HomeView({
                   onSelectProject={onSelectProject}
                   onSelectSession={onSelectSession}
                   onSelectEvent={onSelectEvent}
+                  onNewEvent={onNewEvent}
                   onDeleteCalendarItems={onDeleteCalendarItems}
                   onSetCalendarItemsCompleted={onSetCalendarItemsCompleted}
                 />

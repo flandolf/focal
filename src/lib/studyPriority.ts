@@ -5,7 +5,7 @@ import type {
   Project,
   StudySession,
 } from "@/lib/types"
-import { getSessionSubjectIds } from "@/lib/utils"
+import { getDeadlineTypeInfo, getEventTypeInfo, getSessionSubjectIds } from "@/lib/utils"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const ASSESSMENT_TYPES = new Set(["sac", "exam", "assignment"])
@@ -91,7 +91,7 @@ export function getPriorityItems({ projects, sessions, events }: PriorityInput):
         id: `project-${project.id}`,
         kind: days < 0 ? "overdue-project" : "upcoming-assessment",
         title: project.name,
-        reason: `${project.deadlineType?.toUpperCase() ?? "Deadline"} ${formatDaysReason(days)}`,
+        reason: `${project.deadlineType ? getDeadlineTypeInfo(project.deadlineType).label : "Deadline"} ${formatDaysReason(days)}`,
         urgency: getUrgencyForDays(days),
         subjectIds: getProjectSubjectIds(project),
         projectId: project.id,
@@ -109,7 +109,7 @@ export function getPriorityItems({ projects, sessions, events }: PriorityInput):
       id: `event-${event.id}`,
       kind: "upcoming-assessment",
       title: event.title,
-      reason: `${event.eventType.toUpperCase()} ${formatDaysReason(days)}`,
+      reason: `${getEventTypeInfo(event.eventType).label} ${formatDaysReason(days)}`,
       urgency: getUrgencyForDays(days),
       subjectIds: event.subjectId ? [event.subjectId] : [],
       eventId: event.id,

@@ -516,7 +516,7 @@ function EventForm({
  icon={<MapPin className={sectionIconClass} />}
  className={sectionClass}
  >
- <div className="grid gap-3 sm:grid-cols-2">
+ <div className="grid items-start gap-3 sm:grid-cols-2">
  <FormField label="Location" labelClassName={fieldLabelClass}>
  <div className="relative">
  <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
