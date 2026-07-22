@@ -40,6 +40,19 @@ function pullEvent(
   if (existing) {
     ctx.matchedEventIds.add(existing.id)
     const existingSource = existing.source?.type === "notion" ? existing.source : undefined
+    if (
+      !existing.source
+      && getFocalId(page) === existing.id
+      && pageMatchesEvent(page, existing, settings, subjects, findSubjectIdFromValues)
+    ) {
+      ctx.updatedEvents.set(existing.id, {
+        ...ctx.updatedEvents.get(existing.id),
+        source: getNotionSource(page, "event", hashBody(existing.description)),
+      })
+      ctx.pulledEventIds.add(existing.id)
+      ctx.acknowledgedEventIds.add(existing.id)
+      return
+    }
     if (!existingSource?.lastEditedTime || existingSource.lastEditedTime !== page.last_edited_time) {
       const fromPage = toEventFromPage(page, settings, subjects, findSubjectIdFromValues)
       const updates = {
@@ -52,10 +65,29 @@ function pullEvent(
       if (fromPage.endTime !== undefined) fullUpdates.endTime = fromPage.endTime
       if (fromPage.subjectId !== undefined) fullUpdates.subjectId = fromPage.subjectId
       fullUpdates.source = getNotionSource(page, "event", existingSource?.bodyHash)
+      if (ctx.dirtyEventIds.has(existing.id)) {
+        ctx.conflicts += 1
+        ctx.conflictedEventIds.add(existing.id)
+        ctx.conflictDetails.push(`Event "${existing.title}" was modified both locally and in Notion`)
+        ctx.conflictItems.push({
+          localId: existing.id,
+          kind: "event",
+          title: existing.title,
+          startTime: existing.startTime,
+          endTime: existing.endTime,
+          notionPageId: page.id,
+          notionLastEditedTime: page.last_edited_time,
+          notionUrl: page.url,
+          remoteUpdates: fullUpdates,
+        })
+        return
+      }
       ctx.updatedEvents.set(existing.id, {
         ...ctx.updatedEvents.get(existing.id),
         ...fullUpdates,
       })
+      ctx.pulledEventIds.add(existing.id)
+      ctx.acknowledgedEventIds.add(existing.id)
     }
     return
   }
@@ -79,14 +111,14 @@ function pullEvent(
       ...ctx.updatedEvents.get(match.id),
       source: getNotionSource(page, "event", hashBody(match.description)),
     })
+    ctx.pulledEventIds.add(match.id)
+    ctx.acknowledgedEventIds.add(match.id)
     return
   }
 
-  if (getFocalId(page) || existingEvents.some((e) => e.source?.type === "notion" && e.source.id === page.id)) {
-    return
-  }
-
-  ctx.created.push(toEventFromPage(page, settings, subjects, findSubjectIdFromValues))
+  const focalId = getFocalId(page)
+  const fromPage = toEventFromPage(page, settings, subjects, findSubjectIdFromValues)
+  ctx.created.push(focalId ? { ...fromPage, id: focalId } : fromPage)
 }
 
 function pullSession(
@@ -105,10 +137,24 @@ function pullSession(
     ?? (getFocalId(page) ? existingSessions.find((session) => session.id === getFocalId(page)) : undefined)
   if (existing) {
     ctx.matchedSessionIds.add(existing.id)
+    if (
+      !existing.source
+      && getFocalId(page) === existing.id
+      && pageMatchesSession(page, existing, settings, subjects, findSubjectIdFromValues)
+    ) {
+      const bodyText = [existing.description, existing.notes].filter(Boolean).join("\n\n") || undefined
+      ctx.updatedSessions.set(existing.id, {
+        ...ctx.updatedSessions.get(existing.id),
+        source: getNotionSource(page, "session", hashBody(bodyText)),
+      })
+      ctx.pulledSessionIds.add(existing.id)
+      ctx.acknowledgedSessionIds.add(existing.id)
+      return
+    }
     if (!existing.source?.lastEditedTime || existing.source.lastEditedTime !== page.last_edited_time) {
       const session = toSessionFromPage(page, settings, subjects, findSubjectIdFromValues)
       if (session) {
-        ctx.updatedSessions.set(existing.id, {
+        const remoteUpdates = {
           ...ctx.updatedSessions.get(existing.id),
           title: session.title,
           startTime: session.startTime,
@@ -117,7 +163,27 @@ function pullSession(
           subjectIds: session.subjectIds,
           completedAt: session.completedAt,
           source: getNotionSource(page, "session", existing.source?.bodyHash),
-        })
+        }
+        if (ctx.dirtySessionIds.has(existing.id)) {
+          ctx.conflicts += 1
+          ctx.conflictedSessionIds.add(existing.id)
+          ctx.conflictDetails.push(`Session "${existing.title}" was modified both locally and in Notion`)
+          ctx.conflictItems.push({
+            localId: existing.id,
+            kind: "session",
+            title: existing.title,
+            startTime: existing.startTime,
+            endTime: existing.endTime,
+            notionPageId: page.id,
+            notionLastEditedTime: page.last_edited_time,
+            notionUrl: page.url,
+            remoteUpdates,
+          })
+          return
+        }
+        ctx.updatedSessions.set(existing.id, remoteUpdates)
+        ctx.pulledSessionIds.add(existing.id)
+        ctx.acknowledgedSessionIds.add(existing.id)
       }
     }
     return
@@ -143,15 +209,16 @@ function pullSession(
       ...ctx.updatedSessions.get(match.id),
       source: getNotionSource(page, "session", hashBody(bodyText)),
     })
-    return
-  }
-
-  if (getFocalId(page) || existingSessions.some((s) => s.source?.type === "notion" && s.source.id === page.id)) {
+    ctx.pulledSessionIds.add(match.id)
+    ctx.acknowledgedSessionIds.add(match.id)
     return
   }
 
   const session = toSessionFromPage(page, settings, subjects, findSubjectIdFromValues)
-  if (session) ctx.createdSessions.push(session)
+  if (session) {
+    const focalId = getFocalId(page)
+    ctx.createdSessions.push(focalId ? { ...session, id: focalId } : session)
+  }
 }
 
 export function pullFromNotion(

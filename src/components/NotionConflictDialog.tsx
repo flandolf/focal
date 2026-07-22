@@ -30,6 +30,7 @@ export interface NotionConflict {
  status?: string
  url?: string
  }
+ remoteUpdates: Record<string, unknown>
 }
 
 interface NotionConflictDialogProps {

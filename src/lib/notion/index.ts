@@ -13,7 +13,8 @@ import {
 } from "@/lib/notion/schema"
 import { deleteNotionPage, ensureNotionSyncProperties, fetchNotionSchema, queryNotionCalendar } from "@/lib/notion/api"
 import { pullFromNotion } from "@/lib/notion/pull"
-import { executePush, deleteOrphanPages } from "@/lib/notion/push"
+import { executePush, processNotionArchiveIntents } from "@/lib/notion/push"
+import { readNotionIntents } from "@/lib/notion/outbox"
 import { dedupeCalendarEvents } from "@/lib/calendarEvents"
 import { repairDuplicateSessions } from "@/lib/sync/protocol"
 import { readState, writeState } from "@/lib/sync/persistence"
@@ -33,8 +34,6 @@ export async function syncNotionCalendar(
 ): Promise<NotionCalendarSyncResult> {
   if (!settings.token.trim()) throw new Error("Add a Notion integration token first.")
   if (!settings.dataSourceId.trim()) throw new Error("Add a Notion data source or database id first.")
-  void changedEventIds
-  void changedSessionIds
   const eventRepair = dedupeCalendarEvents(existingEvents)
   const sessionRepair = repairDuplicateSessions(existingSessions)
   const cleanEvents = eventRepair.events
@@ -47,7 +46,16 @@ export async function syncNotionCalendar(
     ...sessionRepair.duplicateNotionPageIds,
     ...(await readState<string[]>("notion:duplicate-pages") ?? []),
   ])
-  const ctx = createSyncCtx()
+  const intents = await readNotionIntents(settings.dataSourceId)
+  const dirtyEventIds = new Set([
+    ...(changedEventIds ?? []),
+    ...intents.filter((intent) => intent.operation === "upsert" && intent.kind === "event").map((intent) => intent.localId),
+  ])
+  const dirtySessionIds = new Set([
+    ...(changedSessionIds ?? []),
+    ...intents.filter((intent) => intent.operation === "upsert" && intent.kind === "session").map((intent) => intent.localId),
+  ])
+  const ctx = createSyncCtx(dirtyEventIds, dirtySessionIds)
   let schema = getCachedSchema(settings.dataSourceId) ?? await fetchNotionSchema(settings) ?? {}
   if (!(FOCAL_ID_PROPERTY in schema) || !(FOCAL_KIND_PROPERTY in schema)) {
     onProgress?.("Adding stable Focal identity columns to Notion…")
@@ -59,8 +67,10 @@ export async function syncNotionCalendar(
   onProgress?.(`Fetched ${queriedPages.length} page${queriedPages.length === 1 ? "" : "s"} from Notion`)
   const pages = await removeDuplicateNotionPages(queriedPages, cleanEvents, cleanSessions, knownDuplicatePageIds, settings, ctx, onProgress)
   let pagesById = new Map(pages.map((page) => [page.id, page]))
-  const deletedIds = await deleteOrphanPages(cleanEvents, cleanSessions, pagesById, settings, ctx, onProgress)
-  const activePages = deletedIds.size > 0 ? pages.filter((page) => !deletedIds.has(page.id)) : pages
+  const archivedOrPendingIds = await processNotionArchiveIntents(cleanEvents, cleanSessions, settings, ctx, onProgress)
+  const activePages = archivedOrPendingIds.size > 0
+    ? pages.filter((page) => !archivedOrPendingIds.has(page.id))
+    : pages
   pagesById = new Map(activePages.map((page) => [page.id, page]))
 
   pullFromNotion(activePages, cleanEvents, cleanSessions, settings, subjects, ctx)
@@ -82,6 +92,8 @@ export async function syncNotionCalendar(
     conflictDetails: ctx.conflictDetails,
     conflictItems: ctx.conflictItems,
     pushErrors: ctx.pushErrors,
+    acknowledgedEventIds: [...ctx.acknowledgedEventIds],
+    acknowledgedSessionIds: [...ctx.acknowledgedSessionIds],
   }
 }
 

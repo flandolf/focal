@@ -28,6 +28,11 @@ import {
 } from "@/lib/settings"
 import { setCachedPreference } from "@/lib/storage/preferences"
 import { supabase } from "@/lib/supabase/client"
+import {
+  enqueueNotionArchive,
+  enqueueNotionUpsert,
+  type NotionIntentKind,
+} from "@/lib/notion/outbox"
 import { getDeviceId } from "@/lib/sync/device"
 import {
   emitLocalDataChanged,
@@ -37,15 +42,27 @@ import {
   writeLocalDataArray,
 } from "@/lib/sync/localData"
 import {
-  claimUnownedOutbox,
+  activateOutboxAccount,
+  clearRecordOutboxSuppressions,
+  deferInboxChanges,
   enqueueChange,
   finishFlush,
+  readInbox,
   readOutbox,
   readState,
+  removeInboxChanges,
   removeOutboxChange,
+  suppressRecordOutbox,
   writeState,
 } from "@/lib/sync/persistence"
-import { isDue, isSyncTable, latestChanges, repairDuplicateSessions, retryChange } from "@/lib/sync/protocol"
+import {
+  chunkItems,
+  isDue,
+  isSyncTable,
+  latestChanges,
+  repairDuplicateSessions,
+  retryOrBlockChange,
+} from "@/lib/sync/protocol"
 import { normalizeStudySession } from "@/lib/studySessions"
 import type {
   LocalRecord,
@@ -63,15 +80,23 @@ const PAGE_SIZE = 1000
 const FLUSH_INTERVAL_MS = 30_000
 const PULL_INTERVAL_MS = 120_000
 const MAX_RETRIES = 8
+const PUSH_BATCH_SIZE = 100
+const NOTION_UNDO_DELAY_MS = 8_000
 
 let currentSession: Session | null = null
 let currentDeviceId: string | null = null
 let realtimeChannel: RealtimeChannel | null = null
 let flushInterval: ReturnType<typeof setInterval> | null = null
 let pullInterval: ReturnType<typeof setInterval> | null = null
-let flushPromise: Promise<void> | null = null
-let pullPromise: Promise<void> | null = null
-let pullQueued = false
+interface SyncTask {
+  accountId: string
+  epoch: number
+  rerunRequested: boolean
+  promise: Promise<void>
+}
+
+let flushTask: SyncTask | null = null
+let pullTask: SyncTask | null = null
 let syncEpoch = 0
 
 let snapshot: SyncStatusSnapshot = {
@@ -102,13 +127,22 @@ export function subscribeSyncStatus(listener: (status: SyncStatusSnapshot) => vo
 export async function setSyncSession(session: Session | null): Promise<void> {
   const epoch = ++syncEpoch
   currentSession = session
-  await stopRemoteSync()
-  if (epoch !== syncEpoch) return
+  try {
+    await activateOutboxAccount(session?.user.id ?? "")
+    if (epoch !== syncEpoch) return
+    await stopRemoteSync()
+    if (epoch !== syncEpoch) return
+  } catch (error) {
+    if (epoch !== syncEpoch) return
+    const message = syncErrorMessage(error)
+    emitStatus({ status: "error", error: message, details: message })
+    return
+  }
 
   if (!session || !supabase) {
     emitStatus({
       status: "signed-out",
-      pendingCount: (await readOutbox("")).length,
+      pendingCount: (await readOutbox()).length,
       error: null,
       details: null,
       tableStats: null,
@@ -118,13 +152,10 @@ export async function setSyncSession(session: Session | null): Promise<void> {
     return
   }
 
-  currentDeviceId = await getDeviceId()
-  if (epoch !== syncEpoch) return
-  await claimUnownedOutbox(session.user.id)
-  if (epoch !== syncEpoch) return
-  emitStatus({ status: "syncing", error: null, details: "Repairing local data…" })
-
   try {
+    currentDeviceId = await getDeviceId()
+    if (epoch !== syncEpoch) return
+    emitStatus({ status: "syncing", error: null, details: "Repairing local data…" })
     await repairLocalSessionDuplicates(session.user.id)
     if (epoch !== syncEpoch) return
     // Pull first so a new device cannot publish empty/default singleton state
@@ -168,6 +199,7 @@ export async function recordLocalUpsert(
 ): Promise<void> {
   const rowId = localRowId(table, payload)
   const queue = await enqueueChange(accountId, table, rowId, "put", sanitizePayload(table, payload))
+  await recordNotionUpsertIntent(table, rowId, payload)
   emitQueuedStatus(queue, `${table.replace(/_/g, " ")} saved locally`)
   if (currentSession) void flushQueue()
 }
@@ -177,7 +209,19 @@ export async function recordLocalSoftDelete(
   rowId: string,
   accountId = currentSession?.user.id ?? "",
 ): Promise<void> {
-  const queue = await enqueueChange(accountId, table, rowId, "delete", null)
+  const current = await readCurrentLocalValue(table, rowId)
+  const deletePayload = notionDeletePayload(table, rowId, current)
+  const queue = await enqueueChange(accountId, table, rowId, "delete", deletePayload)
+  const notion = getNotionDeleteMetadata(deletePayload)
+  if (notion) {
+    await enqueueNotionArchive(
+      notion.dataSourceId,
+      notion.kind,
+      rowId,
+      notion.pageId,
+      new Date(Date.now() + NOTION_UNDO_DELAY_MS).toISOString(),
+    )
+  }
   emitQueuedStatus(queue, `${table.replace(/_/g, " ")} deletion saved locally`)
   if (currentSession) void flushQueue()
 }
@@ -244,9 +288,11 @@ export async function dropQueueItem(table: SyncTable, rowId: string): Promise<vo
   await removeOutboxChange(currentSession?.user.id ?? "", table, rowId)
   const queue = await readOutbox(currentSession?.user.id ?? "")
   emitStatus({ pendingCount: queue.length, failedItems: snapshot.failedItems?.filter((item) => item.table !== table || item.rowId !== rowId) ?? null })
+  await pullRemoteChanges()
 }
 
-export async function resolveConflictAcceptRemote(_table?: SyncTable, _rowId?: string): Promise<void> {
+export async function resolveConflictAcceptRemote(table?: SyncTable, rowId?: string): Promise<void> {
+  if (table && rowId) await removeOutboxChange(currentSession?.user.id ?? "", table, rowId)
   await pullRemoteChanges()
 }
 
@@ -318,32 +364,124 @@ async function repairLocalSessionDuplicates(accountId = currentSession?.user.id 
 }
 
 async function flushQueue(): Promise<void> {
-  if (flushPromise) return flushPromise
-  flushPromise = flushQueueInternal().finally(() => { flushPromise = null })
-  return flushPromise
-}
-
-async function flushQueueInternal(): Promise<void> {
   const session = currentSession
   const deviceId = currentDeviceId
   const epoch = syncEpoch
   if (!session || !deviceId || !supabase) return
+  const accountId = session.user.id
+  const existing = flushTask
+  if (existing) {
+    if (existing.accountId === accountId && existing.epoch === epoch) {
+      existing.rerunRequested = true
+      return existing.promise
+    }
+    try {
+      await existing.promise
+    } catch {
+      // The current account still gets its own attempt below.
+    }
+    if (epoch !== syncEpoch || currentSession?.user.id !== accountId) return
+    return flushQueue()
+  }
+
+  const task: SyncTask = { accountId, epoch, rerunRequested: false, promise: Promise.resolve() }
+  task.promise = (async () => {
+    do {
+      task.rerunRequested = false
+      await flushQueueInternal(session, deviceId, epoch)
+    } while (
+      task.rerunRequested
+      && epoch === syncEpoch
+      && currentSession?.user.id === accountId
+    )
+  })().finally(() => {
+    if (flushTask === task) flushTask = null
+  })
+  flushTask = task
+  return task.promise
+}
+
+async function flushQueueInternal(session: Session, deviceId: string, epoch: number): Promise<void> {
+  if (!supabase) return
   const queue = await readOutbox(session.user.id)
   if (epoch !== syncEpoch) return
   const now = new Date().toISOString()
   const due = queue.filter((change) => isDue(change, now))
   if (due.length === 0) {
+    const blocked = queue.filter((change) => Boolean(change.blockedAt))
     emitStatus({
-      status: queue.length === 0 ? "synced" : "pending",
+      status: blocked.length > 0 ? "error" : queue.length === 0 ? "synced" : "pending",
       pendingCount: queue.length,
-      error: null,
-      details: queue.length === 0 ? "All changes synced" : `${queue.length} change${queue.length === 1 ? "" : "s"} waiting to retry`,
+      error: blocked[0]?.lastError ?? null,
+      details: blocked.length > 0
+        ? `${blocked.length} change${blocked.length === 1 ? "" : "s"} need attention`
+        : queue.length === 0
+          ? "All changes synced"
+          : `${queue.length} change${queue.length === 1 ? "" : "s"} waiting to retry`,
+      failedItems: blocked.map((change) => ({
+        table: change.entity,
+        rowId: change.rowId,
+        error: change.lastError ?? "Sync failed",
+      })),
     })
     return
   }
 
   emitStatus({ status: "syncing", pendingCount: queue.length, error: null, details: `Pushing ${due.length} change${due.length === 1 ? "" : "s"}…` })
-  const rows = due.map((change) => ({
+  const processed: SyncChange[] = []
+  const retries: SyncChange[] = []
+  const errors: unknown[] = []
+  for (const batch of chunkItems(due, PUSH_BATCH_SIZE)) {
+    if (epoch !== syncEpoch) break
+    await pushChangeBatch(session, deviceId, batch, now, processed, retries, errors)
+  }
+  const next = await finishFlush(session.user.id, processed.map((change) => change.changeId), retries)
+  if (epoch !== syncEpoch) return
+  const blocked = next.filter((change) => Boolean(change.blockedAt))
+  if (errors.length > 0) {
+    const message = getErrorMessage(errors[0])
+    emitStatus({
+      status: "error",
+      pendingCount: next.length,
+      error: message,
+      details: blocked.length > 0
+        ? `${blocked.length} change${blocked.length === 1 ? "" : "s"} need attention`
+        : `${next.length} change${next.length === 1 ? "" : "s"} retained for retry`,
+      tableStats: statsFor(processed, "pushed"),
+      failedItems: blocked.map((change) => ({
+        table: change.entity,
+        rowId: change.rowId,
+        error: change.lastError ?? "Sync failed",
+      })),
+      isOnline: !errors.some(isNetworkError),
+    })
+    return
+  }
+
+  const syncedAt = new Date().toISOString()
+  emitStatus({
+    status: next.length === 0 ? "synced" : "pending",
+    pendingCount: next.length,
+    error: null,
+    lastSuccessfulSyncAt: syncedAt,
+    details: `Synced ${processed.length} change${processed.length === 1 ? "" : "s"}`,
+    tableStats: statsFor(processed, "pushed"),
+    failedItems: null,
+    isOnline: true,
+  })
+}
+
+async function pushChangeBatch(
+  session: Session,
+  deviceId: string,
+  changes: SyncChange[],
+  now: string,
+  processed: SyncChange[],
+  retries: SyncChange[],
+  errors: unknown[],
+): Promise<void> {
+  if (!supabase || changes.length === 0) return
+  const rows = changes.map((change) => ({
     user_id: session.user.id,
     change_id: change.changeId,
     device_id: deviceId,
@@ -352,65 +490,68 @@ async function flushQueueInternal(): Promise<void> {
     operation: change.operation,
     payload: change.payload,
   }))
-  const processedIds = due.map((change) => change.changeId)
-
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("sync_changes")
     .upsert(rows, { onConflict: "user_id,change_id", ignoreDuplicates: true })
     .select("change_id")
-
-  if (error) {
-    const retries = due.map((change) => retryChange(change, getErrorMessage(error), now))
-    const next = await finishFlush(session.user.id, [], retries)
-    const exhausted = retries.filter((change) => change.retryCount >= MAX_RETRIES)
-    if (epoch !== syncEpoch) return
-    emitStatus({
-      status: "error",
-      pendingCount: next.length,
-      error: getErrorMessage(error),
-      details: `${next.length} change${next.length === 1 ? "" : "s"} retained for retry`,
-      failedItems: exhausted.map((change) => ({ table: change.entity, rowId: change.rowId, error: change.lastError ?? "Sync failed" })),
-      isOnline: !isNetworkError(error),
-    })
+  if (!error) {
+    // Replayed ids are rejected by the private receipt trigger and return no row;
+    // a successful request still proves the server accepted them previously.
+    processed.push(...changes)
     return
   }
 
-  void data
-  // ignoreDuplicates returns no row for an already accepted id, which is still success.
-  const next = await finishFlush(session.user.id, processedIds, [])
-  if (epoch !== syncEpoch) return
-  const syncedAt = new Date().toISOString()
-  emitStatus({
-    status: next.length === 0 ? "synced" : "pending",
-    pendingCount: next.length,
-    error: null,
-    lastSuccessfulSyncAt: syncedAt,
-    details: `Synced ${due.length} change${due.length === 1 ? "" : "s"}`,
-    tableStats: statsFor(due, "pushed"),
-    failedItems: null,
-    isOnline: true,
-  })
+  if (changes.length > 1 && !isNetworkError(error) && !isGlobalSyncError(error)) {
+    const midpoint = Math.ceil(changes.length / 2)
+    await pushChangeBatch(session, deviceId, changes.slice(0, midpoint), now, processed, retries, errors)
+    await pushChangeBatch(session, deviceId, changes.slice(midpoint), now, processed, retries, errors)
+    return
+  }
+
+  errors.push(error)
+  const message = getErrorMessage(error)
+  retries.push(...changes.map((change) => retryOrBlockChange(change, message, now, MAX_RETRIES)))
 }
 
 async function pullRemoteChanges(): Promise<void> {
-  if (pullPromise) {
-    pullQueued = true
-    return pullPromise
-  }
-  pullPromise = pullRemoteChangesInternal().finally(() => {
-    pullPromise = null
-    if (pullQueued) {
-      pullQueued = false
-      void pullRemoteChanges()
-    }
-  })
-  return pullPromise
-}
-
-async function pullRemoteChangesInternal(): Promise<void> {
   const session = currentSession
   const epoch = syncEpoch
   if (!session || !supabase) return
+  const accountId = session.user.id
+  const existing = pullTask
+  if (existing) {
+    if (existing.accountId === accountId && existing.epoch === epoch) {
+      existing.rerunRequested = true
+      return existing.promise
+    }
+    try {
+      await existing.promise
+    } catch {
+      // The current account still gets its own pull below.
+    }
+    if (epoch !== syncEpoch || currentSession?.user.id !== accountId) return
+    return pullRemoteChanges()
+  }
+
+  const task: SyncTask = { accountId, epoch, rerunRequested: false, promise: Promise.resolve() }
+  task.promise = (async () => {
+    do {
+      task.rerunRequested = false
+      await pullRemoteChangesInternal(session, epoch)
+    } while (
+      task.rerunRequested
+      && epoch === syncEpoch
+      && currentSession?.user.id === accountId
+    )
+  })().finally(() => {
+    if (pullTask === task) pullTask = null
+  })
+  pullTask = task
+  return task.promise
+}
+
+async function pullRemoteChangesInternal(session: Session, epoch: number): Promise<void> {
+  if (!supabase) return
   emitStatus({ status: "syncing", error: null, details: "Pulling remote changes…" })
   const cursorKey = `cursor:${session.user.id}:change-log-v1`
   let cursor = await readState<number>(cursorKey) ?? 0
@@ -430,27 +571,43 @@ async function pullRemoteChangesInternal(): Promise<void> {
     received.push(...batch)
     if (batch.length > 0) cursor = batch[batch.length - 1].revision
     if ((data ?? []).length < PAGE_SIZE) break
+    if (batch.length === 0) throw new Error("Supabase returned a full page without a valid revision cursor")
   }
 
-  if (received.length > 0) {
-    await applyRemoteChanges(latestChanges(received), session.user.id)
-    if (epoch !== syncEpoch) return
-    await writeState(cursorKey, cursor)
-  }
+  const inbox = await readInbox(session.user.id)
+  if (epoch !== syncEpoch) return
+  const deferred = await applyRemoteChanges(latestChanges([...inbox, ...received]), session.user.id)
+  if (epoch !== syncEpoch) return
+  // Any skipped row is durable in sync_inbox before this high-water mark moves.
+  if (received.length > 0) await writeState(cursorKey, cursor)
   const queue = await readOutbox(session.user.id)
   emitStatus({
-    status: queue.length === 0 ? "synced" : "pending",
+    status: deferred.length > 0 ? "pending" : queue.length === 0 ? "synced" : "pending",
     pendingCount: queue.length,
     error: null,
     lastSuccessfulSyncAt: new Date().toISOString(),
-    details: received.length === 0 ? "Remote data is current" : `Pulled ${received.length} change${received.length === 1 ? "" : "s"}`,
+    details: deferred.length > 0
+      ? `${deferred.length} remote change${deferred.length === 1 ? "" : "s"} waiting for resolution`
+      : received.length === 0
+        ? "Remote data is current"
+        : `Pulled ${received.length} change${received.length === 1 ? "" : "s"}`,
     tableStats: statsFor(received.map(remoteToLocalChange), "pulled"),
+    conflicts: deferred.map((change) => ({
+      table: change.entity,
+      rowId: change.row_id,
+      localUpdatedAt: null,
+      remoteUpdatedAt: change.created_at,
+      remoteDeviceId: change.device_id,
+      label: change.row_id,
+    })),
     isOnline: true,
   })
 }
 
-async function applyRemoteChanges(changes: RemoteSyncChange[], accountId: string): Promise<void> {
+async function applyRemoteChanges(changes: RemoteSyncChange[], accountId: string): Promise<RemoteSyncChange[]> {
   const pending = new Set((await readOutbox(accountId)).map((change) => `${change.entity}:${change.rowId}`))
+  const deferred = changes.filter((change) => pending.has(`${change.entity}:${change.row_id}`))
+  await deferInboxChanges(accountId, deferred)
   const applicable = changes.filter((change) => !pending.has(`${change.entity}:${change.row_id}`))
 
   for (const table of ["projects", "events", "study_sessions"] as const) {
@@ -459,14 +616,27 @@ async function applyRemoteChanges(changes: RemoteSyncChange[], accountId: string
     const fileName = SYNC_DATA_FILES[table]!
     const local = await readLocalDataArray<Record<string, unknown>>(fileName)
     const byId = new Map(local.map((record) => [String(record.id), record]))
+    const putRecords: { entity: typeof table; rowId: string; payload: Record<string, unknown> }[] = []
     for (const change of tableChanges) {
-      if (change.operation === "delete") byId.delete(change.row_id)
+      if (change.operation === "delete") {
+        await recordRemoteNotionDeleteIntent(change, byId.get(change.row_id))
+        byId.delete(change.row_id)
+      }
       else if (isObject(change.payload)) {
-        const payload = { ...change.payload, id: change.row_id }
-        byId.set(change.row_id, table === "study_sessions" ? normalizeStudySession(payload) as unknown as Record<string, unknown> : payload)
+        const rawPayload = { ...change.payload, id: change.row_id }
+        const payload = table === "study_sessions"
+          ? normalizeStudySession(rawPayload) as unknown as Record<string, unknown>
+          : rawPayload
+        byId.set(change.row_id, payload)
+        putRecords.push({ entity: table, rowId: change.row_id, payload })
       }
     }
+    await suppressRecordOutbox(putRecords)
     await writeLocalDataArray(fileName, [...byId.values()])
+    await clearRecordOutboxSuppressions(putRecords)
+    for (const record of putRecords) {
+      await recordNotionUpsertIntent(table, record.rowId, record.payload as unknown as LocalRecord)
+    }
     emitLocalDataChanged(table)
   }
 
@@ -486,6 +656,9 @@ async function applyRemoteChanges(changes: RemoteSyncChange[], accountId: string
     applyUserSettings(settings.payload as unknown as UserSettings)
     emitLocalDataChanged("user_settings")
   }
+
+  await removeInboxChanges(accountId, applicable)
+  return deferred
 }
 
 function applyCustomSubjectChanges(changes: RemoteSyncChange[]): void {
@@ -531,14 +704,25 @@ async function enqueueMissingRemoteDeletes(): Promise<void> {
   const session = currentSession
   const epoch = syncEpoch
   if (!session || !supabase) return
-  const { data, error } = await supabase
-    .from("sync_changes")
-    .select("user_id,change_id,device_id,entity,row_id,operation,payload,revision,created_at")
-    .eq("user_id", session.user.id)
-    .order("revision", { ascending: true })
-  if (error) throw error
-  if (epoch !== syncEpoch) return
-  const remote = latestChanges((data ?? []).flatMap(parseRemoteChange))
+  const received: RemoteSyncChange[] = []
+  let cursor = 0
+  for (;;) {
+    const { data, error } = await supabase
+      .from("sync_changes")
+      .select("user_id,change_id,device_id,entity,row_id,operation,payload,revision,created_at")
+      .eq("user_id", session.user.id)
+      .gt("revision", cursor)
+      .order("revision", { ascending: true })
+      .limit(PAGE_SIZE)
+    if (error) throw error
+    if (epoch !== syncEpoch) return
+    const batch = (data ?? []).flatMap(parseRemoteChange)
+    received.push(...batch)
+    if (batch.length > 0) cursor = batch[batch.length - 1].revision
+    if ((data ?? []).length < PAGE_SIZE) break
+    if (batch.length === 0) throw new Error("Supabase returned a full page without a valid revision cursor")
+  }
+  const remote = latestChanges(received)
   for (const change of remote) {
     if (change.operation === "delete") continue
     if (await readCurrentLocalValue(change.entity, change.row_id) === undefined) {
@@ -619,6 +803,74 @@ function sanitizePayload(table: SyncTable, payload: LocalRecord): unknown {
   return JSON.parse(JSON.stringify(payload)) as unknown
 }
 
+interface NotionDeleteMetadata {
+  pageId: string
+  kind: NotionIntentKind
+  dataSourceId: string
+}
+
+function notionKindForTable(table: SyncTable): NotionIntentKind | null {
+  if (table === "events") return "event"
+  if (table === "study_sessions") return "session"
+  return null
+}
+
+function notionDeletePayload(table: SyncTable, rowId: string, value: LocalRecord | undefined): unknown {
+  const kind = notionKindForTable(table)
+  if (!kind || !isObject(value)) return null
+  const source = value.source
+  if (!isObject(source) || source.type !== "notion" || typeof source.id !== "string") return null
+  return {
+    notion: {
+      pageId: source.id,
+      kind,
+      localId: rowId,
+      dataSourceId: getNotionCalendarSettings().dataSourceId,
+    },
+  }
+}
+
+function getNotionDeleteMetadata(payload: unknown): NotionDeleteMetadata | null {
+  if (!isObject(payload) || !isObject(payload.notion)) return null
+  const notion = payload.notion
+  if (typeof notion.pageId !== "string" || notion.pageId.length === 0) return null
+  if (notion.kind !== "event" && notion.kind !== "session") return null
+  return {
+    pageId: notion.pageId,
+    kind: notion.kind,
+    dataSourceId: typeof notion.dataSourceId === "string" ? notion.dataSourceId : "",
+  }
+}
+
+async function recordNotionUpsertIntent(table: SyncTable, rowId: string, value: LocalRecord): Promise<void> {
+  const kind = notionKindForTable(table)
+  if (!kind || !isObject(value)) return
+  const source = value.source
+  if (isObject(source) && source.type === "vcaa") return
+  const settings = getNotionCalendarSettings()
+  if (!settings.dataSourceId.trim()) return
+  const pageId = isObject(source) && source.type === "notion" && typeof source.id === "string"
+    ? source.id
+    : undefined
+  await enqueueNotionUpsert(settings.dataSourceId, kind, rowId, pageId)
+}
+
+async function recordRemoteNotionDeleteIntent(
+  change: RemoteSyncChange,
+  localValue: Record<string, unknown> | undefined,
+): Promise<void> {
+  const payload = getNotionDeleteMetadata(change.payload)
+    ?? getNotionDeleteMetadata(notionDeletePayload(change.entity, change.row_id, localValue as unknown as LocalRecord))
+  if (!payload) return
+  await enqueueNotionArchive(
+    payload.dataSourceId,
+    payload.kind,
+    change.row_id,
+    payload.pageId,
+    new Date().toISOString(),
+  )
+}
+
 function parseRemoteChange(value: unknown): RemoteSyncChange[] {
   if (!isObject(value) || !isSyncTable(value.entity)) return []
   if (value.operation !== "put" && value.operation !== "delete") return []
@@ -657,6 +909,22 @@ function syncErrorMessage(error: unknown): string {
 function isNetworkError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase()
   return error instanceof TypeError || message.includes("failed to fetch") || message.includes("network")
+}
+
+function isGlobalSyncError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase()
+  return message.includes("sync_changes")
+    || message.includes("schema cache")
+    || message.includes("pgrst205")
+    || message.includes("jwt")
+    || message.includes("permission denied")
+    || message.includes("row-level security")
+    || message.includes("not authorized")
+    || message.includes("rate limit")
+    || message.includes("too many requests")
+    || message.includes("429")
+    || message.includes("timeout")
+    || message.includes("service unavailable")
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

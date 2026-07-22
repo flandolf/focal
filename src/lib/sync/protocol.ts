@@ -6,8 +6,8 @@ export function isSyncTable(value: unknown): value is SyncTable {
   return typeof value === "string" && (SYNC_TABLES as readonly string[]).includes(value)
 }
 
-export function isDue(change: Pick<SyncChange, "nextAttemptAt">, now: string): boolean {
-  return !change.nextAttemptAt || change.nextAttemptAt <= now
+export function isDue(change: Pick<SyncChange, "nextAttemptAt" | "blockedAt">, now: string): boolean {
+  return !change.blockedAt && (!change.nextAttemptAt || change.nextAttemptAt <= now)
 }
 
 export function retryChange(change: SyncChange, error: string, now: string): SyncChange {
@@ -18,6 +18,25 @@ export function retryChange(change: SyncChange, error: string, now: string): Syn
     lastError: error,
     nextAttemptAt: new Date(new Date(now).getTime() + Math.min(300_000, 5_000 * 2 ** Math.max(0, retryCount - 1))).toISOString(),
   }
+}
+
+export function retryOrBlockChange(
+  change: SyncChange,
+  error: string,
+  now: string,
+  maxRetries: number,
+): SyncChange {
+  const retried = retryChange(change, error, now)
+  return retried.retryCount >= maxRetries
+    ? { ...retried, nextAttemptAt: undefined, blockedAt: now }
+    : retried
+}
+
+export function chunkItems<T>(items: readonly T[], size: number): T[][] {
+  if (!Number.isSafeInteger(size) || size <= 0) throw new Error("Chunk size must be a positive integer")
+  const chunks: T[][] = []
+  for (let offset = 0; offset < items.length; offset += size) chunks.push(items.slice(offset, offset + size))
+  return chunks
 }
 
 export function latestChanges(changes: RemoteSyncChange[]): RemoteSyncChange[] {

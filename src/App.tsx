@@ -44,7 +44,6 @@ import { confirmDestructiveAction, confirmAction } from "@/lib/confirmToast";
 import { showUndoToast } from "@/lib/undoToast";
 import { sanitiseFolderName } from "@/lib/utils";
 import {
-  getNotionCalendarSettings,
   getProjectsRootPath,
 } from "@/lib/settings";
 import {
@@ -54,7 +53,6 @@ import {
   getUniqueStrings,
   getUniqueArrayItems,
 } from "@/lib/pomodoro";
-import { deleteNotionPage } from "@/lib/notion/api";
 import {
   forcePushAndMerge,
   forcePushAndOverwrite,
@@ -138,50 +136,6 @@ const EMPTY_STATE_TRANSITION = {
   duration: MOTION_DURATION.slow,
   ease: MOTION_EASE,
 } as const;
-interface NotionSource {
-  type: string;
-  id?: string;
-}
-
-/** Delete a Notion page if the item has a linked Notion source. */
-async function deleteNotionPageIfLinked(source: NotionSource | undefined) {
-  if (source?.type !== "notion" || !source.id) return;
-  const settings = getNotionCalendarSettings();
-  if (!settings.token.trim() || !settings.dataSourceId.trim()) return;
-  try {
-    await deleteNotionPage(settings, source.id);
-  } catch (e) {
-    console.error("Failed to delete Notion page:", e);
-    toast.error("Failed to delete from Notion — it may reappear on next sync");
-  }
-}
-
-/** Delete multiple Notion pages in parallel, collecting failures. */
-async function deleteNotionPagesIfLinked(
-  sources: (NotionSource | undefined)[],
-  silent = false,
-) {
-  const settings = getNotionCalendarSettings();
-  const canDelete = settings.token.trim() && settings.dataSourceId.trim();
-  if (!canDelete) return;
-  const pageIds = sources
-    .filter((s): s is NotionSource => s?.type === "notion" && Boolean(s.id))
-    .map((s) => s.id!);
-  if (pageIds.length === 0) return;
-  const failedIds: string[] = [];
-  await Promise.allSettled(
-    pageIds.map((pageId) =>
-      deleteNotionPage(settings, pageId).catch(() => {
-        failedIds.push(pageId);
-      }),
-    ),
-  );
-  if (!silent && failedIds.length > 0) {
-    toast.error(
-      `${failedIds.length} item${failedIds.length === 1 ? "" : "s"} failed to delete from Notion — they may reappear on next sync`,
-    );
-  }
-}
 
 try {
   if (platform() !== "macos")
@@ -350,6 +304,12 @@ function App() {
   const { mode, resolvedDark, setMode } = useTheme();
   const supabaseAuth = useSupabaseAuth();
   const supabaseSync = useSupabaseSync(supabaseAuth.session);
+  const supabaseInitialSyncSettled = !supabaseAuth.loading && (
+    !supabaseAuth.session
+    || supabaseSync.status === "synced"
+    || supabaseSync.status === "pending"
+    || supabaseSync.status === "error"
+  );
   const syncSessions = rawSyncSessions;
 
   const {
@@ -373,14 +333,14 @@ function App() {
 
   const initialAutoSyncDoneRef = useRef(false);
   useEffect(() => {
-    if (eventsLoading || sessionsLoading) return;
+    if (eventsLoading || sessionsLoading || !supabaseInitialSyncSettled) return;
     if (initialAutoSyncDoneRef.current) return;
     initialAutoSyncDoneRef.current = true;
     void performNotionSync(false);
-  }, [eventsLoading, sessionsLoading, performNotionSync]);
+  }, [eventsLoading, sessionsLoading, performNotionSync, supabaseInitialSyncSettled]);
 
   useEffect(() => {
-    if (eventsLoading || sessionsLoading) return;
+    if (eventsLoading || sessionsLoading || !supabaseInitialSyncSettled) return;
     const syncNow = () => {
       void requestNotionSync(false);
     };
@@ -397,7 +357,7 @@ function App() {
       window.removeEventListener("focus", syncNow);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [eventsLoading, sessionsLoading, requestNotionSync]);
+  }, [eventsLoading, sessionsLoading, requestNotionSync, supabaseInitialSyncSettled]);
 
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null;
   const selectedProjectSessions = useMemo(
@@ -966,7 +926,6 @@ function App() {
       if (!confirmed) return;
       try {
         await deleteSession(id);
-        void deleteNotionPageIfLinked(session.source);
         showUndoToast({
           message: "Study session deleted",
           onUndo: async () => {
@@ -1132,7 +1091,6 @@ function App() {
       if (!event) return false;
       try {
         await deleteEvent(id);
-        void deleteNotionPageIfLinked(event.source);
         showUndoToast({
           message: "Event deleted",
           onUndo: async () => {
@@ -1184,12 +1142,6 @@ function App() {
             ? deleteSessions(itemIds.sessionIds)
             : Promise.resolve(),
         ]);
-        // Delete Notion pages for sourced items in parallel
-        await deleteNotionPagesIfLinked([
-          ...deletedEvents.map((e) => e.source),
-          ...deletedSessions.map((s) => s.source),
-        ]);
-
         showUndoToast({
           message: `${total} calendar item${total === 1 ? "" : "s"} deleted`,
           onUndo: async () => {
@@ -1335,12 +1287,6 @@ function App() {
           selectedEvents.slice(1).map((event) => event.id),
         );
 
-        // Delete Notion pages for merged-away events in parallel
-        void deleteNotionPagesIfLinked(
-          selectedEvents.slice(1).map((e) => e.source),
-          true,
-        );
-
         toast.success(`${selectedEvents.length} events merged`);
         void requestNotionSync(false);
       } catch (e) {
@@ -1457,12 +1403,6 @@ function App() {
             },
           ],
           selectedSessions.slice(1).map((session) => session.id),
-        );
-
-        // Delete Notion pages for merged-away sessions in parallel
-        void deleteNotionPagesIfLinked(
-          selectedSessions.slice(1).map((s) => s.source),
-          true,
         );
 
         toast.success(`${selectedSessions.length} study sessions merged`);
