@@ -740,7 +740,7 @@ export const HomeView = memo(function HomeView({
                 {format(new Date(), "EEEE · d MMMM")}
               </p>
               <h1 className="text-xl font-semibold">
-                Today
+                Today - {totalStudyHours.toFixed(1)} hours studied
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {overdueProjects.length > 0 ? (
