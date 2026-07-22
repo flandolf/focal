@@ -1,4 +1,4 @@
-import { combineDateAndTime, getLocalDateValue } from "@/lib/utils"
+import { combineDateAndTime, getDeadlineTypeInfo, getEventTypeInfo, getLocalDateValue } from "@/lib/utils"
 import { getAssistantPersonalityInstruction } from "@/lib/settings"
 import { VCE_SYSTEM_PREAMBLE } from "@/lib/aiAssistant"
 import type { ToolCall, ToolDefinition } from "@/lib/providers"
@@ -1078,7 +1078,7 @@ export function formatEventLine(
 ): string {
  const when = `${event.startTime}${event.endTime ? ` to ${event.endTime}` :""}`;
  const done = event.isFinished ?"finished" :"current";
- return `- ${event.id}:"${event.title}" (${event.eventType}, ${done}) ${when}; ${eventSubjectLabel(subjects, event.subjectId)}${event.location ? `; ${event.location}` :""}`;
+ return `- ${event.id}:"${event.title}" (${getEventTypeInfo(event.eventType).label}, ${done}) ${when}; ${eventSubjectLabel(subjects, event.subjectId)}${event.location ? `; ${event.location}` :""}`;
 }
 
 export function buildEventToolContext(
@@ -1285,7 +1285,7 @@ export function formatProjectLine(
  :"no deadline";
  return [
  `- ${project.id}:"${project.name}"`,
- `(${project.deadlineType ??"assessment"}, ${state})`,
+ `(${project.deadlineType ? getDeadlineTypeInfo(project.deadlineType).label : "Assessment"}, ${state})`,
  deadline,
  projectSubjectLabel(subjects, project.subjectId),
  project.unit ? `Unit ${project.unit}` : null,

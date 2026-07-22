@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   Trash2,
   CalendarDays,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,6 +80,7 @@ interface CalendarGridProps {
   onSelectProject: (projectId: string) => void;
   onSelectSession: (session: StudySession) => void;
   onSelectEvent: (event: CalendarEvent) => void;
+  onNewEvent: (initialDate: Date) => void;
   onMoveEvent?: (
     eventId: string,
     newStartTime: string,
@@ -118,6 +120,7 @@ export function CalendarGrid({
   onSelectProject,
   onSelectSession,
   onSelectEvent,
+  onNewEvent,
   onMoveEvent,
   onDeleteCalendarItems,
   onSetCalendarItemsCompleted,
@@ -555,10 +558,11 @@ export function CalendarGrid({
             const overflow = regularItems.length - 3;
 
             return (
+              <ContextMenu key={dateKey}>
+                <ContextMenuTrigger asChild>
               <div
                 role="button"
                 tabIndex={0}
-                key={dateKey}
                 data-date-key={dateKey}
                 onClick={() => onSelectDate(dateKey)}
                 onKeyDown={(e) => handleMonthCellKeyDown(e, dateKey)}
@@ -858,6 +862,14 @@ export function CalendarGrid({
                   )}
                 </div>
               </div>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-40">
+                  <CtxMenuItem onSelect={() => onNewEvent(date)}>
+                    <Plus className="h-4 w-4" />
+                    New event
+                  </CtxMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             );
           })}
         </div>
@@ -923,8 +935,9 @@ export function CalendarGrid({
               ];
 
               return (
+                <ContextMenu key={dateKey}>
+                  <ContextMenuTrigger asChild>
                 <div
-                  key={dateKey}
                   data-date-key={dateKey}
                   className={cn(
                     "min-h-40 rounded-lg border p-2 transition-colors",
@@ -956,8 +969,9 @@ export function CalendarGrid({
                         const _position = getMultiDayPosition(event, dateKey);
                         const color = getEventTypeInfo(event.eventType).color;
                         return (
+                          <ContextMenu key={event.id}>
+                            <ContextMenuTrigger asChild>
                           <button
-                            key={event.id}
                             type="button"
                             onPointerDown={(e) => {
                               if (onMoveEvent)
@@ -989,14 +1003,41 @@ export function CalendarGrid({
                               {event.title}
                             </span>
                           </button>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-40">
+                              <CtxMenuItem onSelect={() => onSelectEvent(event)}>
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </CtxMenuItem>
+                              {onSetCalendarItemsCompleted && (
+                                <CtxMenuItem
+                                  onSelect={() => onSetCalendarItemsCompleted(
+                                    { eventIds: [event.id], sessionIds: [] },
+                                    !event.isFinished,
+                                  )}
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  {event.isFinished ? "Mark current" : "Mark complete"}
+                                </CtxMenuItem>
+                              )}
+                              <CtxMenuSep />
+                              <CtxMenuItem
+                                variant="destructive"
+                                onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </CtxMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         );
                       })}
                     </div>
                   )}
                   <div className="space-y-1">
-                    {allItems.map((item, idx) => (
+                    {allItems.map((item, idx) => {
+                      const itemButton = (
                       <button
-                        key={`${item.type}-${idx}`}
                         type="button"
                         onPointerDown={(e) => {
                           if (
@@ -1063,7 +1104,42 @@ export function CalendarGrid({
                           </span>
                         )}
                       </button>
-                    ))}
+                      );
+                      if (item.type !== "event" || !("event" in item)) {
+                        return <div key={`${item.type}-${idx}`}>{itemButton}</div>;
+                      }
+                      const event = item.event;
+                      return (
+                        <ContextMenu key={`${item.type}-${idx}`}>
+                          <ContextMenuTrigger asChild>{itemButton}</ContextMenuTrigger>
+                          <ContextMenuContent className="w-40">
+                            <CtxMenuItem onSelect={() => onSelectEvent(event)}>
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </CtxMenuItem>
+                            {onSetCalendarItemsCompleted && (
+                              <CtxMenuItem
+                                onSelect={() => onSetCalendarItemsCompleted(
+                                  { eventIds: [event.id], sessionIds: [] },
+                                  !event.isFinished,
+                                )}
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                {event.isFinished ? "Mark current" : "Mark complete"}
+                              </CtxMenuItem>
+                            )}
+                            <CtxMenuSep />
+                            <CtxMenuItem
+                              variant="destructive"
+                              onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </CtxMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      );
+                    })}
                     {allItems.length === 0 &&
                       dayMultiDayEvents.length === 0 && (
                         <div className="flex flex-col items-center gap-1.5 px-1.5 py-3">
@@ -1078,6 +1154,14 @@ export function CalendarGrid({
                       )}
                   </div>
                 </div>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="w-40">
+                    <CtxMenuItem onSelect={() => onNewEvent(date)}>
+                      <Plus className="h-4 w-4" />
+                      New event
+                    </CtxMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
           </div>

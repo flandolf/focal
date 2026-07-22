@@ -1,3 +1,4 @@
+import { useRef } from "react"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import type { Subject } from "@/lib/types"
@@ -17,16 +18,26 @@ export function SubjectPicker({
   activeSessionId,
   onSubjectClick,
 }: SubjectPickerProps) {
+  const sidebarViewportRef = useRef<HTMLDivElement>(null)
+
   if (variant === "sidebar") {
     return (
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium">Subject</span>
           {activeSessionId && (
             <span className="text-micro text-muted-foreground">Logging now</span>
           )}
         </div>
-        <ScrollArea className="w-full whitespace-nowrap">
+        <ScrollArea
+          className="w-full min-w-0 whitespace-nowrap"
+          viewportRef={sidebarViewportRef}
+          onWheel={(event) => {
+            if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
+            event.preventDefault()
+            sidebarViewportRef.current?.scrollBy({ left: event.deltaY })
+          }}
+        >
           <div className="flex w-max gap-1 pb-1">
             {subjects.map((subject) => {
               const selected = selectedSubjectIds.includes(subject.id)

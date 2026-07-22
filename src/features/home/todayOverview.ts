@@ -2,6 +2,7 @@ import { addDays, format, parseISO } from "date-fns"
 import { getCompletedStudyMinutesBySubject } from "@/lib/planning"
 import { getPriorityItems } from "@/lib/studyPriority"
 import {
+  getEventTypeInfo,
   getSessionEffectiveMinutes,
   getSessionSubjectIds,
   getSubjectById,
@@ -76,7 +77,7 @@ export function buildTodayOverview(
     .map((event) => ({
       id: event.id,
       title: event.title,
-      subtitle: getSubjectById(event.subjectId)?.shortCode ?? event.eventType,
+      subtitle: getSubjectById(event.subjectId)?.shortCode ?? getEventTypeInfo(event.eventType).label,
       timestamp: event.finishedAt!,
       kind: "event",
       event,

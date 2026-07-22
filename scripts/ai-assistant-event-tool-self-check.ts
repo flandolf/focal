@@ -3,6 +3,8 @@ import {
   buildAssistantOverview,
   buildStudyOverviewToolResult,
   executeReadOnlyFocalToolCall,
+  formatEventLine,
+  formatProjectLine,
   parseLooseEventCreateRequest,
   prepareStudySessionUpdate,
 } from "../src/features/assistant/agent"
@@ -86,6 +88,29 @@ if (draft.eventType !== "sac") throw new Error(`bad event type: ${draft.eventTyp
 if (draft.subjectId !== "mm") throw new Error(`bad subject: ${draft.subjectId}`)
 if (!draft.startTime) throw new Error("missing start time")
 if (!draft.startTime.startsWith("2026-08-08T")) throw new Error(`bad date: ${draft.startTime}`)
+
+const eventLine = formatEventLine({
+  id: "practice-1",
+  title: "Practice assessment",
+  startTime: "2026-08-08T13:45:00",
+  eventType: "practice-sac",
+  created_at: "2026-06-01",
+}, [])
+if (!eventLine.includes("Practice SAC") || eventLine.includes("practice-sac")) {
+  throw new Error(`event line exposed a raw event type: ${eventLine}`)
+}
+
+const projectLine = formatProjectLine({
+  id: "assignment-1",
+  name: "English task",
+  folder_path: "English task",
+  deadline: "2026-08-08",
+  deadlineType: "assignment",
+  created_at: "2026-06-01",
+}, [], "2026-08-01")
+if (!projectLine.includes("Assignment") || projectLine.includes("(assignment,")) {
+  throw new Error(`project line exposed a raw deadline type: ${projectLine}`)
+}
 
 const deadlineReply = executeReadOnlyFocalToolCall(
   { name: "list_deadlines", arguments: { query: "math methods sac", startDate: "2026-08-06", endDate: "2026-08-06" } },

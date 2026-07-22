@@ -547,7 +547,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
         onDiscard={handleRecoveryDiscard}
       />
 
-      <section className="border-t border-sidebar-border/70" aria-label="Focus timer">
+      <section className="min-w-0 border-t border-sidebar-border/70" aria-label="Focus timer">
         <div className="flex items-center gap-1 p-2">
           <Button
             variant="ghost"
