@@ -22,7 +22,22 @@ import {
   toNotionType,
 } from "@/lib/notion/schema"
 import { findSubjectIdFromValues } from "@/lib/notion/subjectMatch"
-import { createNotionPage, updateNotionPage, deleteNotionPage, fetchNotionSchema } from "@/lib/notion/api"
+import {
+  clearNotionIntent,
+  notionIntentDue,
+  persistRetriedNotionIntent,
+  readNotionIntents,
+  retryNotionIntent,
+} from "@/lib/notion/outbox"
+import {
+  createNotionPage,
+  deleteNotionPage,
+  fetchNotionSchema,
+  isRetryableNotionError,
+  NotionApiError,
+  queryNotionCalendar,
+  updateNotionPage,
+} from "@/lib/notion/api"
 
 
 function buildSessionBodyText(session: StudySession): string | undefined {
@@ -61,8 +76,26 @@ function buildSessionBodyText(session: StudySession): string | undefined {
 // Push helpers: retry, concurrency
 // ---------------------------------------------------------------------------
 
-const MAX_CONCURRENT_API_CALLS = 4
+const MAX_CONCURRENT_API_CALLS = 3
 const MAX_RETRIES = 2
+const MIN_WRITE_SPACING_MS = 350
+let writeThrottle: Promise<unknown> = Promise.resolve()
+let nextWriteAt = 0
+
+async function waitForWriteTurn(): Promise<void> {
+  const turn = writeThrottle.then(async () => {
+    const wait = Math.max(0, nextWriteAt - Date.now())
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+    nextWriteAt = Date.now() + MIN_WRITE_SPACING_MS
+  })
+  writeThrottle = turn.catch(() => undefined)
+  await turn
+}
+
+export function notionWriteRetryDelay(error: unknown, attempt: number, jitter = Math.random()): number {
+  const serverDelay = error instanceof NotionApiError ? error.retryAfterMs : undefined
+  return Math.max(serverDelay ?? 0, 500 * 2 ** attempt) + Math.floor(250 * jitter)
+}
 
 export function buildPageChildrenForSync(
   text: string | undefined,
@@ -78,13 +111,14 @@ async function withRetry<T>(
 ): Promise<T | undefined> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      await waitForWriteTurn()
       return await fn()
     } catch (e) {
-      if (attempt === MAX_RETRIES) {
+      if (attempt === MAX_RETRIES || !isRetryableNotionError(e)) {
         pushErrors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`)
         return undefined
       }
-      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)))
+      await new Promise((resolve) => setTimeout(resolve, notionWriteRetryDelay(e, attempt)))
     }
   }
 }
@@ -190,17 +224,53 @@ function buildNotionSessionProperties(
 async function updateOrCreatePage(
   settings: NotionCalendarSettings,
   pageId: string,
+  localId: string,
+  kind: "event" | "session",
   properties: Record<string, unknown>,
   children: unknown[] | undefined,
 ): Promise<NotionPage> {
   try {
     return await updateNotionPage(settings, pageId, properties, children)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    if (msg.includes("object_not_found")) {
-      return await createNotionPage(settings, properties, children)
+    if (e instanceof NotionApiError && e.code === "object_not_found") {
+      return await createRecoverablePage(settings, localId, kind, properties, children)
     }
     throw e
+  }
+}
+
+async function createRecoverablePage(
+  settings: NotionCalendarSettings,
+  localId: string,
+  kind: "event" | "session",
+  properties: Record<string, unknown>,
+  children: unknown[] | undefined,
+): Promise<NotionPage> {
+  try {
+    return await createNotionPage(settings, properties, children)
+  } catch (error) {
+    if (!isRetryableNotionError(error)) throw error
+    // A timed-out create may already have committed remotely. Recover by the
+    // stable Focal identity before any retry is allowed to create another page.
+    let pages: NotionPage[]
+    try {
+      pages = await queryNotionCalendar(settings)
+    } catch (recoveryError) {
+      // ponytail: an unverifiable create stays in the durable outbox. The next
+      // full sync queries stable IDs before pushing, so retrying here is riskier.
+      const uncertainError = Object.assign(
+        new Error(
+          `Notion create outcome is uncertain; it will be verified on the next sync: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`,
+        ),
+        { cause: recoveryError },
+      )
+      throw uncertainError
+    }
+    const existing = pages.find((page) => (
+      getFocalId(page) === localId && getFocalKind(page) === kind
+    ))
+    if (existing) return existing
+    throw error
   }
 }
 
@@ -228,9 +298,15 @@ export async function pushEventToNotion(
   )
   const bodyHash = hashBody(event.description)
 
-  const page = event.source?.type === "notion"
-    ? await updateOrCreatePage(settings, event.source.id, properties, children)
-    : await createNotionPage(settings, properties, children)
+  const errors: string[] = []
+  const page = await withRetry(
+    `Event "${event.title}"`,
+    event.source?.type === "notion"
+      ? () => updateOrCreatePage(settings, event.source!.id, event.id, "event", properties, children)
+      : () => createRecoverablePage(settings, event.id, "event", properties, children),
+    errors,
+  )
+  if (!page) throw new Error(errors[0] ?? "Notion did not accept the event")
 
   return {
     source: getNotionSource(page, "event", bodyHash),
@@ -257,9 +333,15 @@ export async function pushSessionToNotion(
   const properties = buildNotionSessionProperties(settings, session, subjects, schema)
   const bodyHash = hashBody(bodyText ?? "")
 
-  const page = session.source?.type === "notion"
-    ? await updateOrCreatePage(settings, session.source.id, properties, children)
-    : await createNotionPage(settings, properties, children)
+  const errors: string[] = []
+  const page = await withRetry(
+    `Session "${session.title}"`,
+    session.source?.type === "notion"
+      ? () => updateOrCreatePage(settings, session.source!.id, session.id, "session", properties, children)
+      : () => createRecoverablePage(settings, session.id, "session", properties, children),
+    errors,
+  )
+  if (!page) throw new Error(errors[0] ?? "Notion did not accept the study session")
 
   return {
     source: getNotionSource(page, "session", bodyHash),
@@ -284,8 +366,10 @@ export function collectEventPushTasks(
     if (event.source?.type === "vcaa") continue
     if (event.source?.type === "notion" && event.source.kind === "session") continue
     const isFastPush = fastPushIds?.has(event.id)
+    if (!isFastPush && (ctx.pulledEventIds.has(event.id) || ctx.conflictedEventIds.has(event.id))) continue
     if (!isFastPush && !event.source && ctx.matchedEventIds.has(event.id)) continue
     if (!isFastPush && !event.source && ctx.blockedEventFingerprints.has(eventFingerprint(event))) continue
+    const isDirty = ctx.dirtyEventIds.has(event.id)
     const children = buildPageChildrenForSync(
       event.description,
       event.source?.type === "notion" ? event.source.bodyHash : undefined,
@@ -298,11 +382,12 @@ export function collectEventPushTasks(
           run: async () => {
             const page = await withRetry(
               `Event "${event.title}"`,
-              () => updateOrCreatePage(settings, event.source!.id, properties, children),
+              () => updateOrCreatePage(settings, event.source!.id, event.id, "event", properties, children),
               ctx.pushErrors,
             )
             if (!page) return
             ctx.pushedUpdated += 1
+            ctx.acknowledgedEventIds.add(event.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedEvents.set(event.id, {
               ...ctx.updatedEvents.get(event.id),
@@ -313,41 +398,30 @@ export function collectEventPushTasks(
         continue
       }
       const remotePage = pagesById.get(event.source.id)
-      if (
-        remotePage?.last_edited_time &&
-        event.source.lastEditedTime &&
-        remotePage.last_edited_time !== event.source.lastEditedTime
-      ) {
-        ctx.conflicts += 1
-        ctx.conflictDetails.push(
-          `Event "${event.title}" was modified both locally and in Notion — local changes preserved, Notion changes pending next pull`,
-        )
-        ctx.conflictItems.push({
-          localId: event.id,
-          kind: "event",
-          title: event.title,
-          startTime: event.startTime,
-          endTime: event.endTime,
-          notionPageId: event.source.id,
-          notionLastEditedTime: remotePage.last_edited_time,
-          notionUrl: remotePage.url,
-        })
-        continue
-      }
       if (remotePage) {
         const propertiesMatch = pageMatchesEvent(remotePage, event, settings, subjects, findSubjectIdFromValues)
         const bodyDiffers = bodyHasChanged(event.source.bodyHash, event.description)
         const identityMatches = getFocalId(remotePage) === event.id && getFocalKind(remotePage) === "event"
-        if (propertiesMatch && !bodyDiffers && identityMatches) continue
+        if (!isDirty && identityMatches) continue
+        if (propertiesMatch && !bodyDiffers && identityMatches) {
+          ctx.acknowledgedEventIds.add(event.id)
+          continue
+        }
         tasks.push({
           run: async () => {
             const page = await withRetry(
               `Event "${event.title}"`,
-              () => updateNotionPage(settings, event.source!.id, properties, children),
+              () => updateNotionPage(
+                settings,
+                event.source!.id,
+                properties,
+                isDirty && bodyDiffers ? children : undefined,
+              ),
               ctx.pushErrors,
             )
             if (!page) return
             ctx.pushedUpdated += 1
+            ctx.acknowledgedEventIds.add(event.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedEvents.set(event.id, {
               ...ctx.updatedEvents.get(event.id),
@@ -360,11 +434,12 @@ export function collectEventPushTasks(
           run: async () => {
             const page = await withRetry(
               `Event "${event.title}"`,
-              () => createNotionPage(settings, properties, children),
+              () => createRecoverablePage(settings, event.id, "event", properties, children),
               ctx.pushErrors,
             )
             if (!page) return
             ctx.pushedCreated += 1
+            ctx.acknowledgedEventIds.add(event.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedEvents.set(event.id, {
               ...ctx.updatedEvents.get(event.id),
@@ -379,11 +454,12 @@ export function collectEventPushTasks(
       run: async () => {
         const page = await withRetry(
           `Event "${event.title}"`,
-          () => createNotionPage(settings, properties, children),
+          () => createRecoverablePage(settings, event.id, "event", properties, children),
           ctx.pushErrors,
         )
         if (!page) return
         ctx.pushedCreated += 1
+        ctx.acknowledgedEventIds.add(event.id)
         ctx.newNotionIds.add(page.id)
         ctx.updatedEvents.set(event.id, {
           ...ctx.updatedEvents.get(event.id),
@@ -409,8 +485,10 @@ export function collectSessionPushTasks(
   for (const session of existingSessions) {
     if (session.source?.type === "notion" && session.source.kind === "event") continue
     const isFastPush = fastPushIds?.has(session.id)
+    if (!isFastPush && (ctx.pulledSessionIds.has(session.id) || ctx.conflictedSessionIds.has(session.id))) continue
     if (!isFastPush && !session.source && ctx.matchedSessionIds.has(session.id)) continue
     if (!isFastPush && !session.source && ctx.blockedSessionFingerprints.has(sessionFingerprint(session))) continue
+    const isDirty = ctx.dirtySessionIds.has(session.id)
     const bodyText = buildSessionBodyText(session)
     const children = buildPageChildrenForSync(
       bodyText,
@@ -424,11 +502,12 @@ export function collectSessionPushTasks(
           run: async () => {
             const page = await withRetry(
               `Session "${session.title}"`,
-              () => updateOrCreatePage(settings, session.source!.id, properties, children),
+              () => updateOrCreatePage(settings, session.source!.id, session.id, "session", properties, children),
               ctx.pushErrors,
             )
             if (!page) return
             ctx.pushedUpdated += 1
+            ctx.acknowledgedSessionIds.add(session.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedSessions.set(session.id, {
               ...ctx.updatedSessions.get(session.id),
@@ -439,41 +518,30 @@ export function collectSessionPushTasks(
         continue
       }
       const remotePage = pagesById.get(session.source.id)
-      if (
-        remotePage?.last_edited_time &&
-        session.source.lastEditedTime &&
-        remotePage.last_edited_time !== session.source.lastEditedTime
-      ) {
-        ctx.conflicts += 1
-        ctx.conflictDetails.push(
-          `Session "${session.title}" was modified both locally and in Notion — local changes preserved, Notion changes pending next pull`,
-        )
-        ctx.conflictItems.push({
-          localId: session.id,
-          kind: "session",
-          title: session.title,
-          startTime: session.startTime,
-          endTime: session.endTime,
-          notionPageId: session.source.id,
-          notionLastEditedTime: remotePage.last_edited_time,
-          notionUrl: remotePage.url,
-        })
-        continue
-      }
       if (remotePage) {
         const propertiesMatch = pageMatchesSession(remotePage, session, settings, subjects, findSubjectIdFromValues)
         const bodyDiffers = bodyHasChanged(session.source.bodyHash, bodyText)
         const identityMatches = getFocalId(remotePage) === session.id && getFocalKind(remotePage) === "session"
-        if (propertiesMatch && !bodyDiffers && identityMatches) continue
+        if (!isDirty && identityMatches) continue
+        if (propertiesMatch && !bodyDiffers && identityMatches) {
+          ctx.acknowledgedSessionIds.add(session.id)
+          continue
+        }
         tasks.push({
           run: async () => {
             const page = await withRetry(
               `Session "${session.title}"`,
-              () => updateNotionPage(settings, session.source!.id, properties, children),
+              () => updateNotionPage(
+                settings,
+                session.source!.id,
+                properties,
+                isDirty && bodyDiffers ? children : undefined,
+              ),
               ctx.pushErrors,
             )
             if (!page) return
             ctx.pushedUpdated += 1
+            ctx.acknowledgedSessionIds.add(session.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedSessions.set(session.id, {
               ...ctx.updatedSessions.get(session.id),
@@ -486,11 +554,12 @@ export function collectSessionPushTasks(
           run: async () => {
             const page = await withRetry(
               `Session "${session.title}"`,
-              () => createNotionPage(settings, properties, children),
+              () => createRecoverablePage(settings, session.id, "session", properties, children),
               ctx.pushErrors,
             )
             if (!page) return
             ctx.pushedCreated += 1
+            ctx.acknowledgedSessionIds.add(session.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedSessions.set(session.id, {
               ...ctx.updatedSessions.get(session.id),
@@ -505,11 +574,12 @@ export function collectSessionPushTasks(
       run: async () => {
         const page = await withRetry(
           `Session "${session.title}"`,
-          () => createNotionPage(settings, properties, children),
+          () => createRecoverablePage(settings, session.id, "session", properties, children),
           ctx.pushErrors,
         )
         if (!page) return
         ctx.pushedCreated += 1
+        ctx.acknowledgedSessionIds.add(session.id)
         ctx.newNotionIds.add(page.id)
         ctx.updatedSessions.set(session.id, {
           ...ctx.updatedSessions.get(session.id),
@@ -525,105 +595,47 @@ export function collectSessionPushTasks(
 // Phase 3: Orphan cleanup
 // ---------------------------------------------------------------------------
 
-const SYNCED_NOTION_IDS_KEY = "focal-synced-notion-ids"
-
-function getSyncedNotionIds(): Set<string> {
-  try {
-    const stored = localStorage.getItem(SYNCED_NOTION_IDS_KEY)
-    if (!stored) return new Set()
-    const parsed: unknown = JSON.parse(stored)
-    if (!Array.isArray(parsed)) return new Set()
-    return new Set(parsed.filter((id): id is string => typeof id === "string"))
-  } catch {
-    return new Set()
-  }
-}
-
-function setSyncedNotionIds(ids: Set<string>): void {
-  try {
-    localStorage.setItem(SYNCED_NOTION_IDS_KEY, JSON.stringify([...ids]))
-  } catch (error) {
-    console.error("Failed to save Notion cleanup state:", error)
-  }
-}
-
-export function taggedNotionOrphanIds(
-  pages: Iterable<NotionPage>,
-  localEventIds: ReadonlySet<string>,
-  localSessionIds: ReadonlySet<string>,
-  linkedPageIds: ReadonlySet<string>,
-): string[] {
-  const orphanIds: string[] = []
-  for (const page of pages) {
-    const focalId = getFocalId(page)
-    const kind = getFocalKind(page)
-    if (!focalId || !kind || linkedPageIds.has(page.id)) continue
-    const exists = kind === "event" ? localEventIds.has(focalId) : localSessionIds.has(focalId)
-    if (!exists) orphanIds.push(page.id)
-  }
-  return orphanIds
-}
-
-export function retainFailedNotionDeletes(
-  currentIds: ReadonlySet<string>,
-  orphanIds: readonly string[],
-  deletedIds: ReadonlySet<string>,
-): Set<string> {
-  return new Set([...currentIds, ...orphanIds.filter((id) => !deletedIds.has(id))])
-}
-
-export async function deleteOrphanPages(
+export async function processNotionArchiveIntents(
   existingEvents: CalendarEvent[],
   existingSessions: StudySession[],
-  pagesById: Map<string, NotionPage>,
   settings: NotionCalendarSettings,
   ctx: SyncCtx,
   onProgress?: (msg: string) => void,
 ): Promise<Set<string>> {
-  const deletedIds = new Set<string>()
-  const previousIds = getSyncedNotionIds()
-
-  const currentIds = new Set<string>()
-  for (const event of existingEvents) {
-    if (event.source?.type === "notion") currentIds.add(event.source.id)
+  const hiddenIds = new Set<string>()
+  const now = new Date().toISOString()
+  const intents = (await readNotionIntents(settings.dataSourceId))
+    .filter((intent) => intent.operation === "archive")
+  const eventIds = new Set(existingEvents.map((event) => event.id))
+  const sessionIds = new Set(existingSessions.map((session) => session.id))
+  const due: (typeof intents[number] & { pageId: string })[] = []
+  for (const intent of intents) {
+    const restored = intent.kind === "event"
+      ? eventIds.has(intent.localId)
+      : sessionIds.has(intent.localId)
+    if (restored || !intent.pageId) {
+      await clearNotionIntent(intent.dataSourceId, intent.kind, intent.localId, "archive")
+      continue
+    }
+    hiddenIds.add(intent.pageId)
+    if (notionIntentDue(intent, now)) due.push({ ...intent, pageId: intent.pageId })
   }
-  for (const session of existingSessions) {
-    if (session.source?.type === "notion") currentIds.add(session.source.id)
+  if (due.length > 0) {
+    onProgress?.(`Cleaning up ${due.length} deleted item${due.length === 1 ? "" : "s"}...`)
   }
-  for (const id of ctx.newNotionIds) {
-    currentIds.add(id)
-  }
-
-  const orphanIds = [...new Set([
-    ...[...previousIds].filter((id) => !currentIds.has(id) && pagesById.has(id)),
-    ...taggedNotionOrphanIds(
-      pagesById.values(),
-      new Set(existingEvents.map((event) => event.id)),
-      new Set(existingSessions.map((session) => session.id)),
-      currentIds,
-    ),
-  ])]
-  if (orphanIds.length === 0) {
-    setSyncedNotionIds(currentIds)
-    return deletedIds
-  }
-
-  onProgress?.(`Cleaning up ${orphanIds.length} deleted item${orphanIds.length === 1 ? "" : "s"}...`)
-  for (const orphanId of orphanIds) {
-    const ok = await withRetry(
-      `Delete page ${orphanId}`,
-      async () => { await deleteNotionPage(settings, orphanId); return "ok" as const },
-      ctx.pushErrors,
-    )
-    if (ok) {
+  for (const intent of due) {
+    try {
+      await waitForWriteTurn()
+      await deleteNotionPage(settings, intent.pageId)
       ctx.deleted += 1
-      deletedIds.add(orphanId)
+      await clearNotionIntent(intent.dataSourceId, intent.kind, intent.localId, "archive")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      ctx.pushErrors.push(`Delete page ${intent.pageId}: ${message}`)
+      await persistRetriedNotionIntent(retryNotionIntent(intent, message, now))
     }
   }
-
-  // Keep failed deletions in the ledger so the next sync retries them.
-  setSyncedNotionIds(retainFailedNotionDeletes(currentIds, orphanIds, deletedIds))
-  return deletedIds
+  return hiddenIds
 }
 
 // ---------------------------------------------------------------------------

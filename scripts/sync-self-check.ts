@@ -1,4 +1,4 @@
-import { latestChanges, repairDuplicateSessions, retryChange } from "../src/lib/sync/protocol"
+import { chunkItems, latestChanges, repairDuplicateSessions, retryChange, retryOrBlockChange } from "../src/lib/sync/protocol"
 import type { RemoteSyncChange, SyncChange } from "../src/lib/sync/types"
 
 interface BunSqliteDatabase {
@@ -42,6 +42,7 @@ assertEqual(
   [["event-2", "put", 2], ["event-1", "delete", 3]],
   "server revision order must deterministically reduce each entity row",
 )
+assertEqual(chunkItems([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]], "sync pushes must use bounded batches")
 
 const queued: SyncChange = {
   changeId: "change-1",
@@ -56,6 +57,11 @@ assertEqual(
   retryChange(queued, "offline", "2026-07-20T00:00:00.000Z"),
   { ...queued, retryCount: 1, lastError: "offline", nextAttemptAt: "2026-07-20T00:00:05.000Z" },
   "failed immutable changes must remain queued with bounded backoff",
+)
+assertEqual(
+  retryOrBlockChange({ ...queued, retryCount: 7 }, "invalid payload", "2026-07-20T00:00:00.000Z", 8).blockedAt,
+  "2026-07-20T00:00:00.000Z",
+  "deterministic poison rows must stop retrying after the configured ceiling",
 )
 
 const duplicateBase = {
@@ -99,6 +105,15 @@ for (const required of [
   "append-only security model",
 ]) {
   if (!finalMigration.includes(required)) throw new Error(`Supabase sync finalization is missing: ${required}`)
+}
+
+const reliabilityMigration = await fetch(new URL("../supabase/migrations/0006_sync_reliability.sql", import.meta.url)).then((response) => response.text())
+for (const required of [
+  "operation = 'delete' and (payload is null",
+  "sync_change_receipts_accepted_idx",
+  "prune_old_focal_sync_receipts",
+]) {
+  if (!reliabilityMigration.includes(required)) throw new Error(`Supabase reliability migration is missing: ${required}`)
 }
 
 const localMigration = await fetch(new URL("../src-tauri/migrations/0002_rebuild_sync_outbox.sql", import.meta.url)).then((response) => response.text())
@@ -146,6 +161,122 @@ assertEqual(
   localDatabase.query("select account_id from sync_outbox where row_id = 'shared-row' order by account_id").all(),
   [{ account_id: "account-a" }, { account_id: "account-b" }],
   "pending changes for different Supabase accounts must remain isolated",
+)
+
+const localReliabilityMigration = await fetch(new URL("../src-tauri/migrations/0003_sync_reliability.sql", import.meta.url)).then((response) => response.text())
+for (const required of [
+  "alter table sync_outbox add column blocked_at",
+  "create table sync_inbox",
+  "last_account_id text not null default ''",
+  "create trigger records_enqueue_sync_after_insert",
+  "create table notion_outbox",
+]) {
+  if (!localReliabilityMigration.includes(required)) throw new Error(`Local reliability migration is missing: ${required}`)
+}
+localDatabase.run(
+  `insert into preferences (key, value, syncable, updated_at) values (?, ?, ?, ?)`,
+  ["focal-notion-data-source-id", JSON.stringify("database"), 1, "2026-07-20T00:00:00.000Z"],
+)
+localDatabase.run(
+  "insert into records (kind, id, payload, position) values (?, ?, ?, ?)",
+  ["events", "pre-upgrade-event", JSON.stringify({ id: "pre-upgrade-event", title: "Existing" }), 0],
+)
+localDatabase.exec(localReliabilityMigration)
+localDatabase.run("update sync_local_context set account_id = ? where singleton = 1", ["account-a"])
+assertEqual(
+  localDatabase.query("select operation from notion_outbox where local_id = 'pre-upgrade-event'").all(),
+  [{ operation: "upsert" }],
+  "the reliability migration must backfill existing Notion-eligible records",
+)
+localDatabase.run(
+  "insert into records (kind, id, payload, position) values (?, ?, ?, ?)",
+  ["events", "atomic-event", JSON.stringify({ id: "atomic-event", title: "Atomic" }), 0],
+)
+assertEqual(
+  localDatabase.query("select account_id, operation from sync_outbox where row_id = 'atomic-event'").all(),
+  [{ account_id: "account-a", operation: "put" }],
+  "a durable record upsert must atomically create its Supabase outbox intent",
+)
+assertEqual(
+  localDatabase.query("select operation from notion_outbox where local_id = 'atomic-event'").all(),
+  [{ operation: "upsert" }],
+  "a Notion-eligible record write must atomically create its Notion outbox intent",
+)
+const remotePayload = JSON.stringify({ id: "remote-event", title: "Remote" })
+localDatabase.run(
+  "insert into sync_record_suppress (entity, row_id, payload) values (?, ?, ?)",
+  ["events", "remote-event", remotePayload],
+)
+localDatabase.run(
+  "insert into records (kind, id, payload, position) values (?, ?, ?, ?)",
+  ["events", "remote-event", remotePayload, 1],
+)
+assertEqual(
+  localDatabase.query("select change_id from sync_outbox where row_id = 'remote-event'").all(),
+  [],
+  "applying a remote record must not echo it back into the local outbox",
+)
+localDatabase.run(
+  `insert into sync_inbox (
+     account_id, entity, row_id, change_id, device_id, operation, payload, revision, created_at
+   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ["account-a", "events", "deferred-event", "remote-1", "device-b", "put", remotePayload, 10, "2026-07-20T00:00:00.000Z"],
+)
+localDatabase.run(
+  `insert into sync_inbox (
+     account_id, entity, row_id, change_id, device_id, operation, payload, revision, created_at
+   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+   on conflict (account_id, entity, row_id) do update set
+     change_id = excluded.change_id, revision = excluded.revision
+   where excluded.revision > sync_inbox.revision`,
+  ["account-a", "events", "deferred-event", "remote-2", "device-b", "put", remotePayload, 12, "2026-07-20T00:00:01.000Z"],
+)
+assertEqual(
+  localDatabase.query("select change_id, revision from sync_inbox where row_id = 'deferred-event'").all(),
+  [{ change_id: "remote-2", revision: 12 }],
+  "the durable inbox must retain the newest skipped remote revision",
+)
+const linkedPayload = JSON.stringify({
+  id: "linked-event",
+  title: "Linked",
+  source: { type: "notion", id: "notion-page", kind: "event" },
+})
+localDatabase.run(
+  "insert into records (kind, id, payload, position) values (?, ?, ?, ?)",
+  ["events", "linked-event", linkedPayload, 2],
+)
+localDatabase.run(
+  `insert into sync_outbox (
+     change_id, account_id, entity, row_id, operation, payload, created_at
+   ) values (?, ?, ?, ?, ?, ?, ?)
+   on conflict (account_id, entity, row_id) do update set
+     change_id = excluded.change_id,
+     operation = excluded.operation,
+     payload = excluded.payload,
+     created_at = excluded.created_at`,
+  [
+    "linked-delete",
+    "account-a",
+    "events",
+    "linked-event",
+    "delete",
+    JSON.stringify({ notion: { pageId: "notion-page", kind: "event", dataSourceId: "database" } }),
+    "2026-07-20T00:00:00.000Z",
+  ],
+)
+assertEqual(
+  localDatabase.query("select operation, page_id from notion_outbox where local_id = 'linked-event'").all(),
+  [{ operation: "archive", page_id: "notion-page" }],
+  "a Supabase tombstone must atomically create the matching Notion archive intent",
+)
+localDatabase.run(
+  "insert into records (kind, id, payload, position) values (?, ?, ?, ?)",
+  ["events", "linked-event", linkedPayload, 2],
+)
+assertEqual(
+  localDatabase.query("select operation, page_id from notion_outbox where local_id = 'linked-event'").all(),
+  [{ operation: "upsert", page_id: "notion-page" }],
+  "restoring a linked item must atomically cancel its pending Notion archive",
 )
 localDatabase.close()
 

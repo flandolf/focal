@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -18,6 +19,8 @@ static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 pub struct NotionError {
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_after_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,6 +41,7 @@ fn query_error(code: &str, message: &str) -> NotionQueryResponse {
         error: Some(NotionError {
             code: code.to_string(),
             message: message.to_string(),
+            retry_after_ms: None,
         }),
     }
 }
@@ -48,6 +52,7 @@ fn page_error(code: &str, message: &str) -> NotionPageResponse {
         error: Some(NotionError {
             code: code.to_string(),
             message: message.to_string(),
+            retry_after_ms: None,
         }),
     }
 }
@@ -66,6 +71,12 @@ async fn parse_notion_response(response: reqwest::Response) -> NotionPageRespons
     }
 
     if !status.is_success() {
+        let retry_after_ms = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<f64>().ok())
+            .map(|seconds| (seconds * 1000.0).ceil() as u64);
         let body = response.text().await.unwrap_or_default();
         // Try to extract Notion's error code from the JSON body.
         // Notion error shape: {"object":"error","status":404,"code":"object_not_found","message":"..."}
@@ -76,13 +87,31 @@ async fn parse_notion_response(response: reqwest::Response) -> NotionPageRespons
                     .and_then(|c| c.as_str())
                     .map(|s| s.to_string())
             })
-            .unwrap_or_else(|| "NOTION_ERROR".to_string());
+            .unwrap_or_else(|| {
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    "rate_limited"
+                } else if status == reqwest::StatusCode::REQUEST_TIMEOUT {
+                    "gateway_timeout"
+                } else if status.is_server_error() {
+                    "service_unavailable"
+                } else {
+                    "NOTION_ERROR"
+                }
+                .to_string()
+            });
         let message = if body.is_empty() {
             format!("Notion returned {}", status)
         } else {
             format!("Notion returned {}: {}", status, body)
         };
-        return page_error(&notion_code, &message);
+        return NotionPageResponse {
+            data: None,
+            error: Some(NotionError {
+                code: notion_code,
+                message,
+                retry_after_ms,
+            }),
+        };
     }
 
     match response.json::<Value>().await {
@@ -170,6 +199,7 @@ pub async fn query_notion_calendar(token: String, data_source_id: String) -> Not
 
     let url = format!("{}/databases/{}/query", NOTION_BASE_URL, data_source_id);
     let mut cursor: Option<String> = None;
+    let mut seen_cursors = HashSet::new();
     let mut pages: Vec<Value> = Vec::new();
 
     loop {
@@ -202,6 +232,12 @@ pub async fn query_notion_calendar(token: String, data_source_id: String) -> Not
         }
 
         if !status.is_success() {
+            let retry_after_ms = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<f64>().ok())
+                .map(|seconds| (seconds * 1000.0).ceil() as u64);
             let body = response.text().await.unwrap_or_default();
             let notion_code = serde_json::from_str::<Value>(&body)
                 .ok()
@@ -210,13 +246,31 @@ pub async fn query_notion_calendar(token: String, data_source_id: String) -> Not
                         .and_then(|c| c.as_str())
                         .map(|s| s.to_string())
                 })
-                .unwrap_or_else(|| "NOTION_ERROR".to_string());
+                .unwrap_or_else(|| {
+                    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        "rate_limited"
+                    } else if status == reqwest::StatusCode::REQUEST_TIMEOUT {
+                        "gateway_timeout"
+                    } else if status.is_server_error() {
+                        "service_unavailable"
+                    } else {
+                        "NOTION_ERROR"
+                    }
+                    .to_string()
+                });
             let message = if body.is_empty() {
                 format!("Notion returned {}", status)
             } else {
                 format!("Notion returned {}: {}", status, body)
             };
-            return query_error(&notion_code, &message);
+            return NotionQueryResponse {
+                data: None,
+                error: Some(NotionError {
+                    code: notion_code,
+                    message,
+                    retry_after_ms,
+                }),
+            };
         }
 
         let json: Value = match response.json().await {
@@ -228,11 +282,17 @@ pub async fn query_notion_calendar(token: String, data_source_id: String) -> Not
             pages.extend(results.iter().cloned());
         }
 
-        cursor = json
+        let next_cursor = json
             .get("next_cursor")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
+        if let Some(next) = &next_cursor {
+            if !seen_cursors.insert(next.clone()) {
+                return query_error("NOTION_ERROR", "Notion repeated a pagination cursor");
+            }
+        }
+        cursor = next_cursor;
 
         if cursor.is_none() {
             break;
@@ -325,7 +385,10 @@ pub async fn update_notion_calendar_page(
     // Replace page children if new children were provided
     if let Some(children_val) = children {
         if let Err(error) = replace_page_children(token, page_id, children_val).await {
-            return page_error(&error.code, &error.message);
+            return NotionPageResponse {
+                data: None,
+                error: Some(error),
+            };
         }
 
         // Re-read the page so last_edited_time includes the body change. Returning
@@ -369,6 +432,7 @@ async fn replace_page_children(
         let response = request.send().await.map_err(|error| NotionError {
             code: "NETWORK_ERROR".to_string(),
             message: format!("Network error: {}", error),
+            retry_after_ms: None,
         })?;
         if !response.status().is_success() {
             return Err(parse_notion_response(response)
@@ -377,6 +441,7 @@ async fn replace_page_children(
                 .unwrap_or(NotionError {
                     code: "NOTION_ERROR".to_string(),
                     message: "Failed to list Notion page content".to_string(),
+                    retry_after_ms: None,
                 }));
         }
         let response_json = response
@@ -385,6 +450,7 @@ async fn replace_page_children(
             .map_err(|error| NotionError {
                 code: "NOTION_ERROR".to_string(),
                 message: format!("Invalid response: {}", error),
+                retry_after_ms: None,
             })?;
         if let Some(results) = response_json
             .get("results")
@@ -407,6 +473,29 @@ async fn replace_page_children(
         }
     }
 
+    let clear_body = new_children.as_array().is_some_and(Vec::is_empty);
+
+    // Append the replacement before retiring the previous blocks. A crash or
+    // transient failure can temporarily duplicate content, but cannot erase the
+    // only durable copy. A retry lists both generations and converges safely.
+    if !clear_body {
+        let response = HTTP_CLIENT
+            .patch(&children_url)
+            .bearer_auth(token)
+            .header("Notion-Version", NOTION_API_VERSION)
+            .json(&json!({ "children": new_children }))
+            .send()
+            .await
+            .map_err(|error| NotionError {
+                code: "NETWORK_ERROR".to_string(),
+                message: format!("Network error: {}", error),
+                retry_after_ms: None,
+            })?;
+        if let Some(error) = parse_notion_response(response).await.error {
+            return Err(error);
+        }
+    }
+
     // Sequential deletes avoid creating a burst that Notion rate-limits.
     for block_id in block_ids {
         let response = HTTP_CLIENT
@@ -418,30 +507,11 @@ async fn replace_page_children(
             .map_err(|error| NotionError {
                 code: "NETWORK_ERROR".to_string(),
                 message: format!("Network error: {}", error),
+                retry_after_ms: None,
             })?;
         if let Some(error) = parse_notion_response(response).await.error {
             return Err(error);
         }
-    }
-
-    if new_children.as_array().is_some_and(Vec::is_empty) {
-        return Ok(());
-    }
-
-    // Append new children
-    let response = HTTP_CLIENT
-        .patch(&children_url)
-        .bearer_auth(token)
-        .header("Notion-Version", NOTION_API_VERSION)
-        .json(&json!({ "children": new_children }))
-        .send()
-        .await
-        .map_err(|error| NotionError {
-            code: "NETWORK_ERROR".to_string(),
-            message: format!("Network error: {}", error),
-        })?;
-    if let Some(error) = parse_notion_response(response).await.error {
-        return Err(error);
     }
 
     Ok(())

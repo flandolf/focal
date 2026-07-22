@@ -21,6 +21,12 @@ fn database_migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0002_rebuild_sync_outbox.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "sync_reliability",
+            sql: include_str!("../migrations/0003_sync_reliability.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

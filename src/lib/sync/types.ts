@@ -24,6 +24,7 @@ export interface SyncChange {
   retryCount: number
   lastError?: string
   nextAttemptAt?: string
+  blockedAt?: string
 }
 
 export interface RemoteSyncChange {

@@ -24,11 +24,13 @@ export interface ConflictItem {
   notionPageId: string
   notionLastEditedTime?: string
   notionUrl?: string
+  remoteUpdates: EventUpdates | SessionUpdates
 }
 
-interface NotionQueryError {
+export interface NotionQueryError {
   code: string
   message: string
+  retry_after_ms?: number
 }
 
 export interface NotionQueryResponse {
@@ -61,6 +63,8 @@ export interface NotionCalendarSyncResult {
   conflictItems: ConflictItem[]
   pushErrors: string[]
   deleted: number
+  acknowledgedEventIds: string[]
+  acknowledgedSessionIds: string[]
 }
 
 export type EventUpdates = Partial<Omit<CalendarEvent, "id" | "created_at">>
@@ -409,7 +413,11 @@ export function isCompleted(properties: Record<string, NotionProperty>, settings
 // ---------------------------------------------------------------------------
 
 export function richTextValue(value: string): unknown[] {
-  return [{ type: "text", text: { content: value } }]
+  const chunks: unknown[] = []
+  for (let offset = 0; offset < value.length; offset += 2_000) {
+    chunks.push({ type: "text", text: { content: value.slice(offset, offset + 2_000) } })
+  }
+  return chunks
 }
 
 export function createTextProperty(propertyType: string | undefined, value: string | undefined): unknown {
@@ -555,9 +563,20 @@ export interface SyncCtx {
   conflictItems: ConflictItem[]
   pushErrors: string[]
   newNotionIds: Set<string>
+  dirtyEventIds: ReadonlySet<string>
+  dirtySessionIds: ReadonlySet<string>
+  pulledEventIds: Set<string>
+  pulledSessionIds: Set<string>
+  conflictedEventIds: Set<string>
+  conflictedSessionIds: Set<string>
+  acknowledgedEventIds: Set<string>
+  acknowledgedSessionIds: Set<string>
 }
 
-export function createSyncCtx(): SyncCtx {
+export function createSyncCtx(
+  dirtyEventIds: ReadonlySet<string> = new Set(),
+  dirtySessionIds: ReadonlySet<string> = new Set(),
+): SyncCtx {
   return {
     created: [],
     createdSessions: [],
@@ -577,6 +596,14 @@ export function createSyncCtx(): SyncCtx {
     conflictItems: [],
     pushErrors: [],
     newNotionIds: new Set(),
+    dirtyEventIds,
+    dirtySessionIds,
+    pulledEventIds: new Set(),
+    pulledSessionIds: new Set(),
+    conflictedEventIds: new Set(),
+    conflictedSessionIds: new Set(),
+    acknowledgedEventIds: new Set(),
+    acknowledgedSessionIds: new Set(),
   }
 }
 
