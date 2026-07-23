@@ -1,19 +1,27 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 import {
+  BookOpen,
   Check,
   Coffee,
+  Minimize2,
   Pause,
   Play,
   Plus,
   RotateCcw,
   SkipForward,
   Timer,
-  X,
 } from "lucide-react";
 import { TitleBar } from "@/components/TitleBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 interface FocusViewProps {
@@ -37,7 +45,9 @@ interface FocusViewProps {
   onToggle: () => void;
   onFinish: () => void;
   onReset: () => void;
+  onReturnToBreak: () => void;
   onSkipBreak: () => void;
+  onStartStudyOvertime: () => void;
   onMoreBreakTime: () => void;
   onClose: () => void;
   closeButtonRef?: RefObject<HTMLButtonElement | null>;
@@ -77,7 +87,9 @@ export function FocusView({
   onToggle,
   onFinish,
   onReset,
+  onReturnToBreak,
   onSkipBreak,
+  onStartStudyOvertime,
   onMoreBreakTime,
   onClose,
   closeButtonRef,
@@ -86,7 +98,9 @@ export function FocusView({
   const resolvedCloseRef = closeButtonRef ?? fallbackCloseRef;
   const primaryButtonRef = useRef<HTMLButtonElement | null>(null);
   const isFocus = mode === "work" || isStudyOvertime;
-  const safeProgress = Math.min(1, Math.max(0, progress));
+  const safeProgress = Number.isFinite(progress)
+    ? Math.min(1, Math.max(0, progress))
+    : 0;
   const progressPercent = Math.round(safeProgress * 100);
   const projectedFinish = useMemo(
     () => finishTime(isStudyOvertime ? 0 : secondsLeft),
@@ -140,133 +154,187 @@ export function FocusView({
       aria-modal="true"
       aria-label="Focus timer"
     >
-      <TitleBar onSearch={onSearch} onSettings={onSettings} />
-      <Button
-        ref={resolvedCloseRef}
-        variant="ghost"
-        size="icon"
-        className="absolute right-3 top-12 z-10"
-        onClick={onClose}
-        aria-label="Close focus view"
-      >
-        <X />
-      </Button>
+      <TitleBar onSearch={onSearch} onSettings={onSettings}>
+        <Button
+          ref={resolvedCloseRef}
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label="Exit focus view"
+          title="Exit focus view"
+        >
+          <Minimize2 />
+        </Button>
+      </TitleBar>
 
-      <main className="grid min-h-0 flex-1 place-items-center overflow-hidden p-4 sm:p-8">
-        <Card className="w-full max-w-2xl gap-0 py-0">
-          <CardContent className="flex flex-col items-center px-5 py-8 text-center sm:px-10 sm:py-12">
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Badge variant={activeSessionId ? "success" : "secondary"}>
-                <Timer />
-                {status}
-              </Badge>
-              <Badge variant="outline">Cycle {cycles + 1}</Badge>
-            </div>
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto grid min-h-full w-full max-w-5xl place-items-center p-3 sm:p-6 lg:p-10">
+          <Card className="w-full max-w-3xl gap-0 py-0">
+            <CardHeader className="border-b px-5 py-4 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 text-left">
+                  <CardTitle className="truncate font-heading">
+                    {subjectLabel}
+                  </CardTitle>
+                  <CardDescription className="truncate">
+                    {projectLabel ?? `${modeLabel} session`}
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={activeSessionId ? "success" : "secondary"}>
+                    <Timer />
+                    {status}
+                  </Badge>
+                  <Badge variant="outline">Cycle {cycles + 1}</Badge>
+                </div>
+              </div>
+            </CardHeader>
 
-            <p className="mt-6 text-sm font-medium text-muted-foreground">
-              {modeLabel}
-            </p>
-            <h1 className="mt-2 font-heading text-7xl font-semibold tabular-nums tracking-[-0.05em] sm:text-8xl lg:text-9xl">
-              {timeDisplay}
-            </h1>
+            <CardContent className="flex flex-col items-center px-5 py-10 text-center sm:px-10 sm:py-14 lg:py-16">
+              <p className="text-sm font-medium text-muted-foreground">
+                {modeLabel}
+              </p>
+              <h1 className="mt-2 font-heading text-7xl font-semibold leading-none tabular-nums tracking-[-0.05em] sm:text-8xl lg:text-9xl">
+                {timeDisplay}
+              </h1>
 
-            <div className="mt-7 w-full max-w-lg">
-              <div
-                role="progressbar"
-                aria-label={`${modeLabel} progress`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={progressPercent}
-                className="h-2 overflow-hidden rounded-full bg-muted"
-              >
+              <div className="mt-8 w-full max-w-xl">
+                <div
+                  role="progressbar"
+                  aria-label={`${modeLabel} progress`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressPercent}
+                  className="h-1.5 overflow-hidden rounded-full bg-muted"
+                >
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-[width] duration-1000 motion-reduce:transition-none",
+                      isFocus ? "bg-primary" : "bg-success",
+                    )}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-4 text-xs text-muted-foreground">
+                  <span>{progressPercent}% complete</span>
+                  <span className="text-right">
+                    {isStudyOvertime
+                      ? "Open-ended focus"
+                      : running
+                        ? `Finishes ${projectedFinish}`
+                        : `${Math.ceil(totalSeconds / 60)} min block`}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+
+            <CardFooter className="flex-col gap-3 p-4 sm:p-5">
+              {isFocus ? (
                 <div
                   className={cn(
-                    "h-full rounded-full transition-[width] duration-1000 motion-reduce:transition-none",
-                    isFocus ? "bg-primary" : "bg-success",
+                    "grid w-full grid-cols-1 gap-2",
+                    activeSessionId && !isStudyOvertime && "sm:grid-cols-2",
+                    activeSessionId && isStudyOvertime && "sm:grid-cols-3",
                   )}
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-                <span>{progressPercent}% complete</span>
-                <span>
-                  {isStudyOvertime
-                    ? "Open-ended focus"
-                    : running
-                      ? `Finishes ${projectedFinish}`
-                      : `${Math.ceil(totalSeconds / 60)} min block`}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-8 min-w-0">
-              <p className="truncate text-base font-semibold">{subjectLabel}</p>
-              {projectLabel && (
-                <p className="mt-1 max-w-md truncate text-sm text-muted-foreground">
-                  {projectLabel}
-                </p>
-              )}
-            </div>
-
-            {isFocus ? (
-              <div className="mt-8 flex w-full max-w-lg flex-col gap-2 sm:flex-row">
-                <Button
-                  ref={primaryButtonRef}
-                  size="lg"
-                  className="flex-1"
-                  onClick={onToggle}
-                  disabled={saving || (!activeSessionId && !canStartFocus)}
                 >
-                  {running ? <Pause /> : <Play />}
-                  {timerActionLabel}
-                </Button>
-                {activeSessionId && (
                   <Button
+                    ref={primaryButtonRef}
                     size="lg"
-                    className="flex-1"
-                    variant="outline"
-                    onClick={onFinish}
+                    onClick={onToggle}
+                    disabled={saving || (!activeSessionId && !canStartFocus)}
+                  >
+                    {running ? <Pause /> : <Play />}
+                    {timerActionLabel}
+                  </Button>
+                  {activeSessionId && (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={onFinish}
+                      disabled={saving}
+                    >
+                      <Check />
+                      Finish &amp; save
+                    </Button>
+                  )}
+                  {isStudyOvertime && (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={onReturnToBreak}
+                      disabled={saving}
+                    >
+                      <Coffee />
+                      Return to break
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+                  <Button
+                    ref={primaryButtonRef}
+                    size="lg"
+                    onClick={onToggle}
                     disabled={saving}
                   >
-                    <Check />
-                    Finish &amp; save
+                    {running ? <Pause /> : <Coffee />}
+                    {running ? "Pause" : "Resume"}
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={onStartStudyOvertime}
+                    disabled={saving || !!activeSessionId || !canStartFocus}
+                  >
+                    <BookOpen />
+                    Keep focusing
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={onMoreBreakTime}>
+                    <Plus />
+                    5 min
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={onSkipBreak}>
+                    <SkipForward />
+                    Skip
+                  </Button>
+                </div>
+              )}
+
+              <div
+                className={cn(
+                  "flex w-full flex-col items-center gap-2 border-t pt-3 sm:flex-row",
+                  activeSessionId ? "sm:justify-end" : "sm:justify-between",
+                )}
+              >
+                {!activeSessionId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={onReset}
+                    disabled={saving}
+                  >
+                    <RotateCcw />
+                    Reset timer
                   </Button>
                 )}
+                <p className="text-center text-xs text-muted-foreground sm:text-right">
+                  Space to{" "}
+                  {running
+                    ? "pause"
+                    : activeSessionId
+                      ? "resume"
+                      : isFocus
+                        ? "start"
+                        : "resume break"}{" "}
+                  · Esc to exit
+                </p>
               </div>
-            ) : (
-              <div className="mt-8 grid w-full max-w-lg grid-cols-3 gap-2">
-                <Button ref={primaryButtonRef} size="lg" onClick={onToggle} disabled={saving}>
-                  {running ? <Pause /> : <Coffee />}
-                  {running ? "Pause" : "Resume"}
-                </Button>
-                <Button size="lg" variant="outline" onClick={onSkipBreak}>
-                  <SkipForward />
-                  Skip
-                </Button>
-                <Button size="lg" variant="outline" onClick={onMoreBreakTime}>
-                  <Plus />
-                  5 min
-                </Button>
-              </div>
-            )}
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-4 text-muted-foreground"
-              onClick={onReset}
-              disabled={saving}
-            >
-              <RotateCcw />
-              Reset timer
-            </Button>
-          </CardContent>
-        </Card>
+            </CardFooter>
+          </Card>
+        </div>
       </main>
 
-      <p className="shrink-0 pb-4 text-center text-xs text-muted-foreground">
-        Space to {running ? "pause" : activeSessionId ? "resume" : isFocus ? "start" : "resume break"} · Esc to close
-      </p>
       <span className="sr-only" aria-live="polite">
         {status}. {timeDisplay} remaining.
       </span>
