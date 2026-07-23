@@ -336,11 +336,11 @@ const StudyTimerInner = memo(function StudyTimerInner({
     });
   };
 
-  const startSession = async () => {
+  const startSession = async (durationSeconds = secondsLeft) => {
     if (activeSessionIdRef.current || !canStartFocus) return false;
     const session = await onStartSession({
       subjectIds: selectedSubjectIds,
-      durationSeconds: secondsLeft,
+      durationSeconds,
       projectId: activeProjectId,
       cycleNumber: cycles + 1,
     });
@@ -441,6 +441,41 @@ const StudyTimerInner = memo(function StudyTimerInner({
     dispatch({ type: "RESET", settings });
   };
 
+  const handleStartStudyOvertime = async () => {
+    if (
+      mode === "work" ||
+      isStudyOvertime ||
+      activeSessionIdRef.current ||
+      !canStartFocus ||
+      savingRef.current
+    ) return;
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      if (await startSession(settings.workMinutes * 60)) {
+        dispatch({ type: "START_STUDY_OVERTIME", settings });
+      }
+    } catch (error) {
+      console.error("Failed to keep focusing:", error);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  const handleReturnToBreak = async () => {
+    if (!isStudyOvertime || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      if (await completeActiveSession()) dispatch({ type: "RETURN_TO_BREAK" });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
   const handleRecoveryFinish = async () => {
     if (await completeActiveSession()) dispatch({ type: "RESET", settings });
   };
@@ -491,7 +526,9 @@ const StudyTimerInner = memo(function StudyTimerInner({
           onToggle={handleToggle}
           onFinish={handleFinish}
           onReset={handleReset}
+          onReturnToBreak={handleReturnToBreak}
           onSkipBreak={handleSkipBreak}
+          onStartStudyOvertime={handleStartStudyOvertime}
           onMoreBreakTime={handleMoreBreakTime}
           onClose={() => setFocusView(false)}
           closeButtonRef={focusCloseButtonRef}

@@ -2,6 +2,7 @@ import {
   advanceTimer,
   closeRunningInterval,
   getActiveSessionSubjectIds,
+  timerReducer,
 } from "../src/features/timer/model.ts";
 import { isTimerShortcutTarget } from "../src/components/timer/FocusView.tsx";
 import {
@@ -45,6 +46,24 @@ check(advanceTimer(runningWork, settings, 311), {
   studyOvertime: false,
   overtimeSeconds: 0,
 });
+const breakWithTimeUsed = {
+  running: true,
+  mode: "break",
+  secondsLeft: 240,
+  cycles: 1,
+  studyOvertime: false,
+  overtimeSeconds: 0,
+};
+const studyOvertime = timerReducer(breakWithTimeUsed, {
+  type: "START_STUDY_OVERTIME",
+  settings,
+});
+check(studyOvertime, {
+  ...breakWithTimeUsed,
+  studyOvertime: true,
+  overtimeSeconds: 60,
+});
+check(timerReducer(studyOvertime, { type: "RETURN_TO_BREAK" }), breakWithTimeUsed);
 check(closeRunningInterval([
   { start: "2026-07-12T10:00:00.000Z", end: "2026-07-12T10:05:00.000Z", source: "pomodoro" },
   { start: "2026-07-12T10:10:00.000Z", source: "pomodoro" },
