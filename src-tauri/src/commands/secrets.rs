@@ -34,7 +34,7 @@ fn chunk_username(key: &str, generation: &str, index: usize) -> String {
     format!("{key}:chunk:{generation}:{index}")
 }
 
-fn chunk_secret(value: &str) -> Vec<String> {
+fn chunk_secret_for_windows(value: &str) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
     let mut current_units = 0;
@@ -52,6 +52,14 @@ fn chunk_secret(value: &str) -> Vec<String> {
         chunks.push(current);
     }
     chunks
+}
+
+fn chunk_secret(value: &str) -> Vec<String> {
+    if cfg!(target_os = "windows") {
+        chunk_secret_for_windows(value)
+    } else {
+        vec![value.to_string()]
+    }
 }
 
 fn parse_manifest(value: &str) -> Result<Option<(String, usize)>, String> {
@@ -127,10 +135,23 @@ fn write_chunks(key: &str, generation: &str, chunks: &[String]) -> Result<(), St
 #[tauri::command]
 pub async fn get_secret(key: String) -> Result<Option<String>, String> {
     validate_key(&key)?;
-    tokio::task::spawn_blocking(move || match entry(&key)?.get_password() {
-        Ok(value) => read_chunked_secret(&key, &value),
-        Err(Error::NoEntry) => Ok(None),
-        Err(error) => Err(error.to_string()),
+    tokio::task::spawn_blocking(move || {
+        let primary = entry(&key)?;
+        match primary.get_password() {
+            Ok(stored) => {
+                let value = read_chunked_secret(&key, &stored)?;
+                if !cfg!(target_os = "windows") && parse_manifest(&stored)?.is_some() {
+                    if let Some(value) = value.as_deref() {
+                        if primary.set_password(value).is_ok() {
+                            delete_chunks(&key, &stored);
+                        }
+                    }
+                }
+                Ok(value)
+            }
+            Err(Error::NoEntry) => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
     })
     .await
     .map_err(|error| error.to_string())?
@@ -186,7 +207,10 @@ pub async fn set_secret(key: String, value: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{chunk_secret, parse_manifest, validate_key, MAX_CHUNK_UTF16_UNITS};
+    use super::{
+        chunk_secret, chunk_secret_for_windows, parse_manifest, validate_key,
+        MAX_CHUNK_UTF16_UNITS,
+    };
 
     #[test]
     fn only_known_secret_keys_cross_the_ipc_boundary() {
@@ -200,7 +224,7 @@ mod tests {
     #[test]
     fn long_secrets_round_trip_through_bounded_utf16_chunks() {
         let value = format!("{}{}", "a".repeat(4_000), "🧠".repeat(500));
-        let chunks = chunk_secret(&value);
+        let chunks = chunk_secret_for_windows(&value);
         assert!(chunks.len() > 1);
         assert!(chunks
             .iter()
@@ -209,6 +233,15 @@ mod tests {
             .iter()
             .all(|chunk| chunk.encode_utf16().count() * 2 < 2560));
         assert_eq!(chunks.concat(), value);
+    }
+
+    #[test]
+    fn non_windows_stores_do_not_split_long_secrets() {
+        if cfg!(target_os = "windows") {
+            return;
+        }
+        let value = "a".repeat(10_000);
+        assert_eq!(chunk_secret(&value), vec![value]);
     }
 
     #[test]
