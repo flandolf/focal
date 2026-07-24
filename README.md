@@ -55,7 +55,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 | Layer | Tools |
 | --- | --- |
 | Frontend | React 19 · TypeScript (strict) · Tailwind v4 · Radix primitives · Recharts · Framer Motion · Sonner · `lucide-react` · `react-day-picker` · `date-fns` |
-| Desktop shell | Tauri v2 (Rust) — SQLite local database · OS credential vault · filesystem watcher · dialogs · notifications · updater |
+| Desktop shell | Tauri v2 (Rust) — SQLite local database · device-only credential storage · filesystem watcher · dialogs · notifications · updater |
 | Type & colour | Sora Variable (display) · Geist (UI) · single-accent palette, dark and light modes equally considered |
 | AI | OpenRouter or local Ollama, with structured output and tool calling (Auto Rename, Text-to-Events) |
 | Cloud | Optional Supabase Auth + a compacted Postgres change log + Realtime, backed by a durable SQLite outbox. Notion rows carry stable Focal identity fields. |

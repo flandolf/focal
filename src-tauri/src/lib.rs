@@ -74,8 +74,6 @@ pub fn run() {
             commands::notion::update_notion_calendar_page,
             commands::ollama::ollama_request,
             commands::ollama::cancel_ollama_request,
-            commands::secrets::get_secret,
-            commands::secrets::set_secret,
             commands::window::window_set_zoom,
             commands::vcaa::fetch_vcaa_exam_timetable,
         ])
