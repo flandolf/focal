@@ -2170,6 +2170,7 @@ function App() {
                 event={selectedEvent}
                 customSubjects={customSubjects}
                 availableSubjects={availableSubjects}
+                timetableConfig={timetableConfig}
                 initialDate={selectedEvent ? undefined : newItemInitialDate}
                 onSubmit={
                   (selectedEvent

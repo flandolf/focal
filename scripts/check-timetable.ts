@@ -2,6 +2,7 @@ import {
   getDayLabelForDate,
   getTimetablePeriodError,
   getTimetablePeriodsForDay,
+  getTimetablePeriodsForSubjectOnDate,
   isTimetableBreakLabel,
   parseTimetableImport,
   TIMETABLE_SCREENSHOT_PROMPT,
@@ -35,6 +36,20 @@ const periods = getTimetablePeriodsForDay(2, [
   { dayLabel: 2, periods: [{ period: "Period 1", subject: "eng", startTime: "09:00", endTime: "10:00" }] },
 ])
 check(periods.map((period) => period.period).join(",") === "Period 1,Period 2", "duplicate day entries should merge and sort")
+
+const subjectPeriods = getTimetablePeriodsForSubjectOnDate(new Date(2026, 0, 27), "chem", {
+  enabled: true,
+  day1Starts: "2026-01-26",
+  holidays: [],
+  cycleLength: 10,
+  entries: [
+    { dayLabel: 2, periods: [
+      { period: "Period 1", subject: "eng", startTime: "09:00", endTime: "10:00" },
+      { period: "Period 2", subject: "chem", startTime: "10:00", endTime: "11:00" },
+    ] },
+  ],
+})
+check(subjectPeriods.map((period) => period.period).join(",") === "Period 2", "subject periods should use the date's cycle day")
 
 const imported = parseTimetableImport(JSON.stringify({
   cycleLength: 5,

@@ -16,8 +16,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
 import TimePicker from "@/components/ui/time-picker"
-import { VCE_SUBJECTS, type CalendarEvent, type EventType, type Subject } from"@/lib/types"
-import { cn, getSubjectById } from"@/lib/utils"
+import { VCE_SUBJECTS, type CalendarEvent, type EventType, type Subject, type TimetableConfig } from"@/lib/types"
+import { getTimetablePeriodsForSubjectOnDate } from "@/lib/timetable"
+import { cn, formatTime, getSubjectById } from"@/lib/utils"
 
 const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
  { value:"exam", label:"Exam" },
@@ -76,6 +77,7 @@ interface EventFormInitialValues {
 interface EventFormProps {
  customSubjects: Subject[]
  availableSubjects?: Subject[]
+ timetableConfig?: TimetableConfig
  initialValues?: EventFormInitialValues
  submitLabel: string
  onCancel: () => void
@@ -91,6 +93,7 @@ export interface EventDialogProps {
  event?: CalendarEvent | null
  customSubjects: Subject[]
  availableSubjects?: Subject[]
+ timetableConfig?: TimetableConfig
  initialDate?: Date
  onSubmit?: (data: {
  title: string
@@ -166,6 +169,7 @@ function generateRecurringEvents(
 function EventForm({
  customSubjects,
  availableSubjects,
+ timetableConfig,
  initialValues,
  submitLabel,
  onCancel,
@@ -213,6 +217,10 @@ function EventForm({
  }, [eventDate, endDate])
 
  const isMultiDay = multiDaySpanDays > 1
+ const timetablePeriods = useMemo(() => {
+ if (!eventDate || !subjectId || !timetableConfig) return []
+ return getTimetablePeriodsForSubjectOnDate(eventDate, subjectId, timetableConfig)
+ }, [eventDate, subjectId, timetableConfig])
 
  const effectiveEndTime = useMemo(() => {
  const [sh, sm] = startTime.split(":").map(Number)
@@ -241,6 +249,18 @@ function EventForm({
  }
  return undefined
  }, [startTime, eventDate, endDate, isMultiDay, duration, endTimeMode, explicitEndTime])
+ const isUsingTimetablePeriod = timetablePeriods.some((period) => (
+ period.startTime === startTime
+ && effectiveEndTime
+ && period.endTime === format(effectiveEndTime,"HH:mm")
+ ))
+
+ const applyTimetablePeriod = (period: (typeof timetablePeriods)[number]) => {
+ setStartTime(period.startTime)
+ setExplicitEndTime(period.endTime)
+ setEndTimeMode("end")
+ setEndDate(eventDate)
+ }
 
  const computedDurationMinutes = useMemo(() => {
  if (endTimeMode !=="end" || !explicitEndTime) return undefined
@@ -467,6 +487,34 @@ function EventForm({
  )}
  </FormField>
  </div>
+ {!isUsingTimetablePeriod && timetablePeriods.length > 0 && (
+ <div className="mt-3 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2.5">
+ <div className="flex items-start gap-2">
+ <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+ <div className="min-w-0 flex-1">
+ <p className="text-xs text-muted-foreground">
+ This subject is on the timetable for this day. Switch the event to its class time?
+ </p>
+ <div className="mt-2 flex flex-wrap gap-1.5">
+ {timetablePeriods.map((period) => (
+ <Button
+ key={`${period.period}-${period.startTime}-${period.endTime}`}
+ type="button"
+ variant="outline"
+ size="xs"
+ onClick={() => applyTimetablePeriod(period)}
+ className="h-auto bg-background px-2 py-1"
+ >
+ {period.period} · {formatTime(period.startTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
+ {" – "}
+ {formatTime(period.endTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
+ </Button>
+ ))}
+ </div>
+ </div>
+ </div>
+ </div>
+ )}
  {endDate && eventDate && endDate < eventDate && (
  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
  End date is before start date.
@@ -565,6 +613,7 @@ export function EventDialog({
  event,
  customSubjects,
  availableSubjects,
+ timetableConfig,
  initialDate,
  onSubmit,
  onSubmitMultiple,
@@ -645,6 +694,7 @@ export function EventDialog({
  key={isEditMode && existingEvent ? `edit-${existingEvent.id}` : 'new'}
  customSubjects={customSubjects}
  availableSubjects={availableSubjects}
+ timetableConfig={isEditMode ? undefined : timetableConfig}
  initialValues={existingEvent ? {
  title: existingEvent.title,
  description: existingEvent.description,
