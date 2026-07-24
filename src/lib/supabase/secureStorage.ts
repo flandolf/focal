@@ -9,7 +9,7 @@ let operationQueue = Promise.resolve()
 
 function enqueue<T>(operation: () => Promise<T>): Promise<T> {
   const result = operationQueue.then(operation, operation)
-  operationQueue = result.then(() => {}, () => {})
+  operationQueue = result.then(() => undefined, () => undefined)
   return result
 }
 
