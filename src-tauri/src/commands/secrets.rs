@@ -1,5 +1,8 @@
 use keyring::{Entry, Error};
+use std::collections::HashMap;
+use std::sync::Mutex as StdMutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex as TokioMutex;
 
 const SERVICE_NAME: &str = "com.andy.focal";
 const ALLOWED_KEYS: [&str; 3] = [
@@ -12,6 +15,18 @@ const CHUNK_MANIFEST_PREFIX: &str = "focal-keyring-chunks:v1:";
 // two bytes per code unit, so stay below 1280 units with a little headroom.
 const MAX_CHUNK_UTF16_UNITS: usize = 1200;
 const MAX_CHUNK_COUNT: usize = 128;
+
+// Per-key locks to serialize get_secret and set_secret operations
+static KEY_LOCKS: std::sync::OnceLock<StdMutex<HashMap<String, std::sync::Arc<TokioMutex<()>>>>> =
+    std::sync::OnceLock::new();
+
+fn get_key_lock(key: &str) -> std::sync::Arc<TokioMutex<()>> {
+    let locks = KEY_LOCKS.get_or_init(|| StdMutex::new(HashMap::new()));
+    let mut map = locks.lock().unwrap();
+    map.entry(key.to_string())
+        .or_insert_with(|| std::sync::Arc::new(TokioMutex::new(())))
+        .clone()
+}
 
 fn validate_key(key: &str) -> Result<(), String> {
     if ALLOWED_KEYS.contains(&key) {
@@ -135,6 +150,8 @@ fn write_chunks(key: &str, generation: &str, chunks: &[String]) -> Result<(), St
 #[tauri::command]
 pub async fn get_secret(key: String) -> Result<Option<String>, String> {
     validate_key(&key)?;
+    let lock = get_key_lock(&key);
+    let _guard = lock.lock().await;
     tokio::task::spawn_blocking(move || {
         let primary = entry(&key)?;
         match primary.get_password() {
@@ -160,6 +177,8 @@ pub async fn get_secret(key: String) -> Result<Option<String>, String> {
 #[tauri::command]
 pub async fn set_secret(key: String, value: String) -> Result<(), String> {
     validate_key(&key)?;
+    let lock = get_key_lock(&key);
+    let _guard = lock.lock().await;
     tokio::task::spawn_blocking(move || {
         let primary = entry(&key)?;
         let previous = primary.get_password().ok();
