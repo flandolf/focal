@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from"react"
 import { addMinutes, format, parseISO, addWeeks, addMonths, startOfDay } from"date-fns"
-import { CalendarIcon, CheckCircle2, Clock, MapPin, Repeat, Tag, Trash2 } from"lucide-react"
+import { CalendarIcon, CheckCircle2, Clock, Copy, MapPin, Repeat, Tag, Trash2 } from"lucide-react"
 import {
  Dialog,
  DialogBody,
@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
 import TimePicker from "@/components/ui/time-picker"
 import { VCE_SUBJECTS, type CalendarEvent, type EventType, type Subject, type TimetableConfig } from"@/lib/types"
-import { getTimetablePeriodsForSubjectOnDate } from "@/lib/timetable"
+import { getTimetablePeriodsForDate } from "@/lib/timetable"
 import { cn, formatTime, getSubjectById } from"@/lib/utils"
 
 const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
@@ -114,6 +114,7 @@ export interface EventDialogProps {
  location?: string
  }[]) => void
  onDelete?: (id: string) => void
+ onDuplicate?: (event: CalendarEvent) => void | Promise<void>
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -217,10 +218,17 @@ function EventForm({
  }, [eventDate, endDate])
 
  const isMultiDay = multiDaySpanDays > 1
- const timetablePeriods = useMemo(() => {
- if (!eventDate || !subjectId || !timetableConfig) return []
- return getTimetablePeriodsForSubjectOnDate(eventDate, subjectId, timetableConfig)
- }, [eventDate, subjectId, timetableConfig])
+ const dayTimetablePeriods = useMemo(() => {
+ if (!eventDate || !timetableConfig) return []
+ return getTimetablePeriodsForDate(eventDate, timetableConfig)
+ }, [eventDate, timetableConfig])
+ const timetablePeriods = subjectId
+ ? dayTimetablePeriods.filter((period) => period.subject === subjectId)
+ : []
+ const timetableClasses = subjectId ? [] : dayTimetablePeriods.flatMap((period) => {
+ const subject = subjects.find((candidate) => candidate.id === period.subject)
+ return subject ? [{ period, subject }] : []
+ })
 
  const effectiveEndTime = useMemo(() => {
  const [sh, sm] = startTime.split(":").map(Number)
@@ -255,7 +263,8 @@ function EventForm({
  && period.endTime === format(effectiveEndTime,"HH:mm")
  ))
 
- const applyTimetablePeriod = (period: (typeof timetablePeriods)[number]) => {
+ const applyTimetablePeriod = (period: (typeof dayTimetablePeriods)[number], includeSubject = false) => {
+ if (includeSubject) setSubjectId(period.subject)
  setStartTime(period.startTime)
  setExplicitEndTime(period.endTime)
  setEndTimeMode("end")
@@ -515,6 +524,49 @@ function EventForm({
  </div>
  </div>
  )}
+ {!subjectId && timetableClasses.length > 0 && (
+ <div className="mt-3 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2.5">
+ <div className="flex items-start gap-2">
+ <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+ <div className="min-w-0 flex-1">
+ <p className="text-xs text-muted-foreground">
+ Classes on this day. Choose one to fill the subject and time.
+ </p>
+ <div className="mt-2 flex flex-wrap gap-1.5">
+ {timetableClasses.map(({ period, subject }) => (
+ <div
+ key={`${period.subject}-${period.period}-${period.startTime}-${period.endTime}`}
+ className="flex rounded-md border border-border bg-background"
+ >
+ <Button
+ type="button"
+ variant="ghost"
+ size="xs"
+ onClick={() => applyTimetablePeriod(period, true)}
+ className="h-auto rounded-r-none border-r border-border px-2 py-1"
+ >
+ {subject.shortCode} · {period.period} · {formatTime(period.startTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
+ {" – "}
+ {formatTime(period.endTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
+ </Button>
+ <Button
+ type="button"
+ variant="ghost"
+ size="icon-xs"
+ onClick={() => applyTimetablePeriod(period)}
+ aria-label={`Use ${subject.name} class time only`}
+ title="Use time only"
+ className="rounded-l-none"
+ >
+ <Clock />
+ </Button>
+ </div>
+ ))}
+ </div>
+ </div>
+ </div>
+ </div>
+ )}
  {endDate && eventDate && endDate < eventDate && (
  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
  End date is before start date.
@@ -618,6 +670,7 @@ export function EventDialog({
  onSubmit,
  onSubmitMultiple,
  onDelete,
+ onDuplicate,
 }: EventDialogProps) {
  const submittingRef = useRef(false)
  const isEditMode = Boolean(event)
@@ -658,6 +711,12 @@ export function EventDialog({
  } else if (onSubmit) {
  onSubmit(values)
  }
+ onOpenChange(false)
+ }
+
+ const handleDuplicate = () => {
+ if (!existingEvent || !onDuplicate) return
+ void onDuplicate(existingEvent)
  onOpenChange(false)
  }
 
@@ -711,7 +770,21 @@ export function EventDialog({
  } : { date: initialDate ? new Date(initialDate) : new Date() }}
  submitLabel={isEditMode ?"Save Changes" :"Add Event"}
  showFinishedControl={isEditMode}
- footerStart={isEditMode && onDelete ? (
+ footerStart={isEditMode && (onDuplicate || onDelete) ? (
+ <div className="flex flex-wrap gap-2">
+ {onDuplicate && (
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ onClick={handleDuplicate}
+ className="gap-2"
+ >
+ <Copy className="h-4 w-4" />
+ Duplicate next week
+ </Button>
+ )}
+ {onDelete && (
  <Button
  type="button"
  variant="destructive"
@@ -722,6 +795,8 @@ export function EventDialog({
  <Trash2 className="h-4 w-4" />
  Delete
  </Button>
+ )}
+ </div>
  ) : undefined}
  onCancel={() => onOpenChange(false)}
  onSubmit={handleSubmit}

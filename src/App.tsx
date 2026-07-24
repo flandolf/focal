@@ -54,6 +54,10 @@ import {
   getUniqueArrayItems,
 } from "@/lib/pomodoro";
 import {
+  repeatCalendarEvent,
+  repeatStudySession,
+} from "@/lib/repeatPlanningItem";
+import {
   forcePushAndMerge,
   forcePushAndOverwrite,
   pullNow,
@@ -114,6 +118,11 @@ const DataExport = lazy(() => import("@/components/DataExport").then((m) => ({ d
 const CustomSubjects = lazy(() => import("@/components/CustomSubjects").then((m) => ({ default: m.CustomSubjects })));
 const NotionConflictDialog = lazy(() => import("@/components/NotionConflictDialog").then((m) => ({ default: m.NotionConflictDialog })));
 const EventDialog = lazy(() => import("@/components/EventDialog").then((m) => ({ default: m.EventDialog })));
+const KeyboardShortcutsDialog = lazy(() =>
+  import("@/components/KeyboardShortcutsDialog").then((m) => ({
+    default: m.KeyboardShortcutsDialog,
+  })),
+);
 
 function ViewFallback({ label }: { label?: string }) {
   return (
@@ -241,6 +250,7 @@ function App() {
   const [bumpProjectIds, setBumpProjectIds] = useState<Set<string>>(new Set());
   const bumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [subjectsOpen, setSubjectsOpen] = useState(false);
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
@@ -514,6 +524,7 @@ function App() {
     onGoAnalytics: handleSelectAnalytics,
     onGoSettings: handleSelectSettings,
     onOpenAiAssistant: handleOpenAiAssistant,
+    onShowShortcuts: () => setShortcutsOpen(true),
     onToggleSidebar: () => setSidebarCollapsed((prev) => !prev),
     onZoomIn: handleZoomIn,
     onZoomOut: handleZoomOut,
@@ -950,6 +961,21 @@ function App() {
     ],
   );
 
+  const handleRepeatStudySession = useCallback(
+    async (session: StudySession) => {
+      try {
+        const repeated = await addSession(repeatStudySession(session));
+        toast.success(`"${repeated.title}" planned for next week`);
+        setSessionDialogOpen(false);
+        setSelectedSession(null);
+        void pushSessionChange(repeated);
+      } catch (e) {
+        toast.error(`Failed to plan study session: ${String(e)}`);
+      }
+    },
+    [addSession, pushSessionChange],
+  );
+
   const handleCreateEvent = useCallback(
     async (data: {
       title: string;
@@ -1115,6 +1141,25 @@ function App() {
       setSelectedEvent,
       requestNotionSync,
     ],
+  );
+
+  const handleRepeatEvent = useCallback(
+    async (event: CalendarEvent) => {
+      try {
+        const repeated = await addEvent(repeatCalendarEvent(event));
+        if (!repeated) {
+          toast.info(`"${event.title}" already exists next week`);
+          return;
+        }
+        toast.success(`"${event.title}" duplicated for next week`);
+        setEventDialogOpen(false);
+        setSelectedEvent(null);
+        void pushEventChange(repeated);
+      } catch (e) {
+        toast.error(`Failed to duplicate event: ${String(e)}`);
+      }
+    },
+    [addEvent, pushEventChange],
   );
 
   const handleDeleteCalendarItems = useCallback(
@@ -1848,6 +1893,7 @@ function App() {
             <TitleBar
               onSearch={() => setSearchOpen(true)}
               onSettings={navigation.openSettings}
+              onHelp={() => setShortcutsOpen(true)}
             >
               <NotionSyncIndicator
                 status={syncStatus}
@@ -2160,6 +2206,7 @@ function App() {
                   : handleCreateStudySession
               }
               onDelete={selectedSession ? handleDeleteStudySession : undefined}
+              onPlanAgain={selectedSession ? handleRepeatStudySession : undefined}
               />
             </Suspense>}
             {eventDialogOpen && <Suspense fallback={null}>
@@ -2179,6 +2226,7 @@ function App() {
                 }
                 onSubmitMultiple={handleCreateEvents}
                 onDelete={selectedEvent ? handleDeleteEvent : undefined}
+                onDuplicate={selectedEvent ? handleRepeatEvent : undefined}
               />
             </Suspense>}
             {settingsOpen && <Suspense fallback={null}>
@@ -2208,8 +2256,15 @@ function App() {
               onGoAnalytics={handleSelectAnalytics}
               onGoSettings={handleSelectSettings}
               onOpenAiAssistant={handleOpenAiAssistant}
+              onShowShortcuts={() => setShortcutsOpen(true)}
               open={searchOpen}
               onOpenChange={setSearchOpen}
+              />
+            </Suspense>}
+            {shortcutsOpen && <Suspense fallback={null}>
+              <KeyboardShortcutsDialog
+                open
+                onOpenChange={setShortcutsOpen}
               />
             </Suspense>}
             {exportOpen && <Suspense fallback={null}>

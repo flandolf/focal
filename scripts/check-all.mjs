@@ -10,6 +10,7 @@ const checks = [
   "scripts/check-timetable-reorder.ts",
   "scripts/check-timetable.ts",
   "scripts/check-study-timer.mjs",
+  "scripts/check-repeat-planning-item.ts",
   "scripts/check-dashboard-study-summary.ts",
   "scripts/check-analytics-completion.ts",
   "scripts/check-backup-import.ts",

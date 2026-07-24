@@ -19,6 +19,7 @@ import {
  BarChart3,
  Home,
  CalendarDays,
+ CircleHelp,
  Plus,
  Sparkles,
  Settings,
@@ -58,6 +59,7 @@ interface GlobalSearchProps {
  onGoAnalytics?: () => void;
  onGoSettings?: () => void;
  onOpenAiAssistant?: () => void;
+ onShowShortcuts?: () => void;
  open: boolean;
  onOpenChange: (open: boolean) => void;
 }
@@ -131,6 +133,7 @@ export function GlobalSearch({
  onGoAnalytics,
  onGoSettings,
  onOpenAiAssistant,
+ onShowShortcuts,
  open,
  onOpenChange,
 }: GlobalSearchProps) {
@@ -231,6 +234,16 @@ export function GlobalSearch({
  icon: Sparkles,
  run: onOpenAiAssistant,
  },
+ onShowShortcuts && {
+ type:"action" as const,
+ id:"show-shortcuts",
+ label:"Keyboard shortcuts",
+ hint:"See every keyboard command",
+ aliases: ["help","keys","commands","cheat sheet"],
+ shortcut:"?",
+ icon: CircleHelp,
+ run: onShowShortcuts,
+ },
  ];
  return actions.filter((action): action is QuickAction => Boolean(action));
  },
@@ -244,6 +257,7 @@ export function GlobalSearch({
  onNewProject,
  onNewSession,
  onOpenAiAssistant,
+ onShowShortcuts,
  ],
  );
 
