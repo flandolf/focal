@@ -307,13 +307,12 @@ export function getTimetablePeriodsForDay(
     .sort(comparePeriodsByStart)
 }
 
-/** Find every period for a subject on a calendar date, respecting the configured cycle. */
-export function getTimetablePeriodsForSubjectOnDate(
+/** Find every timetable period on a calendar date, respecting the configured cycle. */
+export function getTimetablePeriodsForDate(
   date: Date,
-  subjectId: string,
   config: TimetableConfig,
 ): TimetablePeriod[] {
-  if (!config.enabled || !subjectId) return []
+  if (!config.enabled) return []
   const dayLabel = getDayLabelForDate(
     date,
     config.day1Starts,
@@ -323,6 +322,16 @@ export function getTimetablePeriodsForSubjectOnDate(
   )
   if (dayLabel === null) return []
   return getTimetablePeriodsForDay(dayLabel, config.entries)
+}
+
+/** Find every period for a subject on a calendar date, respecting the configured cycle. */
+export function getTimetablePeriodsForSubjectOnDate(
+  date: Date,
+  subjectId: string,
+  config: TimetableConfig,
+): TimetablePeriod[] {
+  if (!subjectId) return []
+  return getTimetablePeriodsForDate(date, config)
     .filter((period) => period.subject === subjectId)
 }
 

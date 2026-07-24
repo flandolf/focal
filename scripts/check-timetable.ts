@@ -2,6 +2,7 @@ import {
   getDayLabelForDate,
   getTimetablePeriodError,
   getTimetablePeriodsForDay,
+  getTimetablePeriodsForDate,
   getTimetablePeriodsForSubjectOnDate,
   isTimetableBreakLabel,
   parseTimetableImport,
@@ -50,6 +51,19 @@ const subjectPeriods = getTimetablePeriodsForSubjectOnDate(new Date(2026, 0, 27)
   ],
 })
 check(subjectPeriods.map((period) => period.period).join(",") === "Period 2", "subject periods should use the date's cycle day")
+check(
+  getTimetablePeriodsForDate(new Date(2026, 0, 27), {
+    enabled: true,
+    day1Starts: "2026-01-26",
+    holidays: [],
+    cycleLength: 10,
+    entries: [{ dayLabel: 2, periods: [
+      { period: "Period 1", subject: "eng", startTime: "09:00", endTime: "10:00" },
+      { period: "Period 2", subject: "chem", startTime: "10:00", endTime: "11:00" },
+    ] }],
+  }).length === 2,
+  "date periods should include every class on the cycle day",
+)
 
 const imported = parseTimetableImport(JSON.stringify({
   cycleLength: 5,
