@@ -1,7 +1,12 @@
-import { invoke, isTauri } from "@tauri-apps/api/core"
+import { isTauri } from "@tauri-apps/api/core"
 import type { SupportedStorage } from "@supabase/supabase-js"
+import {
+  hydratePreferences,
+  persistPreference,
+  removePreference,
+} from "@/lib/storage/preferences"
 
-const CREDENTIAL_KEY = "supabase_auth_session"
+const CREDENTIAL_KEY = "focal-supabase-auth-session"
 let cachedValue: string | null | undefined
 
 // Promise queue to serialize all operations and prevent race conditions
@@ -13,24 +18,20 @@ function enqueue<T>(operation: () => Promise<T>): Promise<T> {
   return result
 }
 
-export const secureSupabaseStorage: SupportedStorage = {
+export const supabaseSessionStorage: SupportedStorage = {
   async getItem(key) {
     return enqueue(async () => {
       if (!isTauri()) return localStorage.getItem(key)
       if (cachedValue !== undefined) return cachedValue
-      const stored = await invoke<string | null>("get_secret", { key: CREDENTIAL_KEY })
-      if (stored !== null) {
-        cachedValue = stored
-        return stored
-      }
-
       const legacy = localStorage.getItem(key)
-      if (legacy !== null) {
-        await invoke("set_secret", { key: CREDENTIAL_KEY, value: legacy })
-        localStorage.removeItem(key)
-      }
-      cachedValue = legacy
-      return legacy
+      const stored = await hydratePreferences([{
+        key: CREDENTIAL_KEY,
+        legacyValue: legacy,
+        syncable: false,
+      }])
+      localStorage.removeItem(key)
+      cachedValue = stored.get(CREDENTIAL_KEY) ?? null
+      return cachedValue
     })
   },
 
@@ -41,7 +42,7 @@ export const secureSupabaseStorage: SupportedStorage = {
         return
       }
       if (cachedValue === value) return
-      await invoke("set_secret", { key: CREDENTIAL_KEY, value })
+      await persistPreference(CREDENTIAL_KEY, value, false)
       cachedValue = value
     })
   },
@@ -53,7 +54,7 @@ export const secureSupabaseStorage: SupportedStorage = {
         return
       }
       if (cachedValue !== null) {
-        await invoke("set_secret", { key: CREDENTIAL_KEY, value: "" })
+        await removePreference(CREDENTIAL_KEY)
         cachedValue = null
       }
       localStorage.removeItem(key)
