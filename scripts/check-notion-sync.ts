@@ -21,6 +21,7 @@ import {
   notionSnapshotsEqual,
   resolveNotionSyncSnapshot,
   richTextValue,
+  sameInstant,
   sessionFingerprint,
   sessionSyncSnapshot,
 } from "../src/lib/notion/schema"
@@ -277,6 +278,54 @@ const baselineSession = normalizeStudySession({
   created_at: "2026-07-19T00:00:00.000Z",
   updated_at: "2026-07-20T00:00:00.000Z",
 })
+const activeSecondPrecisionSession = normalizeStudySession({
+  ...baselineSession,
+  id: "active-second-precision-session",
+  title: "PED · Focus",
+  subjectIds: ["pe"],
+  schedule: {
+    blocks: [{ start: "2026-07-20T01:00:00.674Z", end: "2026-07-20T01:25:00.674Z" }],
+  },
+  execution: {
+    state: "in-progress",
+    intervals: [{ start: "2026-07-20T01:00:00.674Z", source: "pomodoro" }],
+  },
+})
+const roundedActiveSessionPage = {
+  id: "active-second-precision-page",
+  last_edited_time: "2026-07-20T01:01:00.000Z",
+  properties: {
+    Name: { type: "title", title: [{ plain_text: activeSecondPrecisionSession.title }] },
+    Deadline: {
+      type: "date",
+      date: { start: "2026-07-20T01:00:00.000Z", end: "2026-07-20T01:25:00.000Z" },
+    },
+    Type: { type: "select", select: { name: "Study Session" } },
+    Complete: { type: "checkbox", checkbox: false },
+    Subject: { type: "select", select: { name: "Physical Education" } },
+    [FOCAL_ID_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: activeSecondPrecisionSession.id }] },
+    [FOCAL_KIND_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: "session" }] },
+  },
+}
+const roundedActiveSessionCtx = createSyncCtx(new Set(), new Set([activeSecondPrecisionSession.id]))
+pullFromNotion(
+  [roundedActiveSessionPage],
+  [],
+  [activeSecondPrecisionSession],
+  notionSettings,
+  VCE_SUBJECTS,
+  roundedActiveSessionCtx,
+)
+assert(sameInstant(activeSecondPrecisionSession.startTime, "2026-07-20T01:00:00.000Z"), "Notion minute rounding must preserve equivalent timer instants")
+assert(roundedActiveSessionCtx.conflicts === 0, "an active timer must not conflict with Notion's minute-rounded dates")
+assert(
+  !("startTime" in (roundedActiveSessionCtx.updatedSessions.get(activeSecondPrecisionSession.id) ?? {})),
+  "acknowledging a minute-rounded Notion page must preserve the timer's exact local interval",
+)
+assert(
+  sessionSyncSnapshot(activeSecondPrecisionSession, notionSettings, VCE_SUBJECTS).startTime === "2026-07-20T01:00:00.000Z",
+  "Notion sync snapshots must use Notion's minute precision",
+)
 const localSession = normalizeStudySession({
   schemaVersion: 2,
   id: sessionId,
