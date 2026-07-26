@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { platform } from "@tauri-apps/plugin-os"
-import { Minus, Plus, Search, Settings, X } from "lucide-react"
+import { CircleHelp, Minus, Plus, Search, Settings, X } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const IS_MACOS = (() => {
@@ -19,6 +19,7 @@ const noop = () => { /* no-op */ }
 interface TitleBarProps {
   onSearch?: () => void
   onSettings?: () => void
+  onHelp?: () => void
   children?: React.ReactNode
 }
 
@@ -92,16 +93,31 @@ function TrafficLights({
 function AppActions({
   onSearch,
   onSettings,
+  onHelp,
   children,
   className,
 }: {
   onSearch: () => void
   onSettings: () => void
+  onHelp: () => void
   children?: React.ReactNode
   className?: string
 }) {
   return (
     <div className={className}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onHelp}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            aria-label="Keyboard shortcuts"
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end">Keyboard shortcuts · ?</TooltipContent>
+      </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -133,7 +149,12 @@ function AppActions({
   )
 }
 
-export function TitleBar({ onSearch = noop, onSettings = noop, children }: TitleBarProps) {
+export function TitleBar({
+  onSearch = noop,
+  onSettings = noop,
+  onHelp = noop,
+  children,
+}: TitleBarProps) {
   const handleMinimize = useCallback(() => {
     void getCurrentWindow().minimize()
   }, [])
@@ -162,6 +183,7 @@ export function TitleBar({ onSearch = noop, onSettings = noop, children }: Title
         <AppActions
           onSearch={onSearch}
           onSettings={onSettings}
+          onHelp={onHelp}
           className="flex items-center gap-1.5 px-4"
         >
           {children}
@@ -176,6 +198,7 @@ export function TitleBar({ onSearch = noop, onSettings = noop, children }: Title
         <AppActions
           onSearch={onSearch}
           onSettings={onSettings}
+          onHelp={onHelp}
           className="flex items-center gap-1.5 px-4"
         >
           {children}

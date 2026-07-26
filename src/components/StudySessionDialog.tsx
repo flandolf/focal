@@ -5,6 +5,7 @@ import {
  CalendarDays,
  CheckCircle2,
  Clock,
+ Copy,
  FileText,
  ListChecks,
  PlayCircle,
@@ -70,6 +71,7 @@ interface StudySessionDialogProps {
  activeDurations?: { start: string; end: string }[]
  }) => void
  onDelete?: (id: string) => void
+ onPlanAgain?: (session: StudySession) => void | Promise<void>
 }
 
 export function StudySessionDialog({
@@ -82,6 +84,7 @@ export function StudySessionDialog({
  initialDate,
  onSubmit,
  onDelete,
+ onPlanAgain,
 }: StudySessionDialogProps) {
  const [projectId, setProjectId] = useState("")
  const [subjectIds, setSubjectIds] = useState<string[]>([])
@@ -303,6 +306,12 @@ export function StudySessionDialog({
  onDelete(session.id)
  onOpenChange(false)
  }
+ }
+
+ const handlePlanAgain = () => {
+ if (!session || !onPlanAgain) return
+ void onPlanAgain(session)
+ onOpenChange(false)
  }
 
  return (
@@ -711,10 +720,23 @@ export function StudySessionDialog({
  <DialogFooter
  className={cn(
 "m-0 shrink-0 rounded-none px-5 py-3",
- isEdit && onDelete ?"gap-3 sm:justify-between" :"sm:justify-end"
+ isEdit && Boolean(onDelete ?? onPlanAgain) ?"gap-3 sm:justify-between" :"sm:justify-end"
  )}
  >
- {isEdit && onDelete && (
+ {isEdit && (onPlanAgain ?? onDelete) && (
+ <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
+ {onPlanAgain && (
+ <Button
+ type="button"
+ variant="outline"
+ onClick={handlePlanAgain}
+ className="w-full gap-1.5 sm:w-auto"
+ >
+ <Copy className="h-4 w-4" />
+ Plan next week
+ </Button>
+ )}
+ {onDelete && (
  <Button
  type="button"
  variant="destructive"
@@ -725,6 +747,8 @@ export function StudySessionDialog({
  <Trash2 className="h-4 w-4" />
  Delete
  </Button>
+ )}
+ </div>
  )}
  <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
  <Button

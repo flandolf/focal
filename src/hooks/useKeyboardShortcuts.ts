@@ -10,6 +10,7 @@ interface ShortcutHandlers {
   onGoAnalytics?: () => void
   onGoSettings?: () => void
   onOpenAiAssistant?: () => void
+  onShowShortcuts?: () => void
   onToggleSidebar?: () => void
   onZoomIn?: () => void
   onZoomOut?: () => void
@@ -84,6 +85,13 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       if (meta && key === "0") {
         e.preventDefault()
         handlersRef.current.onZoomReset?.()
+        return
+      }
+
+      // ?: Show keyboard shortcut guide
+      if (e.key === "?" && !meta && !e.altKey) {
+        e.preventDefault()
+        handlersRef.current.onShowShortcuts?.()
         return
       }
 
