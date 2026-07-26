@@ -67,6 +67,7 @@ pub fn run() {
             commands::files::scan_projects_root,
             commands::credits::get_credits,
             commands::notion::query_notion_calendar,
+            commands::notion::fetch_notion_page,
             commands::notion::fetch_notion_schema,
             commands::notion::ensure_notion_sync_properties,
             commands::notion::create_notion_calendar_page,

@@ -1,6 +1,7 @@
 import type {
   ConfidenceScore,
   NotionSource,
+  NotionSyncSnapshot,
   StudyInterval,
   StudySession,
   StudySessionExecution,
@@ -155,6 +156,12 @@ function attachCompatibilityView(session: StudySession): StudySession {
 
 function parseNotionSource(value: unknown): NotionSource | undefined {
   if (!isRecord(value) || value.type !== "notion" || typeof value.id !== "string") return undefined
+  const snapshotEntries = isRecord(value.syncSnapshot) ? Object.entries(value.syncSnapshot) : []
+  const syncSnapshot = snapshotEntries.length > 0 && snapshotEntries.every(
+    ([, item]) => item === null || typeof item === "string" || typeof item === "boolean",
+  )
+    ? Object.fromEntries(snapshotEntries) as NotionSyncSnapshot
+    : undefined
   return {
     type: "notion",
     id: value.id,
@@ -162,6 +169,7 @@ function parseNotionSource(value: unknown): NotionSource | undefined {
     lastEditedTime: optionalString(value.lastEditedTime),
     kind: value.kind === "event" || value.kind === "session" ? value.kind : undefined,
     bodyHash: optionalString(value.bodyHash),
+    syncSnapshot,
   }
 }
 

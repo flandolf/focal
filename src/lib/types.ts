@@ -27,6 +27,8 @@ export type StudySessionExecution =
   | { state: "in-progress"; intervals: StudyInterval[] }
   | { state: "completed"; intervals: StudyInterval[]; completedAt: string; reportedMinutes?: number };
 
+export type NotionSyncSnapshot = Record<string, string | boolean | null>;
+
 export interface StudySessionDraft {
   id?: string;
   projectId?: string;
@@ -53,6 +55,7 @@ export interface NotionSource {
   lastEditedTime?: string;
   kind?: "event" | "session";
   bodyHash?: string;
+  syncSnapshot?: NotionSyncSnapshot;
 }
 
 export interface VcaaSource {

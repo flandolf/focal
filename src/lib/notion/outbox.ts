@@ -108,13 +108,29 @@ export function clearNotionIntent(
   kind: NotionIntentKind,
   localId: string,
   operation?: NotionIntentOperation,
+  expectedRecord?: unknown,
 ): Promise<void> {
   return serialized(async () => {
+    const expectedPayload = expectedRecord === undefined ? undefined : JSON.stringify(expectedRecord)
     await (await openFocalDatabase()).execute(
       `delete from notion_outbox
         where data_source_id = $1 and kind = $2 and local_id = $3
-          ${operation ? "and operation = $4" : ""}`,
-      operation ? [dataSourceId, kind, localId, operation] : [dataSourceId, kind, localId],
+          ${operation ? "and operation = $4" : ""}
+          ${expectedPayload === undefined
+            ? ""
+            : `and exists (
+                 select 1 from records
+                  where records.kind = '${kind === "event" ? "events" : "study_sessions"}'
+                    and records.id = $3
+                    and records.payload = $${operation ? 5 : 4}
+               )`}`,
+      [
+        dataSourceId,
+        kind,
+        localId,
+        ...(operation ? [operation] : []),
+        ...(expectedPayload === undefined ? [] : [expectedPayload]),
+      ],
     )
   })
 }

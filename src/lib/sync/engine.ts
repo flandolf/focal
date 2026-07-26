@@ -815,11 +815,20 @@ function notionKindForTable(table: SyncTable): NotionIntentKind | null {
   return null
 }
 
+function notionSourceFromRecord(value: Record<string, unknown>): Record<string, unknown> | null {
+  if (isObject(value.source)) return value.source
+  return isObject(value.integrations)
+    && isObject(value.integrations.notion)
+    && value.integrations.notion.type === "notion"
+    ? value.integrations.notion
+    : null
+}
+
 function notionDeletePayload(table: SyncTable, rowId: string, value: LocalRecord | undefined): unknown {
   const kind = notionKindForTable(table)
   if (!kind || !isObject(value)) return null
-  const source = value.source
-  if (!isObject(source) || source.type !== "notion" || typeof source.id !== "string") return null
+  const source = notionSourceFromRecord(value)
+  if (source?.type !== "notion" || typeof source.id !== "string") return null
   return {
     notion: {
       pageId: source.id,
@@ -845,11 +854,11 @@ function getNotionDeleteMetadata(payload: unknown): NotionDeleteMetadata | null 
 async function recordNotionUpsertIntent(table: SyncTable, rowId: string, value: LocalRecord): Promise<void> {
   const kind = notionKindForTable(table)
   if (!kind || !isObject(value)) return
-  const source = value.source
+  const source = notionSourceFromRecord(value)
   if (isObject(source) && source.type === "vcaa") return
   const settings = getNotionCalendarSettings()
   if (!settings.dataSourceId.trim()) return
-  const pageId = isObject(source) && source.type === "notion" && typeof source.id === "string"
+  const pageId = source?.type === "notion" && typeof source.id === "string"
     ? source.id
     : undefined
   await enqueueNotionUpsert(settings.dataSourceId, kind, rowId, pageId)

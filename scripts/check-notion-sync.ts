@@ -9,16 +9,34 @@ import {
   FOCAL_ID_PROPERTY,
   FOCAL_KIND_PROPERTY,
   focalIdentityProperties,
+  createPropertyValue,
+  createTextProperty,
   createSyncCtx,
+  eventSyncSnapshot,
+  getEventSubjectId,
   getFocalId,
   getFocalKind,
+  getPrimarySessionSubjectId,
+  mergeNotionSyncSnapshots,
+  notionSnapshotsEqual,
+  resolveNotionSyncSnapshot,
   richTextValue,
+  sessionFingerprint,
+  sessionSyncSnapshot,
 } from "../src/lib/notion/schema"
+import { findSubjectIdFromValues } from "../src/lib/notion/subjectMatch"
 import { buildPageChildrenForSync, notionWriteRetryDelay } from "../src/lib/notion/push"
 import { notionIntentDue, retryNotionIntent } from "../src/lib/notion/outbox"
 import { planDuplicateNotionPages } from "../src/lib/notion"
 import { pullFromNotion } from "../src/lib/notion/pull"
-import type { CalendarEvent } from "../src/lib/types"
+import { normalizeStudySession, updateStudySession } from "../src/lib/studySessions"
+import {
+  notionEventIsSettled,
+  preserveNewerEventChanges,
+  preserveNewerSessionChanges,
+} from "../src/hooks/useNotionSync"
+import { VCE_SUBJECTS, type CalendarEvent } from "../src/lib/types"
+import { stableJsonStringify } from "../src/lib/utils"
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -89,6 +107,24 @@ const notionSettings = {
   completedProperty: "Complete",
   subjectProperty: "Subject",
 }
+assert(
+  JSON.stringify(createTextProperty("select", undefined)) === JSON.stringify({ select: null }),
+  "clearing a Focal subject must explicitly clear a Notion select",
+)
+assert(
+  createPropertyValue("formula", true) === undefined,
+  "read-only completion properties must not be represented as writable checkboxes",
+)
+assert(
+  getEventSubjectId(
+    { Subject: { type: "select", select: null } },
+    "Mathematical Methods homework",
+    notionSettings,
+    VCE_SUBJECTS,
+    findSubjectIdFromValues,
+  ) === undefined,
+  "an explicitly empty mapped subject must not be inferred again from the title",
+)
 const commonProperties = {
   Name: { type: "title", title: [{ plain_text: "Focus" }] },
   Deadline: { type: "date", date: { start: "2026-07-20T01:00:00.000Z", end: "2026-07-20T01:30:00.000Z" } },
@@ -136,6 +172,9 @@ const localEvent: CalendarEvent = {
     lastEditedTime: "2026-07-20T00:00:00.000Z",
   },
 }
+if (localEvent.source?.type === "notion") {
+  localEvent.source.syncSnapshot = eventSyncSnapshot({ ...localEvent, title: "Original title" }, notionSettings)
+}
 const remoteEventPage = {
   id: "event-page",
   last_edited_time: "2026-07-20T00:45:00.000Z",
@@ -156,6 +195,369 @@ assert(
   conflictCtx.conflictItems[0]?.remoteUpdates.title === "Notion title",
   "the conflict must retain a separate remote snapshot",
 )
+assert(
+  JSON.stringify(conflictCtx.conflictItems[0]?.conflictingFields) === JSON.stringify(["title"]),
+  "manual conflicts must identify only the overlapping field",
+)
+
+const mixedLocalEvent: CalendarEvent = {
+  ...localEvent,
+  subjectId: "mm",
+  source: {
+    type: "notion",
+    id: "event-page",
+    kind: "event",
+    lastEditedTime: "2026-07-20T00:00:00.000Z",
+    syncSnapshot: eventSyncSnapshot({ ...localEvent, title: "Original title", subjectId: undefined }, notionSettings),
+  },
+}
+const mixedRemotePage = {
+  ...remoteEventPage,
+  properties: {
+    ...remoteEventPage.properties,
+    Deadline: {
+      type: "date",
+      date: { start: "2026-07-20T02:00:00.000Z", end: "2026-07-20T02:30:00.000Z" },
+    },
+  },
+}
+const mixedConflictCtx = createSyncCtx(new Set([mixedLocalEvent.id]), new Set())
+pullFromNotion([mixedRemotePage], [mixedLocalEvent], [], notionSettings, VCE_SUBJECTS, mixedConflictCtx)
+const mixedConflict = mixedConflictCtx.conflictItems[0]
+const mixedRemoteUpdates = mixedConflict?.remoteUpdates as Record<string, unknown> | undefined
+assert(mixedConflict?.localUpdates.title === "Local title", "keeping Focal must retain the selected conflicting title")
+assert(mixedConflict?.localUpdates.startTime === "2026-07-20T02:00:00.000Z", "keeping Focal must retain a disjoint Notion time edit")
+assert(mixedRemoteUpdates?.subjectId === "mm", "keeping Notion must retain a disjoint local subject edit")
+
+const convergedEvent = { ...localEvent, title: "Notion title" }
+const convergedCtx = createSyncCtx(new Set([convergedEvent.id]), new Set())
+pullFromNotion([remoteEventPage], [convergedEvent], [], notionSettings, [], convergedCtx)
+assert(convergedCtx.conflicts === 0, "matching local and Notion edits must converge automatically")
+assert(convergedCtx.acknowledgedEventIds.has(convergedEvent.id), "converged edits must acknowledge the local intent")
+
+const bodyEditedEvent = { ...convergedEvent, description: "New local notes" }
+const bodyEditedCtx = createSyncCtx(new Set([bodyEditedEvent.id]), new Set())
+pullFromNotion([remoteEventPage], [bodyEditedEvent], [], notionSettings, [], bodyEditedCtx)
+assert(bodyEditedCtx.conflicts === 0, "a local body edit must not create an unresolvable property conflict")
+assert(!bodyEditedCtx.acknowledgedEventIds.has(bodyEditedEvent.id), "a local body edit must remain queued for push")
+
+const disjointRemotePage = {
+  ...remoteEventPage,
+  properties: {
+    ...remoteEventPage.properties,
+    Name: { type: "title", title: [{ plain_text: "Original title" }] },
+    Deadline: {
+      type: "date",
+      date: { start: "2026-07-20T02:00:00.000Z", end: "2026-07-20T02:30:00.000Z" },
+    },
+  },
+}
+const disjointCtx = createSyncCtx(new Set([localEvent.id]), new Set())
+pullFromNotion([disjointRemotePage], [localEvent], [], notionSettings, [], disjointCtx)
+assert(disjointCtx.conflicts === 0, "non-overlapping local and Notion edits must merge automatically")
+assert(disjointCtx.updatedEvents.get(localEvent.id)?.title === "Local title", "the merged event must keep the local title edit")
+assert(
+  disjointCtx.updatedEvents.get(localEvent.id)?.startTime === "2026-07-20T02:00:00.000Z",
+  "the merged event must keep the Notion time edit",
+)
+assert(!disjointCtx.acknowledgedEventIds.has(localEvent.id), "an auto-merge must remain queued until its merged value is pushed")
+
+const sessionId = "session-routing"
+const sessionPageId = "session-page"
+const baselineSession = normalizeStudySession({
+  schemaVersion: 2,
+  id: sessionId,
+  subjectIds: [],
+  title: "Original session",
+  schedule: {
+    blocks: [{ start: "2026-07-20T01:00:00.000Z", end: "2026-07-20T02:00:00.000Z" }],
+  },
+  execution: { state: "planned", intervals: [] },
+  createdVia: "manual",
+  created_at: "2026-07-19T00:00:00.000Z",
+  updated_at: "2026-07-20T00:00:00.000Z",
+})
+const localSession = normalizeStudySession({
+  schemaVersion: 2,
+  id: sessionId,
+  subjectIds: [],
+  title: "Local session title",
+  schedule: baselineSession.schedule,
+  execution: baselineSession.execution,
+  createdVia: "manual",
+  integrations: {
+    notion: {
+      type: "notion",
+      id: sessionPageId,
+      kind: "session",
+      lastEditedTime: "2026-07-20T00:00:00.000Z",
+      syncSnapshot: sessionSyncSnapshot(baselineSession, notionSettings, []),
+    },
+  },
+  created_at: baselineSession.created_at,
+  updated_at: "2026-07-20T00:30:00.000Z",
+})
+const disjointSessionPage = {
+  id: sessionPageId,
+  last_edited_time: "2026-07-20T00:45:00.000Z",
+  properties: {
+    Name: { type: "title", title: [{ plain_text: "Original session" }] },
+    Deadline: {
+      type: "date",
+      date: { start: "2026-07-20T03:00:00.000Z", end: "2026-07-20T04:00:00.000Z" },
+    },
+    // The stable Focal Kind must win over a stale or user-edited display type.
+    Type: { type: "select", select: { name: "Event" } },
+    Complete: { type: "checkbox", checkbox: false },
+    [FOCAL_ID_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: sessionId }] },
+    [FOCAL_KIND_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: "session" }] },
+  },
+}
+const disjointSessionCtx = createSyncCtx(new Set(), new Set([sessionId]))
+pullFromNotion([disjointSessionPage], [], [localSession], notionSettings, [], disjointSessionCtx)
+const mergedSessionUpdates = disjointSessionCtx.updatedSessions.get(sessionId)
+assert(disjointSessionCtx.conflicts === 0, "non-overlapping study-session edits must merge automatically")
+assert(disjointSessionCtx.updatedEvents.size === 0, "Focal Kind must route a tagged session away from event handling")
+assert(Boolean(mergedSessionUpdates), "a tagged session must be routed to study-session updates")
+assert(mergedSessionUpdates?.title === "Local session title", "the merged session must keep the local title edit")
+assert(
+  mergedSessionUpdates?.startTime === "2026-07-20T03:00:00.000Z",
+  "the merged session must keep the Notion time edit",
+)
+assert(!disjointSessionCtx.acknowledgedSessionIds.has(sessionId), "a merged session must remain queued until pushed")
+
+const multiSubjectSession = normalizeStudySession({
+  ...baselineSession,
+  id: "multi-subject-session",
+  subjectIds: ["mm", "sm"],
+  integrations: {
+    notion: {
+      type: "notion",
+      id: "multi-subject-page",
+      kind: "session",
+      lastEditedTime: "2026-07-20T00:00:00.000Z",
+      syncSnapshot: sessionSyncSnapshot({ ...baselineSession, subjectIds: ["mm", "sm"] }, notionSettings, VCE_SUBJECTS),
+    },
+  },
+})
+const changedPrimarySubjectPage = {
+  ...disjointSessionPage,
+  id: "multi-subject-page",
+  properties: {
+    ...disjointSessionPage.properties,
+    Name: { type: "title", title: [{ plain_text: multiSubjectSession.title }] },
+    Subject: { type: "select", select: { name: "Chemistry" } },
+    [FOCAL_ID_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: multiSubjectSession.id }] },
+  },
+}
+const multiSubjectCtx = createSyncCtx(new Set(), new Set([multiSubjectSession.id]))
+pullFromNotion([changedPrimarySubjectPage], [], [multiSubjectSession], notionSettings, VCE_SUBJECTS, multiSubjectCtx)
+assert(
+  JSON.stringify(multiSubjectCtx.updatedSessions.get(multiSubjectSession.id)?.subjectIds) === JSON.stringify(["chem", "sm"]),
+  "changing the Notion subject must preserve secondary Focal subjects",
+)
+
+const subjectConflictSession = normalizeStudySession({
+  ...baselineSession,
+  id: "subject-conflict-session",
+  subjectIds: ["gm", "chem"],
+  integrations: {
+    notion: {
+      type: "notion",
+      id: "subject-conflict-page",
+      kind: "session",
+      lastEditedTime: "2026-07-20T00:00:00.000Z",
+      syncSnapshot: sessionSyncSnapshot({ ...baselineSession, subjectIds: ["mm", "sm"] }, notionSettings, VCE_SUBJECTS),
+    },
+  },
+})
+const subjectConflictPage = {
+  ...changedPrimarySubjectPage,
+  id: "subject-conflict-page",
+  properties: {
+    ...changedPrimarySubjectPage.properties,
+    Name: { type: "title", title: [{ plain_text: subjectConflictSession.title }] },
+    [FOCAL_ID_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: subjectConflictSession.id }] },
+  },
+}
+const subjectConflictCtx = createSyncCtx(new Set(), new Set([subjectConflictSession.id]))
+pullFromNotion([subjectConflictPage], [], [subjectConflictSession], notionSettings, VCE_SUBJECTS, subjectConflictCtx)
+const subjectConflict = subjectConflictCtx.conflictItems[0]
+assert(subjectConflictCtx.conflicts === 1, "different local and Notion primary-subject edits must remain manual")
+assert(
+  JSON.stringify(subjectConflict?.localSubjectIds) === JSON.stringify(["gm", "chem"]),
+  "manual session conflicts must capture the full local subject list for staleness checks",
+)
+
+const completedSession = normalizeStudySession({
+  ...baselineSession,
+  id: "completed-session",
+  execution: {
+    state: "completed",
+    intervals: [{ start: baselineSession.startTime, end: baselineSession.endTime, source: "manual" }],
+    completedAt: baselineSession.endTime,
+  },
+  integrations: {
+    notion: {
+      type: "notion",
+      id: "completed-page",
+      kind: "session",
+      lastEditedTime: "2026-07-20T00:00:00.000Z",
+    },
+  },
+})
+if (completedSession.source?.type === "notion") {
+  completedSession.source.syncSnapshot = sessionSyncSnapshot(completedSession, notionSettings, VCE_SUBJECTS)
+}
+const reopenedPage = {
+  ...disjointSessionPage,
+  id: "completed-page",
+  properties: {
+    ...disjointSessionPage.properties,
+    Name: { type: "title", title: [{ plain_text: completedSession.title }] },
+    Deadline: { type: "date", date: { start: completedSession.startTime, end: completedSession.endTime } },
+    Complete: { type: "checkbox", checkbox: false },
+    Subject: { type: "select", select: null },
+    [FOCAL_ID_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: completedSession.id }] },
+  },
+}
+const reopenCtx = createSyncCtx()
+pullFromNotion([reopenedPage], [], [completedSession], notionSettings, VCE_SUBJECTS, reopenCtx)
+const reopenedSession = updateStudySession(completedSession, reopenCtx.updatedSessions.get(completedSession.id) ?? {})
+assert(reopenedSession.status === "in-progress", "unchecking Complete must reopen a recorded session without resetting it")
+assert(reopenedSession.execution.intervals.length === 1, "reopening from Notion must preserve recorded study intervals")
+
+const newerEvent = { ...localEvent, title: "Newest local title" }
+const guardedEventUpdates = preserveNewerEventChanges(
+  localEvent,
+  newerEvent,
+  {
+    title: "Stale sync title",
+    startTime: "2026-07-20T05:00:00.000Z",
+    source: {
+      type: "notion",
+      id: "event-page",
+      kind: "event",
+      bodyHash: undefined,
+      syncSnapshot: eventSyncSnapshot({ ...localEvent, title: "Stale sync title", startTime: "2026-07-20T05:00:00.000Z" }, notionSettings),
+    },
+  },
+  notionSettings,
+)
+assert(guardedEventUpdates.title === undefined, "a completed sync must not overwrite a newer local event title")
+assert(guardedEventUpdates.startTime === "2026-07-20T05:00:00.000Z", "an unrelated sync field should still apply")
+const settledEvent = {
+  ...newerEvent,
+  startTime: guardedEventUpdates.startTime!,
+  source: {
+    ...guardedEventUpdates.source!,
+    syncSnapshot: eventSyncSnapshot({ ...newerEvent, startTime: guardedEventUpdates.startTime! }, notionSettings),
+  },
+}
+assert(notionEventIsSettled(settledEvent, notionSettings), "only a record matching its acknowledged snapshot is settled")
+
+const newerSession = normalizeStudySession({ ...localSession, title: "Newest local session" })
+const guardedSessionUpdates = preserveNewerSessionChanges(
+  localSession,
+  newerSession,
+  { title: "Stale session title", endTime: "2026-07-20T06:00:00.000Z" },
+  notionSettings,
+  [],
+)
+assert(guardedSessionUpdates.title === undefined, "a completed sync must not overwrite a newer local session title")
+assert(guardedSessionUpdates.endTime === "2026-07-20T06:00:00.000Z", "an unrelated session sync field should still apply")
+
+const sessionWithConcurrentSecondary = normalizeStudySession({
+  ...multiSubjectSession,
+  subjectIds: ["mm", "sm", "gm"],
+})
+const guardedSubjectUpdates = preserveNewerSessionChanges(
+  multiSubjectSession,
+  sessionWithConcurrentSecondary,
+  { subjectIds: ["chem", "sm"] },
+  notionSettings,
+  VCE_SUBJECTS,
+)
+assert(
+  JSON.stringify(guardedSubjectUpdates.subjectIds) === JSON.stringify(["chem", "sm", "gm"]),
+  "a Notion primary-subject merge must preserve a concurrently added secondary subject",
+)
+assert(
+  getPrimarySessionSubjectId(
+    { subjectIds: ["sm", "mm"] },
+    VCE_SUBJECTS,
+  ) === "sm",
+  "the Notion primary subject must follow the session subject order",
+)
+
+const secondarySubjectOnlyPage = {
+  ...changedPrimarySubjectPage,
+  id: "secondary-subject-only-page",
+  properties: {
+    ...changedPrimarySubjectPage.properties,
+    Name: { type: "title", title: [{ plain_text: multiSubjectSession.title }] },
+    Subject: { type: "select", select: { name: "Specialist Mathematics" } },
+    [FOCAL_ID_PROPERTY]: { type: "rich_text", rich_text: [] },
+  },
+}
+const secondarySubjectMatchCtx = createSyncCtx()
+pullFromNotion(
+  [secondarySubjectOnlyPage],
+  [],
+  [{ ...multiSubjectSession, source: undefined }],
+  notionSettings,
+  VCE_SUBJECTS,
+  secondarySubjectMatchCtx,
+)
+assert(
+  !secondarySubjectMatchCtx.matchedSessionIds.has(multiSubjectSession.id),
+  "a Notion page matching only a secondary subject must not be linked as the session baseline",
+)
+
+const clearedRemotePage = {
+  ...remoteEventPage,
+  properties: {
+    ...remoteEventPage.properties,
+    Name: { type: "title", title: [{ plain_text: localEvent.title }] },
+    Deadline: { type: "date", date: { start: localEvent.startTime, end: null } },
+    Subject: { type: "select", select: null },
+  },
+}
+const eventWithOptionals = { ...localEvent, endTime: "2026-07-20T01:30:00.000Z", subjectId: "mm" }
+const clearCtx = createSyncCtx()
+pullFromNotion([clearedRemotePage], [eventWithOptionals], [], notionSettings, [], clearCtx)
+const clearedUpdates = clearCtx.updatedEvents.get(localEvent.id)
+if (!clearedUpdates) throw new Error("Notion clears must create a local update")
+assert("endTime" in clearedUpdates && clearedUpdates.endTime === undefined, "Notion must be able to clear an event end time")
+assert("subjectId" in clearedUpdates && clearedUpdates.subjectId === undefined, "Notion must be able to clear an event subject")
+
+const baselineSnapshot = { title: "Original", startTime: "2026-07-20T01:00:00.000Z" }
+const disjointMerge = mergeNotionSyncSnapshots(
+  baselineSnapshot,
+  { ...baselineSnapshot, title: "Local" },
+  { ...baselineSnapshot, startTime: "2026-07-20T02:00:00.000Z" },
+)
+assert(disjointMerge.conflictingFields.length === 0, "the snapshot merge must accept disjoint changes")
+assert(disjointMerge.merged.title === "Local" && disjointMerge.merged.startTime === "2026-07-20T02:00:00.000Z", "the snapshot merge must combine both sides")
+const divergentMerge = mergeNotionSyncSnapshots(
+  baselineSnapshot,
+  { ...baselineSnapshot, title: "Local" },
+  { ...baselineSnapshot, title: "Notion" },
+)
+assert(JSON.stringify(divergentMerge.conflictingFields) === JSON.stringify(["title"]), "only divergent edits to the same field should need a manual choice")
+assert(
+  resolveNotionSyncSnapshot({ startTime: "remote-time" }, { title: "local-title" }, ["title"]).startTime === "remote-time",
+  "manual choices must retain already merged non-conflicting fields",
+)
+assert(notionSnapshotsEqual(baselineSnapshot, { ...baselineSnapshot }), "snapshot equality must be independent of object identity")
+assert(
+  stableJsonStringify({ b: 2, a: 1 }) === stableJsonStringify({ a: 1, b: 2 }),
+  "record compare-and-swap guards must ignore object key order",
+)
+
+const subjectIds = ["b", "a"]
+sessionFingerprint({ title: "Session", startTime: "2026-07-20T01:00:00.000Z", endTime: "2026-07-20T02:00:00.000Z", subjectIds, status: "planned" })
+assert(JSON.stringify(subjectIds) === JSON.stringify(["b", "a"]), "session fingerprinting must not reorder the stored subject list")
 const remoteOnlyCtx = createSyncCtx()
 pullFromNotion([remoteEventPage], [localEvent], [], notionSettings, [], remoteOnlyCtx)
 assert(remoteOnlyCtx.conflicts === 0, "a Notion-only edit should not create a false conflict")
@@ -188,10 +590,35 @@ assert(
   pushSource.includes("bodyDiffers ? children : undefined"),
   "property-only pushes must preserve body edits made directly in Notion",
 )
+assert(
+  pushSource.includes("eventWriteMatches(page, event, settings, subjects)")
+    && pushSource.includes("sessionWriteMatches(page, session, settings, subjects)"),
+  "successful writes must be verified before their outbox intents are acknowledged",
+)
 const notionHookSource = await fetch(new URL("../src/hooks/useNotionSync.ts", import.meta.url)).then((response) => response.text())
+const eventHookSource = await fetch(new URL("../src/hooks/useEvents.ts", import.meta.url)).then((response) => response.text())
 assert(
   notionHookSource.includes("id: conflict.notionPageId"),
   "keeping a local conflict must update the captured Notion page rather than create a duplicate",
 )
+assert(!notionHookSource.includes("id: `conflict-${i}`"), "manual conflict IDs must not depend on result ordering")
+assert(notionHookSource.includes("currentPage?.last_edited_time === conflict.notionLastEditedTime"), "manual resolution must reject a stale Notion snapshot")
+assert(
+  notionHookSource.includes("JSON.stringify((currentLocal as StudySession).subjectIds) !== JSON.stringify(conflict.localSubjectIds)"),
+  "manual session resolution must reject changes to the full local subject list",
+)
+assert(notionHookSource.includes("fetchNotionPage(settings, conflict.notionPageId)"), "each manual resolution must refresh its own Notion page immediately before writing")
+assert(
+  eventHookSource.includes("Boolean(data.isFinished) || eventHasPassed(data)"),
+  "new Notion events must preserve an explicit completed state",
+)
+const notionOutboxSource = await fetch(new URL("../src/lib/notion/outbox.ts", import.meta.url)).then((response) => response.text())
+assert(notionOutboxSource.includes("records.payload ="), "Notion acknowledgements must not clear an intent for a newer saved record")
+const conflictDialogSource = await fetch(new URL("../src/components/NotionConflictDialog.tsx", import.meta.url)).then((response) => response.text())
+assert(conflictDialogSource.includes("h-[min(90dvh,46rem)]"), "the manual resolver must have a bounded viewport")
+assert(conflictDialogSource.includes('className="min-h-0 flex-1"'), "the conflict list must own the scrollable remaining height")
+assert(conflictDialogSource.includes("aria-pressed={resolution ==="), "manual resolution choices must expose their selected state")
+const syncEngineSource = await fetch(new URL("../src/lib/sync/engine.ts", import.meta.url)).then((response) => response.text())
+assert(syncEngineSource.includes("value.integrations.notion"), "serialized study-session deletes must recover their Notion page identity")
 
 console.warn("Notion sync checks passed")

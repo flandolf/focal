@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react"
 import type { StudySession, StudySessionDraft, StudyTimeRange } from "@/lib/types"
-import { generateId } from "@/lib/utils"
+import { generateId, stableJsonStringify } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert, rememberDuplicateNotionPages } from "@/lib/sync/engine"
@@ -10,7 +10,7 @@ import { repairDuplicateSessions } from "@/lib/sync/protocol"
 export function useStudySessions() {
   const duplicateIdsRef = useRef<string[]>([])
   const duplicateNotionPageIdsRef = useRef<string[]>([])
-  const { data: sessions, loading, error, save: saveSessions, refresh } = usePersistedData({
+  const { data: sessions, loading, error, save: saveSessions, mutate: mutateSessions, refresh } = usePersistedData({
     fileName: "sessions.json",
     normalize: normalizeStudySession,
     onLoad: (normalised) => {
@@ -153,9 +153,16 @@ export function useStudySessions() {
 
   const syncSessions = useCallback(async (
     itemsToCreate: StudySessionDraft[],
-    itemsToUpdate: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[],
+    itemsToUpdate: {
+      id: string
+      updates: Partial<Omit<StudySession, "id" | "created_at">>
+      expectedRecord?: StudySession
+    }[],
   ) => {
     const updateMap = new Map(itemsToUpdate.map((item) => [item.id, item.updates]))
+    const expectedRecordMap = new Map(itemsToUpdate.flatMap((item) => (
+      item.expectedRecord ? [[item.id, stableJsonStringify(item.expectedRecord)] as const] : []
+    )))
     const createdAt = new Date().toISOString()
     const newSessions = itemsToCreate.map((item) => normalizeStudySession({
       ...item,
@@ -163,18 +170,41 @@ export function useStudySessions() {
       created_at: createdAt,
       updated_at: createdAt,
     }))
-    const updated = sessionsRef.current.map((session) => {
-      const updates = updateMap.get(session.id)
-      return updates ? updateStudySession(session, updates, createdAt) : session
+    const createdIds = new Set<string>()
+    const appliedUpdateIds = new Set<string>()
+    const updated = await mutateSessions((current) => {
+      const existingIds = new Set(current.map((session) => session.id))
+      const created = newSessions.filter((session) => {
+        if (existingIds.has(session.id)) return false
+        createdIds.add(session.id)
+        return true
+      })
+      return [
+        ...current.map((session) => {
+          const updates = updateMap.get(session.id)
+          const expectedRecord = expectedRecordMap.get(session.id)
+          if (!updates || (expectedRecord && stableJsonStringify(session) !== expectedRecord)) return session
+          appliedUpdateIds.add(session.id)
+          return updateStudySession(session, updates, createdAt)
+        }),
+        ...created,
+      ]
     })
-    await saveSessions([...updated, ...newSessions])
     await Promise.all(itemsToUpdate.map(async (item) => {
+      if (!appliedUpdateIds.has(item.id)) return
       const session = updated.find((candidate) => candidate.id === item.id)
       if (session) await recordLocalUpsert("study_sessions", session)
     }))
-    await Promise.all(newSessions.map((session) => recordLocalUpsert("study_sessions", session)))
-    return newSessions
-  }, [sessionsRef, saveSessions])
+    const created = newSessions.filter((session) => createdIds.has(session.id))
+    await Promise.all(created.map((session) => recordLocalUpsert("study_sessions", session)))
+    return {
+      created,
+      updated: itemsToUpdate.flatMap((item) => {
+        const session = updated.find((candidate) => candidate.id === item.id)
+        return session ? [session] : []
+      }),
+    }
+  }, [mutateSessions])
 
   const getSessionsByProject = useCallback((projectId: string) => {
     return sessions.filter((s) => s.projectId === projectId)

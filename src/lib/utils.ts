@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent, NotionSource } from "@/lib/types"
+import type { Project, DeadlineType, EventType, StudySession, Subject, CalendarEvent, NotionSource, NotionSyncSnapshot } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
 export function generateId(): string {
@@ -57,6 +57,28 @@ export function safeDateMeta(obj: Record<string, unknown>): { created_at: string
   }
 }
 
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonValue)
+  if (!isRecord(value)) return value
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortJsonValue(value[key])]),
+  )
+}
+
+export function stableJsonStringify(value: unknown): string {
+  const serialized = JSON.stringify(value)
+  return serialized === undefined ? "" : JSON.stringify(sortJsonValue(JSON.parse(serialized) as unknown))
+}
+
+function parseNotionSyncSnapshot(value: unknown): NotionSyncSnapshot | undefined {
+  if (!isRecord(value)) return undefined
+  const entries = Object.entries(value)
+  if (entries.length === 0 || !entries.every(([, item]) => item === null || typeof item === "string" || typeof item === "boolean")) return undefined
+  return Object.fromEntries(entries) as NotionSyncSnapshot
+}
+
 export function parseNotionSource(value: unknown): NotionSource | undefined {
   if (typeof value !== "object" || value === null) return undefined
   const record = value as Record<string, unknown>
@@ -68,6 +90,7 @@ export function parseNotionSource(value: unknown): NotionSource | undefined {
     lastEditedTime: typeof record.lastEditedTime === "string" ? record.lastEditedTime : undefined,
     kind: record.kind === "event" || record.kind === "session" ? record.kind : undefined,
     bodyHash: typeof record.bodyHash === "string" ? record.bodyHash : undefined,
+    syncSnapshot: parseNotionSyncSnapshot(record.syncSnapshot),
   }
 }
 

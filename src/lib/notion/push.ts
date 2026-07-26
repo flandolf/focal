@@ -11,6 +11,7 @@ import {
   buildPageChildren,
   hashBody,
   bodyHasChanged,
+  buildSessionBodyText,
   eventFingerprint,
   sessionFingerprint,
   richTextValue,
@@ -20,6 +21,9 @@ import {
   pageMatchesEvent,
   pageMatchesSession,
   toNotionType,
+  eventSyncSnapshot,
+  getPrimarySessionSubjectId,
+  sessionSyncSnapshot,
 } from "@/lib/notion/schema"
 import { findSubjectIdFromValues } from "@/lib/notion/subjectMatch"
 import {
@@ -39,39 +43,6 @@ import {
   updateNotionPage,
 } from "@/lib/notion/api"
 
-
-function buildSessionBodyText(session: StudySession): string | undefined {
-  const base = [session.description, session.notes].filter(Boolean).join("\n\n")
-  const activeDurations = session.execution.intervals.filter(
-    (interval): interval is typeof interval & { end: string } => Boolean(interval.end),
-  )
-  if (activeDurations.length === 0) {
-    return base || undefined
-  }
-  const sorted = [...activeDurations].sort(
-    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
-  )
-  const lines: string[] = []
-  let lastEnd: Date | null = null
-  let totalActive = 0
-  for (const d of sorted) {
-    const startDate = new Date(d.start)
-    const endDate = new Date(d.end!)
-    const durationMin = Math.round((endDate.getTime() - startDate.getTime()) / 60000)
-    totalActive += durationMin
-    const timeFmt = (date: Date) =>
-      date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
-    if (lastEnd) {
-      const restMin = Math.round((startDate.getTime() - lastEnd.getTime()) / 60000)
-      lines.push(`Break: ${timeFmt(lastEnd)} – ${timeFmt(startDate)} (${restMin}m)`)
-    }
-    lines.push(`Active: ${timeFmt(startDate)} – ${timeFmt(endDate)} (${durationMin}m)`)
-    lastEnd = endDate
-  }
-  lines.push(`\nTotal active study: ${totalActive}m`)
-  const timeline = lines.join("\n")
-  return base ? `${base}\n\n${timeline}` : timeline
-}
 // ---------------------------------------------------------------------------
 // Push helpers: retry, concurrency
 // ---------------------------------------------------------------------------
@@ -208,13 +179,60 @@ function buildNotionSessionProperties(
   }
 
   if (settings.subjectProperty.trim()) {
-    const subject = subjects.find((c) => session.subjectIds.includes(c.id))
+    const primarySubjectId = getPrimarySessionSubjectId(session, subjects)
+    const subject = subjects.find((candidate) => candidate.id === primarySubjectId)
     const pt = getSchemaPropertyType(schema, settings.subjectProperty, "select")
     const prop = createPropertyValue(pt, subject?.name)
     if (prop) properties[settings.subjectProperty] = prop
   }
 
   return properties
+}
+
+function eventWriteMatches(
+  page: NotionPage,
+  event: CalendarEvent,
+  settings: NotionCalendarSettings,
+  subjects: Subject[],
+): boolean {
+  return getFocalId(page) === event.id
+    && getFocalKind(page) === "event"
+    && pageMatchesEvent(page, event, settings, subjects, findSubjectIdFromValues)
+}
+
+function sessionWriteMatches(
+  page: NotionPage,
+  session: StudySession,
+  settings: NotionCalendarSettings,
+  subjects: Subject[],
+): boolean {
+  return getFocalId(page) === session.id
+    && getFocalKind(page) === "session"
+    && pageMatchesSession(page, session, settings, subjects, findSubjectIdFromValues)
+}
+
+function verifyEventWrite(
+  page: NotionPage,
+  event: CalendarEvent,
+  settings: NotionCalendarSettings,
+  subjects: Subject[],
+): NotionPage {
+  if (!eventWriteMatches(page, event, settings, subjects)) {
+    throw new Error("Notion did not persist every mapped event field")
+  }
+  return page
+}
+
+function verifySessionWrite(
+  page: NotionPage,
+  session: StudySession,
+  settings: NotionCalendarSettings,
+  subjects: Subject[],
+): NotionPage {
+  if (!sessionWriteMatches(page, session, settings, subjects)) {
+    throw new Error("Notion did not persist every mapped study-session field")
+  }
+  return page
 }
 
 // ---------------------------------------------------------------------------
@@ -307,9 +325,10 @@ export async function pushEventToNotion(
     errors,
   )
   if (!page) throw new Error(errors[0] ?? "Notion did not accept the event")
+  const verifiedPage = verifyEventWrite(page, event, settings, subjects)
 
   return {
-    source: getNotionSource(page, "event", bodyHash),
+    source: getNotionSource(verifiedPage, "event", bodyHash, eventSyncSnapshot(event, settings)),
   }
 }
 
@@ -342,9 +361,10 @@ export async function pushSessionToNotion(
     errors,
   )
   if (!page) throw new Error(errors[0] ?? "Notion did not accept the study session")
+  const verifiedPage = verifySessionWrite(page, session, settings, subjects)
 
   return {
-    source: getNotionSource(page, "session", bodyHash),
+    source: getNotionSource(verifiedPage, "session", bodyHash, sessionSyncSnapshot(session, settings, subjects)),
   }
 }
 
@@ -386,12 +406,16 @@ export function collectEventPushTasks(
               ctx.pushErrors,
             )
             if (!page) return
+            if (!eventWriteMatches(page, event, settings, subjects)) {
+              ctx.pushErrors.push(`Event "${event.title}": Notion did not persist every mapped field`)
+              return
+            }
             ctx.pushedUpdated += 1
             ctx.acknowledgedEventIds.add(event.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedEvents.set(event.id, {
               ...ctx.updatedEvents.get(event.id),
-              source: getNotionSource(page, "event", bodyHash),
+              source: getNotionSource(page, "event", bodyHash, eventSyncSnapshot(event, settings)),
             })
           },
         })
@@ -402,9 +426,13 @@ export function collectEventPushTasks(
         const propertiesMatch = pageMatchesEvent(remotePage, event, settings, subjects, findSubjectIdFromValues)
         const bodyDiffers = bodyHasChanged(event.source.bodyHash, event.description)
         const identityMatches = getFocalId(remotePage) === event.id && getFocalKind(remotePage) === "event"
-        if (!isDirty && identityMatches) continue
+        if (!isDirty && propertiesMatch && !bodyDiffers && identityMatches) continue
         if (propertiesMatch && !bodyDiffers && identityMatches) {
           ctx.acknowledgedEventIds.add(event.id)
+          ctx.updatedEvents.set(event.id, {
+            ...ctx.updatedEvents.get(event.id),
+            source: getNotionSource(remotePage, "event", bodyHash, eventSyncSnapshot(event, settings)),
+          })
           continue
         }
         tasks.push({
@@ -415,17 +443,21 @@ export function collectEventPushTasks(
                 settings,
                 event.source!.id,
                 properties,
-                isDirty && bodyDiffers ? children : undefined,
+                bodyDiffers ? children : undefined,
               ),
               ctx.pushErrors,
             )
             if (!page) return
+            if (!eventWriteMatches(page, event, settings, subjects)) {
+              ctx.pushErrors.push(`Event "${event.title}": Notion did not persist every mapped field`)
+              return
+            }
             ctx.pushedUpdated += 1
             ctx.acknowledgedEventIds.add(event.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedEvents.set(event.id, {
               ...ctx.updatedEvents.get(event.id),
-              source: getNotionSource(page, "event", bodyHash),
+              source: getNotionSource(page, "event", bodyHash, eventSyncSnapshot(event, settings)),
             })
           },
         })
@@ -438,12 +470,16 @@ export function collectEventPushTasks(
               ctx.pushErrors,
             )
             if (!page) return
+            if (!eventWriteMatches(page, event, settings, subjects)) {
+              ctx.pushErrors.push(`Event "${event.title}": Notion did not persist every mapped field`)
+              return
+            }
             ctx.pushedCreated += 1
             ctx.acknowledgedEventIds.add(event.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedEvents.set(event.id, {
               ...ctx.updatedEvents.get(event.id),
-              source: getNotionSource(page, "event", bodyHash),
+              source: getNotionSource(page, "event", bodyHash, eventSyncSnapshot(event, settings)),
             })
           },
         })
@@ -458,12 +494,16 @@ export function collectEventPushTasks(
           ctx.pushErrors,
         )
         if (!page) return
+        if (!eventWriteMatches(page, event, settings, subjects)) {
+          ctx.pushErrors.push(`Event "${event.title}": Notion did not persist every mapped field`)
+          return
+        }
         ctx.pushedCreated += 1
         ctx.acknowledgedEventIds.add(event.id)
         ctx.newNotionIds.add(page.id)
         ctx.updatedEvents.set(event.id, {
           ...ctx.updatedEvents.get(event.id),
-          source: getNotionSource(page, "event", bodyHash),
+          source: getNotionSource(page, "event", bodyHash, eventSyncSnapshot(event, settings)),
         })
       },
     })
@@ -506,12 +546,16 @@ export function collectSessionPushTasks(
               ctx.pushErrors,
             )
             if (!page) return
+            if (!sessionWriteMatches(page, session, settings, subjects)) {
+              ctx.pushErrors.push(`Session "${session.title}": Notion did not persist every mapped field`)
+              return
+            }
             ctx.pushedUpdated += 1
             ctx.acknowledgedSessionIds.add(session.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedSessions.set(session.id, {
               ...ctx.updatedSessions.get(session.id),
-              source: getNotionSource(page, "session", bodyHash),
+              source: getNotionSource(page, "session", bodyHash, sessionSyncSnapshot(session, settings, subjects)),
             })
           },
         })
@@ -522,9 +566,18 @@ export function collectSessionPushTasks(
         const propertiesMatch = pageMatchesSession(remotePage, session, settings, subjects, findSubjectIdFromValues)
         const bodyDiffers = bodyHasChanged(session.source.bodyHash, bodyText)
         const identityMatches = getFocalId(remotePage) === session.id && getFocalKind(remotePage) === "session"
-        if (!isDirty && identityMatches) continue
+        if (!isDirty && propertiesMatch && !bodyDiffers && identityMatches) continue
         if (propertiesMatch && !bodyDiffers && identityMatches) {
           ctx.acknowledgedSessionIds.add(session.id)
+          ctx.updatedSessions.set(session.id, {
+            ...ctx.updatedSessions.get(session.id),
+            source: getNotionSource(
+              remotePage,
+              "session",
+              bodyHash,
+              sessionSyncSnapshot(session, settings, subjects),
+            ),
+          })
           continue
         }
         tasks.push({
@@ -535,17 +588,21 @@ export function collectSessionPushTasks(
                 settings,
                 session.source!.id,
                 properties,
-                isDirty && bodyDiffers ? children : undefined,
+                bodyDiffers ? children : undefined,
               ),
               ctx.pushErrors,
             )
             if (!page) return
+            if (!sessionWriteMatches(page, session, settings, subjects)) {
+              ctx.pushErrors.push(`Session "${session.title}": Notion did not persist every mapped field`)
+              return
+            }
             ctx.pushedUpdated += 1
             ctx.acknowledgedSessionIds.add(session.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedSessions.set(session.id, {
               ...ctx.updatedSessions.get(session.id),
-              source: getNotionSource(page, "session", bodyHash),
+              source: getNotionSource(page, "session", bodyHash, sessionSyncSnapshot(session, settings, subjects)),
             })
           },
         })
@@ -558,12 +615,16 @@ export function collectSessionPushTasks(
               ctx.pushErrors,
             )
             if (!page) return
+            if (!sessionWriteMatches(page, session, settings, subjects)) {
+              ctx.pushErrors.push(`Session "${session.title}": Notion did not persist every mapped field`)
+              return
+            }
             ctx.pushedCreated += 1
             ctx.acknowledgedSessionIds.add(session.id)
             ctx.newNotionIds.add(page.id)
             ctx.updatedSessions.set(session.id, {
               ...ctx.updatedSessions.get(session.id),
-              source: getNotionSource(page, "session", bodyHash),
+              source: getNotionSource(page, "session", bodyHash, sessionSyncSnapshot(session, settings, subjects)),
             })
           },
         })
@@ -578,12 +639,16 @@ export function collectSessionPushTasks(
           ctx.pushErrors,
         )
         if (!page) return
+        if (!sessionWriteMatches(page, session, settings, subjects)) {
+          ctx.pushErrors.push(`Session "${session.title}": Notion did not persist every mapped field`)
+          return
+        }
         ctx.pushedCreated += 1
         ctx.acknowledgedSessionIds.add(session.id)
         ctx.newNotionIds.add(page.id)
         ctx.updatedSessions.set(session.id, {
           ...ctx.updatedSessions.get(session.id),
-          source: getNotionSource(page, "session", bodyHash),
+          source: getNotionSource(page, "session", bodyHash, sessionSyncSnapshot(session, settings, subjects)),
         })
       },
     })

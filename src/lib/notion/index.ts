@@ -77,7 +77,9 @@ export async function syncNotionCalendar(
   const totalPulled = ctx.created.length + ctx.updatedEvents.size + ctx.createdSessions.length + ctx.updatedSessions.size
   onProgress?.(totalPulled > 0 ? `Found ${totalPulled} new or updated item${totalPulled === 1 ? "" : "s"}` : "No new items from Notion")
 
-  await executePush(cleanEvents, cleanSessions, settings, subjects, schema, pagesById, ctx)
+  const eventsForPush = cleanEvents.map((event) => ({ ...event, ...ctx.updatedEvents.get(event.id) }))
+  const sessionsForPush = cleanSessions.map((session) => ({ ...session, ...ctx.updatedSessions.get(session.id) }))
+  await executePush(eventsForPush, sessionsForPush, settings, subjects, schema, pagesById, ctx)
   return {
     created: ctx.created,
     updated: [...ctx.updatedEvents.entries()].map(([id, updates]) => ({ id, updates })),
