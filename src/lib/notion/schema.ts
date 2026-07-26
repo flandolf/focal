@@ -284,7 +284,7 @@ export function sameInstant(a: string | undefined, b: string | undefined): boole
   if (!a || !b) return false
   const aTime = new Date(a).getTime()
   const bTime = new Date(b).getTime()
-  return Number.isFinite(aTime) && Number.isFinite(bTime) && aTime === bTime
+  return Number.isFinite(aTime) && Number.isFinite(bTime) && Math.floor(aTime / 60_000) === Math.floor(bTime / 60_000)
 }
 
 export function normaliseToken(value: string | undefined): string {
@@ -555,7 +555,9 @@ interface NotionMappedSettings {
 function canonicalSyncInstant(value: string | undefined): string | null {
   if (!value) return null
   const time = new Date(value).getTime()
-  return Number.isFinite(time) ? new Date(time).toISOString() : value.trim()
+  // ponytail: Notion date properties round to minutes. If their API gains
+  // second precision, remove this normalization from matching and snapshots.
+  return Number.isFinite(time) ? new Date(Math.floor(time / 60_000) * 60_000).toISOString() : value.trim()
 }
 
 export function eventSyncSnapshot(
