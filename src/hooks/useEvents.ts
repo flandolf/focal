@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react"
 import type { CalendarEvent, EventType } from "@/lib/types"
-import { generateId, safeString, safeStringOpt, safeBool, safeDateMeta, parseCalendarEventSource } from "@/lib/utils"
+import { generateId, safeString, safeStringOpt, safeBool, safeDateMeta, parseCalendarEventSource, stableJsonStringify } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
@@ -51,7 +51,7 @@ function normaliseEvent(raw: unknown): CalendarEvent {
 
 export function useEvents() {
   const duplicateIdsRef = useRef<string[]>([])
-  const { data: events, loading, error, save: saveEvents, refresh } = usePersistedData({
+  const { data: events, loading, error, save: saveEvents, mutate: mutateEvents, refresh } = usePersistedData({
     fileName: "events.json",
     normalize: normaliseEvent,
     onLoad: (normalised) => {
@@ -240,40 +240,67 @@ export function useEvents() {
     itemsToUpdate: {
       id: string
       updates: Partial<Omit<CalendarEvent, "id" | "created_at">>
+      expectedRecord?: CalendarEvent
     }[],
   ) => {
     const updateMap = new Map(itemsToUpdate.map((item) => [item.id, item.updates]))
+    const expectedRecordMap = new Map(itemsToUpdate.flatMap((item) => (
+      item.expectedRecord ? [[item.id, stableJsonStringify(item.expectedRecord)] as const] : []
+    )))
     const createdAt = new Date().toISOString()
-    const newEvents: CalendarEvent[] = itemsToCreate.map((data) => ({
-      id: data.id ?? generateId(),
-      title: data.title,
-      description: data.description,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      eventType: data.eventType,
-      subjectId: data.subjectId,
-      location: data.location,
-      source: data.source,
-      isFinished: eventHasPassed(data),
-      finishedAt: eventHasPassed(data) ? createdAt : undefined,
-      created_at: createdAt,
-      updated_at: createdAt,
-    }))
-    const updated = markPastEventsFinished([
-      ...eventsRef.current.map((event) => {
-        const updates = updateMap.get(event.id)
-        return updates ? { ...event, ...updates, updated_at: createdAt } : event
-      }),
-      ...newEvents,
-    ])
-    await saveEvents(updated)
+    const newEvents: CalendarEvent[] = itemsToCreate.map((data) => {
+      const isFinished = Boolean(data.isFinished) || eventHasPassed(data)
+      return {
+        id: data.id ?? generateId(),
+        title: data.title,
+        description: data.description,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        eventType: data.eventType,
+        subjectId: data.subjectId,
+        location: data.location,
+        source: data.source,
+        isFinished,
+        finishedAt: data.finishedAt ?? (isFinished ? createdAt : undefined),
+        created_at: createdAt,
+        updated_at: createdAt,
+      }
+    })
+    const createdIds = new Set<string>()
+    const appliedUpdateIds = new Set<string>()
+    const updated = await mutateEvents((current) => {
+      const existingIds = new Set(current.map((event) => event.id))
+      const created = newEvents.filter((event) => {
+        if (existingIds.has(event.id)) return false
+        createdIds.add(event.id)
+        return true
+      })
+      return markPastEventsFinished([
+        ...current.map((event) => {
+          const updates = updateMap.get(event.id)
+          const expectedRecord = expectedRecordMap.get(event.id)
+          if (!updates || (expectedRecord && stableJsonStringify(event) !== expectedRecord)) return event
+          appliedUpdateIds.add(event.id)
+          return { ...event, ...updates, updated_at: createdAt }
+        }),
+        ...created,
+      ])
+    })
     await Promise.all(itemsToUpdate.map(async (item) => {
+      if (!appliedUpdateIds.has(item.id)) return
       const event = updated.find((candidate) => candidate.id === item.id)
       if (event) await recordLocalUpsert("events", event)
     }))
-    await Promise.all(newEvents.map((event) => recordLocalUpsert("events", event)))
-    return newEvents
-  }, [eventsRef, saveEvents])
+    const created = newEvents.filter((event) => createdIds.has(event.id))
+    await Promise.all(created.map((event) => recordLocalUpsert("events", event)))
+    return {
+      created,
+      updated: itemsToUpdate.flatMap((item) => {
+        const event = updated.find((candidate) => candidate.id === item.id)
+        return event ? [event] : []
+      }),
+    }
+  }, [mutateEvents])
 
   useEffect(() => {
     const markFinished = () => {

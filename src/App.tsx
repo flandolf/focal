@@ -556,7 +556,7 @@ function App() {
   );
   const handleResolveConflicts = useCallback(
     (resolutions: Record<string, "local" | "notion" | "skip">) => {
-      void resolveConflicts(resolutions);
+      return resolveConflicts(resolutions);
     },
     [resolveConflicts],
   );

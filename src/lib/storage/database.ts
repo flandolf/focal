@@ -163,3 +163,20 @@ export async function writePersistedArray(fileName: CoreDataFile, items: unknown
     await replaceRecords(await openFocalDatabase(), fileName, items)
   })
 }
+
+export async function mutatePersistedArray<T>(
+  fileName: CoreDataFile,
+  mutate: (current: unknown[]) => T[],
+): Promise<T[]> {
+  await ensureLegacyImport(fileName)
+  return withWriteLock(fileName, async () => {
+    const database = await openFocalDatabase()
+    const rows = await database.select<StoredPayloadRow[]>(
+      "select payload from records where kind = $1 order by position asc",
+      [coreRecordKind(fileName)],
+    )
+    const updated = mutate(parseStoredPayloads(rows))
+    await replaceRecords(database, fileName, updated)
+    return updated
+  })
+}

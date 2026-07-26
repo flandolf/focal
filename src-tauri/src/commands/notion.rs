@@ -123,6 +123,31 @@ async fn parse_notion_response(response: reqwest::Response) -> NotionPageRespons
     }
 }
 
+#[tauri::command]
+pub async fn fetch_notion_page(token: String, page_id: String) -> NotionPageResponse {
+    let token = token.trim();
+    let page_id = page_id.trim();
+    if token.is_empty() {
+        return page_error("VALIDATION_ERROR", "Notion integration token is required");
+    }
+    if page_id.is_empty() {
+        return page_error("VALIDATION_ERROR", "Notion page id is required");
+    }
+
+    let response = match HTTP_CLIENT
+        .get(format!("{}/pages/{}", NOTION_BASE_URL, page_id))
+        .bearer_auth(token)
+        .header("Notion-Version", NOTION_API_VERSION)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => return page_error("NETWORK_ERROR", &format!("Network error: {}", error)),
+    };
+
+    parse_notion_response(response).await
+}
+
 // -- Fetch schema (lightweight single page) --
 
 #[tauri::command]

@@ -147,6 +147,23 @@ export async function queryNotionCalendar(settings: NotionCalendarSettings): Pro
   return (response.data ?? []).map(normalisePage).filter((page): page is NotionPage => page !== null)
 }
 
+export async function fetchNotionPage(
+  settings: Pick<NotionCalendarSettings, "token">,
+  pageId: string,
+): Promise<NotionPage> {
+  const response = await retryNotionRead(async () => {
+    const value = await invoke<unknown>("fetch_notion_page", {
+      token: settings.token,
+      pageId,
+    })
+    if (!isNotionPageResponse(value)) throw new Error("Invalid Notion page response")
+    return value
+  })
+  const page = normalisePage(response.data)
+  if (!page) throw new Error("Notion page response missing page")
+  return page
+}
+
 /**
  * Lightweight schema fetch: retrieves the database itself instead of querying
  * all of its pages. This also works when the database is empty.

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { readPersistedArray, writePersistedArray } from "@/lib/storage/database"
+import { mutatePersistedArray, readPersistedArray, writePersistedArray } from "@/lib/storage/database"
 import type { CoreDataFile } from "@/lib/storage/records"
 
 /**
@@ -19,6 +19,7 @@ interface PersistedDataResult<T> {
   loading: boolean
   error: string | null
   save: (updated: T[]) => Promise<void>
+  mutate: (updater: (current: T[]) => T[]) => Promise<T[]>
   refresh: () => Promise<void>
 }
 
@@ -60,6 +61,14 @@ export function usePersistedData<T>({
     setData(updated)
   }, [fileName])
 
+  const mutate = useCallback(async (updater: (current: T[]) => T[]) => {
+    const updated = await mutatePersistedArray(fileName, (current) => (
+      updater(current.map(normalizeRef.current))
+    ))
+    setData(updated)
+    return updated
+  }, [fileName])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises
     refresh()
@@ -76,5 +85,5 @@ export function usePersistedData<T>({
     return () => window.removeEventListener("focal-sync-data-changed", handler)
   }, [fileName, refresh])
 
-  return { data, loading, error, save, refresh }
+  return { data, loading, error, save, mutate, refresh }
 }

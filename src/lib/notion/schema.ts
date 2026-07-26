@@ -1,6 +1,6 @@
 import { isRecord } from "@/lib/utils"
 export { isRecord }
-import type { CalendarEvent, EventType, NotionSource, StudySession, StudySessionDraft, Subject } from "@/lib/types"
+import type { CalendarEvent, EventType, NotionSource, NotionSyncSnapshot, StudySession, StudySessionDraft, Subject } from "@/lib/types"
 
 export type NotionProperty = Record<string, unknown>
 
@@ -24,7 +24,14 @@ export interface ConflictItem {
   notionPageId: string
   notionLastEditedTime?: string
   notionUrl?: string
+  localUpdates: EventUpdates | SessionUpdates
   remoteUpdates: EventUpdates | SessionUpdates
+  localSnapshot: NotionSyncSnapshot
+  remoteSnapshot: NotionSyncSnapshot
+  conflictingFields: string[]
+  localUpdatedAt?: string
+  localBodyHash?: string
+  localSubjectIds?: string[]
 }
 
 export interface NotionQueryError {
@@ -337,7 +344,12 @@ export function normalisePage(value: unknown): NotionPage | null {
   }
 }
 
-export function getNotionSource(page: NotionPage, kind: "event" | "session", bodyHash?: string): NotionSource {
+export function getNotionSource(
+  page: NotionPage,
+  kind: "event" | "session",
+  bodyHash?: string,
+  syncSnapshot?: NotionSyncSnapshot,
+): NotionSource {
   const source: NotionSource = {
     type: "notion",
     id: page.id,
@@ -346,6 +358,7 @@ export function getNotionSource(page: NotionPage, kind: "event" | "session", bod
     kind,
   }
   if (bodyHash !== undefined) source.bodyHash = bodyHash
+  if (syncSnapshot !== undefined) source.syncSnapshot = syncSnapshot
   return source
 }
 
@@ -391,10 +404,13 @@ export function getEventSubjectId(
   subjects: Subject[],
   findSubjectIdFromValues: (values: string[], subjects: Subject[]) => string | undefined,
 ): string | undefined {
-  return findSubjectIdFromValues([
-    ...(settings.subjectProperty ? getPropertyTexts(findProperty(properties, settings.subjectProperty)) : []),
-    title,
-  ], subjects)
+  const configuredProperty = settings.subjectProperty.trim()
+    ? findProperty(properties, settings.subjectProperty)
+    : undefined
+  if (configuredProperty) {
+    return findSubjectIdFromValues(getPropertyTexts(configuredProperty), subjects)
+  }
+  return findSubjectIdFromValues([title], subjects)
 }
 
 export function getEventTypeFromPage(
@@ -421,14 +437,24 @@ export function richTextValue(value: string): unknown[] {
 }
 
 export function createTextProperty(propertyType: string | undefined, value: string | undefined): unknown {
-  if (!value) return undefined
+  if (!value) {
+    if (propertyType === "select") return { select: null }
+    if (propertyType === "multi_select") return { multi_select: [] }
+    if (propertyType === "status") return { status: null }
+    if (propertyType === "url") return { url: null }
+    if (propertyType === "email") return { email: null }
+    if (propertyType === "phone_number") return { phone_number: null }
+    if (!propertyType || propertyType === "rich_text") return { rich_text: [] }
+    return undefined
+  }
   if (propertyType === "select") return { select: { name: value } }
   if (propertyType === "multi_select") return { multi_select: [{ name: value }] }
   if (propertyType === "status") return { status: { name: value } }
   if (propertyType === "url") return { url: value }
   if (propertyType === "email") return { email: value }
   if (propertyType === "phone_number") return { phone_number: value }
-  return { rich_text: richTextValue(value) }
+  if (!propertyType || propertyType === "rich_text") return { rich_text: richTextValue(value) }
+  return undefined
 }
 
 export function createPropertyValue(propertyType: string | undefined, value: string | boolean | undefined): unknown {
@@ -480,6 +506,133 @@ export function bodyHasChanged(storedHash: string | undefined, text: string | un
   return hashBody(text) !== storedHash
 }
 
+export function buildSessionBodyText(session: StudySession): string | undefined {
+  const base = [session.description, session.notes].filter(Boolean).join("\n\n")
+  const activeDurations = session.execution.intervals.filter(
+    (interval): interval is typeof interval & { end: string } => Boolean(interval.end),
+  )
+  if (activeDurations.length === 0) return base || undefined
+
+  const sorted = [...activeDurations].sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+  )
+  const lines: string[] = []
+  let lastEnd: Date | null = null
+  let totalActive = 0
+  for (const duration of sorted) {
+    const startDate = new Date(duration.start)
+    const endDate = new Date(duration.end!)
+    const durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / 60_000)
+    totalActive += durationMinutes
+    const time = (date: Date) => date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
+    if (lastEnd) {
+      const restMinutes = Math.round((startDate.getTime() - lastEnd.getTime()) / 60_000)
+      lines.push(`Break: ${time(lastEnd)} – ${time(startDate)} (${restMinutes}m)`)
+    }
+    lines.push(`Active: ${time(startDate)} – ${time(endDate)} (${durationMinutes}m)`)
+    lastEnd = endDate
+  }
+  lines.push(`\nTotal active study: ${totalActive}m`)
+  const timeline = lines.join("\n")
+  return base ? `${base}\n\n${timeline}` : timeline
+}
+
+export function getPrimarySessionSubjectId(
+  session: Pick<StudySessionDraft, "subjectIds">,
+  subjects: Subject[],
+): string | null {
+  return session.subjectIds.find((subjectId) => (
+    subjects.some((subject) => subject.id === subjectId)
+  )) ?? null
+}
+
+interface NotionMappedSettings {
+  typeProperty: string
+  completedProperty: string
+  subjectProperty: string
+}
+
+function canonicalSyncInstant(value: string | undefined): string | null {
+  if (!value) return null
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? new Date(time).toISOString() : value.trim()
+}
+
+export function eventSyncSnapshot(
+  event: Pick<CalendarEvent, "title" | "startTime" | "endTime" | "eventType" | "subjectId" | "isFinished">,
+  settings: NotionMappedSettings,
+): NotionSyncSnapshot {
+  return {
+    title: event.title,
+    startTime: canonicalSyncInstant(event.startTime),
+    endTime: canonicalSyncInstant(event.endTime),
+    ...(settings.typeProperty.trim() ? { eventType: event.eventType } : {}),
+    ...(settings.completedProperty.trim() ? { isFinished: Boolean(event.isFinished) } : {}),
+    ...(settings.subjectProperty.trim() ? { subjectId: event.subjectId ?? null } : {}),
+  }
+}
+
+export function sessionSyncSnapshot(
+  session: Pick<StudySessionDraft, "title" | "startTime" | "endTime" | "status" | "completedAt" | "subjectIds">,
+  settings: NotionMappedSettings,
+  subjects: Subject[],
+): NotionSyncSnapshot {
+  const primarySubjectId = getPrimarySessionSubjectId(session, subjects)
+  return {
+    title: session.title,
+    startTime: canonicalSyncInstant(session.startTime),
+    endTime: canonicalSyncInstant(session.endTime),
+    ...(settings.completedProperty.trim()
+      ? { isCompleted: session.status === "completed" || Boolean(session.completedAt) }
+      : {}),
+    ...(settings.subjectProperty.trim() ? { subjectId: primarySubjectId } : {}),
+  }
+}
+
+export function notionSnapshotsEqual(a: NotionSyncSnapshot, b: NotionSyncSnapshot): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  return [...keys].every((key) => a[key] === b[key])
+}
+
+export function mergeNotionSyncSnapshots(
+  baseline: NotionSyncSnapshot,
+  local: NotionSyncSnapshot,
+  remote: NotionSyncSnapshot,
+): { merged: NotionSyncSnapshot; conflictingFields: string[] } {
+  const merged: NotionSyncSnapshot = {}
+  const conflictingFields: string[] = []
+  const keys = new Set([...Object.keys(baseline), ...Object.keys(local), ...Object.keys(remote)])
+  for (const key of keys) {
+    const baselineValue = baseline[key]
+    const localValue = local[key]
+    const remoteValue = remote[key]
+    const localChanged = localValue !== baselineValue
+    const remoteChanged = remoteValue !== baselineValue
+    if (localChanged && remoteChanged && localValue !== remoteValue) {
+      conflictingFields.push(key)
+      continue
+    }
+    const value = remoteChanged ? remoteValue : localValue
+    if (value !== undefined) merged[key] = value
+  }
+  return { merged, conflictingFields }
+}
+
+export function resolveNotionSyncSnapshot(
+  merged: NotionSyncSnapshot,
+  chosen: NotionSyncSnapshot,
+  conflictingFields: readonly string[],
+): NotionSyncSnapshot {
+  if (conflictingFields.includes("record")) return { ...chosen }
+  const resolved = { ...merged }
+  for (const field of conflictingFields) {
+    const value = chosen[field]
+    if (value === undefined) delete resolved[field]
+    else resolved[field] = value
+  }
+  return resolved
+}
+
 // ---------------------------------------------------------------------------
 // Fingerprinting (for duplicate-page prevention)
 // ---------------------------------------------------------------------------
@@ -500,7 +653,7 @@ export function sessionFingerprint(s: StudySession | StudySessionDraft): string 
     s.title,
     s.startTime,
     s.endTime,
-    (s.subjectIds ?? []).sort().join(","),
+    [...(s.subjectIds ?? [])].sort().join(","),
     s.status,
   ].join("|")
 }
@@ -631,9 +784,12 @@ export function pageMatchesEvent(
     title === event.title &&
     sameInstant(startTime, event.startTime) &&
     sameInstant(endTime, event.endTime) &&
-    getEventTypeFromPage(properties, settings) === event.eventType &&
-    getEventSubjectId(properties, title, settings, subjects, findSubjectIdFromValues) === event.subjectId &&
-    isCompleted(properties, settings) === Boolean(event.isFinished)
+    (!settings.typeProperty.trim()
+      || getEventTypeFromPage(properties, settings) === event.eventType) &&
+    (!settings.subjectProperty.trim()
+      || getEventSubjectId(properties, title, settings, subjects, findSubjectIdFromValues) === event.subjectId) &&
+    (!settings.completedProperty.trim()
+      || isCompleted(properties, settings) === Boolean(event.isFinished))
   )
 }
 
@@ -648,14 +804,16 @@ export function pageMatchesSession(
   const title = getPageTitle(properties, settings.titleProperty)
   const { startTime, endTime } = getPropertyDateForEvent(properties, settings)
   const subjectId = getEventSubjectId(properties, title, settings, subjects, findSubjectIdFromValues)
-  const subjectMatches = subjectId ? session.subjectIds.includes(subjectId) : session.subjectIds.length === 0
+  const subjectMatches = !settings.subjectProperty.trim()
+    || (subjectId ?? null) === getPrimarySessionSubjectId(session, subjects)
 
   return (
     title === session.title &&
     sameInstant(startTime, session.startTime) &&
     sameInstant(endTime, session.endTime) &&
     subjectMatches &&
-    isCompleted(properties, settings) === (session.status === "completed")
+    (!settings.completedProperty.trim()
+      || isCompleted(properties, settings) === (session.status === "completed"))
   )
 }
 
@@ -668,15 +826,17 @@ export function toEventFromPage(
   const properties = page.properties ?? {}
   const title = getPageTitle(properties, settings.titleProperty)
   const { startTime, endTime } = getPropertyDateForEvent(properties, settings)
-
-  return {
+  const event = {
     title,
     startTime: startTime!,
     endTime,
     eventType: getEventTypeFromPage(properties, settings),
     subjectId: getEventSubjectId(properties, title, settings, subjects, findSubjectIdFromValues),
     isFinished: isCompleted(properties, settings),
-    source: getNotionSource(page, "event"),
+  }
+  return {
+    ...event,
+    source: getNotionSource(page, "event", undefined, eventSyncSnapshot(event, settings)),
   }
 }
 
@@ -692,7 +852,7 @@ export function toSessionFromPage(
   if (!startTime) return null
 
   const completed = isCompleted(properties, settings)
-  return {
+  const session: StudySessionDraft = {
     projectId: undefined,
     subjectIds: getEventSubjectId(properties, title, settings, subjects, findSubjectIdFromValues)
       ? [getEventSubjectId(properties, title, settings, subjects, findSubjectIdFromValues)!]
@@ -707,6 +867,9 @@ export function toSessionFromPage(
     blockers: undefined,
     nextAction: undefined,
     completedAt: completed ? (page.last_edited_time ?? new Date().toISOString()) : undefined,
-    source: getNotionSource(page, "session"),
+  }
+  return {
+    ...session,
+    source: getNotionSource(page, "session", undefined, sessionSyncSnapshot(session, settings, subjects)),
   }
 }
