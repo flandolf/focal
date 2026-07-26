@@ -57,6 +57,7 @@ import {
   repeatCalendarEvent,
   repeatStudySession,
 } from "@/lib/repeatPlanningItem";
+import { mergeStudySessionTimelines } from "@/lib/studySessions";
 import {
   forcePushAndMerge,
   forcePushAndOverwrite,
@@ -1354,21 +1355,14 @@ function App() {
 
       if (selectedSessions.length < 2) return;
 
-      const keeper = selectedSessions[0];
-      const startMs = Math.min(
-        ...selectedSessions
-          .map((session) => new Date(session.startTime).getTime())
-          .filter(Number.isFinite),
+      const inProgressSessions = selectedSessions.filter(
+        (session) => session.execution.state === "in-progress",
       );
-      const endMs = Math.max(
-        ...selectedSessions
-          .map((session) => new Date(session.endTime).getTime())
-          .filter(Number.isFinite),
-      );
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
-        toast.error("Failed to merge study sessions: invalid session time");
+      if (inProgressSessions.length > 1) {
+        toast.error("Finish all but one active study session before merging");
         return;
       }
+      const keeper = inProgressSessions[0] ?? selectedSessions[0];
 
       const descriptions = getUniqueStrings(
         selectedSessions.map((session) => session.description),
@@ -1394,18 +1388,8 @@ function App() {
       const sameConfidence = selectedSessions.every(
         (session) => session.confidence === keeper.confidence,
       );
-      const allComplete = selectedSessions.every(
-        (session) => session.status === "completed",
-      );
-      const anyInProgress = selectedSessions.some(
-        (session) => session.status === "in-progress",
-      );
-      const completedAtValues = selectedSessions
-        .map((session) => session.completedAt)
-        .filter((completedAt): completedAt is string => Boolean(completedAt))
-        .sort();
-
       try {
+        const timeline = mergeStudySessionTimelines(selectedSessions);
         await updateAndDeleteSessions(
           [
             {
@@ -1421,17 +1405,8 @@ function App() {
                   descriptions.length > 0
                     ? descriptions.join("\n\n")
                     : keeper.description,
-                startTime: new Date(startMs).toISOString(),
-                endTime: new Date(endMs).toISOString(),
-                activeDurations: selectedSessions.map((s) => ({
-                  start: s.startTime,
-                  end: s.endTime,
-                })),
-                status: allComplete
-                  ? "completed"
-                  : anyInProgress
-                    ? "in-progress"
-                    : "planned",
+                schedule: timeline.schedule,
+                execution: timeline.execution,
                 topics: topicItems.length > 0 ? topicItems : undefined,
                 notes: notes.length > 0 ? notes.join("\n\n") : keeper.notes,
                 confidence: sameConfidence ? keeper.confidence : undefined,
@@ -1441,13 +1416,12 @@ function App() {
                   nextActions.length > 0
                     ? nextActions.join("\n\n")
                     : keeper.nextAction,
-                completedAt: allComplete
-                  ? (completedAtValues[0] ?? new Date().toISOString())
-                  : undefined,
               },
             },
           ],
-          selectedSessions.slice(1).map((session) => session.id),
+          selectedSessions
+            .filter((session) => session.id !== keeper.id)
+            .map((session) => session.id),
         );
 
         toast.success(`${selectedSessions.length} study sessions merged`);

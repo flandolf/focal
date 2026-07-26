@@ -1,4 +1,9 @@
-import { createStudySession, normalizeStudySession, updateStudySession } from "../src/lib/studySessions.ts"
+import {
+  createStudySession,
+  mergeStudySessionTimelines,
+  normalizeStudySession,
+  updateStudySession,
+} from "../src/lib/studySessions.ts"
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -64,3 +69,65 @@ const repaired = normalizeStudySession({
   status: "planned",
 })
 check(Number.isFinite(new Date(repaired.startTime).getTime()), "invalid imported schedule was not repaired")
+
+const firstMergeSession = normalizeStudySession({
+  id: "merge-first",
+  subjectIds: ["mm"],
+  title: "Methods focus",
+  schedule: { blocks: [{ start: "2026-07-26T08:00:00.000Z", end: "2026-07-26T09:00:00.000Z" }] },
+  execution: {
+    state: "completed",
+    intervals: [
+      { start: "2026-07-26T08:00:00.000Z", end: "2026-07-26T08:20:00.000Z", source: "pomodoro", cycleNumber: 1 },
+      { start: "2026-07-26T08:30:00.000Z", end: "2026-07-26T08:50:00.000Z", source: "pomodoro", cycleNumber: 2 },
+    ],
+    completedAt: "2026-07-26T08:50:00.000Z",
+  },
+})
+const secondMergeSession = normalizeStudySession({
+  id: "merge-second",
+  subjectIds: ["mm"],
+  title: "Methods questions",
+  schedule: { blocks: [{ start: "2026-07-26T08:45:00.000Z", end: "2026-07-26T09:30:00.000Z" }] },
+  execution: {
+    state: "completed",
+    intervals: [
+      { start: "2026-07-26T08:45:00.000Z", end: "2026-07-26T09:15:00.000Z", source: "manual" },
+    ],
+    completedAt: "2026-07-26T09:20:00.000Z",
+  },
+})
+const mergedTimeline = mergeStudySessionTimelines([firstMergeSession, secondMergeSession])
+check(mergedTimeline.schedule.blocks.length === 1, "overlapping planned blocks were double-counted")
+check(mergedTimeline.schedule.blocks[0].end === "2026-07-26T09:30:00.000Z", "merged schedule lost its latest end")
+check(mergedTimeline.execution.state === "completed", "completed sessions did not stay completed")
+check(mergedTimeline.execution.intervals.length === 2, "overlapping actual intervals were not coalesced")
+check(mergedTimeline.execution.intervals[0].end === "2026-07-26T08:20:00.000Z", "a real pause was removed")
+check(mergedTimeline.execution.intervals[1].start === "2026-07-26T08:30:00.000Z", "merged actual time starts too late")
+check(mergedTimeline.execution.intervals[1].end === "2026-07-26T09:15:00.000Z", "merged actual time ends too early")
+check(
+  mergedTimeline.execution.intervals.reduce((total, interval) => (
+    total + (interval.end ? new Date(interval.end).getTime() - new Date(interval.start).getTime() : 0)
+  ), 0) === 65 * 60_000,
+  "merged actual time double-counted an overlap or included a pause",
+)
+check(
+  mergedTimeline.execution.state === "completed"
+    && mergedTimeline.execution.completedAt === "2026-07-26T09:20:00.000Z",
+  "merged completion used an earlier timestamp",
+)
+
+const partialTimeline = mergeStudySessionTimelines([
+  secondMergeSession,
+  normalizeStudySession({
+    id: "merge-planned",
+    subjectIds: ["mm"],
+    title: "Methods review",
+    startTime: "2026-07-26T10:00:00.000Z",
+    endTime: "2026-07-26T10:30:00.000Z",
+    status: "planned",
+  }),
+])
+check(partialTimeline.execution.state === "in-progress", "partially completed work was marked planned or completed")
+check(partialTimeline.execution.intervals.length === 1, "partially completed merge lost its actual interval")
+check(partialTimeline.schedule.blocks.length === 2, "a real gap between merged sessions was removed")
