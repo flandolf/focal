@@ -90,6 +90,71 @@ function intervals(value: unknown, fallbackSource: StudyInterval["source"] = "im
   })
 }
 
+function mergeTimeRanges(ranges: readonly StudyTimeRange[]): StudyTimeRange[] {
+  const sorted = ranges
+    .filter((range) => {
+      const start = new Date(range.start).getTime()
+      const end = new Date(range.end).getTime()
+      return Number.isFinite(start) && Number.isFinite(end) && end > start
+    })
+    .map((range) => ({ ...range }))
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+  const merged: StudyTimeRange[] = []
+
+  for (const range of sorted) {
+    const previous = merged[merged.length - 1]
+    if (!previous || new Date(range.start).getTime() >= new Date(previous.end).getTime()) {
+      merged.push(range)
+      continue
+    }
+    if (new Date(range.end).getTime() > new Date(previous.end).getTime()) previous.end = range.end
+  }
+
+  return merged
+}
+
+function mergeStudyIntervals(items: readonly StudyInterval[]): StudyInterval[] {
+  const sorted = items
+    .filter((interval) => Number.isFinite(new Date(interval.start).getTime()))
+    .map((interval) => ({ ...interval }))
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+  const merged: StudyInterval[] = []
+
+  for (const interval of sorted) {
+    const previous = merged[merged.length - 1]
+    const previousEnd = previous?.end ? new Date(previous.end).getTime() : Number.POSITIVE_INFINITY
+    if (!previous || new Date(interval.start).getTime() >= previousEnd) {
+      merged.push(interval)
+      continue
+    }
+
+    // ponytail: overlapping records become one union interval; segment-level provenance can be added if reporting ever needs it.
+    const end = !previous.end || !interval.end
+      ? undefined
+      : new Date(interval.end).getTime() > previousEnd ? interval.end : previous.end
+    const source = previous.source === interval.source ? previous.source : "manual"
+    const cycleNumber = previous.cycleNumber === interval.cycleNumber ? previous.cycleNumber : undefined
+    merged[merged.length - 1] = {
+      start: previous.start,
+      ...(end ? { end } : {}),
+      source,
+      ...(cycleNumber !== undefined ? { cycleNumber } : {}),
+    }
+  }
+
+  return merged
+}
+
+function latestValidTimestamp(values: readonly (string | undefined)[], fallback: string): string {
+  let latest = fallback
+  for (const value of values) {
+    if (value && Number.isFinite(new Date(value).getTime()) && new Date(value).getTime() > new Date(latest).getTime()) {
+      latest = value
+    }
+  }
+  return latest
+}
+
 function validRange(start: string, end: string): StudyTimeRange {
   const startMs = new Date(start).getTime()
   const endMs = new Date(end).getTime()
@@ -276,6 +341,40 @@ export function createStudySession(id: string, input: CreateStudySessionInput, n
     updated_at: now,
     deleted_at: null,
   })
+}
+
+export function mergeStudySessionTimelines(sessions: readonly StudySession[]): {
+  schedule: StudySession["schedule"]
+  execution: StudySessionExecution
+} {
+  if (sessions.length < 2) throw new Error("At least two study sessions are required")
+
+  const blocks = mergeTimeRanges(sessions.flatMap((session) => session.schedule.blocks))
+  if (blocks.length === 0) throw new Error("Study sessions do not contain valid schedule blocks")
+
+  const intervals = mergeStudyIntervals(sessions.flatMap((session) => (
+    session.execution.state === "planned" ? [] : session.execution.intervals
+  )))
+  if (sessions.every((session) => session.execution.state === "planned")) {
+    return { schedule: { blocks }, execution: { state: "planned", intervals: [] } }
+  }
+  if (!sessions.every((session) => session.execution.state === "completed")) {
+    return { schedule: { blocks }, execution: { state: "in-progress", intervals } }
+  }
+
+  const fallbackCompletedAt = [...intervals].reverse().find((interval) => interval.end)?.end
+    ?? blocks[blocks.length - 1].end
+  return {
+    schedule: { blocks },
+    execution: {
+      state: "completed",
+      intervals,
+      completedAt: latestValidTimestamp(
+        sessions.map((session) => session.execution.state === "completed" ? session.execution.completedAt : undefined),
+        fallbackCompletedAt,
+      ),
+    },
+  }
 }
 
 export function updateStudySession(session: StudySession, patch: LegacyStudySessionPatch, now = new Date().toISOString()): StudySession {
