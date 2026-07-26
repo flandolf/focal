@@ -30,6 +30,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 
 - **Timetable** — configurable cycle length (default 10-day VCE rotation), per-day period editing with subjects / locations / breaks, school holidays, weekend support, manual day override.
 - **Calendar** — month / week grid, multi-day events, drag-to-reschedule, batch select / complete / merge / delete, study priorities, prep balance, month brief.
+- **Repeat next week** — duplicate an event or plan a study session one week later while preserving its local time and clearing completion state.
 - **Deadline notifications** — in-app toasts plus optional native OS notifications at *due now*, *today*, *tomorrow*, and *soon* (≤72 hours).
 - **Text to Events** — paste a teacher notice or rough plan; the AI extracts draft calendar events you can review and approve.
 
@@ -39,6 +40,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 - **AI Auto Rename** proposes consistent, descriptive filenames for dumped files (optionally using file-content snippets as context).
 - **Analytics** — total time, daily average, streak, study-time trend, subject breakdown, completion rate, efficiency, time-of-day, and consistency heatmap across 7d / 30d / 3mo / 1yr / All.
 - **Global search** (⌘K / Ctrl K) and a dense keyboard-shortcut layer everywhere.
+- **Shortcut guide** — press `?`, use the title-bar help button, or open it from global search to see every keyboard command.
 
 ### Sync
 
@@ -53,7 +55,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 | Layer | Tools |
 | --- | --- |
 | Frontend | React 19 · TypeScript (strict) · Tailwind v4 · Radix primitives · Recharts · Framer Motion · Sonner · `lucide-react` · `react-day-picker` · `date-fns` |
-| Desktop shell | Tauri v2 (Rust) — SQLite local database · OS credential vault · filesystem watcher · dialogs · notifications · updater |
+| Desktop shell | Tauri v2 (Rust) — SQLite local database · device-only credential storage · filesystem watcher · dialogs · notifications · updater |
 | Type & colour | Sora Variable (display) · Geist (UI) · single-accent palette, dark and light modes equally considered |
 | AI | OpenRouter or local Ollama, with structured output and tool calling (Auto Rename, Text-to-Events) |
 | Cloud | Optional Supabase Auth + a compacted Postgres change log + Realtime, backed by a durable SQLite outbox. Notion rows carry stable Focal identity fields. |
@@ -94,9 +96,10 @@ Local SQLite migrations are immutable after release. Do not edit `src-tauri/migr
 | T | Go to Plan |
 | A | Go to Review |
 | `[` | Toggle sidebar (outside input fields) |
+| `?` | Show keyboard shortcuts |
 | 1–7 | Jump to Settings sections |
 
-Single-key shortcuts (H / T / A / `[` / `/`) fire only when no input has focus.
+Single-key shortcuts (H, T, A, I, `[`, `/`, and `?`) fire only when no input has focus.
 
 ---
 

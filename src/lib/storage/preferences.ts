@@ -56,11 +56,16 @@ export async function hydratePreferences(
     )
     stored.set(definition.key, definition.legacyValue)
   }
-  return stored
+  return new Map(
+    definitions.flatMap(({ key }) => {
+      const value = stored.get(key)
+      return value === undefined ? [] : [[key, value] as const]
+    }),
+  )
 }
 
-export function persistPreference(key: string, value: string, syncable: boolean): void {
-  void withWriteLock(async () => {
+export function persistPreference(key: string, value: string, syncable: boolean): Promise<void> {
+  return withWriteLock(async () => {
     const database = await openFocalDatabase()
     await database.execute(
       `insert into preferences (key, value, syncable, updated_at)
@@ -76,11 +81,11 @@ export function persistPreference(key: string, value: string, syncable: boolean)
 
 export function setCachedPreference(key: string, value: string, syncable: boolean): void {
   localStorage.setItem(key, value)
-  persistPreference(key, value, syncable)
+  void persistPreference(key, value, syncable)
 }
 
-export function removePreference(key: string): void {
-  void withWriteLock(async () => {
+export function removePreference(key: string): Promise<void> {
+  return withWriteLock(async () => {
     await (await openFocalDatabase()).execute("delete from preferences where key = $1", [key])
   })
 }

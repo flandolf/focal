@@ -1,4 +1,4 @@
-import { invoke, isTauri } from "@tauri-apps/api/core"
+import { isTauri } from "@tauri-apps/api/core"
 import type { TimetableConfig, TimetableDayLabel, TimetableEntry, TimetableViewSettings } from "@/lib/types"
 import { hydratePreferences, persistPreference, removePreference } from "@/lib/storage/preferences"
 export type { TimetableConfig } from "@/lib/types"
@@ -32,11 +32,9 @@ const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 // ponytail: an empty default lets AIModelSection show the picker for Ollama without
 // committing to a model the user hasn't installed.
 const DEFAULT_OLLAMA_MODEL = ""
-const SECRET_KEYS = {
-  apiKey: "openrouter_api_key",
-  notionToken: "notion_token",
-} as const
 const NON_SYNCABLE_PREFERENCE_KEYS = new Set<string>([
+  KEYS.apiKey,
+  KEYS.notionToken,
   KEYS.projectsRootPath,
   KEYS.ollamaBaseUrl,
   "focal-app-scale",
@@ -54,12 +52,7 @@ const SETTINGS_PREFERENCE_KEYS = [
   "focal-theme",
   "focal-pomodoro-settings",
 ]
-const LEGACY_KEY_BY_SECRET = {
-  [SECRET_KEYS.apiKey]: KEYS.apiKey,
-  [SECRET_KEYS.notionToken]: KEYS.notionToken,
-} as const
 let secretCache = { apiKey: "", notionToken: "" }
-let secretWriteLock: Promise<unknown> = Promise.resolve()
 export type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
 export type AssistantPersonality = "focused" | "encouraging" | "direct" | "socratic"
 
@@ -127,49 +120,23 @@ function getString(key: string, fallback?: string): string | null {
 
 function setString(key: string, value: string): void {
   localStorage.setItem(key, value)
-  persistPreference(key, value, !NON_SYNCABLE_PREFERENCE_KEYS.has(key))
+  void persistPreference(key, value, !NON_SYNCABLE_PREFERENCE_KEYS.has(key))
 }
 
-function persistSecret(secretKey: keyof typeof LEGACY_KEY_BY_SECRET, value: string): void {
-  const legacyKey = LEGACY_KEY_BY_SECRET[secretKey]
+function persistSecret(key: typeof KEYS.apiKey | typeof KEYS.notionToken, value: string): void {
   if (!isTauri()) {
-    localStorage.setItem(legacyKey, value)
+    localStorage.setItem(key, value)
     return
   }
-  const result = secretWriteLock.then(async () => {
-    await invoke("set_secret", { key: secretKey, value })
-    localStorage.removeItem(legacyKey)
-  })
-  secretWriteLock = result.catch((error: unknown) => {
-    console.error(`Failed to persist ${secretKey}:`, error)
-  })
-}
-
-async function hydrateSecret(
-  secretKey: keyof typeof LEGACY_KEY_BY_SECRET,
-): Promise<string> {
-  const legacyKey = LEGACY_KEY_BY_SECRET[secretKey]
-  const legacyValue = localStorage.getItem(legacyKey) ?? ""
-  if (!isTauri()) return legacyValue
-  try {
-    let value = await invoke<string | null>("get_secret", { key: secretKey }) ?? ""
-    if (!value && legacyValue) {
-      await invoke("set_secret", { key: secretKey, value: legacyValue })
-      value = legacyValue
-    }
-    localStorage.removeItem(legacyKey)
-    return value
-  } catch (error) {
-    // Keep a pre-migration credential usable for this run if the OS credential
-    // service is temporarily unavailable. New credentials are never written back.
-    console.error(`Failed to hydrate ${secretKey}:`, error)
-    return legacyValue
-  }
+  // ponytail: the OS user account is the desktop threat boundary. Add opt-in
+  // passphrase encryption only if protection from other same-account processes is required.
+  void persistPreference(key, value, false)
+  localStorage.removeItem(key)
 }
 
 export async function initializeSettingsStorage(): Promise<void> {
   const hydrated = await hydratePreferences(
-    SETTINGS_PREFERENCE_KEYS.map((key) => ({
+    [...SETTINGS_PREFERENCE_KEYS, KEYS.apiKey, KEYS.notionToken].map((key) => ({
       key,
       legacyValue: localStorage.getItem(key),
       syncable: !NON_SYNCABLE_PREFERENCE_KEYS.has(key),
@@ -177,11 +144,12 @@ export async function initializeSettingsStorage(): Promise<void> {
   )
   for (const [key, value] of hydrated) localStorage.setItem(key, value)
 
-  const [apiKey, notionToken] = await Promise.all([
-    hydrateSecret(SECRET_KEYS.apiKey),
-    hydrateSecret(SECRET_KEYS.notionToken),
-  ])
-  secretCache = { apiKey, notionToken }
+  secretCache = {
+    apiKey: hydrated.get(KEYS.apiKey) ?? "",
+    notionToken: hydrated.get(KEYS.notionToken) ?? "",
+  }
+  localStorage.removeItem(KEYS.apiKey)
+  localStorage.removeItem(KEYS.notionToken)
 }
 
 function getBool(key: string, defaultValue: boolean): boolean {
@@ -203,7 +171,7 @@ export function getApiKey(): string | null {
 
 export function setApiKey(key: string): void {
   secretCache.apiKey = key
-  persistSecret(SECRET_KEYS.apiKey, key)
+  persistSecret(KEYS.apiKey, key)
 }
 
 export function getModel(): string {
@@ -320,7 +288,7 @@ export function getNotionCalendarSettings(): NotionCalendarSettings {
 
 export function setNotionCalendarSettings(settings: NotionCalendarSettings): void {
   secretCache.notionToken = settings.token.trim()
-  persistSecret(SECRET_KEYS.notionToken, secretCache.notionToken)
+  persistSecret(KEYS.notionToken, secretCache.notionToken)
   setString(KEYS.notionDataSourceId, settings.dataSourceId.trim())
   setString(KEYS.notionTitleProperty, settings.titleProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.titleProperty)
   setString(KEYS.notionDateProperty, settings.dateProperty.trim() || DEFAULT_NOTION_CALENDAR_SETTINGS.dateProperty)
@@ -337,7 +305,7 @@ export function setProjectsRootPath(path: string | null): void {
   if (path) setString(KEYS.projectsRootPath, path)
   else {
     localStorage.removeItem(KEYS.projectsRootPath)
-    removePreference(KEYS.projectsRootPath)
+    void removePreference(KEYS.projectsRootPath)
   }
 }
 
