@@ -753,7 +753,7 @@ export function EventDialog({
  key={isEditMode && existingEvent ? `edit-${existingEvent.id}` : 'new'}
  customSubjects={customSubjects}
  availableSubjects={availableSubjects}
- timetableConfig={isEditMode ? undefined : timetableConfig}
+ timetableConfig={timetableConfig}
  initialValues={existingEvent ? {
  title: existingEvent.title,
  description: existingEvent.description,
