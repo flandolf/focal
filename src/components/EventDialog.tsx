@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { DatePickerField, FormField, FormSection, SelectField } from "@/components/ui/form-controls"
 import TimePicker from "@/components/ui/time-picker"
 import { VCE_SUBJECTS, type CalendarEvent, type EventType, type Subject, type TimetableConfig } from"@/lib/types"
-import { getTimetablePeriodsForDate } from "@/lib/timetable"
+import { getTimetablePeriodsForDate, resolveTimetableSubject } from "@/lib/timetable"
 import { cn, formatTime, getSubjectById } from"@/lib/utils"
 
 const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
@@ -222,11 +222,8 @@ function EventForm({
  if (!eventDate || !timetableConfig) return []
  return getTimetablePeriodsForDate(eventDate, timetableConfig)
  }, [eventDate, timetableConfig])
- const timetablePeriods = subjectId
- ? dayTimetablePeriods.filter((period) => period.subject === subjectId)
- : []
- const timetableClasses = subjectId ? [] : dayTimetablePeriods.flatMap((period) => {
- const subject = subjects.find((candidate) => candidate.id === period.subject)
+ const timetableClasses = dayTimetablePeriods.flatMap((period) => {
+ const subject = resolveTimetableSubject(period.subject, subjects)
  return subject ? [{ period, subject }] : []
  })
 
@@ -257,14 +254,8 @@ function EventForm({
  }
  return undefined
  }, [startTime, eventDate, endDate, isMultiDay, duration, endTimeMode, explicitEndTime])
- const isUsingTimetablePeriod = timetablePeriods.some((period) => (
- period.startTime === startTime
- && effectiveEndTime
- && period.endTime === format(effectiveEndTime,"HH:mm")
- ))
-
- const applyTimetablePeriod = (period: (typeof dayTimetablePeriods)[number], includeSubject = false) => {
- if (includeSubject) setSubjectId(period.subject)
+ const applyTimetablePeriod = (period: (typeof dayTimetablePeriods)[number], selectedSubjectId?: string) => {
+ if (selectedSubjectId) setSubjectId(selectedSubjectId)
  setStartTime(period.startTime)
  setExplicitEndTime(period.endTime)
  setEndTimeMode("end")
@@ -496,35 +487,7 @@ function EventForm({
  )}
  </FormField>
  </div>
- {!isUsingTimetablePeriod && timetablePeriods.length > 0 && (
- <div className="mt-3 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2.5">
- <div className="flex items-start gap-2">
- <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
- <div className="min-w-0 flex-1">
- <p className="text-xs text-muted-foreground">
- This subject is on the timetable for this day. Switch the event to its class time?
- </p>
- <div className="mt-2 flex flex-wrap gap-1.5">
- {timetablePeriods.map((period) => (
- <Button
- key={`${period.period}-${period.startTime}-${period.endTime}`}
- type="button"
- variant="outline"
- size="xs"
- onClick={() => applyTimetablePeriod(period)}
- className="h-auto bg-background px-2 py-1"
- >
- {period.period} · {formatTime(period.startTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
- {" – "}
- {formatTime(period.endTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
- </Button>
- ))}
- </div>
- </div>
- </div>
- </div>
- )}
- {!subjectId && timetableClasses.length > 0 && (
+ {timetableClasses.length > 0 && (
  <div className="mt-3 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2.5">
  <div className="flex items-start gap-2">
  <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
@@ -542,7 +505,7 @@ function EventForm({
  type="button"
  variant="ghost"
  size="xs"
- onClick={() => applyTimetablePeriod(period, true)}
+ onClick={() => applyTimetablePeriod(period, subject.id)}
  className="h-auto rounded-r-none border-r border-border px-2 py-1"
  >
  {subject.shortCode} · {period.period} · {formatTime(period.startTime, timetableConfig?.viewSettings?.use24Hour ?? false)}

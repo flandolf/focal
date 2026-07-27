@@ -6,11 +6,13 @@ import {
   getTimetablePeriodsForSubjectOnDate,
   isTimetableBreakLabel,
   parseTimetableImport,
+  resolveTimetableSubject,
   TIMETABLE_SCREENSHOT_PROMPT,
   timetableTimeFrom12HourParts,
   timetableTimeTo12HourParts,
   timetableTimeToMinutes,
 } from "../src/lib/timetable.ts"
+import { VCE_SUBJECTS } from "../src/lib/types.ts"
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -82,6 +84,10 @@ check(imported.enabled, "an imported timetable should be enabled")
 check(imported.cycleLength === 5, "the imported cycle length should be used")
 check(imported.day1Starts === "2026-01-26", "calendar settings should be preserved")
 check(imported.entries[0]?.periods.map((period) => period.period).join(",") === "Period 1,Period 2", "duplicate imported days should merge and sort")
+check(
+  resolveTimetableSubject(imported.entries[0]?.periods[1]?.subject ?? "", VCE_SUBJECTS)?.id === "chem",
+  "imported subject names should resolve to event subject IDs",
+)
 check(TIMETABLE_SCREENSHOT_PROMPT.includes("Return only valid JSON"), "the copyable prompt should require raw JSON")
 
 let rejectedInvalidRange = false
