@@ -1,5 +1,5 @@
 import { getApiKey, getModel, getReasoningConfig } from "@/lib/settings"
-import type { TimetableConfig, TimetableEntry, TimetableDayLabel, SchoolHoliday } from "@/lib/types"
+import type { TimetableConfig, TimetableEntry, TimetableDayLabel, SchoolHoliday, Subject } from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 
 import type { TimetablePeriod } from "@/lib/types"
@@ -305,6 +305,17 @@ export function getTimetablePeriodsForDay(
     .filter((entry) => entry.dayLabel === dayLabel)
     .flatMap((entry) => entry.periods)
     .sort(comparePeriodsByStart)
+}
+
+/** Resolve persisted timetable subjects from either IDs or imported display names. */
+export function resolveTimetableSubject(value: string, subjects: Subject[]): Subject | undefined {
+  const key = value.trim().toLowerCase()
+  if (!key) return undefined
+  return subjects.find((subject) => (
+    subject.id.toLowerCase() === key
+    || subject.name.trim().toLowerCase() === key
+    || subject.shortCode.trim().toLowerCase() === key
+  ))
 }
 
 /** Find every timetable period on a calendar date, respecting the configured cycle. */
