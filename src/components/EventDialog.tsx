@@ -223,12 +223,12 @@ function EventForm({
  if (!eventDate || !timetableConfig) return []
  return getTimetablePeriodsForDate(eventDate, timetableConfig)
  }, [eventDate, timetableConfig])
- const timetableClasses = dayTimetablePeriods.flatMap((period) => {
+ const timetableClasses = dayTimetablePeriods.map((period) => {
  const subject = resolveTimetableSubject(period.subject, subjects)
- return subject ? [{ period, subject }] : []
+ return { period, subject }
  })
  const suggestedTimetableClasses = subjectId
- ? timetableClasses.filter(({ subject }) => subject.id === subjectId)
+ ? timetableClasses.filter(({ subject }) => subject?.id === subjectId)
  : timetableClasses
 
  const effectiveEndTime = useMemo(() => {
@@ -515,7 +515,7 @@ function EventForm({
  <p className="text-xs text-muted-foreground">
  {subjectId
  ? "This subject is on the timetable for this day. Align the event to its class time?"
- : "Classes on this day. Choose one to fill the subject and time."}
+ : "Timetable entries on this day. Choose one to align the event time."}
  </p>
  <div className="mt-2 flex flex-wrap gap-1.5">
  {suggestedTimetableClasses.map(({ period, subject }) => (
@@ -527,13 +527,14 @@ function EventForm({
  type="button"
  variant="ghost"
  size="xs"
- onClick={() => applyTimetablePeriod(period, subject.id)}
- className="h-auto rounded-r-none border-r border-border px-2 py-1"
+ onClick={() => applyTimetablePeriod(period, subject?.id)}
+ className={cn("h-auto px-2 py-1", subject && "rounded-r-none border-r border-border")}
  >
- {subject.shortCode} · {period.period} · {formatTime(period.startTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
+ {subject?.shortCode ?? (period.subject.trim() || period.period)} · {period.period} · {formatTime(period.startTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
  {" – "}
  {formatTime(period.endTime, timetableConfig?.viewSettings?.use24Hour ?? false)}
  </Button>
+ {subject && (
  <Button
  type="button"
  variant="ghost"
@@ -545,6 +546,7 @@ function EventForm({
  >
  <Clock />
  </Button>
+ )}
  </div>
  ))}
  </div>

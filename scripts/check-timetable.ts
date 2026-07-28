@@ -88,6 +88,10 @@ check(
   resolveTimetableSubject(imported.entries[0]?.periods[1]?.subject ?? "", VCE_SUBJECTS)?.id === "chem",
   "imported subject names should resolve to event subject IDs",
 )
+check(
+  resolveTimetableSubject("VCE Business Management Units 3 & 4", VCE_SUBJECTS)?.id === "bm",
+  "school timetable labels should resolve after removing VCE unit wrappers",
+)
 check(TIMETABLE_SCREENSHOT_PROMPT.includes("Return only valid JSON"), "the copyable prompt should require raw JSON")
 
 let rejectedInvalidRange = false
