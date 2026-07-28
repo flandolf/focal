@@ -311,11 +311,19 @@ export function getTimetablePeriodsForDay(
 export function resolveTimetableSubject(value: string, subjects: Subject[]): Subject | undefined {
   const key = value.trim().toLowerCase()
   if (!key) return undefined
-  return subjects.find((subject) => (
+  const exact = subjects.find((subject) => (
     subject.id.toLowerCase() === key
     || subject.name.trim().toLowerCase() === key
     || subject.shortCode.trim().toLowerCase() === key
   ))
+  if (exact) return exact
+
+  // Imported school timetables commonly wrap subject names in VCE/unit labels.
+  const name = key
+    .replace(/^vce\s+/, "")
+    .replace(/\s+units?\s+[1-4](?:\s*(?:&|\/|-|–)\s*[1-4])?$/, "")
+    .trim()
+  return subjects.find((subject) => subject.name.trim().toLowerCase() === name)
 }
 
 /**
