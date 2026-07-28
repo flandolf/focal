@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from"react"
 import { addMinutes, format, parseISO, addWeeks, addMonths, startOfDay } from"date-fns"
-import { CalendarIcon, CheckCircle2, Clock, Copy, MapPin, Repeat, Tag, Trash2 } from"lucide-react"
+import { CalendarIcon, CheckCircle2, Clock, Copy, MapPin, Repeat, Tag, Trash2, X } from"lucide-react"
 import {
  Dialog,
  DialogBody,
@@ -204,6 +204,7 @@ function EventForm({
  const [isFinished, setIsFinished] = useState(initialValues?.isFinished ?? false)
  const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("none")
  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | undefined>(undefined)
+ const [timetablePromptDismissed, setTimetablePromptDismissed] = useState(false)
 
  const baseSubjects = availableSubjects ?? [...VCE_SUBJECTS, ...customSubjects]
  const initialSubject = getSubjectById(initialValues?.subjectId)
@@ -495,7 +496,18 @@ function EventForm({
  )}
  </FormField>
  </div>
- {!showFinishedControl && !isUsingTimetablePeriod && suggestedTimetableClasses.length > 0 && (
+ {!isUsingTimetablePeriod && suggestedTimetableClasses.length > 0 && (timetablePromptDismissed ? (
+ <Button
+ type="button"
+ variant="ghost"
+ size="xs"
+ onClick={() => setTimetablePromptDismissed(false)}
+ className="mt-2 h-auto gap-1.5 px-2 py-1 text-muted-foreground"
+ >
+ <Clock />
+ Show timetable times
+ </Button>
+ ) : (
  <div className="mt-3 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2.5">
  <div className="flex items-start gap-2">
  <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
@@ -537,9 +549,20 @@ function EventForm({
  ))}
  </div>
  </div>
+ <Button
+ type="button"
+ variant="ghost"
+ size="icon-xs"
+ onClick={() => setTimetablePromptDismissed(true)}
+ aria-label="Dismiss timetable suggestions"
+ title="Dismiss"
+ className="-mr-1 -mt-1 shrink-0 text-muted-foreground"
+ >
+ <X />
+ </Button>
  </div>
  </div>
- )}
+ ))}
  {endDate && eventDate && endDate < eventDate && (
  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
  End date is before start date.
