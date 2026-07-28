@@ -318,12 +318,14 @@ export function resolveTimetableSubject(value: string, subjects: Subject[]): Sub
   ))
 }
 
-/** Find every timetable period on a calendar date, respecting the configured cycle. */
+/**
+ * Find every timetable period on a calendar date, respecting the configured cycle.
+ * `enabled` only controls the Today dashboard; the saved timetable remains usable elsewhere.
+ */
 export function getTimetablePeriodsForDate(
   date: Date,
   config: TimetableConfig,
 ): TimetablePeriod[] {
-  if (!config.enabled) return []
   const dayLabel = getDayLabelForDate(
     date,
     config.day1Starts,

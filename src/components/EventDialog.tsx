@@ -226,6 +226,9 @@ function EventForm({
  const subject = resolveTimetableSubject(period.subject, subjects)
  return subject ? [{ period, subject }] : []
  })
+ const suggestedTimetableClasses = subjectId
+ ? timetableClasses.filter(({ subject }) => subject.id === subjectId)
+ : timetableClasses
 
  const effectiveEndTime = useMemo(() => {
  const [sh, sm] = startTime.split(":").map(Number)
@@ -254,6 +257,11 @@ function EventForm({
  }
  return undefined
  }, [startTime, eventDate, endDate, isMultiDay, duration, endTimeMode, explicitEndTime])
+ const isUsingTimetablePeriod = suggestedTimetableClasses.some(({ period }) => (
+ period.startTime === startTime
+ && effectiveEndTime
+ && period.endTime === format(effectiveEndTime,"HH:mm")
+ ))
  const applyTimetablePeriod = (period: (typeof dayTimetablePeriods)[number], selectedSubjectId?: string) => {
  if (selectedSubjectId) setSubjectId(selectedSubjectId)
  setStartTime(period.startTime)
@@ -487,16 +495,18 @@ function EventForm({
  )}
  </FormField>
  </div>
- {timetableClasses.length > 0 && (
+ {!showFinishedControl && !isUsingTimetablePeriod && suggestedTimetableClasses.length > 0 && (
  <div className="mt-3 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2.5">
  <div className="flex items-start gap-2">
  <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
  <div className="min-w-0 flex-1">
  <p className="text-xs text-muted-foreground">
- Classes on this day. Choose one to fill the subject and time.
+ {subjectId
+ ? "This subject is on the timetable for this day. Align the event to its class time?"
+ : "Classes on this day. Choose one to fill the subject and time."}
  </p>
  <div className="mt-2 flex flex-wrap gap-1.5">
- {timetableClasses.map(({ period, subject }) => (
+ {suggestedTimetableClasses.map(({ period, subject }) => (
  <div
  key={`${period.subject}-${period.period}-${period.startTime}-${period.endTime}`}
  className="flex rounded-md border border-border bg-background"
