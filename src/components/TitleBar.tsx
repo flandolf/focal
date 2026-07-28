@@ -173,12 +173,7 @@ export function TitleBar({
       className="relative z-10 flex h-10 shrink-0 items-center border-b bg-background select-none"
     >
       {IS_MACOS ? (
-        <TrafficLights
-          onClose={handleClose}
-          onMinimize={handleMinimize}
-          onMaximize={handleToggleMaximize}
-          className="flex items-center gap-2 px-4"
-        />
+        <div className="w-[84px] shrink-0" aria-hidden="true" />
       ) : (
         <AppActions
           onSearch={onSearch}
