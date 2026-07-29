@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo, memo } from "react";
+import { useState, useCallback, useMemo, memo, Fragment } from "react";
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { format, isSameMonth, parseISO, differenceInDays } from "date-fns";
 import {
@@ -734,98 +735,116 @@ export const HomeView = memo(function HomeView({
       <ScrollArea className="h-full">
         <div
           className={cn(
-            "px-3 pt-3 min-[1200px]:px-5 min-[1200px]:pt-4",
+            "px-4 pt-4 min-[1200px]:px-6 min-[1200px]:pt-5",
             selectedBatchCount > 0
               ? "pb-24 min-[1200px]:pb-24"
-              : "pb-5 min-[1200px]:pb-6",
+              : "pb-6 min-[1200px]:pb-8",
           )}
         >
-          <div className="mb-4 grid gap-3 border-b border-border/70 pb-4 min-[1080px]:grid-cols-[minmax(12rem,0.7fr)_minmax(24rem,1.3fr)]">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-border/70 pb-5">
             <div className="min-w-0">
               <p className="mb-1 text-xs font-medium text-foreground/60 tabular-nums">
                 {format(headingDate, "EEEE · d MMMM")}
               </p>
-              <h1 className="text-xl font-semibold">
+              <h1 className="text-xl font-semibold tracking-tight">
                 {headingDateKey === todayDateKey
                   ? "Today"
-                  : format(headingDate, "d MMMM")}{" "}
-                - {selectedStudyHours.toFixed(1)} hours studied
+                  : format(headingDate, "d MMMM")}
               </h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {overdueProjects.length > 0 ? (
-                  <span className="text-destructive font-medium">
-                    {overdueProjects.length} overdue
-                    {overdueProjects.length !== 1 ? "s" : ""}
-                  </span>
-                ) : null}
-                {overdueProjects.length > 0 && dueThisWeek.length > 0 && (
-                  <span className="text-muted-foreground/40">{" · "}</span>
-                )}
-                {dueThisWeek.length > 0 && (
-                  <span>{dueThisWeek.length} due this week</span>
-                )}
-                {dueThisWeek.length > 0 && upcomingEvents.length > 0 && (
-                  <span className="text-muted-foreground/40">{" · "}</span>
-                )}
-                {upcomingEvents.length > 0 && (
-                  <span>
-                    {upcomingEvents.length} event
-                    {upcomingEvents.length !== 1 ? "s" : ""} this week
-                  </span>
-                )}
-                {overdueProjects.length === 0 &&
-                  dueThisWeek.length === 0 &&
-                  upcomingEvents.length === 0 && (
-                    <span>No urgent deadlines. Keep the workspace tidy.</span>
-                  )}
-              </p>
+              {(() => {
+                const meta: [string, ReactNode][] = [];
+                if (selectedStudyHours > 0)
+                  meta.push([
+                    "studied",
+                    <span className="font-medium text-foreground/80 tabular-nums">
+                      {selectedStudyHours.toFixed(1)}h studied
+                    </span>,
+                  ]);
+                if (overdueProjects.length > 0)
+                  meta.push([
+                    "overdue",
+                    <span className="font-medium text-destructive">
+                      {overdueProjects.length} overdue
+                    </span>,
+                  ]);
+                if (dueThisWeek.length > 0)
+                  meta.push([
+                    "due",
+                    <span>{dueThisWeek.length} due this week</span>,
+                  ]);
+                if (upcomingEvents.length > 0)
+                  meta.push([
+                    "events",
+                    <span>
+                      {upcomingEvents.length} event
+                      {upcomingEvents.length !== 1 ? "s" : ""} this week
+                    </span>,
+                  ]);
+                return (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {meta.length > 0 ? (
+                      meta.map(([key, part], i) => (
+                        <Fragment key={key}>
+                          {i > 0 && (
+                            <span className="text-muted-foreground/40">
+                              {" · "}
+                            </span>
+                          )}
+                          {part}
+                        </Fragment>
+                      ))
+                    ) : (
+                      <span>No urgent deadlines. Keep the workspace tidy.</span>
+                    )}
+                  </p>
+                );
+              })()}
             </div>
-            <div className="flex flex-wrap content-start items-center gap-1.5 min-[1080px]:justify-end">
-              {onOpenAiAssistant && (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                {onOpenAiAssistant && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onOpenAiAssistant}
+                    className="text-muted-foreground"
+                  >
+                    <Sparkles />
+                    AI Assistant
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={onOpenAiAssistant}
+                  onClick={handleOpenTextPlanner}
                   className="text-muted-foreground"
                 >
-                  <Sparkles />
-                  AI Assistant
+                  <Wand2 />
+                  Text to Events
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleOpenTextPlanner}
-                className="text-muted-foreground"
-              >
-                <Wand2 />
-                Text to Events
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onNewProject}
-                className="min-[1080px]:ml-3"
-              >
-                <Plus />
-                Assessment
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onNewEvent(selectedCalendarDate)}
-              >
-                <CalendarPlus />
-                Event
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onNewSession(selectedCalendarDate)}
-              >
-                <Calendar />
-                Plan Session
-              </Button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button variant="outline" size="sm" onClick={onNewProject}>
+                  <Plus />
+                  Assessment
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onNewEvent(selectedCalendarDate)}
+                >
+                  <CalendarPlus />
+                  Event
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => onNewSession(selectedCalendarDate)}
+                >
+                  <Calendar />
+                  Plan Session
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -847,7 +866,7 @@ export const HomeView = memo(function HomeView({
                     size="sm"
                   >
                     {p.name}
-                    <span className="ml-1.5 text-destructive/70">
+                    <span className="font-normal opacity-75 tabular-nums">
                       {formatDeadline(p.deadline!)}
                     </span>
                   </Button>
@@ -856,10 +875,10 @@ export const HomeView = memo(function HomeView({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 min-[1200px]:gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
+          <div className="grid grid-cols-1 gap-4 min-[1200px]:gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
             <Card size="sm">
               <CardContent>
-                <div className="flex h-full flex-col gap-3">
+                <div className="flex h-full flex-col gap-4">
                 <CalendarGrid
                   currentMonth={currentMonth}
                   calendarView={calendarView}
@@ -931,7 +950,7 @@ export const HomeView = memo(function HomeView({
               </CardContent>
             </Card>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <QuickLinks />
 
               {timetableConfig?.enabled &&
@@ -952,7 +971,7 @@ export const HomeView = memo(function HomeView({
                     .sort((a, b) => a.startTime.localeCompare(b.startTime));
                   const periodInfo = getCurrentPeriodInfo(periods);
                   return (
-                    <div className="rounded-lg border bg-card p-3">
+                    <div className="rounded-lg bg-background p-3 ring-1 ring-border">
                       <h3 className="mb-2.5 flex items-center gap-1.5 text-sm font-semibold">
                         <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                         Today&apos;s Timetable · Day {dayLabel}
@@ -963,8 +982,8 @@ export const HomeView = memo(function HomeView({
                           className="ml-auto text-muted-foreground"
                         >
                           View timetable
+                          <ArrowRight />
                         </Button>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
                       </h3>
                       <div className="space-y-1">
                         {periods.map((period, idx) => {
@@ -1080,20 +1099,12 @@ export const HomeView = memo(function HomeView({
                 onSelectItem={handlePrioritySelect}
               />
 
-              <RecentActivity
-                items={recentActivity}
-                isOpen={recentActivityOpen}
-                onToggle={() => setRecentActivityOpen((current) => !current)}
-                onSelectSession={onSelectSession}
-                onSelectEvent={onSelectEvent}
-              />
-
               {dueThisWeek.length > 0 && (
-                <div className="rounded-lg border bg-card p-3">
+                <div className="rounded-lg bg-background p-3 ring-1 ring-border">
                   <h3 className="mb-2.5 text-sm font-semibold">
                     Due This Week
                   </h3>
-                  <div className="space-y-1">
+                  <div className="-mx-1.5 space-y-0.5">
                     {dueThisWeek.map((p) => {
                       const subject = getSubjectById(p.subjectId);
                       return (
@@ -1101,20 +1112,20 @@ export const HomeView = memo(function HomeView({
                           key={p.id}
                           onClick={() => onSelectProject(p.id)}
                           variant="ghost"
-                          className="group h-auto w-full justify-start px-3 py-2 text-left whitespace-normal"
+                          className="group h-auto w-full justify-start px-1.5 py-1.5 text-left whitespace-normal"
                         >
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="text-xs font-medium truncate">
                                 {p.name}
                               </p>
-                              <p className="text-sm text-muted-foreground mt-0.5">
+                              <p className="text-xs text-muted-foreground mt-0.5">
                                 {formatDeadline(p.deadline!)}
                               </p>
                             </div>
                             {subject && (
                               <div
-                                className="text-sm px-1.5 py-0.5 rounded whitespace-nowrap font-medium shrink-0"
+                                className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium shrink-0"
                                 style={{
                                   backgroundColor: subject.color + "14",
                                   color: subject.color,
@@ -1132,12 +1143,12 @@ export const HomeView = memo(function HomeView({
               )}
 
               {upcomingSessions.length > 0 && (
-                <div className="rounded-lg border bg-card p-3">
+                <div className="rounded-lg bg-background p-3 ring-1 ring-border">
                   <h3 className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                     Upcoming Sessions
                   </h3>
-                  <div className="space-y-1">
+                  <div className="-mx-1.5 space-y-0.5">
                     {upcomingSessions.slice(0, 5).map((session) => {
                       const project = projects.find(
                         (p) => p.id === session.projectId,
@@ -1153,19 +1164,22 @@ export const HomeView = memo(function HomeView({
                           key={session.id}
                           onClick={() => onSelectSession(session)}
                           variant="ghost"
-                          className="h-auto w-full justify-start px-3 py-2 text-left whitespace-normal"
+                          className="h-auto w-full flex-col items-start gap-0.5 px-1.5 py-1.5 text-left whitespace-normal"
                         >
                           <p className="text-xs font-medium truncate">
                             {session.title}
                           </p>
-                          <p className="text-sm text-muted-foreground mt-0.5">
+                          <p className="text-xs text-muted-foreground truncate">
                             {project?.name ?? subjects}
-                          </p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {format(
-                              parseISO(session.startTime),
-                              "MMM d, h:mm a",
-                            )}
+                            <span className="text-muted-foreground/40">
+                              {" · "}
+                            </span>
+                            <span className="tabular-nums">
+                              {format(
+                                parseISO(session.startTime),
+                                "MMM d, h:mm a",
+                              )}
+                            </span>
                           </p>
                         </Button>
                       );
@@ -1175,12 +1189,12 @@ export const HomeView = memo(function HomeView({
               )}
 
               {upcomingEvents.length > 0 && (
-                <div className="rounded-lg border bg-card p-3">
-                  <h3 className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
+                <div className="rounded-lg bg-background p-3 ring-1 ring-border">
+                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
                     <CalendarPlus className="h-3.5 w-3.5 text-muted-foreground" />
                     Events
                   </h3>
-                  <div className="divide-y divide-border/60">
+                  <div className="-mx-2 divide-y divide-border/60">
                     {upcomingEvents.slice(0, 5).map((event) => {
                       const subject = getSubjectById(event.subjectId);
                       const eventInfo = getEventTypeInfo(event.eventType);
@@ -1254,7 +1268,7 @@ export const HomeView = memo(function HomeView({
                 upcomingSessions.length === 0 &&
                 upcomingEvents.length === 0 &&
                 overdueProjects.length === 0 && (
-                  <div className="rounded-lg border border-dashed bg-card p-3">
+                  <div className="rounded-lg border border-dashed p-3">
                     <p className="text-xs text-muted-foreground">
                       Nothing due this week. Use the buttons above to add an
                       assessment, event, or session.
@@ -1262,7 +1276,15 @@ export const HomeView = memo(function HomeView({
                   </div>
                 )}
 
-              <div className="rounded-lg border bg-card p-3">
+              <RecentActivity
+                items={recentActivity}
+                isOpen={recentActivityOpen}
+                onToggle={() => setRecentActivityOpen((current) => !current)}
+                onSelectSession={onSelectSession}
+                onSelectEvent={onSelectEvent}
+              />
+
+              <div className="rounded-lg bg-background p-3 ring-1 ring-border">
                 <h3 className="mb-2.5 text-sm font-semibold">Summary</h3>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div>
@@ -1294,13 +1316,13 @@ export const HomeView = memo(function HomeView({
 
                 {topSubjects.length > 0 && (
                   <div className="mt-3 pt-3 border-t">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {topSubjects.map(([subjectId, info]) => {
                         const subject = getSubjectById(subjectId);
                         return (
                           <span
                             key={subjectId}
-                            className="text-sm px-1.5 py-0.5 rounded font-medium"
+                            className="text-xs px-1.5 py-0.5 rounded font-medium tabular-nums"
                             style={{
                               backgroundColor: subject?.color + "14",
                               color: subject?.color,
