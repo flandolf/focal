@@ -130,6 +130,20 @@ export function useStudySessions() {
     await Promise.all(restoredSessions.map((session) => recordLocalUpsert("study_sessions", session)))
   }, [sessionsRef, saveSessions])
 
+  const restoreMergedSessions = useCallback(async (sessionsToRestore: StudySession[]) => {
+    if (sessionsToRestore.length === 0) return
+    const restoredSessions = sessionsToRestore.map((session) => updateStudySession(session, { deleted_at: null }))
+    const restoredById = new Map(restoredSessions.map((session) => [session.id, session]))
+    await mutateSessions((current) => {
+      const currentIds = new Set(current.map((session) => session.id))
+      return [
+        ...current.map((session) => restoredById.get(session.id) ?? session),
+        ...restoredSessions.filter((session) => !currentIds.has(session.id)),
+      ]
+    })
+    await Promise.all(restoredSessions.map((session) => recordLocalUpsert("study_sessions", session)))
+  }, [mutateSessions])
+
   const updateAndDeleteSessions = useCallback(async (
     items: { id: string; updates: Partial<Omit<StudySession, "id" | "created_at">> }[],
     ids: string[],
@@ -233,6 +247,7 @@ export function useStudySessions() {
     deleteSessions,
     restoreSession,
     restoreSessions,
+    restoreMergedSessions,
     updateAndDeleteSessions,
     syncSessions,
     getSessionsByProject,
