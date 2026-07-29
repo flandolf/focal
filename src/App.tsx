@@ -57,7 +57,10 @@ import {
   repeatCalendarEvent,
   repeatStudySession,
 } from "@/lib/repeatPlanningItem";
-import { mergeStudySessionTimelines } from "@/lib/studySessions";
+import {
+  mergedStudySessionTitle,
+  mergeStudySessionTimelines,
+} from "@/lib/studySessions";
 import {
   forcePushAndMerge,
   forcePushAndOverwrite,
@@ -207,6 +210,7 @@ function App() {
     deleteSessions,
     restoreSession,
     restoreSessions,
+    restoreMergedSessions,
     updateAndDeleteSessions,
     syncSessions: rawSyncSessions,
   } = useStudySessions();
@@ -1388,6 +1392,9 @@ function App() {
       const sameConfidence = selectedSessions.every(
         (session) => session.confidence === keeper.confidence,
       );
+      const deletedSessions = selectedSessions.filter(
+        (session) => session.id !== keeper.id,
+      );
       try {
         const timeline = mergeStudySessionTimelines(selectedSessions);
         await updateAndDeleteSessions(
@@ -1397,10 +1404,7 @@ function App() {
               updates: {
                 projectId: sameProject ? keeper.projectId : undefined,
                 subjectIds,
-                title:
-                  selectedSessions.length === 2
-                    ? `${selectedSessions[0].title} / ${selectedSessions[1].title}`
-                    : `${selectedSessions[0].title} + ${selectedSessions.length - 1} more`,
+                title: mergedStudySessionTitle(selectedSessions),
                 description:
                   descriptions.length > 0
                     ? descriptions.join("\n\n")
@@ -1419,19 +1423,29 @@ function App() {
               },
             },
           ],
-          selectedSessions
-            .filter((session) => session.id !== keeper.id)
-            .map((session) => session.id),
+          deletedSessions.map((session) => session.id),
         );
 
-        toast.success(`${selectedSessions.length} study sessions merged`);
+        showUndoToast({
+          message: `${selectedSessions.length} study sessions merged`,
+          onUndo: async () => {
+            await restoreMergedSessions(selectedSessions);
+            toast.success("Study sessions restored");
+            void requestNotionSync(false);
+          },
+        });
         void requestNotionSync(false);
       } catch (e) {
         toast.error(`Failed to merge study sessions: ${String(e)}`);
         throw e;
       }
     },
-    [sessions, updateAndDeleteSessions, requestNotionSync],
+    [
+      sessions,
+      updateAndDeleteSessions,
+      restoreMergedSessions,
+      requestNotionSync,
+    ],
   );
 
   const handleToggleFavorite = useCallback(

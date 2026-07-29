@@ -90,8 +90,9 @@ function intervals(value: unknown, fallbackSource: StudyInterval["source"] = "im
   })
 }
 
-function mergeTimeRanges(ranges: readonly StudyTimeRange[]): StudyTimeRange[] {
-  const sorted = ranges
+function collectStudyTimeRanges(ranges: readonly StudyTimeRange[]): StudyTimeRange[] {
+  const seen = new Set<string>()
+  return ranges
     .filter((range) => {
       const start = new Date(range.start).getTime()
       const end = new Date(range.end).getTime()
@@ -99,50 +100,26 @@ function mergeTimeRanges(ranges: readonly StudyTimeRange[]): StudyTimeRange[] {
     })
     .map((range) => ({ ...range }))
     .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
-  const merged: StudyTimeRange[] = []
-
-  for (const range of sorted) {
-    const previous = merged[merged.length - 1]
-    if (!previous || new Date(range.start).getTime() >= new Date(previous.end).getTime()) {
-      merged.push(range)
-      continue
-    }
-    if (new Date(range.end).getTime() > new Date(previous.end).getTime()) previous.end = range.end
-  }
-
-  return merged
+    .filter((range) => {
+      const key = `${new Date(range.start).getTime()}:${new Date(range.end).getTime()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
-function mergeStudyIntervals(items: readonly StudyInterval[]): StudyInterval[] {
-  const sorted = items
+function collectStudyIntervals(items: readonly StudyInterval[]): StudyInterval[] {
+  const seen = new Set<string>()
+  return items
     .filter((interval) => Number.isFinite(new Date(interval.start).getTime()))
     .map((interval) => ({ ...interval }))
     .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
-  const merged: StudyInterval[] = []
-
-  for (const interval of sorted) {
-    const previous = merged[merged.length - 1]
-    const previousEnd = previous?.end ? new Date(previous.end).getTime() : Number.POSITIVE_INFINITY
-    if (!previous || new Date(interval.start).getTime() >= previousEnd) {
-      merged.push(interval)
-      continue
-    }
-
-    // ponytail: overlapping records become one union interval; segment-level provenance can be added if reporting ever needs it.
-    const end = !previous.end || !interval.end
-      ? undefined
-      : new Date(interval.end).getTime() > previousEnd ? interval.end : previous.end
-    const source = previous.source === interval.source ? previous.source : "manual"
-    const cycleNumber = previous.cycleNumber === interval.cycleNumber ? previous.cycleNumber : undefined
-    merged[merged.length - 1] = {
-      start: previous.start,
-      ...(end ? { end } : {}),
-      source,
-      ...(cycleNumber !== undefined ? { cycleNumber } : {}),
-    }
-  }
-
-  return merged
+    .filter((interval) => {
+      const key = `${new Date(interval.start).getTime()}:${interval.end ? new Date(interval.end).getTime() : "open"}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 function latestValidTimestamp(values: readonly (string | undefined)[], fallback: string): string {
@@ -349,10 +326,10 @@ export function mergeStudySessionTimelines(sessions: readonly StudySession[]): {
 } {
   if (sessions.length < 2) throw new Error("At least two study sessions are required")
 
-  const blocks = mergeTimeRanges(sessions.flatMap((session) => session.schedule.blocks))
+  const blocks = collectStudyTimeRanges(sessions.flatMap((session) => session.schedule.blocks))
   if (blocks.length === 0) throw new Error("Study sessions do not contain valid schedule blocks")
 
-  const intervals = mergeStudyIntervals(sessions.flatMap((session) => (
+  const intervals = collectStudyIntervals(sessions.flatMap((session) => (
     session.execution.state === "planned" ? [] : session.execution.intervals
   )))
   if (sessions.every((session) => session.execution.state === "planned")) {
@@ -375,6 +352,16 @@ export function mergeStudySessionTimelines(sessions: readonly StudySession[]): {
       ),
     },
   }
+}
+
+export function mergedStudySessionTitle(sessions: readonly StudySession[]): string {
+  if (sessions.length < 2) throw new Error("At least two study sessions are required")
+
+  const titles = [...new Set(sessions.map((session) => session.title.trim()).filter(Boolean))]
+  if (titles.length === 0) return "Study Session"
+  if (titles.length === 1) return titles[0]
+  if (titles.length === 2) return `${titles[0]} / ${titles[1]}`
+  return `${titles[0]} + ${titles.length - 1} more`
 }
 
 export function updateStudySession(session: StudySession, patch: LegacyStudySessionPatch, now = new Date().toISOString()): StudySession {

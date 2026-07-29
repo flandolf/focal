@@ -163,6 +163,19 @@ const completed = updateStudySession(planned, {
 })
 check(getSessionEffectiveMinutes(completed) === 30, "completed session should sum only intervals with an end time")
 
+const overlappingBlocks = createStudySession("overlap-1", {
+  subjectIds: ["mm"],
+  title: "Overlapping blocks",
+  schedule: {
+    blocks: [
+      { start: "2026-06-01T09:00:00Z", end: "2026-06-01T10:00:00Z" },
+      { start: "2026-06-01T09:30:00Z", end: "2026-06-01T10:30:00Z" },
+    ],
+  },
+  createdVia: "manual",
+})
+check(getSessionEffectiveMinutes(overlappingBlocks) === 90, "overlapping study blocks should not double-count time")
+
 // ── utils.combineDateAndTime ─────────────────────────────────────────────────────
 
 // Source only guards on dateParts.length, timeParts.length >= 2, integer parts,
