@@ -17,7 +17,7 @@ export function PrepBalance({
   onPlanSession,
 }: PrepBalanceProps) {
   return (
-    <div className="mt-4 border-t border-border/55 pt-4">
+    <div className="border-t border-border/70 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Prep Balance</h3>
