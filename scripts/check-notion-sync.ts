@@ -29,7 +29,7 @@ import { findSubjectIdFromValues } from "../src/lib/notion/subjectMatch"
 import { buildPageChildrenForSync, notionWriteRetryDelay } from "../src/lib/notion/push"
 import { notionIntentDue, retryNotionIntent } from "../src/lib/notion/outbox"
 import { planDuplicateNotionPages } from "../src/lib/notion"
-import { pullFromNotion } from "../src/lib/notion/pull"
+import { pullFromNotion, pullFromNotionAfterConflictRecheck } from "../src/lib/notion/pull"
 import { normalizeStudySession, updateStudySession } from "../src/lib/studySessions"
 import {
   notionEventIsSettled,
@@ -200,6 +200,52 @@ assert(
   JSON.stringify(conflictCtx.conflictItems[0]?.conflictingFields) === JSON.stringify(["title"]),
   "manual conflicts must identify only the overlapping field",
 )
+
+const transientConflictCtx = createSyncCtx(new Set([localEvent.id]), new Set())
+let transientRefreshes = 0
+await pullFromNotionAfterConflictRecheck(
+  [remoteEventPage],
+  [localEvent],
+  [],
+  notionSettings,
+  [],
+  transientConflictCtx,
+  () => {
+    transientRefreshes += 1
+    return Promise.resolve({
+      ...remoteEventPage,
+      last_edited_time: "2026-07-20T00:46:00.000Z",
+      properties: {
+        ...remoteEventPage.properties,
+        Name: { type: "title", title: [{ plain_text: localEvent.title }] },
+      },
+    })
+  },
+  undefined,
+  () => Promise.resolve(),
+)
+assert(transientRefreshes === 1, "a possible conflict must be confirmed with a targeted page reread")
+assert(transientConflictCtx.conflicts === 0, "a self-write that settles in Notion must not prompt as a conflict")
+assert(transientConflictCtx.acknowledgedEventIds.has(localEvent.id), "a settled self-write must acknowledge its local intent")
+
+const persistentConflictCtx = createSyncCtx(new Set([localEvent.id]), new Set())
+let persistentRefreshes = 0
+await pullFromNotionAfterConflictRecheck(
+  [remoteEventPage],
+  [localEvent],
+  [],
+  notionSettings,
+  [],
+  persistentConflictCtx,
+  () => {
+    persistentRefreshes += 1
+    return Promise.resolve(remoteEventPage)
+  },
+  undefined,
+  () => Promise.resolve(),
+)
+assert(persistentRefreshes === 2, "a persistent conflict must use the bounded confirmation window")
+assert(persistentConflictCtx.conflicts === 1, "a genuine overlapping Notion edit must still require a choice")
 
 const mixedLocalEvent: CalendarEvent = {
   ...localEvent,

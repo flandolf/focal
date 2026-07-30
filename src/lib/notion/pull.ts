@@ -25,6 +25,33 @@ import {
 } from "@/lib/notion/schema"
 import { findSubjectIdFromValues } from "@/lib/notion/subjectMatch"
 
+const CONFLICT_RECHECK_DELAYS_MS = [500, 1_000] as const
+
+type RefreshNotionPage = (pageId: string) => Promise<NotionPage>
+type Wait = (delayMs: number) => Promise<void>
+
+function resetPullState(ctx: SyncCtx): void {
+  ctx.created.length = 0
+  ctx.createdSessions.length = 0
+  ctx.updatedEvents.clear()
+  ctx.updatedSessions.clear()
+  ctx.matchedEventIds.clear()
+  ctx.matchedSessionIds.clear()
+  ctx.blockedEventFingerprints.clear()
+  ctx.blockedSessionFingerprints.clear()
+  ctx.skipped = 0
+  ctx.skippedReasons.length = 0
+  ctx.conflicts = 0
+  ctx.conflictDetails.length = 0
+  ctx.conflictItems.length = 0
+  ctx.pulledEventIds.clear()
+  ctx.pulledSessionIds.clear()
+  ctx.conflictedEventIds.clear()
+  ctx.conflictedSessionIds.clear()
+  ctx.acknowledgedEventIds.clear()
+  ctx.acknowledgedSessionIds.clear()
+}
+
 function recordSkippedReason(ctx: SyncCtx, reason: string | undefined): void {
   if (reason && !ctx.skippedReasons.includes(reason) && ctx.skippedReasons.length < 3) {
     ctx.skippedReasons.push(reason)
@@ -473,4 +500,45 @@ export function pullFromNotion(
       pullEvent(page, title, startTime, endTime, properties, existingEvents, eventBySourceId, settings, subjects, ctx)
     }
   }
+}
+
+export async function pullFromNotionAfterConflictRecheck(
+  pages: NotionPage[],
+  existingEvents: CalendarEvent[],
+  existingSessions: StudySession[],
+  settings: NotionCalendarSettings,
+  subjects: Subject[],
+  ctx: SyncCtx,
+  refreshPage: RefreshNotionPage,
+  onRecheck?: () => void,
+  wait: Wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+): Promise<NotionPage[]> {
+  let currentPages = pages
+  pullFromNotion(currentPages, existingEvents, existingSessions, settings, subjects, ctx)
+
+  // ponytail: two targeted rereads cover Notion's short consistency window.
+  // If it regularly exceeds 1.5s, replace this with revision-aware acknowledgements.
+  for (const delayMs of CONFLICT_RECHECK_DELAYS_MS) {
+    if (ctx.conflicts === 0) break
+    onRecheck?.()
+    await wait(delayMs)
+
+    const conflictPageIds = [...new Set(ctx.conflictItems.map((item) => item.notionPageId))]
+    const refreshedPages = new Map<string, NotionPage>()
+    for (const pageId of conflictPageIds) {
+      try {
+        refreshedPages.set(pageId, await refreshPage(pageId))
+      } catch {
+        // Keep the original conflict when its confirmation read fails. The
+        // existing resolver will refresh it again before applying a choice.
+      }
+    }
+    if (refreshedPages.size === 0) break
+
+    currentPages = currentPages.map((page) => refreshedPages.get(page.id) ?? page)
+    resetPullState(ctx)
+    pullFromNotion(currentPages, existingEvents, existingSessions, settings, subjects, ctx)
+  }
+
+  return currentPages
 }
