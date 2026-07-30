@@ -11,8 +11,8 @@ import {
   setCachedSchema,
   createSyncCtx,
 } from "@/lib/notion/schema"
-import { deleteNotionPage, ensureNotionSyncProperties, fetchNotionSchema, queryNotionCalendar } from "@/lib/notion/api"
-import { pullFromNotion } from "@/lib/notion/pull"
+import { deleteNotionPage, ensureNotionSyncProperties, fetchNotionPage, fetchNotionSchema, queryNotionCalendar } from "@/lib/notion/api"
+import { pullFromNotionAfterConflictRecheck } from "@/lib/notion/pull"
 import { executePush, processNotionArchiveIntents } from "@/lib/notion/push"
 import { readNotionIntents } from "@/lib/notion/outbox"
 import { dedupeCalendarEvents } from "@/lib/calendarEvents"
@@ -66,14 +66,22 @@ export async function syncNotionCalendar(
   const queriedPages = await queryNotionCalendar(settings)
   onProgress?.(`Fetched ${queriedPages.length} page${queriedPages.length === 1 ? "" : "s"} from Notion`)
   const pages = await removeDuplicateNotionPages(queriedPages, cleanEvents, cleanSessions, knownDuplicatePageIds, settings, ctx, onProgress)
-  let pagesById = new Map(pages.map((page) => [page.id, page]))
   const archivedOrPendingIds = await processNotionArchiveIntents(cleanEvents, cleanSessions, settings, ctx, onProgress)
   const activePages = archivedOrPendingIds.size > 0
     ? pages.filter((page) => !archivedOrPendingIds.has(page.id))
     : pages
-  pagesById = new Map(activePages.map((page) => [page.id, page]))
 
-  pullFromNotion(activePages, cleanEvents, cleanSessions, settings, subjects, ctx)
+  const settledPages = await pullFromNotionAfterConflictRecheck(
+    activePages,
+    cleanEvents,
+    cleanSessions,
+    settings,
+    subjects,
+    ctx,
+    (pageId) => fetchNotionPage(settings, pageId),
+    () => onProgress?.("Confirming possible Notion conflicts…"),
+  )
+  const pagesById = new Map(settledPages.map((page) => [page.id, page]))
   const totalPulled = ctx.created.length + ctx.updatedEvents.size + ctx.createdSessions.length + ctx.updatedSessions.size
   onProgress?.(totalPulled > 0 ? `Found ${totalPulled} new or updated item${totalPulled === 1 ? "" : "s"}` : "No new items from Notion")
 

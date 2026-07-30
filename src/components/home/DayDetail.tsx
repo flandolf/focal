@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react"
 import { format, parseISO, differenceInDays } from "date-fns"
-import { X, Check, ChevronDown, CheckCircle2, Trash2, Pencil } from "lucide-react"
+import { X, Check, ChevronDown, ChevronRight, CheckCircle2, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
@@ -21,7 +21,7 @@ function formatTimeRange(startTime: string, endTime?: string) {
   if (startKey !== endKey) {
     return `${format(parseISO(startTime), "MMM d, h:mm a")} – ${format(parseISO(endTime), "MMM d, h:mm a")}`
   }
-  return `${startLabel} - ${format(parseISO(endTime), "h:mm a")}`
+  return `${startLabel} – ${format(parseISO(endTime), "h:mm a")}`
 }
 
 function formatMultiDayEventMeta(startTime: string, endTime: string): string {
@@ -444,112 +444,113 @@ export function DayDetail({
                   )
                 })}
                 {completedEvents.length > 0 && (
-                  <>
-                    <div className="flex items-center gap-2 py-0.5">
-                      <div className="flex-1 border-t border-border/40" />
-                      <p className="text-micro text-muted-foreground/50 font-medium">Completed</p>
-                      <div className="flex-1 border-t border-border/40" />
+                  <div className="pt-2">
+                    <div className="flex items-baseline gap-2.5 px-2 pb-3.5">
+                      <p className="text-base font-semibold text-foreground/90">Completed</p>
+                      <p className="text-sm tabular-nums text-muted-foreground">
+                        {completedEvents.length} {completedEvents.length === 1 ? "item" : "items"}
+                      </p>
                     </div>
-                    {completedEvents.map((event) => {
-                      const subject = getSubjectById(event.subjectId)
-                      const eventInfo = getEventTypeInfo(event.eventType)
-                      const selected = selectedEventIdSet.has(event.id)
-                      const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
-                      return (
-                        <ContextMenu key={event.id}>
-                          <ContextMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            if (calendarSelectionMode) {
-                              onToggleEventSelection(event.id)
-                              return
-                            }
-                            onSelectEvent(event)
-                          }}
-                          className={cn(
-                            "h-auto w-full justify-start whitespace-normal p-2 text-left opacity-60 hover:opacity-80",
-                            selected
-                              ? "border-primary/65 bg-primary/10"
-                              : "border-border/70 bg-background/30"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex min-w-0 items-start gap-2">
-                              {calendarSelectionMode && (
-                                <span
-                                  className={cn(
-                                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                                    selected
-                                      ? "border-primary bg-primary text-primary-foreground"
-                                      : "border-border bg-background/50"
-                                  )}
-                                  aria-hidden="true"
-                                >
-                                  {selected && <Check className="h-3 w-3" />}
-                                </span>
-                              )}
-                              <div className="min-w-0">
-                                <p className="truncate text-xs font-medium">{event.title}</p>
-                                <p className="text-micro text-muted-foreground mt-0.5">
-                                  {isMultiDay && event.endTime
-                                    ? formatMultiDayEventMeta(event.startTime, event.endTime)
-                                    : `${formatTimeRange(event.startTime, event.endTime)}${event.location ? ` · ${event.location}` : ""}`}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                              {subject && (
-                                <span
-                                  className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                                  style={{
-                                    backgroundColor: subject.color + "18",
-                                    color: subject.color,
-                                  }}
-                                >
-                                  {subject.shortCode}
-                                </span>
-                              )}
-                              <span
-                                className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                                style={{
-                                  backgroundColor: eventInfo.color + "18",
-                                  color: eventInfo.color,
+                    <div className="divide-y divide-border/35 border-y border-border/45">
+                      {completedEvents.map((event) => {
+                        const subject = getSubjectById(event.subjectId)
+                        const eventInfo = getEventTypeInfo(event.eventType)
+                        const selected = selectedEventIdSet.has(event.id)
+                        const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
+                        const timeLabel = isMultiDay && event.endTime
+                          ? formatMultiDayEventMeta(event.startTime, event.endTime)
+                          : formatTimeRange(event.startTime, event.endTime)
+                        return (
+                          <ContextMenu key={event.id}>
+                            <ContextMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                onClick={() => {
+                                  if (calendarSelectionMode) {
+                                    onToggleEventSelection(event.id)
+                                    return
+                                  }
+                                  onSelectEvent(event)
                                 }}
+                                className={cn(
+                                  "group h-auto min-h-16 w-full rounded-none px-2 py-4 text-left hover:bg-background/45",
+                                  selected && "bg-primary/10 hover:bg-primary/12",
+                                )}
                               >
-                                {eventInfo.label}
-                              </span>
-                              <span className="inline-flex h-3.5 shrink-0 items-center rounded-sm bg-success/15 px-1 text-[9px] font-medium leading-none whitespace-nowrap text-success">
-                                Done
-                              </span>
-                            </div>
-                          </div>
-                        </Button>
-                          </ContextMenuTrigger>
-                          <ContextMenuContent className="w-40">
-                            <CtxMenuItem onSelect={() => onSelectEvent(event)}>
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </CtxMenuItem>
-                            {onSetCalendarItemsCompleted && (
-                              <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [event.id], sessionIds: [] }, !event.isFinished)}>
-                                <CheckCircle2 className="h-4 w-4" />
-                                {event.isFinished ? "Mark current" : "Mark complete"}
+                                <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(10rem,12rem)_minmax(0,1fr)_auto]">
+                                  <div className="col-span-2 flex min-w-0 items-center gap-2 sm:col-span-1">
+                                    {calendarSelectionMode && (
+                                      <span
+                                        className={cn(
+                                          "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                                          selected
+                                            ? "border-primary bg-primary text-primary-foreground"
+                                            : "border-border bg-background/50",
+                                        )}
+                                        aria-hidden="true"
+                                      >
+                                        {selected && <Check className="h-3 w-3" />}
+                                      </span>
+                                    )}
+                                    <span className="shrink-0 text-base font-medium tabular-nums text-muted-foreground">
+                                      {timeLabel}
+                                    </span>
+                                    <span className="hidden min-w-3 flex-1 border-t border-border/55 sm:block" aria-hidden="true" />
+                                  </div>
+
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <CheckCircle2 className="h-4.5 w-4.5 shrink-0 text-success" aria-hidden="true" />
+                                    <span className="truncate text-base font-semibold text-foreground/90">
+                                      {event.title}
+                                    </span>
+                                    <span className="text-muted-foreground/45" aria-hidden="true">·</span>
+                                    <span className="truncate text-sm text-muted-foreground">
+                                      {eventInfo.label}
+                                      {event.location ? ` · ${event.location}` : ""}
+                                    </span>
+                                    {subject && (
+                                      <>
+                                        <span className="text-muted-foreground/45" aria-hidden="true">·</span>
+                                        <span className="truncate text-sm font-medium" style={{ color: subject.color }}>
+                                          {subject.shortCode}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  <div className="flex shrink-0 items-center gap-1.5 text-success">
+                                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                                    <span className="text-base font-medium">Done</span>
+                                    <ChevronRight className="ml-1 h-4 w-4 text-muted-foreground/55 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                                  </div>
+                                </div>
+                              </Button>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-40">
+                              <CtxMenuItem onSelect={() => onSelectEvent(event)}>
+                                <Pencil className="h-4 w-4" />
+                                Edit
                               </CtxMenuItem>
-                            )}
-                            <CtxMenuSep />
-                            <CtxMenuItem
-                              variant="destructive"
-                              onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </CtxMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
-                      )
-                    })}
-                  </>
+                              {onSetCalendarItemsCompleted && (
+                                <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [event.id], sessionIds: [] }, !event.isFinished)}>
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  {event.isFinished ? "Mark current" : "Mark complete"}
+                                </CtxMenuItem>
+                              )}
+                              <CtxMenuSep />
+                              <CtxMenuItem
+                                variant="destructive"
+                                onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </CtxMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        )
+                      })}
+                    </div>
+                  </div>
                 )}
               </>
             )
