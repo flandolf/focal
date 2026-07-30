@@ -29,7 +29,12 @@ import { findSubjectIdFromValues } from "../src/lib/notion/subjectMatch"
 import { buildPageChildrenForSync, notionWriteRetryDelay } from "../src/lib/notion/push"
 import { notionIntentDue, retryNotionIntent } from "../src/lib/notion/outbox"
 import { planDuplicateNotionPages } from "../src/lib/notion"
-import { pullFromNotion, pullFromNotionAfterConflictRecheck } from "../src/lib/notion/pull"
+import {
+  chooseNotionConflictSide,
+  pullFromNotion,
+  pullFromNotionAfterConflictRecheck,
+  rebaseNotionConflictUpdates,
+} from "../src/lib/notion/pull"
 import { normalizeStudySession, updateStudySession } from "../src/lib/studySessions"
 import {
   notionEventIsSettled,
@@ -188,8 +193,19 @@ const remoteEventPage = {
     [FOCAL_KIND_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: "event" }] },
   },
 }
+assert(
+  chooseNotionConflictSide("2026-07-20T00:30:00.000Z", "2026-07-20T00:30:04.000Z") === "local",
+  "a Notion echo shortly after a local edit must prefer Focal",
+)
+assert(
+  chooseNotionConflictSide("2026-07-20T00:30:00.000Z", "2026-07-20T00:30:06.000Z") === "notion",
+  "a clearly later Notion edit must win automatically",
+)
+assert(chooseNotionConflictSide(undefined, remoteEventPage.last_edited_time) === null, "missing timestamps must remain manual")
+
+const manualLocalEvent = { ...localEvent, updated_at: undefined }
 const conflictCtx = createSyncCtx(new Set([localEvent.id]), new Set())
-pullFromNotion([remoteEventPage], [localEvent], [], notionSettings, [], conflictCtx)
+pullFromNotion([remoteEventPage], [manualLocalEvent], [], notionSettings, [], conflictCtx)
 assert(conflictCtx.conflicts === 1, "simultaneous local and Notion edits must produce a conflict")
 assert(conflictCtx.updatedEvents.size === 0, "a conflict must not overwrite the local event before resolution")
 assert(
@@ -201,11 +217,69 @@ assert(
   "manual conflicts must identify only the overlapping field",
 )
 
+const echoPage = { ...remoteEventPage, last_edited_time: "2026-07-20T00:30:04.000Z" }
+const echoCtx = createSyncCtx(new Set([localEvent.id]), new Set())
+pullFromNotion([echoPage], [localEvent], [], notionSettings, [], echoCtx)
+assert(echoCtx.conflicts === 0, "a likely delayed Focal write must resolve without prompting")
+assert(echoCtx.updatedEvents.get(localEvent.id)?.title === "Local title", "the local value must win during the echo window")
+assert(!echoCtx.acknowledgedEventIds.has(localEvent.id), "a local winner must remain queued until it is pushed")
+
+const laterNotionCtx = createSyncCtx(new Set([localEvent.id]), new Set())
+pullFromNotion([remoteEventPage], [localEvent], [], notionSettings, [], laterNotionCtx)
+assert(laterNotionCtx.conflicts === 0, "a clearly later Notion edit must resolve without prompting")
+assert(laterNotionCtx.updatedEvents.get(localEvent.id)?.title === "Notion title", "the clearly later Notion value must win")
+assert(laterNotionCtx.acknowledgedEventIds.has(localEvent.id), "a remote winner must acknowledge the superseded local intent")
+
+const legacyLocalEvent: CalendarEvent = {
+  ...localEvent,
+  source: localEvent.source?.type === "notion"
+    ? { ...localEvent.source, syncSnapshot: undefined }
+    : localEvent.source,
+}
+const legacyEchoCtx = createSyncCtx(new Set([legacyLocalEvent.id]), new Set())
+pullFromNotion([echoPage], [legacyLocalEvent], [], notionSettings, [], legacyEchoCtx)
+assert(legacyEchoCtx.conflicts === 0, "legacy records without a baseline must use timestamp evidence when available")
+assert(legacyEchoCtx.updatedEvents.get(legacyLocalEvent.id)?.title === "Local title", "a recent legacy local edit must win safely")
+
+const newerRemoteEventPage = {
+  ...remoteEventPage,
+  last_edited_time: "2026-07-20T00:47:00.000Z",
+  properties: {
+    ...remoteEventPage.properties,
+    Name: { type: "title", title: [{ plain_text: "Newest Notion title" }] },
+    Deadline: {
+      type: "date",
+      date: { start: "2026-07-20T02:00:00.000Z", end: "2026-07-20T02:30:00.000Z" },
+    },
+  },
+}
+const rebasedLocalUpdates = rebaseNotionConflictUpdates(
+  "event",
+  ["title"],
+  newerRemoteEventPage,
+  localEvent,
+  notionSettings,
+  [],
+  "local",
+)
+const rebasedNotionUpdates = rebaseNotionConflictUpdates(
+  "event",
+  ["title"],
+  newerRemoteEventPage,
+  localEvent,
+  notionSettings,
+  [],
+  "notion",
+)
+assert(rebasedLocalUpdates.title === "Local title", "Keep Focal must use the latest local value")
+assert(rebasedNotionUpdates.title === "Newest Notion title", "Keep Notion must use the latest remote value")
+assert(rebasedLocalUpdates.startTime === "2026-07-20T02:00:00.000Z", "Keep Focal must retain newer non-conflicting Notion fields")
+
 const transientConflictCtx = createSyncCtx(new Set([localEvent.id]), new Set())
 let transientRefreshes = 0
 await pullFromNotionAfterConflictRecheck(
   [remoteEventPage],
-  [localEvent],
+  [manualLocalEvent],
   [],
   notionSettings,
   [],
@@ -232,7 +306,7 @@ const persistentConflictCtx = createSyncCtx(new Set([localEvent.id]), new Set())
 let persistentRefreshes = 0
 await pullFromNotionAfterConflictRecheck(
   [remoteEventPage],
-  [localEvent],
+  [manualLocalEvent],
   [],
   notionSettings,
   [],
@@ -249,6 +323,7 @@ assert(persistentConflictCtx.conflicts === 1, "a genuine overlapping Notion edit
 
 const mixedLocalEvent: CalendarEvent = {
   ...localEvent,
+  updated_at: undefined,
   subjectId: "mm",
   source: {
     type: "notion",
@@ -421,6 +496,23 @@ assert(
 )
 assert(!disjointSessionCtx.acknowledgedSessionIds.has(sessionId), "a merged session must remain queued until pushed")
 
+const conflictingSessionPage = {
+  ...disjointSessionPage,
+  last_edited_time: "2026-07-20T00:30:04.000Z",
+  properties: {
+    ...disjointSessionPage.properties,
+    Name: { type: "title", title: [{ plain_text: "Notion session title" }] },
+    Deadline: {
+      type: "date",
+      date: { start: baselineSession.startTime, end: baselineSession.endTime },
+    },
+  },
+}
+const sessionEchoCtx = createSyncCtx(new Set(), new Set([sessionId]))
+pullFromNotion([conflictingSessionPage], [], [localSession], notionSettings, [], sessionEchoCtx)
+assert(sessionEchoCtx.conflicts === 0, "a likely delayed Focal session write must resolve without prompting")
+assert(sessionEchoCtx.updatedSessions.get(sessionId)?.title === "Local session title", "the local session must win during the echo window")
+
 const multiSubjectSession = normalizeStudySession({
   ...baselineSession,
   id: "multi-subject-session",
@@ -452,7 +544,8 @@ assert(
   "changing the Notion subject must preserve secondary Focal subjects",
 )
 
-const subjectConflictSession = normalizeStudySession({
+const subjectConflictSession = {
+  ...normalizeStudySession({
   ...baselineSession,
   id: "subject-conflict-session",
   subjectIds: ["gm", "chem"],
@@ -465,7 +558,9 @@ const subjectConflictSession = normalizeStudySession({
       syncSnapshot: sessionSyncSnapshot({ ...baselineSession, subjectIds: ["mm", "sm"] }, notionSettings, VCE_SUBJECTS),
     },
   },
-})
+  }),
+  updated_at: undefined,
+}
 const subjectConflictPage = {
   ...changedPrimarySubjectPage,
   id: "subject-conflict-page",
@@ -693,16 +788,21 @@ assert(
 const notionHookSource = await fetch(new URL("../src/hooks/useNotionSync.ts", import.meta.url)).then((response) => response.text())
 const eventHookSource = await fetch(new URL("../src/hooks/useEvents.ts", import.meta.url)).then((response) => response.text())
 assert(
-  notionHookSource.includes("id: conflict.notionPageId"),
-  "keeping a local conflict must update the captured Notion page rather than create a duplicate",
+  notionHookSource.includes("id: currentPage.id"),
+  "conflict resolution must update the refreshed Notion page rather than create a duplicate",
 )
 assert(!notionHookSource.includes("id: `conflict-${i}`"), "manual conflict IDs must not depend on result ordering")
-assert(notionHookSource.includes("currentPage?.last_edited_time === conflict.notionLastEditedTime"), "manual resolution must reject a stale Notion snapshot")
 assert(
-  notionHookSource.includes("JSON.stringify((currentLocal as StudySession).subjectIds) !== JSON.stringify(conflict.localSubjectIds)"),
-  "manual session resolution must reject changes to the full local subject list",
+  !notionHookSource.includes("currentPage?.last_edited_time === conflict.notionLastEditedTime"),
+  "manual resolution must rebase instead of rejecting a stale Notion snapshot",
 )
 assert(notionHookSource.includes("fetchNotionPage(settings, conflict.notionPageId)"), "each manual resolution must refresh its own Notion page immediately before writing")
+assert(notionHookSource.includes("rebaseNotionConflictUpdates("), "manual resolution must recompute choices from the latest local and Notion versions")
+assert(notionHookSource.includes("MAX_CONFLICT_RESOLUTION_ATTEMPTS"), "manual resolution must retry concurrent local saves")
+assert(
+  notionHookSource.includes("clearTimeout(debounceTimerRef.current)"),
+  "a direct sync must absorb a pending debounce instead of scheduling a redundant follow-up pull",
+)
 assert(
   eventHookSource.includes("Boolean(data.isFinished) || eventHasPassed(data)"),
   "new Notion events must preserve an explicit completed state",

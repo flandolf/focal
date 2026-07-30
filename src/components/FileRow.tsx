@@ -1,6 +1,7 @@
 import { formatFileSize, formatDate } from "@/lib/utils";
 import { memo, useState, useRef, useCallback, useMemo } from "react";
 import type { FileInfo, FileTag } from "@/lib/types";
+import { FILE_TAG_LABELS, FILE_TAGS } from "@/lib/fileMetadata";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,24 +36,6 @@ import {
   FolderOpen,
   ArrowRight,
 } from "lucide-react";
-
-const ALL_TAGS: FileTag[] = [
-  "sac",
-  "notes",
-  "past-paper",
-  "exam",
-  "resource",
-  "other",
-];
-
-const TAG_LABELS: Record<FileTag, string> = {
-  sac: "SAC",
-  notes: "Notes",
-  "past-paper": "Past Paper",
-  exam: "Exam",
-  resource: "Resource",
-  other: "Other",
-};
 
 const TAG_COLORS: Record<string, string> = {
   sac: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
@@ -140,7 +123,7 @@ function FileRowInner({
   const [showActions, setShowActions] = useState(false);
 
   const availableTags = useMemo(
-    () => ALL_TAGS.filter((t) => !fileTags.includes(t)),
+    () => FILE_TAGS.filter((t) => !fileTags.includes(t)),
     [fileTags],
   );
 
@@ -360,7 +343,7 @@ function FileRowInner({
                         TAG_COLORS[tag],
                       )}
                     >
-                      {TAG_LABELS[tag]}
+                      {FILE_TAG_LABELS[tag]}
                     </Button>
                   ))}
                 </PopoverContent>
@@ -503,9 +486,9 @@ function FileRowInner({
                   Add Tag
                 </ContextMenuSubTrigger>
                 <ContextMenuSubContent className="w-32">
-                  {ALL_TAGS.filter((t) => !fileTags.includes(t)).map((tag) => (
+                  {FILE_TAGS.filter((t) => !fileTags.includes(t)).map((tag) => (
                     <CtxMenuItem key={tag} onSelect={() => onAddTag(file, tag)}>
-                      {TAG_LABELS[tag]}
+                      {FILE_TAG_LABELS[tag]}
                     </CtxMenuItem>
                   ))}
                 </ContextMenuSubContent>
@@ -523,7 +506,7 @@ function FileRowInner({
                       key={tag}
                       onSelect={() => onRemoveTag(file, tag)}
                     >
-                      {TAG_LABELS[tag]}
+                      {FILE_TAG_LABELS[tag]}
                     </CtxMenuItem>
                   ))}
                 </ContextMenuSubContent>

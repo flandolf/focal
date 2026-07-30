@@ -1,8 +1,17 @@
 import {
   copyFileMetadataPrefixEntries,
+  FILE_TAG_LABELS,
+  FILE_TAGS,
   relocateFileMetadata,
   relocateFileMetadataPrefix,
 } from "../src/lib/fileMetadata"
+
+if (FILE_TAGS.some((tag) => !FILE_TAG_LABELS[tag])) {
+  throw new Error("Every file tag must have a familiar display label")
+}
+if (FILE_TAG_LABELS["past-paper"] !== "Past paper") {
+  throw new Error("File tag labels must not expose storage-style punctuation")
+}
 
 const original = {
   "old/notes.txt": { tags: ["notes" as const], isFavorite: true },

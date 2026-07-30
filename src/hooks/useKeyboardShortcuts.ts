@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react"
+import { useEffect, useRef } from "react"
 
 interface ShortcutHandlers {
   onSearch?: () => void
@@ -17,19 +17,25 @@ interface ShortcutHandlers {
   onZoomReset?: () => void
 }
 
+export function blocksSingleKeyShortcut(target: EventTarget | null): boolean {
+  if (!target || typeof target !== "object") return false
+  const element = target as HTMLElement
+  const tag = typeof element.tagName === "string" ? element.tagName.toLowerCase() : ""
+  return (
+    tag === "input" ||
+    tag === "textarea" ||
+    tag === "select" ||
+    Boolean(element.isContentEditable) ||
+    Boolean(element.closest?.('[role="dialog"]'))
+  )
+}
+
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
   const handlersRef = useRef(handlers)
 
   useEffect(() => {
     handlersRef.current = handlers
   })
-
-  const isInputFocused = useCallback(() => {
-    const el = document.activeElement
-    if (!el) return false
-    const tag = el.tagName.toLowerCase()
-    return tag === "input" || tag === "textarea" || tag === "select" || (el as HTMLElement).isContentEditable
-  }, [])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -64,9 +70,6 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         return
       }
 
-      // Don't handle single-key shortcuts when typing in inputs
-      if (isInputFocused()) return
-
       // Cmd/Ctrl + = (or +): Zoom in
       if (meta && (key === "=" || key === "+")) {
         e.preventDefault()
@@ -88,6 +91,16 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         return
       }
 
+      // Cmd/Ctrl + ,: Settings
+      if (meta && key === ",") {
+        e.preventDefault()
+        handlersRef.current.onGoSettings?.()
+        return
+      }
+
+      // Single-key commands should never escape a field or modal dialog.
+      if (blocksSingleKeyShortcut(e.target)) return
+
       // ?: Show keyboard shortcut guide
       if (e.key === "?" && !meta && !e.altKey) {
         e.preventDefault()
@@ -98,13 +111,6 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       // H: Go home
       if (key === "h" && !meta && !e.altKey && !e.shiftKey) {
         handlersRef.current.onGoHome?.()
-        return
-      }
-
-      // Cmd/Ctrl + ,: Settings
-      if (meta && key === ",") {
-        e.preventDefault()
-        handlersRef.current.onGoSettings?.()
         return
       }
 
@@ -135,5 +141,5 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isInputFocused])
+  }, [])
 }

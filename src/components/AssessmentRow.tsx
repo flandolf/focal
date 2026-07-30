@@ -151,6 +151,10 @@ export const AssessmentRow = memo(function AssessmentRow({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={project.name}
+          aria-current={selectedId === project.id ? "page" : undefined}
           className={cn(
             "group relative flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-md transition-colors",
             isCollapsed
@@ -164,17 +168,24 @@ export const AssessmentRow = memo(function AssessmentRow({
             project.isFinished && "opacity-70",
           )}
           onClick={handleProjectClick}
+          onKeyDown={(event) => {
+            if (event.currentTarget !== event.target) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handleProjectClick();
+          }}
         >
           {/* Checkbox for multi-select */}
           {!isCollapsed && onToggleProjectSelection && (
             <Checkbox
+              aria-label={`Select ${project.name}`}
               checked={isSelected}
               onCheckedChange={() => onToggleProjectSelection(project.id)}
               onClick={(event) => event.stopPropagation()}
               className={cn(
                 isMultiSelecting
                   ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-100",
+                  : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
               )}
             />
           )}

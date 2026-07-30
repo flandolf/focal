@@ -7,6 +7,7 @@ import type { NotionConflict } from "@/components/NotionConflictDialog"
 import { clearNotionIntent } from "@/lib/notion/outbox"
 import { fetchNotionPage } from "@/lib/notion/api"
 import { updateStudySession } from "@/lib/studySessions"
+import { rebaseNotionConflictUpdates } from "@/lib/notion/pull"
 import {
   buildSessionBodyText,
   eventSyncSnapshot,
@@ -14,6 +15,8 @@ import {
   notionSnapshotsEqual,
   sessionSyncSnapshot,
 } from "@/lib/notion/schema"
+
+const MAX_CONFLICT_RESOLUTION_ATTEMPTS = 3
 
 interface UseNotionSyncOptions {
   events: CalendarEvent[]
@@ -178,16 +181,23 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
   const performNotionSync = useCallback(async (notify: boolean, onProgress?: (msg: string) => void, changedEventIds?: Set<string>, changedSessionIds?: Set<string>) => {
     const settings = getNotionCalendarSettings()
     if (!settings.token.trim() || !settings.dataSourceId.trim()) return null
+    const shouldNotify = notify || pendingNotifyRef.current
     if (notionSyncInFlightRef.current) {
       notionSyncQueuedRef.current = true
-      notionSyncQueuedNotifyRef.current = notionSyncQueuedNotifyRef.current || notify
-      if (notify) {
+      notionSyncQueuedNotifyRef.current = notionSyncQueuedNotifyRef.current || shouldNotify
+      if (shouldNotify) {
         return new Promise<NotionCalendarSyncResult | null>((resolve, reject) => {
           notionSyncQueuedResolversRef.current.push({ resolve, reject })
         })
       }
       return null
     }
+
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    pendingNotifyRef.current = false
 
     notionSyncInFlightRef.current = true
     notionSyncQueuedRef.current = false
@@ -336,7 +346,7 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
         setNotionConflictDialogOpen(true)
       }
 
-      if (notify) {
+      if (shouldNotify) {
         const pulled = result.created.length + result.updated.length + result.createdSessions.length + result.updatedSessions.length
         const pushed = result.pushedCreated + result.pushedUpdated
         const parts: string[] = []
@@ -362,9 +372,9 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
         }
       }
       succeeded = syncSucceeded
-      return notify ? result : null
+      return shouldNotify ? result : null
     } catch (e) {
-      if (notify) {
+      if (shouldNotify) {
         toast.error(`Notion sync failed: ${String(e)}`)
         throw e
       }
@@ -445,6 +455,7 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     const notionResolutions: string[] = []
     const skipped: string[] = []
     const failedResolutionIds = new Set<string>()
+    let newerLocalChangesQueued = false
     for (const conflict of notionConflicts) {
       const resolution = resolutions[conflict.id]
       if (!resolution || resolution === "skip") {
@@ -452,101 +463,94 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
         continue
       }
 
-      let currentPage
-      try {
-        currentPage = await fetchNotionPage(settings, conflict.notionPageId)
-      } catch (error) {
-        failedResolutionIds.add(conflict.id)
-        console.error(`Could not refresh Notion conflict "${conflict.title}":`, error)
-        continue
-      }
-      const remoteIsCurrent = currentPage?.last_edited_time === conflict.notionLastEditedTime
-      const currentLocal = conflict.type === "event"
-        ? eventsRef.current.find((event) => event.id === conflict.localId)
-        : sessionsRef.current.find((session) => session.id === conflict.localId)
-      const currentLocalSnapshot = currentLocal
-        ? conflict.type === "event"
-          ? eventSyncSnapshot(currentLocal as CalendarEvent, settings)
-          : sessionSyncSnapshot(currentLocal as StudySession, settings, allSubjectsRef.current)
-        : undefined
-      const currentBodyHash = currentLocal
-        ? conflict.type === "event"
-          ? hashBody((currentLocal as CalendarEvent).description)
-          : hashBody(buildSessionBodyText(currentLocal as StudySession))
-        : undefined
-      if (
-        !currentPage
-        || !remoteIsCurrent
-        || !currentLocalSnapshot
-        || !notionSnapshotsEqual(currentLocalSnapshot, conflict.localSnapshot)
-        || currentBodyHash !== conflict.localBodyHash
-        || (conflict.type === "session"
-          && JSON.stringify((currentLocal as StudySession).subjectIds) !== JSON.stringify(conflict.localSubjectIds))
-      ) {
-        failedResolutionIds.add(conflict.id)
-        console.error(`Conflict changed before it could be resolved: "${conflict.title}"`)
-        continue
+      let resolved = false
+      let supersededByNewerLocalChange = false
+      for (let attempt = 0; attempt < MAX_CONFLICT_RESOLUTION_ATTEMPTS; attempt += 1) {
+        try {
+          setSyncStatus("syncing")
+          const currentPage = await fetchNotionPage(settings, conflict.notionPageId)
+          const currentLocal = conflict.type === "event"
+            ? eventsRef.current.find((event) => event.id === conflict.localId)
+            : sessionsRef.current.find((session) => session.id === conflict.localId)
+          if (!currentLocal) throw new Error(`Local ${conflict.type} no longer exists`)
+          const chosenUpdates = rebaseNotionConflictUpdates(
+            conflict.type,
+            conflict.conflictingFields,
+            currentPage,
+            currentLocal,
+            settings,
+            allSubjectsRef.current,
+            resolution,
+          )
+
+          if (conflict.type === "event") {
+            const event = currentLocal as CalendarEvent
+            const resolvedEvent = {
+              ...event,
+              ...chosenUpdates,
+              source: {
+                ...event.source,
+                type: "notion" as const,
+                id: currentPage.id,
+                kind: "event" as const,
+              },
+            }
+            const result = await pushEventToNotion(settings, resolvedEvent, allSubjectsRef.current)
+            if (!result) throw new Error("Notion did not accept the event")
+            const synced = await syncEvents([], [{
+              id: event.id,
+              updates: { ...chosenUpdates, source: result.source },
+              expectedRecord: event,
+            }])
+            const saved = synced.updated[0]
+            if (saved && notionEventIsSettled(saved, settings)) {
+              eventsRef.current = eventsRef.current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+              await clearNotionIntent(settings.dataSourceId, "event", event.id, "upsert", saved)
+              resolved = true
+              break
+            }
+          } else {
+            const session = currentLocal as StudySession
+            const sessionUpdates = chosenUpdates as Partial<Omit<StudySession, "id" | "created_at">>
+            const resolvedSession = updateStudySession(session, sessionUpdates)
+            const result = await pushSessionToNotion(settings, {
+              ...resolvedSession,
+              source: {
+                ...resolvedSession.source,
+                type: "notion",
+                id: currentPage.id,
+                kind: "session",
+              },
+            }, allSubjectsRef.current)
+            if (!result) throw new Error("Notion did not accept the study session")
+            const synced = await syncSessions([], [{
+              id: session.id,
+              updates: { ...sessionUpdates, source: result.source },
+              expectedRecord: session,
+            }])
+            const saved = synced.updated[0]
+            if (saved && notionSessionIsSettled(saved, settings, allSubjectsRef.current)) {
+              sessionsRef.current = sessionsRef.current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+              await clearNotionIntent(settings.dataSourceId, "session", session.id, "upsert", saved)
+              resolved = true
+              break
+            }
+          }
+
+          if (attempt === MAX_CONFLICT_RESOLUTION_ATTEMPTS - 1) {
+            supersededByNewerLocalChange = true
+          }
+        } catch (error) {
+          failedResolutionIds.add(conflict.id)
+          console.error(`Failed to keep ${resolution} "${conflict.title}":`, error)
+          break
+        }
       }
 
-      const chosenUpdates = resolution === "local" ? conflict.localUpdates : conflict.remoteUpdates
-      try {
-        setSyncStatus("syncing")
-        if (conflict.type === "event") {
-          const event = eventsRef.current.find((candidate) => candidate.id === conflict.localId)
-          if (!event) throw new Error("Local event no longer exists")
-          const resolvedEvent = {
-            ...event,
-            ...chosenUpdates,
-            source: {
-              ...event.source,
-              type: "notion" as const,
-              id: conflict.notionPageId,
-              kind: "event" as const,
-            },
-          }
-          const result = await pushEventToNotion(settings, resolvedEvent, allSubjectsRef.current)
-          if (!result) throw new Error("Notion did not accept the event")
-          const synced = await syncEvents([], [{
-            id: event.id,
-            updates: { ...chosenUpdates, source: result.source },
-            expectedRecord: event,
-          }])
-          const saved = synced.updated[0]
-          if (!saved || !notionEventIsSettled(saved, settings)) {
-            throw new Error("The local event changed while the resolution was being saved")
-          }
-          await clearNotionIntent(settings.dataSourceId, "event", event.id, "upsert", saved)
-        } else {
-          const session = sessionsRef.current.find((candidate) => candidate.id === conflict.localId)
-          if (!session) throw new Error("Local study session no longer exists")
-          const sessionUpdates = chosenUpdates as Partial<Omit<StudySession, "id" | "created_at">>
-          const resolvedSession = updateStudySession(session, sessionUpdates)
-          const result = await pushSessionToNotion(settings, {
-            ...resolvedSession,
-            source: {
-              ...resolvedSession.source,
-              type: "notion",
-              id: conflict.notionPageId,
-              kind: "session",
-            },
-          }, allSubjectsRef.current)
-          if (!result) throw new Error("Notion did not accept the study session")
-          const synced = await syncSessions([], [{
-            id: session.id,
-            updates: { ...sessionUpdates, source: result.source },
-            expectedRecord: session,
-          }])
-          const saved = synced.updated[0]
-          if (!saved || !notionSessionIsSettled(saved, settings, allSubjectsRef.current)) {
-            throw new Error("The local study session changed while the resolution was being saved")
-          }
-          await clearNotionIntent(settings.dataSourceId, "session", session.id, "upsert", saved)
-        }
+      if (resolved || supersededByNewerLocalChange) {
         if (resolution === "local") localResolutions.push(conflict.title)
         else notionResolutions.push(conflict.title)
-      } catch (error) {
-        failedResolutionIds.add(conflict.id)
-        console.error(`Failed to keep ${resolution} "${conflict.title}":`, error)
+        if (supersededByNewerLocalChange) newerLocalChangesQueued = true
       }
     }
 
@@ -567,7 +571,11 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
         description: "The unresolved items were kept open so you can retry.",
       })
       setNotionConflictDialogOpen(true)
-      throw new Error("Some conflicts changed while you were reviewing them. Sync again, then retry those items.")
+      throw new Error("Notion could not apply some choices. Check the connection, then try again.")
+    }
+    if (newerLocalChangesQueued) {
+      toast.info("A newer local edit was saved and will sync next.")
+      window.setTimeout(() => requestNotionSync(false), 250)
     }
     if (localResolutions.length > 0 || notionResolutions.length > 0) {
       const syncedAt = Date.now()
@@ -577,7 +585,7 @@ export function useNotionSync({ events, sessions, allSubjects, syncEvents, syncS
     } else {
       setSyncStatus("idle")
     }
-  }, [notionConflicts, syncEvents, syncSessions])
+  }, [notionConflicts, requestNotionSync, syncEvents, syncSessions])
 
 
   return {

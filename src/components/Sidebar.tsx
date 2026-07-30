@@ -4,6 +4,7 @@ import {
   useCallback,
   useRef,
   useMemo,
+  useEffect,
   lazy,
   Suspense,
   type ReactNode,
@@ -19,6 +20,7 @@ import {
   CircleDot,
   FolderOpen,
   Home,
+  Library,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -157,6 +159,7 @@ interface SidebarProps {
     durationSeconds: number;
     projectId?: string;
     cycleNumber: number;
+    intent?: string;
   }) => Promise<StudySession>;
   onUpdatePomodoroSession: (
     id: string,
@@ -221,6 +224,11 @@ export const Sidebar = memo(function Sidebar({
   const [filterMode, setFilterMode] = useState<FilterMode>("active");
   const [isDragOver, setIsDragOver] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(() => Boolean(selectedId) && !homeSelected);
+
+  useEffect(() => {
+    if (selectedId && !homeSelected) setLibraryOpen(true);
+  }, [homeSelected, selectedId]);
 
   const dragCounter = useRef(0);
 
@@ -399,6 +407,7 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <aside
+      aria-label="Assessment navigation"
       className={cn(
         "relative flex h-full flex-col overflow-hidden rounded-lg border bg-card text-card-foreground transition-colors",
         isDragOver && "ring-2 ring-ring ring-inset",
@@ -459,6 +468,7 @@ export const Sidebar = memo(function Sidebar({
             className={isCollapsed ? undefined : "w-full"}
             size={isCollapsed ? "icon" : "sm"}
             title={isCollapsed ? "New Assessment" : undefined}
+            aria-label={isCollapsed ? "New assessment" : undefined}
           >
             <Plus />
             <CollapsibleInline show={!isCollapsed}>
@@ -476,10 +486,15 @@ export const Sidebar = memo(function Sidebar({
       >
         <Button
           variant={homeSelected ? "secondary" : "ghost"}
-          onClick={onSelectHome}
+          onClick={() => {
+            setLibraryOpen(false);
+            onSelectHome();
+          }}
           className={cn("w-full", !isCollapsed && "justify-start")}
           size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Today (H)" : undefined}
+          aria-label={isCollapsed ? "Today" : undefined}
+          aria-current={homeSelected ? "page" : undefined}
         >
           <Home />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
@@ -492,10 +507,15 @@ export const Sidebar = memo(function Sidebar({
 
         <Button
           variant={timetableSelected ? "secondary" : "ghost"}
-          onClick={onSelectTimetable}
+          onClick={() => {
+            setLibraryOpen(false);
+            onSelectTimetable();
+          }}
           className={cn("w-full", !isCollapsed && "justify-start")}
           size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Plan (T)" : undefined}
+          aria-label={isCollapsed ? "Plan" : undefined}
+          aria-current={timetableSelected ? "page" : undefined}
         >
           <CalendarIcon />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
@@ -504,11 +524,34 @@ export const Sidebar = memo(function Sidebar({
         </Button>
 
         <Button
+          variant={libraryOpen ? "secondary" : "ghost"}
+          onClick={() => setLibraryOpen((current) => !current)}
+          className={cn("w-full", !isCollapsed && "justify-start")}
+          size={isCollapsed ? "icon" : "default"}
+          title={isCollapsed ? "Library" : undefined}
+          aria-label={isCollapsed ? "Library" : undefined}
+          aria-expanded={libraryOpen}
+        >
+          <Library />
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
+            Library
+          </CollapsibleInline>
+          <CollapsibleInline show={!isCollapsed} className="ml-auto">
+            <Badge variant="secondary">{activeCount}</Badge>
+          </CollapsibleInline>
+        </Button>
+
+        <Button
           variant={analyticsSelected ? "secondary" : "ghost"}
-          onClick={onSelectAnalytics}
+          onClick={() => {
+            setLibraryOpen(false);
+            onSelectAnalytics();
+          }}
           className={cn("w-full", !isCollapsed && "justify-start")}
           size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Review (A)" : undefined}
+          aria-label={isCollapsed ? "Review" : undefined}
+          aria-current={analyticsSelected ? "page" : undefined}
         >
           <BarChart3 />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
@@ -516,6 +559,7 @@ export const Sidebar = memo(function Sidebar({
           </CollapsibleInline>
         </Button>
 
+        {libraryOpen && <>
         <div
           className={cn(
             "gap-1 rounded-md border bg-background p-1",
@@ -530,6 +574,8 @@ export const Sidebar = memo(function Sidebar({
               size={isCollapsed ? "icon-xs" : "xs"}
               className={isCollapsed ? undefined : "w-full"}
               title={isCollapsed ? label : undefined}
+              aria-label={isCollapsed ? label : undefined}
+              aria-pressed={filterMode === mode}
             >
               <Icon />
               <CollapsibleInline show={!isCollapsed}>{label}</CollapsibleInline>
@@ -568,10 +614,11 @@ export const Sidebar = memo(function Sidebar({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        </>}
       </div>
 
       {/* Virtualized project list */}
-      <ScrollArea
+      {libraryOpen ? <ScrollArea
         viewportRef={parentRef}
         className={cn(
           "min-h-0 w-full flex-1",
@@ -652,10 +699,10 @@ export const Sidebar = memo(function Sidebar({
           </div>
         </div>
       ) : null}
-      </ScrollArea>
+      </ScrollArea> : <div className="min-h-0 flex-1" />}
 
       {/* Bulk action bar */}
-      {bulkBarVisible &&
+      {libraryOpen && bulkBarVisible &&
         (onBulkArchive ?? onBulkUnarchive) &&
         onBulkFinish &&
         onBulkDelete && (

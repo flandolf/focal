@@ -10,6 +10,7 @@ import { FolderRow } from "./FolderRow"
 import { Breadcrumb } from "./Breadcrumb"
 import type { FileInfo, FileTag } from "@/lib/types"
 import type { SortKey } from "@/hooks/useProjectFiles"
+import { FILE_TAG_LABELS, FILE_TAGS } from "@/lib/fileMetadata"
 import { cn } from "@/lib/utils"
 
 export type ListItem =
@@ -143,14 +144,14 @@ export const FileTree = memo(function FileTree({
             : "Drag and drop files here, or select them from your computer."}
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={onAddFiles}>
+          <Button size="sm" onClick={onAddFiles}>
             <Plus />
-            Add Files
+            Add files
           </Button>
           {onCreateFolder && (
             <Button variant="outline" size="sm" onClick={onCreateFolder}>
               <FolderPlus />
-              New Folder
+              New folder
             </Button>
           )}
         </div>
@@ -193,6 +194,7 @@ export const FileTree = memo(function FileTree({
               size="icon-xs"
               onClick={() => setSelectedSubfolder("__root__")}
               aria-pressed={selectedSubfolder !== null}
+              aria-label="Folder view"
               title="Folder view"
             >
               <FolderOpen />
@@ -202,6 +204,7 @@ export const FileTree = memo(function FileTree({
               size="icon-xs"
               onClick={() => setSelectedSubfolder(null)}
               aria-pressed={selectedSubfolder === null}
+              aria-label="All files"
               title="All files"
             >
               <LayoutList />
@@ -241,12 +244,17 @@ export const FileTree = memo(function FileTree({
             search
           </span>
           {searchQuery && (
-            <Button variant="ghost" size="icon-sm" onClick={() => setSearchQuery("")}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear file search"
+            >
               <X />
             </Button>
           )}
           <div className="mx-0.5 h-4 w-px bg-border/40" />
-          {(["sac", "notes", "past-paper", "exam", "resource"] as FileTag[]).map((tag) => (
+          {FILE_TAGS.filter((tag) => tag !== "other").map((tag) => (
             <Button
               key={tag}
               variant={selectedTags.includes(tag) ? "secondary" : "ghost"}
@@ -257,9 +265,8 @@ export const FileTree = memo(function FileTree({
                   : [...selectedTags, tag]
               )}
               aria-pressed={selectedTags.includes(tag)}
-              className="capitalize"
             >
-              {tag}
+              {FILE_TAG_LABELS[tag]}
             </Button>
           ))}
           {selectedTags.length > 0 && (
@@ -318,15 +325,15 @@ export const FileTree = memo(function FileTree({
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-36 gap-1 p-1">
-              {(["sac", "notes", "past-paper", "exam", "resource", "other"] as FileTag[]).map((tag) => (
+              {FILE_TAGS.map((tag) => (
                 <Button
                   variant="ghost"
                   size="xs"
                   key={tag}
                   onClick={() => { void onBulkTag(tag); setShowBulkTagMenu(false) }}
-                  className="w-full justify-start capitalize"
+                  className="w-full justify-start"
                 >
-                  {tag}
+                  {FILE_TAG_LABELS[tag]}
                 </Button>
               ))}
             </PopoverContent>

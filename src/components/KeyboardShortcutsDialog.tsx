@@ -24,8 +24,8 @@ export function KeyboardShortcutsDialog({
       shortcuts: [
         { keys: [`${mod} K`], action: "Search and quick actions" },
         { keys: [`${mod} N`], action: "New assessment" },
-        { keys: [`${mod} ⇧ N`], action: "New calendar event" },
-        { keys: [`${mod} ⇧ S`], action: "New study session" },
+        { keys: [`${mod} ⇧ N`], action: "New event" },
+        { keys: [`${mod} ⇧ S`], action: "Plan study session" },
       ],
     },
     {

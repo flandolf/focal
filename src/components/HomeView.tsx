@@ -1,10 +1,15 @@
-import { useState, useCallback, useMemo, memo, Fragment } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  memo,
+  Fragment,
+} from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { format, isSameMonth, parseISO, differenceInDays } from "date-fns";
 import {
-  Plus,
-  Calendar,
   Clock,
   AlertCircle,
   CalendarPlus,
@@ -16,6 +21,11 @@ import {
   Check,
   Wand2,
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
+  Pin,
+  Play,
+  Settings2,
   Sparkles,
 } from "lucide-react";
 import {
@@ -26,6 +36,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   formatDeadline,
   getDeadlineTypeInfo,
@@ -40,6 +65,11 @@ import {
 import { TextEventPlanner } from "@/components/TextEventPlanner";
 import type { PrepBalanceItem } from "@/lib/planning";
 import { buildTodayOverview } from "@/features/home/todayOverview";
+import {
+  FOCUS_PRIORITIES_KEY,
+  getPriorityItems,
+  readFocusPriorities,
+} from "@/lib/studyPriority";
 import type { TimetableConfig } from "@/lib/settings";
 import type {
   CalendarEvent,
@@ -50,9 +80,6 @@ import type {
 } from "@/lib/types";
 import { CalendarGrid } from "@/components/home/CalendarGrid";
 import { DayDetail } from "@/components/home/DayDetail";
-import { MonthBrief } from "@/components/home/MonthBrief";
-import { PrepBalance } from "@/components/home/PrepBalance";
-import { QuickLinks } from "@/components/home/QuickLinks";
 import { StudyPriorities } from "@/components/home/StudyPriorities";
 import { RecentActivity } from "@/components/home/RecentActivity";
 
@@ -103,9 +130,11 @@ interface HomeViewProps {
     newEndTime?: string,
   ) => void;
   onOpenAiAssistant?: () => void;
+  onStartFocus: (item: PriorityItem) => void;
 }
 
 export const HomeView = memo(function HomeView({
+  // ponytail: Keep the month calendar as the primary surface; decisions orbit it.
   projects,
   sessions,
   events,
@@ -114,7 +143,7 @@ export const HomeView = memo(function HomeView({
   onSelectEvent,
   onNewSession,
   onNewEvent,
-  onNewProject,
+  onNewProject: _onNewProject,
   onCreateEvents,
   onCreateStudySessions,
   onDeleteCalendarItems,
@@ -125,7 +154,9 @@ export const HomeView = memo(function HomeView({
   onMoveEvent,
   timetableConfig,
   onOpenAiAssistant,
+  onStartFocus,
 }: HomeViewProps) {
+  const [clockNow, setClockNow] = useState(() => new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(() =>
     getLocalDateValue(new Date()),
@@ -143,6 +174,21 @@ export const HomeView = memo(function HomeView({
     "Paste a notice, rough plan, or teacher message. Review drafts before adding them.",
   );
   const [textPlannerInitialText, setTextPlannerInitialText] = useState("");
+  const [focusPriorities, setFocusPriorities] = useState(readFocusPriorities);
+
+  useEffect(() => {
+    const refreshNow = () => setClockNow(new Date());
+    const timer = window.setInterval(refreshNow, 60_000);
+    window.addEventListener("focus", refreshNow);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshNow);
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(FOCUS_PRIORITIES_KEY, JSON.stringify(focusPriorities));
+  }, [focusPriorities]);
 
   const selectedCalendarDate = selectedDate
     ? parseISO(selectedDate)
@@ -155,7 +201,6 @@ export const HomeView = memo(function HomeView({
     dueThisWeek,
     completedSessions,
     totalStudyHours,
-    priorityItems,
     planningSubjects,
     recentActivity,
     topSubjects,
@@ -166,9 +211,75 @@ export const HomeView = memo(function HomeView({
     eventsByDate,
     now,
   } = useMemo(
-    () => buildTodayOverview(projects, sessions, events),
-    [events, projects, sessions],
+    () => buildTodayOverview(projects, sessions, events, clockNow),
+    [clockNow, events, projects, sessions],
   );
+
+  const prioritySubjectIds = useMemo(() => {
+    const ids = new Set<string>();
+    activeProjects.forEach((project) => {
+      if (project.subjectId) ids.add(project.subjectId);
+    });
+    events.forEach((event) => {
+      if (!event.isFinished && event.subjectId) ids.add(event.subjectId);
+    });
+    return ids;
+  }, [activeProjects, events]);
+  const prioritySubjects = useMemo(
+    () => planningSubjects.filter((subject) => prioritySubjectIds.has(subject.id)),
+    [planningSubjects, prioritySubjectIds],
+  );
+  const effectiveSubjectOrder = useMemo(() => {
+    const available = new Set(prioritySubjects.map((subject) => subject.id));
+    const saved = focusPriorities.subjectOrder.filter((subjectId) => available.has(subjectId));
+    return [
+      ...saved,
+      ...prioritySubjects.map((subject) => subject.id).filter((subjectId) => !saved.includes(subjectId)),
+    ];
+  }, [focusPriorities.subjectOrder, prioritySubjects]);
+  const priorityItems = useMemo(
+    () => getPriorityItems({
+      projects,
+      sessions,
+      events,
+      now: now.getTime(),
+      subjectOrder: effectiveSubjectOrder,
+      pinnedEventIds: focusPriorities.pinnedEventIds,
+    }),
+    [effectiveSubjectOrder, events, focusPriorities.pinnedEventIds, now, projects, sessions],
+  );
+  const nextFocus = priorityItems[0];
+  const nextFocusSubject = nextFocus?.subjectIds[0]
+    ? getSubjectById(nextFocus.subjectIds[0])
+    : undefined;
+  const pinnableEvents = useMemo(() => {
+    const cutoff = now.getTime() + 30 * 24 * 60 * 60 * 1000;
+    return events
+      .filter((event) => {
+        const start = parseISO(event.startTime).getTime();
+        return !event.isFinished && start >= now.getTime() && start <= cutoff;
+      })
+      .sort((a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime())
+      .slice(0, 8);
+  }, [events, now]);
+
+  const movePrioritySubject = (subjectId: string, direction: -1 | 1) => {
+    const index = effectiveSubjectOrder.indexOf(subjectId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= effectiveSubjectOrder.length) return;
+    const next = [...effectiveSubjectOrder];
+    [next[index], next[target]] = [next[target], next[index]];
+    setFocusPriorities((current) => ({ ...current, subjectOrder: next }));
+  };
+
+  const togglePinnedEvent = (eventId: string) => {
+    setFocusPriorities((current) => ({
+      ...current,
+      pinnedEventIds: current.pinnedEventIds.includes(eventId)
+        ? current.pinnedEventIds.filter((id) => id !== eventId)
+        : [...current.pinnedEventIds, eventId],
+    }));
+  };
 
   const selectedEventIdSet = useMemo(
     () => new Set(selectedEventIds),
@@ -187,7 +298,7 @@ export const HomeView = memo(function HomeView({
   const selectedDayEvents = selectedDate
     ? (eventsByDate[selectedDate] ?? [])
     : [];
-  const todayDateKey = getLocalDateValue(new Date());
+  const todayDateKey = getLocalDateValue(now);
   const headingDateKey = selectedDate ?? todayDateKey;
   const headingDate = parseISO(headingDateKey);
   const selectedStudyHours = (sessionsByDate[headingDateKey] ?? [])
@@ -431,7 +542,7 @@ export const HomeView = memo(function HomeView({
         };
       }),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
-  const monthBriefPreview = monthBriefItems.slice(0, 4);
+  const _monthBriefPreview = monthBriefItems.slice(0, 4);
   const monthStudyMinutes = sessions
     .filter(
       (session) =>
@@ -442,11 +553,11 @@ export const HomeView = memo(function HomeView({
       const minutes = getSessionEffectiveMinutes(session);
       return total + minutes;
     }, 0);
-  const monthStudyHours = Math.round((monthStudyMinutes / 60) * 10) / 10;
-  const monthBusyDays = new Set(
+  const _monthStudyHours = Math.round((monthStudyMinutes / 60) * 10) / 10;
+  const _monthBusyDays = new Set(
     monthBriefItems.map((item) => format(item.date, "yyyy-MM-dd")),
   ).size;
-  const monthAssessments = monthBriefItems.filter(
+  const _monthAssessments = monthBriefItems.filter(
     (item) => item.kind === "assessment",
   ).length;
   const prepBalanceBySubject = new Map<string, PrepBalanceItem>();
@@ -570,11 +681,11 @@ export const HomeView = memo(function HomeView({
       return a.shortCode.localeCompare(b.shortCode);
     })
     .slice(0, 4);
-  const prepBalanceNeedsAttention = prepBalanceItems.filter(
+  const _prepBalanceNeedsAttention = prepBalanceItems.filter(
     (item) => item.plannedMinutes < item.assessmentCount * 90,
   ).length;
 
-  const handleMonthBriefSelect = (item: MonthBriefItem) => {
+  const _handleMonthBriefSelect = (item: MonthBriefItem) => {
     if (item.projectId) {
       onSelectProject(item.projectId);
       return;
@@ -592,7 +703,7 @@ export const HomeView = memo(function HomeView({
     clearEventSelection();
   };
 
-  const handlePrepBalanceSelect = (item: PrepBalanceItem) => {
+  const _handlePrepBalanceSelect = (item: PrepBalanceItem) => {
     if (item.projectId) {
       onSelectProject(item.projectId);
       return;
@@ -800,53 +911,172 @@ export const HomeView = memo(function HomeView({
                 );
               })()}
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-muted-foreground">
+                  <Sparkles />
+                  Tools
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
                 {onOpenAiAssistant && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onOpenAiAssistant}
-                    className="text-muted-foreground"
-                  >
+                  <DropdownMenuItem onSelect={onOpenAiAssistant}>
                     <Sparkles />
                     AI Assistant
-                  </Button>
+                  </DropdownMenuItem>
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleOpenTextPlanner}
-                  className="text-muted-foreground"
-                >
+                <DropdownMenuItem onSelect={handleOpenTextPlanner}>
                   <Wand2 />
-                  Text to Events
-                </Button>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="sm" onClick={onNewProject}>
-                  <Plus />
-                  Assessment
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onNewEvent(selectedCalendarDate)}
-                >
-                  <CalendarPlus />
-                  Event
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => onNewSession(selectedCalendarDate)}
-                >
-                  <Calendar />
-                  Plan Session
-                </Button>
-              </div>
-            </div>
+                  Text to events
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
+
+          <Card size="sm" className="mb-4 border-primary/20 bg-primary/[0.035]">
+            <CardContent className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Play className="size-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Next focus</p>
+                  {nextFocus ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="mt-0.5 block h-auto max-w-full justify-start truncate p-0 text-left text-sm font-medium"
+                        onClick={() => handlePrioritySelect(nextFocus)}
+                      >
+                        {nextFocus.title}
+                      </Button>
+                      <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+                        {nextFocus.reason}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      Add a due date or plan a session to create your queue.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {nextFocusSubject && (
+                  <span
+                    className="rounded-md px-2 py-1 text-sm font-medium"
+                    style={{
+                      backgroundColor: `${nextFocusSubject.color}18`,
+                      color: nextFocusSubject.color,
+                    }}
+                  >
+                    {nextFocusSubject.shortCode}
+                  </span>
+                )}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Settings2 />
+                      Priorities
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-[min(26rem,calc(100vw-2rem))] p-3">
+                    <PopoverHeader>
+                      <PopoverTitle>Focus priorities</PopoverTitle>
+                      <PopoverDescription>
+                        Ranked subjects and pinned events influence the next-focus queue; urgent work still stays visible.
+                      </PopoverDescription>
+                    </PopoverHeader>
+                    <div className="mt-2 space-y-4">
+                      <section aria-labelledby="priority-subjects-heading">
+                        <h3 id="priority-subjects-heading" className="mb-2 text-sm font-semibold">
+                          Subjects
+                        </h3>
+                        {effectiveSubjectOrder.length > 0 ? (
+                          <div className="space-y-1">
+                            {effectiveSubjectOrder.map((subjectId, index) => {
+                              const subject = prioritySubjects.find((item) => item.id === subjectId);
+                              if (!subject) return null;
+                              return (
+                                <div key={subjectId} className="flex items-center gap-2 rounded-md border px-2 py-1.5">
+                                  <span className="w-5 text-center text-sm font-semibold tabular-nums text-muted-foreground">
+                                    {index + 1}
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate text-sm">{subject.name}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    disabled={index === 0}
+                                    onClick={() => movePrioritySubject(subjectId, -1)}
+                                    aria-label={`Move ${subject.name} up`}
+                                  >
+                                    <ArrowUp />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    disabled={index === effectiveSubjectOrder.length - 1}
+                                    onClick={() => movePrioritySubject(subjectId, 1)}
+                                    aria-label={`Move ${subject.name} down`}
+                                  >
+                                    <ArrowDown />
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No active subjects yet.</p>
+                        )}
+                      </section>
+                      <section aria-labelledby="priority-events-heading">
+                        <h3 id="priority-events-heading" className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                          <Pin className="size-4" />
+                          Pinned events
+                        </h3>
+                        {pinnableEvents.length > 0 ? (
+                          <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                            {pinnableEvents.map((event) => {
+                              const checked = focusPriorities.pinnedEventIds.includes(event.id);
+                              return (
+                                <label key={event.id} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={() => togglePinnedEvent(event.id)}
+                                    aria-label={`Prioritise ${event.title}`}
+                                    className="mt-0.5"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium">{event.title}</span>
+                                    <span className="block text-sm text-muted-foreground">
+                                      {format(parseISO(event.startTime), "EEE d MMM")}
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No events in the next 30 days.</p>
+                        )}
+                      </section>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <Button
+                  size="sm"
+                  disabled={!nextFocus || nextFocus.subjectIds.length === 0}
+                  onClick={() => nextFocus && onStartFocus(nextFocus)}
+                >
+                  <Play />
+                  Start focus
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           {overdueProjects.length > 0 && (
             <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2">
@@ -902,61 +1132,42 @@ export const HomeView = memo(function HomeView({
                   onSetCalendarItemsCompleted={onSetCalendarItemsCompleted}
                 />
 
-                {selectedDate && (
-                  <DayDetail
-                    selectedDate={selectedDate}
-                    deadlines={selectedDayDeadlines}
-                    sessions={selectedDaySessions}
-                    events={events}
-                    projects={projects}
-                    calendarSelectionMode={calendarSelectionMode}
-                    selectedEventIdSet={selectedEventIdSet}
-                    selectedSessionIdSet={selectedSessionIdSet}
-                    onClose={() => {
-                      setSelectedDate(null);
-                      clearEventSelection();
-                    }}
-                    onToggleSelectionMode={() => setCalendarSelectionMode(true)}
-                    onClearSelection={clearEventSelection}
-                    onSelectAll={handleSelectAllCalendarItems}
-                    onToggleEventSelection={handleToggleEventSelection}
-                    onToggleSessionSelection={handleToggleSessionSelection}
-                    onSelectProject={onSelectProject}
-                    onSelectSession={onSelectSession}
-                    onSelectEvent={onSelectEvent}
-                    onDeleteCalendarItems={onDeleteCalendarItems}
-                    onSetCalendarItemsCompleted={onSetCalendarItemsCompleted}
-                  />
-                )}
-
-                <MonthBrief
-                  currentMonth={currentMonth}
-                  items={monthBriefItems}
-                  previewItems={monthBriefPreview}
-                  monthAssessments={monthAssessments}
-                  monthStudyHours={monthStudyHours}
-                  monthBusyDays={monthBusyDays}
-                  onSelectItem={handleMonthBriefSelect}
-                  onPlanSession={() => onNewSession(selectedCalendarDate)}
-                />
-
-                <PrepBalance
-                  items={prepBalanceItems}
-                  needsAttention={prepBalanceNeedsAttention}
-                  onSelectItem={handlePrepBalanceSelect}
-                  onPlanSession={() => onNewSession(selectedCalendarDate)}
-                />
                 </div>
               </CardContent>
             </Card>
 
             <div className="space-y-4">
-              <QuickLinks />
+              {selectedDate && (
+                <DayDetail
+                  selectedDate={selectedDate}
+                  deadlines={selectedDayDeadlines}
+                  sessions={selectedDaySessions}
+                  events={events}
+                  projects={projects}
+                  calendarSelectionMode={calendarSelectionMode}
+                  selectedEventIdSet={selectedEventIdSet}
+                  selectedSessionIdSet={selectedSessionIdSet}
+                  onClose={() => {
+                    setSelectedDate(null);
+                    clearEventSelection();
+                  }}
+                  onToggleSelectionMode={() => setCalendarSelectionMode(true)}
+                  onClearSelection={clearEventSelection}
+                  onSelectAll={handleSelectAllCalendarItems}
+                  onToggleEventSelection={handleToggleEventSelection}
+                  onToggleSessionSelection={handleToggleSessionSelection}
+                  onSelectProject={onSelectProject}
+                  onSelectSession={onSelectSession}
+                  onSelectEvent={onSelectEvent}
+                  onDeleteCalendarItems={onDeleteCalendarItems}
+                  onSetCalendarItemsCompleted={onSetCalendarItemsCompleted}
+                />
+              )}
 
               {timetableConfig?.enabled &&
                 (() => {
                   const dayLabel = getDayLabelForDate(
-                    new Date(),
+                    now,
                     timetableConfig.day1Starts,
                     timetableConfig.holidays,
                   );
@@ -969,7 +1180,7 @@ export const HomeView = memo(function HomeView({
                   const periods = entries
                     .flatMap((e) => e.periods)
                     .sort((a, b) => a.startTime.localeCompare(b.startTime));
-                  const periodInfo = getCurrentPeriodInfo(periods);
+                  const periodInfo = getCurrentPeriodInfo(periods, now);
                   return (
                     <div className="rounded-lg bg-background p-3 ring-1 ring-border">
                       <h3 className="mb-2.5 flex items-center gap-1.5 text-sm font-semibold">
@@ -1092,6 +1303,8 @@ export const HomeView = memo(function HomeView({
                   );
                 })()}
 
+              {/* ponytail: Today stays calendar-first; deeper activity and analytics live in Review. */}
+              <div hidden aria-hidden="true">
               <StudyPriorities
                 items={priorityItems}
                 isOpen={prioritiesOpen}
@@ -1338,6 +1551,7 @@ export const HomeView = memo(function HomeView({
                     </div>
                   </div>
                 )}
+              </div>
               </div>
             </div>
           </div>

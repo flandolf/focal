@@ -87,6 +87,7 @@ import {
   type CalendarEvent,
   type ConfidenceScore,
   type EventType,
+  type PriorityItem,
   type StudySession,
   type StudySessionStatus,
 } from "@/lib/types";
@@ -584,23 +585,31 @@ function App() {
       icon?: string;
       subjectId?: string;
       unit?: "1" | "2" | "3" | "4";
+      deadline?: string;
+      deadlineType?: "sac" | "exam" | "assignment";
     }) => {
       try {
         const project = await addProject(
           data.name,
           data.description,
           data.icon,
-          undefined,
+          data.deadline,
           data.subjectId,
           data.unit,
+          data.deadlineType,
         );
         navigation.selectProject(project.id);
-        toast.success(`Assessment "${data.name}" created`);
+        toast.success(`Assessment "${data.name}" created`, {
+          action: {
+            label: "Add files",
+            onClick: () => void handleAddFileFromSidebar(project.id),
+          },
+        });
       } catch (e) {
         toast.error(`Failed to create assessment: ${String(e)}`);
       }
     },
-    [addProject, navigation],
+    [addProject, handleAddFileFromSidebar, navigation],
   );
 
   const handleUpdateProject = useCallback(
@@ -612,6 +621,8 @@ function App() {
         icon?: string;
         subjectId?: string;
         unit?: "1" | "2" | "3" | "4";
+        deadline?: string;
+        deadlineType?: "sac" | "exam" | "assignment";
         isFavorite?: boolean;
         isArchived?: boolean;
         isFinished?: boolean;
@@ -772,6 +783,7 @@ function App() {
       durationSeconds: number;
       projectId?: string;
       cycleNumber: number;
+      intent?: string;
     }) => {
       try {
         const start = new Date();
@@ -780,12 +792,15 @@ function App() {
         const projectName = data.projectId
           ? projects.find((p) => p.id === data.projectId)?.name
           : undefined;
+        let focusIntent = data.intent?.trim();
+        if (focusIntent?.length === 0) focusIntent = undefined;
+        focusIntent ??= getPomodoroTitle(data.subjectIds, projectName);
         const blockStart = start.toISOString();
         const blockEnd = end.toISOString();
         const session = await addSession({
           projectId: data.projectId,
           subjectIds: data.subjectIds,
-          title: getPomodoroTitle(data.subjectIds, projectName),
+          title: focusIntent,
           description: getPomodoroDescription(durationMinutes),
           schedule: { blocks: [{ start: blockStart, end: blockEnd }] },
           execution: {
@@ -824,7 +839,9 @@ function App() {
           const projectName = session.projectId
             ? projects.find((p) => p.id === session.projectId)?.name
             : undefined;
-          effectiveUpdates.title = getPomodoroTitle(subjectIds, projectName);
+          if (updates.subjectIds && session.title === getPomodoroTitle(session.subjectIds, projectName)) {
+            effectiveUpdates.title = getPomodoroTitle(subjectIds, projectName);
+          }
 
           if (updates.execution?.state === "completed") {
             const durationMs = updates.execution.intervals.reduce((total, interval) => {
@@ -1857,6 +1874,20 @@ function App() {
     setSidebarCollapsed((prev) => !prev);
   }, []);
 
+  const handleStartFocus = useCallback((item: PriorityItem) => {
+    const projectLabel = item.projectId
+      ? projects.find((project) => project.id === item.projectId)?.name
+      : undefined;
+    window.dispatchEvent(new CustomEvent("focal-focus-request", {
+      detail: {
+        subjectIds: item.subjectIds,
+        projectId: item.projectId,
+        projectLabel,
+        intent: item.title,
+      },
+    }));
+  }, [projects]);
+
   const contentKey = settingsView
     ? "settings"
     : analyticsView
@@ -1879,23 +1910,26 @@ function App() {
         <ErrorBoundary>
           <div className="relative flex h-full flex-col overflow-hidden text-foreground">
             <TitleBar
+              onNewAssessment={handleNewProject}
+              onNewEvent={() => handleOpenNewEvent()}
+              onNewSession={() => handleOpenNewSession()}
               onSearch={() => setSearchOpen(true)}
               onSettings={navigation.openSettings}
               onHelp={() => setShortcutsOpen(true)}
             >
-              <NotionSyncIndicator
+              {!settingsView && <NotionSyncIndicator
                 status={syncStatus}
                 lastSyncTime={lastSyncTime}
                 onClick={() => requestNotionSync(true)}
                 disabled={syncStatus === "syncing"}
-              />
-              <SupabaseSyncIndicator
+              />}
+              {!settingsView && <SupabaseSyncIndicator
                 sync={supabaseSync}
                 signedIn={Boolean(supabaseAuth.user)}
-              />
+              />}
             </TitleBar>
             <div className="relative z-10 flex min-h-0 flex-1 gap-2 p-2 min-[1200px]:gap-3 min-[1200px]:px-3 min-[1200px]:pb-3">
-              <motion.div
+              {!settingsView && <motion.div
                 layout
                 className="min-h-0 h-full shrink-0"
                 style={{
@@ -1945,7 +1979,7 @@ function App() {
                   onBulkFinish={handleBulkFinish}
                   onBulkDelete={handleBulkDelete}
                 />
-              </motion.div>
+              </motion.div>}
               <motion.main
                 layout
                 transition={layoutTransition}
@@ -2029,14 +2063,25 @@ function App() {
                       </Suspense>
                     ) : timetableView ? (
                       <Suspense fallback={<ViewFallback label="timetable" />}>
-                        <TimetableView customSubjects={customSubjects} />
+                        <TimetableView
+                          customSubjects={customSubjects}
+                          projects={projects}
+                          sessions={sessions}
+                          events={events}
+                          onNewSession={() => handleOpenNewSession()}
+                          onSelectProject={handleSelectProject}
+                          onStartFocus={handleStartFocus}
+                        />
                       </Suspense>
                     ) : analyticsView ? (
                       <Suspense fallback={<ViewFallback label="analytics" />}>
                         <AnalyticsView
                           sessions={sessions}
                           projects={projects}
+                          events={events}
                           onNewSession={handleOpenNewSession}
+                          onSelectProject={handleSelectProject}
+                          onStartFocus={handleStartFocus}
                         />
                       </Suspense>
                     ) : homeSelected ? (
@@ -2063,6 +2108,7 @@ function App() {
                         onGoTimetable={handleSelectTimetable}
                         timetableConfig={timetableConfig}
                         onOpenAiAssistant={handleOpenAiAssistant}
+                        onStartFocus={handleStartFocus}
                         />
                       </Suspense>
                     ) : selectedProject ? (
@@ -2091,6 +2137,16 @@ function App() {
                         onSaveAsTemplate={() =>
                           handleOpenTemplateDialog(selectedProject.id)
                         }
+                        onStartFocus={() => handleStartFocus({
+                          id: `project-${selectedProject.id}`,
+                          kind: "plan-prep",
+                          title: selectedProject.checklist?.find((item) => !item.completed)?.text ?? selectedProject.name,
+                          reason: "Selected assessment",
+                          urgency: "medium",
+                          subjectIds: selectedProject.subjectId ? [selectedProject.subjectId] : [],
+                          projectId: selectedProject.id,
+                          action: "Start focus",
+                        })}
                         />
                       </Suspense>
                     ) : (

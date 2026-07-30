@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   RefreshCw,
   Pencil,
+  CalendarPlus,
+  ListChecks,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +27,7 @@ import {
   isOverdue,
   getSubjectById,
   getDeadlineTypeInfo,
+  getSessionEffectiveMinutes,
 } from "@/lib/utils";
 import type {
   Project,
@@ -44,6 +48,8 @@ interface ProjectHeaderProps {
   hasPendingChanges?: boolean;
   onExport?: () => void;
   onSaveAsTemplate?: () => void;
+  onPlanSession?: () => void;
+  onStartFocus?: () => void;
 }
 
 export function ProjectHeader({
@@ -59,10 +65,18 @@ export function ProjectHeader({
   hasPendingChanges,
   onExport,
   onSaveAsTemplate,
+  onPlanSession,
+  onStartFocus,
 }: ProjectHeaderProps) {
   const subject = getSubjectById(project.subjectId);
   const deadlineInfo = getDeadlineTypeInfo(project.deadlineType);
   const projectIcon = getProjectIcon(project.subjectId);
+  const checklist = project.checklist ?? [];
+  const completedTasks = checklist.filter((item) => item.completed).length;
+  const nextTask = checklist.find((item) => !item.completed)?.text;
+  const plannedMinutes = sessions
+    .filter((session) => session.status === "planned" && new Date(session.startTime) >= new Date())
+    .reduce((total, session) => total + getSessionEffectiveMinutes(session), 0);
   return (
     <div className="border-b">
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 min-[1200px]:px-5">
@@ -258,7 +272,7 @@ export function ProjectHeader({
                 onClick={onOpenFolder}
               >
                 <FolderUp />
-                <span className="max-[950px]:hidden">Open</span>
+                <span className="max-[950px]:hidden">Open folder</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Open in Finder</TooltipContent>
@@ -266,8 +280,41 @@ export function ProjectHeader({
 
           <Button size="sm" onClick={onAddFiles}>
             <Plus />
-            <span>Add</span>
+            <span>Add files</span>
           </Button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-border/60 px-4 py-2.5 min-[1200px]:px-5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <ListChecks className="size-4" />
+            {checklist.length > 0 ? (
+              <><span className="font-medium text-foreground">{completedTasks}/{checklist.length}</span> tasks ready</>
+            ) : (
+              <span className="font-medium text-foreground">No tasks yet</span>
+            )}
+          </span>
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Clock className="size-4" />
+            <span className="font-medium text-foreground">{Math.round(plannedMinutes / 6) / 10}h</span> planned
+          </span>
+          <span className="min-w-0 truncate text-muted-foreground">
+            Next action: <span className="font-medium text-foreground">{nextTask ?? "Define the first task"}</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {onPlanSession && (
+            <Button variant="outline" size="sm" onClick={onPlanSession}>
+              <CalendarPlus />
+              Plan
+            </Button>
+          )}
+          {onStartFocus && (
+            <Button size="sm" onClick={onStartFocus} disabled={!project.subjectId}>
+              <Play />
+              Start focus
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -120,7 +120,7 @@ export function DayDetail({
           <p className="text-sm font-semibold">
             {format(parseISO(selectedDate), "EEEE")}
           </p>
-          <p className="mt-0.5 text-caption text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {format(parseISO(selectedDate), "MMMM d")}
           </p>
         </div>
@@ -129,7 +129,6 @@ export function DayDetail({
             <Button
               variant={calendarSelectionMode ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 rounded-lg px-2 text-xs"
               onClick={() => {
                 if (calendarSelectionMode) {
                   onClearSelection()
@@ -143,8 +142,7 @@ export function DayDetail({
           )}
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 w-7 rounded-lg p-0"
+            size="icon-sm"
             onClick={onClose}
             aria-label="Close selected day"
           >
@@ -155,20 +153,20 @@ export function DayDetail({
       <div className="mb-3 grid grid-cols-3 gap-1.5 text-center">
         <div className="rounded-lg bg-background/42 px-2 py-1.5">
           <p className="text-xs font-semibold tabular-nums">{deadlines.length}</p>
-          <p className="text-micro leading-3 text-muted-foreground">due</p>
+          <p className="text-xs text-muted-foreground">due</p>
         </div>
         <div className="rounded-lg bg-background/42 px-2 py-1.5">
           <p className="text-xs font-semibold tabular-nums">{dayEvents.length}</p>
-          <p className="text-micro leading-3 text-muted-foreground">events</p>
+          <p className="text-xs text-muted-foreground">events</p>
         </div>
         <div className="rounded-lg bg-background/42 px-2 py-1.5">
           <p className="text-xs font-semibold tabular-nums">{sessions.length}</p>
-          <p className="text-micro leading-3 text-muted-foreground">sessions</p>
+          <p className="text-xs text-muted-foreground">sessions</p>
         </div>
       </div>
       {calendarSelectionMode && (
         <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/8 px-2.5 py-2">
-          <p className="text-micro font-medium text-primary">
+          <p className="text-xs font-medium text-primary">
             Pick items below, or select the whole day.
           </p>
           <Button variant="ghost" size="xs" onClick={onSelectAll}>

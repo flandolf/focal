@@ -9,8 +9,10 @@ import {
   Clock3,
   MapPin,
   Pencil,
+  Play,
   Plus,
   Settings2,
+  Target,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,15 +35,85 @@ import {
   isTimetableBreakLabel,
   timetableTimeToMinutes,
 } from "@/lib/timetable"
-import type { Subject, TimetableConfig, TimetableDayLabel, TimetablePeriod } from "@/lib/types"
+import type {
+  CalendarEvent,
+  PriorityItem,
+  Project,
+  StudySession,
+  Subject,
+  TimetableConfig,
+  TimetableDayLabel,
+  TimetablePeriod,
+} from "@/lib/types"
 import { VCE_SUBJECTS } from "@/lib/types"
 import { cn, formatTime } from "@/lib/utils"
+import { getPriorityItems, readFocusPriorities } from "@/lib/studyPriority"
 
 const DAYS_PER_BLOCK = 5
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 
 interface TimetableViewProps {
   customSubjects: Subject[]
+  projects: Project[]
+  sessions: StudySession[]
+  events: CalendarEvent[]
+  onNewSession: () => void
+  onSelectProject: (projectId: string) => void
+  onStartFocus: (item: PriorityItem) => void
+}
+
+function PlanningQueue({
+  items,
+  onNewSession,
+  onSelectProject,
+  onStartFocus,
+}: {
+  items: PriorityItem[]
+  onNewSession: () => void
+  onSelectProject: (projectId: string) => void
+  onStartFocus: (item: PriorityItem) => void
+}) {
+  return (
+    <Card size="sm" className="mt-3">
+      <CardHeader className="border-b px-3 py-2.5">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Target className="size-4 text-primary" />
+            Unscheduled next actions
+          </CardTitle>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Turn the priority queue into study blocks before the week fills up.
+          </p>
+        </div>
+        <CardAction>
+          <Button type="button" size="sm" onClick={onNewSession}>
+            <Plus />
+            Plan session
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="grid gap-2 p-3 min-[1050px]:grid-cols-2 min-[1450px]:grid-cols-4">
+        {items.length > 0 ? items.map((item) => (
+          <div key={item.id} className="flex min-w-0 items-center gap-2 rounded-lg border bg-background px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{item.title}</p>
+              <p className="truncate text-sm text-muted-foreground">{item.reason}</p>
+            </div>
+            {item.projectId && (
+              <Button type="button" variant="ghost" size="icon-sm" onClick={() => onSelectProject(item.projectId!)} aria-label={`Open ${item.title}`}>
+                <ChevronRight />
+              </Button>
+            )}
+            <Button type="button" variant="outline" size="icon-sm" disabled={item.subjectIds.length === 0} onClick={() => onStartFocus(item)} aria-label={`Start focus for ${item.title}`}>
+              <Play />
+            </Button>
+          </div>
+        )) : (
+          <p className="text-sm text-muted-foreground">No unscheduled work needs attention.</p>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 function dayForDate(config: TimetableConfig, date: Date): TimetableDayLabel | null {
@@ -200,12 +272,32 @@ function DayCard({
   )
 }
 
-export const TimetableView = memo(function TimetableView({ customSubjects }: TimetableViewProps) {
+export const TimetableView = memo(function TimetableView({
+  customSubjects,
+  projects,
+  sessions,
+  events,
+  onNewSession,
+  onSelectProject,
+  onStartFocus,
+}: TimetableViewProps) {
   const [config, setConfig] = useState<TimetableConfig>(getTimetableConfig)
   const [now, setNow] = useState(() => new Date())
   const [selectedDay, setSelectedDay] = useState<TimetableDayLabel>(() => dayForDate(getTimetableConfig(), new Date()) ?? 1)
   const [managerOpen, setManagerOpen] = useState(false)
   const [editingDay, setEditingDay] = useState<TimetableDayLabel>(selectedDay)
+  const focusPriorities = useMemo(readFocusPriorities, [])
+  const planningItems = useMemo(
+    () => getPriorityItems({
+      projects,
+      sessions,
+      events,
+      now: now.getTime(),
+      subjectOrder: focusPriorities.subjectOrder,
+      pinnedEventIds: focusPriorities.pinnedEventIds,
+    }).filter((item) => item.kind !== "planned-session").slice(0, 4),
+    [events, focusPriorities.pinnedEventIds, focusPriorities.subjectOrder, now, projects, sessions],
+  )
 
   useEffect(() => {
     const refresh = () => setConfig(getTimetableConfig())
@@ -274,8 +366,14 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
 
   if (config.entries.length === 0) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center border bg-background p-5 min-[1200px]:p-8">
-        <div className="w-full max-w-xl rounded-xl border bg-card p-7 text-center shadow-sm min-[1200px]:p-9">
+      <ScrollArea className="h-full border bg-background">
+        <div className="p-5 min-[1200px]:p-8">
+          <div className="mx-auto max-w-6xl">
+            <h1 className="text-xl font-semibold tracking-tight">Plan</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Schedule the work that matters, then fit it around school.</p>
+            <PlanningQueue items={planningItems} onNewSession={onNewSession} onSelectProject={onSelectProject} onStartFocus={onStartFocus} />
+          </div>
+        <div className="mx-auto mt-5 w-full max-w-xl rounded-xl border bg-card p-7 text-center shadow-sm min-[1200px]:p-9">
           <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <CalendarClock className="h-5 w-5" />
           </span>
@@ -289,7 +387,8 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
           </Button>
         </div>
         <TimetableManager open={managerOpen} onOpenChange={setManagerOpen} customSubjects={customSubjects} initialDay={editingDay} />
-      </div>
+        </div>
+      </ScrollArea>
     )
   }
 
@@ -300,7 +399,8 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
-              <h1 className="text-lg font-semibold tracking-tight">Timetable</h1>
+              <h1 className="text-lg font-semibold tracking-tight">Plan</h1>
+              <Badge variant="outline">Timetable</Badge>
               {!config.enabled && <Badge variant="outline">Hidden from Today</Badge>}
             </div>
             <p className="mt-1 text-caption text-muted-foreground">
@@ -315,6 +415,8 @@ export const TimetableView = memo(function TimetableView({ customSubjects }: Tim
             </Button>
           </div>
         </div>
+
+        <PlanningQueue items={planningItems} onNewSession={onNewSession} onSelectProject={onSelectProject} onStartFocus={onStartFocus} />
 
         <div className="mt-3 grid gap-2 min-[920px]:grid-cols-[minmax(0,1fr)_auto] min-[920px]:items-center">
           <div className="min-w-0 rounded-lg border bg-muted/25 px-3 py-2.5">

@@ -1,7 +1,26 @@
 import { useCallback } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { platform } from "@tauri-apps/plugin-os"
-import { CircleHelp, Minus, Plus, Search, Settings, X } from "lucide-react"
+import {
+  CalendarPlus,
+  ChevronDown,
+  CircleHelp,
+  Clock3,
+  ClipboardList,
+  Minus,
+  Plus,
+  Search,
+  Settings,
+  X,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const IS_MACOS = (() => {
@@ -17,6 +36,9 @@ const SETTINGS_SHORTCUT = IS_MACOS ? "⌘," : "Ctrl ,"
 const noop = () => { /* no-op */ }
 
 interface TitleBarProps {
+  onNewAssessment?: () => void
+  onNewEvent?: () => void
+  onNewSession?: () => void
   onSearch?: () => void
   onSettings?: () => void
   onHelp?: () => void
@@ -91,12 +113,18 @@ function TrafficLights({
 }
 
 function AppActions({
+  onNewAssessment,
+  onNewEvent,
+  onNewSession,
   onSearch,
   onSettings,
   onHelp,
   children,
   className,
 }: {
+  onNewAssessment: () => void
+  onNewEvent: () => void
+  onNewSession: () => void
   onSearch: () => void
   onSettings: () => void
   onHelp: () => void
@@ -105,6 +133,37 @@ function AppActions({
 }) {
   return (
     <div className={className}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 gap-1 px-2"
+            aria-label="Create new item"
+          >
+            <Plus />
+            <span>New</span>
+            <ChevronDown className="size-3 opacity-70" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onSelect={onNewAssessment}>
+            <ClipboardList />
+            Assessment
+            <DropdownMenuShortcut>{IS_MACOS ? "⌘N" : "Ctrl N"}</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onNewEvent}>
+            <CalendarPlus />
+            Event
+            <DropdownMenuShortcut>{IS_MACOS ? "⌘⇧N" : "Ctrl Shift N"}</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onNewSession}>
+            <Clock3 />
+            Study session
+            <DropdownMenuShortcut>{IS_MACOS ? "⌘⇧S" : "Ctrl Shift S"}</DropdownMenuShortcut>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -150,6 +209,9 @@ function AppActions({
 }
 
 export function TitleBar({
+  onNewAssessment = noop,
+  onNewEvent = noop,
+  onNewSession = noop,
   onSearch = noop,
   onSettings = noop,
   onHelp = noop,
@@ -176,6 +238,9 @@ export function TitleBar({
         <div className="w-[84px] shrink-0" aria-hidden="true" />
       ) : (
         <AppActions
+          onNewAssessment={onNewAssessment}
+          onNewEvent={onNewEvent}
+          onNewSession={onNewSession}
           onSearch={onSearch}
           onSettings={onSettings}
           onHelp={onHelp}
@@ -185,16 +250,22 @@ export function TitleBar({
         </AppActions>
       )}
 
-      <div data-tauri-drag-region className="flex flex-1 items-center justify-center px-4">
+      <div
+        data-tauri-drag-region
+        className="pointer-events-none absolute inset-0 flex items-center justify-center px-4"
+      >
         <span data-tauri-drag-region className="text-sm font-medium text-muted-foreground">Focal</span>
       </div>
 
       {IS_MACOS ? (
         <AppActions
+          onNewAssessment={onNewAssessment}
+          onNewEvent={onNewEvent}
+          onNewSession={onNewSession}
           onSearch={onSearch}
           onSettings={onSettings}
           onHelp={onHelp}
-          className="flex items-center gap-1.5 px-4"
+          className="ml-auto flex items-center gap-1.5 px-4"
         >
           {children}
         </AppActions>
@@ -204,7 +275,7 @@ export function TitleBar({
           onMinimize={handleMinimize}
           onMaximize={handleToggleMaximize}
           inverted
-          className="flex items-center gap-2 px-4"
+          className="ml-auto flex items-center gap-2 px-4"
         />
       )}
     </div>

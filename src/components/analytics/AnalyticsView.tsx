@@ -3,9 +3,12 @@ import type { ReactNode } from"react"
 import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
 import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area"
 import { Card } from"@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { getAnalyticsData, getConsistencyForTimeTrends, type AnalyticsRange } from"@/lib/analytics"
-import type { Project, StudySession } from"@/lib/types"
+import type { CalendarEvent, PriorityItem, Project, StudySession } from"@/lib/types"
 import { cn, getSubjectById } from"@/lib/utils"
+import { getPriorityItems, readFocusPriorities } from "@/lib/studyPriority"
+import { ArrowRight, Play, Target } from "lucide-react"
 import { getSubjectColor } from"@/lib/chartTheme"
 import {
  MOTION_DURATION,
@@ -27,7 +30,10 @@ import { EmptyAnalytics } from"./EmptyAnalytics"
 interface AnalyticsViewProps {
  sessions: StudySession[]
  projects: Project[]
+ events: CalendarEvent[]
  onNewSession: () => void
+ onSelectProject: (projectId: string) => void
+ onStartFocus: (item: PriorityItem) => void
 }
 
 const RANGE_OPTIONS: { value: AnalyticsRange; label: string }[] = [
@@ -51,10 +57,28 @@ function formatMinutesLong(m: number) {
  return rem > 0 ? `${h}h ${rem}m` : `${h}h`
 }
 
-const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects, onNewSession }: AnalyticsViewProps) {
+const AnalyticsViewInner = memo(function AnalyticsViewInner({
+ sessions,
+ projects,
+ events,
+ onNewSession,
+ onSelectProject,
+ onStartFocus,
+}: AnalyticsViewProps) {
  const reduceMotion = useReducedMotion() === true
  const [range, setRange] = useState<AnalyticsRange>(30)
  const [selectedSubjects, setSelectedSubjects] = useState<Set<string> | null>(null)
+ const focusPriorities = useMemo(readFocusPriorities, [])
+ const decisions = useMemo(
+ () => getPriorityItems({
+ projects,
+ sessions,
+ events,
+ subjectOrder: focusPriorities.subjectOrder,
+ pinnedEventIds: focusPriorities.pinnedEventIds,
+ }).filter((item) => item.kind === "weak-topic" || item.kind === "overdue-project" || item.kind === "plan-prep").slice(0, 3),
+ [events, focusPriorities.pinnedEventIds, focusPriorities.subjectOrder, projects, sessions],
+ )
 
  const data = useMemo(
  () => getAnalyticsData(sessions, projects, range),
@@ -147,7 +171,15 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  )
 
  if (!data.hasData) {
- return <EmptyAnalytics onNewSession={onNewSession} />
+ return (
+ <ScrollArea className="h-full">
+ <div className="space-y-5 px-6 py-5 min-[1200px]:px-8 min-[1200px]:py-6">
+ <h2 className="text-lg font-semibold">Review</h2>
+ <ReviewDecisions items={decisions} onNewSession={onNewSession} onSelectProject={onSelectProject} onStartFocus={onStartFocus} />
+ <div className="h-72 rounded-lg border"><EmptyAnalytics onNewSession={onNewSession} /></div>
+ </div>
+ </ScrollArea>
+ )
  }
 
  return (
@@ -169,9 +201,13 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
  variants={staggerItem}
  className="flex items-center justify-between"
  >
- <h2 className="text-lg font-semibold">Analytics</h2>
+ <h2 className="text-lg font-semibold">Review</h2>
  <RangeToggle value={range} onChange={setRange} reduceMotion={reduceMotion} />
- </motion.div>              <motion.div variants={staggerItem}>
+ </motion.div>
+ <motion.div variants={staggerItem}>
+ <ReviewDecisions items={decisions} onNewSession={onNewSession} onSelectProject={onSelectProject} onStartFocus={onStartFocus} />
+ </motion.div>
+ <motion.div variants={staggerItem}>
  <KpiStrip
  totalMinutes={filteredTotalMinutes}
  dailyAverage={filteredDailyAverage}
@@ -254,6 +290,42 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({ sessions, projects
 })
 
 export const AnalyticsView = AnalyticsViewInner
+
+function ReviewDecisions({
+ items,
+ onNewSession,
+ onSelectProject,
+ onStartFocus,
+}: {
+ items: PriorityItem[]
+ onNewSession: () => void
+ onSelectProject: (projectId: string) => void
+ onStartFocus: (item: PriorityItem) => void
+}) {
+ return (
+ <Card className="p-4">
+ <div className="flex flex-wrap items-start justify-between gap-3">
+ <div>
+ <h3 className="flex items-center gap-2 text-sm font-semibold"><Target className="size-4 text-primary" />Decide what changes next</h3>
+ <p className="mt-1 text-sm text-muted-foreground">These are the gaps your calendar and reflections say need a decision.</p>
+ </div>
+ <Button size="sm" variant="outline" onClick={onNewSession}>Plan a recovery session</Button>
+ </div>
+ <div className="mt-3 grid gap-2 min-[900px]:grid-cols-3">
+ {items.length > 0 ? items.map((item) => (
+ <div key={item.id} className="flex min-w-0 items-center gap-2 rounded-lg border bg-background p-3">
+ <div className="min-w-0 flex-1">
+ <p className="truncate text-sm font-medium">{item.title}</p>
+ <p className="line-clamp-2 text-sm text-muted-foreground">{item.reason}</p>
+ </div>
+ {item.projectId && <Button variant="ghost" size="icon-sm" onClick={() => onSelectProject(item.projectId!)} aria-label={`Open ${item.title}`}><ArrowRight /></Button>}
+ <Button variant="outline" size="icon-sm" disabled={item.subjectIds.length === 0} onClick={() => onStartFocus(item)} aria-label={`Start focus for ${item.title}`}><Play /></Button>
+ </div>
+ )) : <p className="text-sm text-muted-foreground">Nothing is overdue or flagged by a low-confidence reflection.</p>}
+ </div>
+ </Card>
+ )
+}
 
 /* ----------------------------- Sub-components ----------------------------- */
 
