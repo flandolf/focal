@@ -75,6 +75,10 @@ interface DayDetailProps {
   onSetCalendarItemsCompleted?: (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => void
 }
 
+type CompletedDayItem =
+  | { kind: "event"; item: CalendarEvent }
+  | { kind: "session"; item: StudySession }
+
 export function DayDetail({
   selectedDate,
   deadlines,
@@ -102,7 +106,28 @@ export function DayDetail({
     [events, dateKey],
   )
   const hasItems = deadlines.length > 0 || sessions.length > 0 || dayEvents.length > 0
-  const subjectGroups = useMemo(() => groupSessionsBySubject(sessions, projects), [sessions, projects])
+  const currentSessions = useMemo(
+    () => sessions.filter((session) => session.status !== "completed"),
+    [sessions],
+  )
+  const subjectGroups = useMemo(
+    () => groupSessionsBySubject(currentSessions, projects),
+    [currentSessions, projects],
+  )
+  const completedItems = useMemo<CompletedDayItem[]>(
+    () => [
+      ...sessions
+        .filter((session) => session.status === "completed")
+        .map((session) => ({ kind: "session" as const, item: session })),
+      ...dayEvents
+        .filter((event) => event.isFinished)
+        .map((event) => ({ kind: "event" as const, item: event })),
+    ].sort(
+      (a, b) =>
+        parseISO(a.item.startTime).getTime() - parseISO(b.item.startTime).getTime(),
+    ),
+    [dayEvents, sessions],
+  )
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(() => new Set(subjectGroups.map((g) => g.subjectId)))
   const toggleSubject = (subjectId: string) => {
     setExpandedSubjects((prev) => {
@@ -342,7 +367,6 @@ export function DayDetail({
           })}
           {(() => {
             const upcomingEvents = dayEvents.filter((e) => !e.isFinished)
-            const completedEvents = dayEvents.filter((e) => e.isFinished)
             return (
               <>
                 {upcomingEvents.map((event) => {
@@ -441,104 +465,133 @@ export function DayDetail({
                     </ContextMenu>
                   )
                 })}
-                {completedEvents.length > 0 && (
-                  <div className="pt-2">
-                    <div className="flex items-baseline gap-2.5 px-2 pb-3.5">
-                      <p className="text-base font-semibold text-foreground/90">Completed</p>
-                      <p className="text-sm tabular-nums text-muted-foreground">
-                        {completedEvents.length} {completedEvents.length === 1 ? "item" : "items"}
+                {completedItems.length > 0 && (
+                  <div className="pt-1.5">
+                    <div className="flex items-baseline gap-2 px-2 pb-2">
+                      <p className="text-sm font-semibold text-foreground/90">Completed</p>
+                      <p className="text-xs tabular-nums text-muted-foreground">
+                        {completedItems.length} {completedItems.length === 1 ? "item" : "items"}
                       </p>
                     </div>
                     <div className="divide-y divide-border/35 border-y border-border/45">
-                      {completedEvents.map((event) => {
-                        const subject = getSubjectById(event.subjectId)
-                        const eventInfo = getEventTypeInfo(event.eventType)
-                        const selected = selectedEventIdSet.has(event.id)
-                        const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
-                        const timeLabel = isMultiDay && event.endTime
-                          ? formatMultiDayEventMeta(event.startTime, event.endTime)
-                          : formatTimeRange(event.startTime, event.endTime)
+                      {completedItems.map((completed) => {
+                        const view = completed.kind === "event"
+                          ? (() => {
+                              const event = completed.item
+                              const subject = getSubjectById(event.subjectId)
+                              const eventInfo = getEventTypeInfo(event.eventType)
+                              const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
+                              return {
+                                id: event.id,
+                                title: event.title,
+                                timeLabel: isMultiDay && event.endTime
+                                  ? formatMultiDayEventMeta(event.startTime, event.endTime)
+                                  : formatTimeRange(event.startTime, event.endTime),
+                                metaLabel: [eventInfo.label, event.location, subject?.shortCode]
+                                  .filter(Boolean)
+                                  .join(" · "),
+                                selected: selectedEventIdSet.has(event.id),
+                                onToggleSelection: () => onToggleEventSelection(event.id),
+                                onOpen: () => onSelectEvent(event),
+                                selection: { eventIds: [event.id], sessionIds: [] },
+                              }
+                            })()
+                          : (() => {
+                              const session = completed.item
+                              const project = session.projectId
+                                ? projects.find((candidate) => candidate.id === session.projectId)
+                                : undefined
+                              const subjects = getSessionSubjectIds(session, project)
+                                .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
+                                .join(", ")
+                              return {
+                                id: session.id,
+                                title: session.title,
+                                timeLabel: formatTimeRange(session.startTime, session.endTime),
+                                metaLabel: [
+                                  project?.name ?? subjects,
+                                  formatDuration(getSessionEffectiveMinutes(session)),
+                                  session.schedule.blocks.length > 1
+                                    ? `${session.schedule.blocks.length} blocks`
+                                    : undefined,
+                                ].filter(Boolean).join(" · "),
+                                selected: selectedSessionIdSet.has(session.id),
+                                onToggleSelection: () => onToggleSessionSelection(session.id),
+                                onOpen: () => onSelectSession(session),
+                                selection: { eventIds: [], sessionIds: [session.id] },
+                              }
+                            })()
                         return (
-                          <ContextMenu key={event.id}>
+                          <ContextMenu key={`${completed.kind}-${view.id}`}>
                             <ContextMenuTrigger asChild>
                               <Button
                                 variant="ghost"
                                 onClick={() => {
                                   if (calendarSelectionMode) {
-                                    onToggleEventSelection(event.id)
+                                    view.onToggleSelection()
                                     return
                                   }
-                                  onSelectEvent(event)
+                                  view.onOpen()
                                 }}
                                 className={cn(
-                                  "group h-auto min-h-16 w-full rounded-none px-2 py-4 text-left hover:bg-background/45",
-                                  selected && "bg-primary/10 hover:bg-primary/12",
+                                  "group h-auto min-h-11 w-full rounded-none px-2 py-2 text-left hover:bg-background/45",
+                                  view.selected && "bg-primary/10 hover:bg-primary/12",
                                 )}
                               >
-                                <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(10rem,12rem)_minmax(0,1fr)_auto]">
-                                  <div className="col-span-2 flex min-w-0 items-center gap-2 sm:col-span-1">
+                                <div className="grid w-full min-w-0 grid-cols-[7.5rem_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[7.75rem_minmax(0,1fr)_auto]">
+                                  <div className="flex min-w-0 items-center gap-1.5">
                                     {calendarSelectionMode && (
                                       <span
                                         className={cn(
                                           "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                                          selected
+                                          view.selected
                                             ? "border-primary bg-primary text-primary-foreground"
                                             : "border-border bg-background/50",
                                         )}
                                         aria-hidden="true"
                                       >
-                                        {selected && <Check className="h-3 w-3" />}
+                                        {view.selected && <Check className="h-3 w-3" />}
                                       </span>
                                     )}
-                                    <span className="shrink-0 text-base font-medium tabular-nums text-muted-foreground">
-                                      {timeLabel}
+                                    <span className="min-w-0 truncate text-xs font-medium tabular-nums text-muted-foreground" title={view.timeLabel}>
+                                      {view.timeLabel}
                                     </span>
-                                    <span className="hidden min-w-3 flex-1 border-t border-border/55 sm:block" aria-hidden="true" />
                                   </div>
 
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <CheckCircle2 className="h-4.5 w-4.5 shrink-0 text-success" aria-hidden="true" />
-                                    <span className="truncate text-base font-semibold text-foreground/90">
-                                      {event.title}
+                                  <div className="min-w-0">
+                                    <span className="block truncate text-xs font-semibold leading-4 text-foreground/90" title={view.title}>
+                                      {view.title}
                                     </span>
-                                    <span className="text-muted-foreground/45" aria-hidden="true">·</span>
-                                    <span className="truncate text-sm text-muted-foreground">
-                                      {eventInfo.label}
-                                      {event.location ? ` · ${event.location}` : ""}
-                                    </span>
-                                    {subject && (
-                                      <>
-                                        <span className="text-muted-foreground/45" aria-hidden="true">·</span>
-                                        <span className="truncate text-sm font-medium" style={{ color: subject.color }}>
-                                          {subject.shortCode}
-                                        </span>
-                                      </>
+                                    {view.metaLabel && (
+                                      <span className="block truncate text-micro leading-4 text-muted-foreground" title={view.metaLabel}>
+                                        {view.metaLabel}
+                                      </span>
                                     )}
                                   </div>
 
-                                  <div className="flex shrink-0 items-center gap-1.5 text-success">
-                                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                                    <span className="text-base font-medium">Done</span>
-                                    <ChevronRight className="ml-1 h-4 w-4 text-muted-foreground/55 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                                  <div className="flex shrink-0 items-center gap-1 text-success">
+                                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span className="hidden text-xs font-medium min-[420px]:inline">Done</span>
+                                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/55 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                                   </div>
                                 </div>
                               </Button>
                             </ContextMenuTrigger>
                             <ContextMenuContent className="w-40">
-                              <CtxMenuItem onSelect={() => onSelectEvent(event)}>
+                              <CtxMenuItem onSelect={view.onOpen}>
                                 <Pencil className="h-4 w-4" />
                                 Edit
                               </CtxMenuItem>
                               {onSetCalendarItemsCompleted && (
-                                <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [event.id], sessionIds: [] }, !event.isFinished)}>
+                                <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted(view.selection, false)}>
                                   <CheckCircle2 className="h-4 w-4" />
-                                  {event.isFinished ? "Mark current" : "Mark complete"}
+                                  Mark current
                                 </CtxMenuItem>
                               )}
                               <CtxMenuSep />
                               <CtxMenuItem
                                 variant="destructive"
-                                onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
+                                onSelect={() => onDeleteCalendarItems?.(view.selection)}
                               >
                                 <Trash2 className="h-4 w-4" />
                                 Delete
