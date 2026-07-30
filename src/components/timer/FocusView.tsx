@@ -14,6 +14,7 @@ import {
 import { TitleBar } from "@/components/TitleBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -40,6 +41,8 @@ interface FocusViewProps {
   activeSessionId: string | null;
   subjectLabel: string;
   projectLabel?: string;
+  intent: string;
+  onIntentChange: (value: string) => void;
   onSearch?: () => void;
   onSettings?: () => void;
   onToggle: () => void;
@@ -82,6 +85,8 @@ export function FocusView({
   activeSessionId,
   subjectLabel,
   projectLabel,
+  intent,
+  onIntentChange,
   onSearch,
   onSettings,
   onToggle,
@@ -191,6 +196,19 @@ export function FocusView({
             </CardHeader>
 
             <CardContent className="flex flex-col items-center px-5 py-10 text-center sm:px-10 sm:py-14 lg:py-16">
+              {!activeSessionId && isFocus && (
+                <div className="mb-7 w-full max-w-xl text-left">
+                  <label htmlFor="focus-intent" className="mb-2 block text-sm font-medium">
+                    Focus outcome
+                  </label>
+                  <Input
+                    id="focus-intent"
+                    value={intent}
+                    onChange={(event) => onIntentChange(event.target.value)}
+                    placeholder="What will be different when this block ends?"
+                  />
+                </div>
+              )}
               <p className="text-sm font-medium text-muted-foreground">
                 {modeLabel}
               </p>

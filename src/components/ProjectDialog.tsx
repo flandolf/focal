@@ -8,7 +8,7 @@ import {
 import { Link, FolderOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AssessmentForm } from "@/components/AssessmentForm"
-import type { Project, Subject, Unit } from "@/lib/types"
+import type { DeadlineType, Project, Subject, Unit } from "@/lib/types"
 
 interface ProjectDialogProps {
   project?: Project | null
@@ -20,6 +20,8 @@ interface ProjectDialogProps {
     icon?: string
     subjectId?: string
     unit?: Unit
+    deadline?: string
+    deadlineType?: DeadlineType
   }) => void
   onSubmitEdit?: (id: string, data: {
     name: string
@@ -27,6 +29,8 @@ interface ProjectDialogProps {
     icon?: string
     subjectId?: string
     unit?: Unit
+    deadline?: string
+    deadlineType?: DeadlineType
     isFavorite?: boolean
     isArchived?: boolean
     isFinished?: boolean
@@ -55,6 +59,8 @@ export function ProjectDialog({
     icon?: string
     subjectId?: string
     unit?: Unit
+    deadline?: string
+    deadlineType?: DeadlineType
     isFavorite?: boolean
     isArchived?: boolean
     isFinished?: boolean
@@ -97,6 +103,8 @@ export function ProjectDialog({
             icon: existingProject.icon,
             subjectId: existingProject.subjectId,
             unit: existingProject.unit,
+            deadline: existingProject.deadline,
+            deadlineType: existingProject.deadlineType,
             isFavorite: existingProject.isFavorite,
             isArchived: existingProject.isArchived,
             isFinished: existingProject.isFinished,

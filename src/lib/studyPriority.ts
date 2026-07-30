@@ -9,11 +9,39 @@ import { getDeadlineTypeInfo, getEventTypeInfo, getSessionSubjectIds } from "@/l
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const ASSESSMENT_TYPES = new Set(["sac", "exam", "assignment"])
+export const FOCUS_PRIORITIES_KEY = "focal-focus-priorities"
+
+export interface FocusPriorities {
+  subjectOrder: string[]
+  pinnedEventIds: string[]
+}
+
+export function readFocusPriorities(): FocusPriorities {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FOCUS_PRIORITIES_KEY) ?? "{}") as {
+      subjectOrder?: unknown
+      pinnedEventIds?: unknown
+    }
+    return {
+      subjectOrder: Array.isArray(parsed.subjectOrder)
+        ? parsed.subjectOrder.filter((value): value is string => typeof value === "string")
+        : [],
+      pinnedEventIds: Array.isArray(parsed.pinnedEventIds)
+        ? parsed.pinnedEventIds.filter((value): value is string => typeof value === "string")
+        : [],
+    }
+  } catch {
+    return { subjectOrder: [], pinnedEventIds: [] }
+  }
+}
 
 interface PriorityInput {
   projects: Project[]
   sessions: StudySession[]
   events: CalendarEvent[]
+  now?: number
+  subjectOrder?: string[]
+  pinnedEventIds?: string[]
 }
 
 function getTime(value?: string): number | null {
@@ -59,16 +87,39 @@ function formatDaysReason(days: number): string {
   return `due in ${days}d`
 }
 
-function sortPriorityItems(items: PriorityItem[]): PriorityItem[] {
+function sortPriorityItems(
+  items: PriorityItem[],
+  subjectOrder: string[],
+  pinnedEventIds: string[],
+): PriorityItem[] {
+  const subjectRanks = new Map(subjectOrder.map((subjectId, index) => [subjectId, index]))
+  const pinnedEvents = new Set(pinnedEventIds)
+  const score = (item: PriorityItem) => {
+    const urgency = getPressureRank(item.urgency) * 100
+    const pinned = item.eventId && pinnedEvents.has(item.eventId) ? 80 : 0
+    const bestSubjectRank = item.subjectIds.reduce<number | null>((best, subjectId) => {
+      const rank = subjectRanks.get(subjectId)
+      if (rank === undefined) return best
+      return best === null ? rank : Math.min(best, rank)
+    }, null)
+    const subject = bestSubjectRank === null ? 0 : Math.max(8, 44 - bestSubjectRank * 8)
+    return urgency + pinned + subject
+  }
   return items.sort((a, b) => {
-    const urgencyDelta = getPressureRank(b.urgency) - getPressureRank(a.urgency)
-    if (urgencyDelta !== 0) return urgencyDelta
+    const scoreDelta = score(b) - score(a)
+    if (scoreDelta !== 0) return scoreDelta
     return a.title.localeCompare(b.title)
   })
 }
 
-export function getPriorityItems({ projects, sessions, events }: PriorityInput): PriorityItem[] {
-  const now = Date.now()
+export function getPriorityItems({
+  projects,
+  sessions,
+  events,
+  now = Date.now(),
+  subjectOrder = [],
+  pinnedEventIds = [],
+}: PriorityInput): PriorityItem[] {
   const nextWeek = now + 7 * DAY_MS
   const activeProjects = projects.filter((project) => !project.isFinished && !project.isArchived)
   const activeProjectById = new Map(activeProjects.map((project) => [project.id, project]))
@@ -100,16 +151,19 @@ export function getPriorityItems({ projects, sessions, events }: PriorityInput):
     }
   })
 
+  const pinnedEvents = new Set(pinnedEventIds)
   events.forEach((event) => {
     if (event.isFinished) return
-    if (!ASSESSMENT_TYPES.has(event.eventType)) return
     const days = getDaysUntil(event.startTime, now)
-    if (days === null || days < -1 || days > 14) return
+    if (days === null || days < -1) return
+    const isPinned = pinnedEvents.has(event.id)
+    if (!isPinned && (!ASSESSMENT_TYPES.has(event.eventType) || days > 14)) return
+    if (isPinned && days > 30) return
     items.push({
       id: `event-${event.id}`,
-      kind: "upcoming-assessment",
+      kind: isPinned ? "pinned-event" : "upcoming-assessment",
       title: event.title,
-      reason: `${getEventTypeInfo(event.eventType).label} ${formatDaysReason(days)}`,
+      reason: `${getEventTypeInfo(event.eventType).label} ${formatDaysReason(days)}${isPinned ? " · pinned event" : ""}`,
       urgency: getUrgencyForDays(days),
       subjectIds: event.subjectId ? [event.subjectId] : [],
       eventId: event.id,
@@ -169,7 +223,14 @@ export function getPriorityItems({ projects, sessions, events }: PriorityInput):
     })
   })
 
-  return sortPriorityItems(items).slice(0, 7)
+  const labelledItems = items.map((item) => {
+    const rankedSubjects = item.subjectIds
+      .map((subjectId) => subjectOrder.indexOf(subjectId))
+      .filter((rank) => rank >= 0)
+    if (rankedSubjects.length === 0) return item
+    const rank = Math.min(...rankedSubjects) + 1
+    return { ...item, reason: `${item.reason} · #${rank} subject priority` }
+  })
+
+  return sortPriorityItems(labelledItems, subjectOrder, pinnedEventIds).slice(0, 7)
 }
-
-

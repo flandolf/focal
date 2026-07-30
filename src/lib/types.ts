@@ -323,6 +323,7 @@ export interface TimetableConfig {
 export type PriorityItemKind =
   | "overdue-project"
   | "upcoming-assessment"
+  | "pinned-event"
   | "planned-session"
   | "plan-prep"
   | "weak-topic";

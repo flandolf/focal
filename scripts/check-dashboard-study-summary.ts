@@ -28,6 +28,13 @@ const overview = buildTodayOverview([{
   deadline: "2026-07-14T09:00:00Z",
   deadlineType: "assignment",
   created_at: "2026-07-01T00:00:00Z",
+}, {
+  id: "archived-assessment",
+  name: "Archived SAC",
+  folder_path: "Archived SAC",
+  deadline: "2026-07-13T09:00:00Z",
+  isArchived: true,
+  created_at: "2026-07-01T00:00:00Z",
 }], [planned, completed], [{
   id: "event-1",
   title: "Term holidays",
@@ -49,6 +56,9 @@ if (overview.completedSessions !== 1 || overview.totalStudyHours !== 1) {
 }
 if (overview.dueThisWeek[0]?.id !== "assessment-1") {
   throw new Error("Today overview lost the next assessment")
+}
+if (overview.activeProjects.some((project) => project.id === "archived-assessment")) {
+  throw new Error("Today overview counted an archived assessment as active")
 }
 if (overview.recentActivity.find((item) => item.id === "event-1")?.subtitle !== "Other") {
   throw new Error("Today overview exposed a raw event type")
@@ -78,6 +88,42 @@ if (!priorityItems.some((item) => item.id === "event-event-3" && item.reason.sta
 }
 if (!priorityItems.some((item) => item.id === "project-assessment-2" && item.reason.startsWith("Assignment "))) {
   throw new Error("Study priorities exposed a raw deadline type")
+}
+
+const rankedItems = getPriorityItems({
+  now: new Date("2026-07-13T00:00:00Z").getTime(),
+  subjectOrder: ["mm", "eng"],
+  pinnedEventIds: ["event-pinned"],
+  projects: [{
+    id: "english-project",
+    name: "English essay",
+    folder_path: "English essay",
+    subjectId: "eng",
+    deadline: "2026-07-17T00:00:00Z",
+    created_at: "2026-07-01T00:00:00Z",
+  }, {
+    id: "methods-project",
+    name: "Methods revision",
+    folder_path: "Methods revision",
+    subjectId: "mm",
+    deadline: "2026-07-17T00:00:00Z",
+    created_at: "2026-07-01T00:00:00Z",
+  }],
+  sessions: [],
+  events: [{
+    id: "event-pinned",
+    title: "Teacher consultation",
+    startTime: "2026-07-20T00:00:00Z",
+    eventType: "event",
+    subjectId: "eng",
+    created_at: "2026-07-01T00:00:00Z",
+  }],
+})
+if (rankedItems[0]?.id !== "event-event-pinned" || !rankedItems[0].reason.includes("pinned event")) {
+  throw new Error(`Pinned events should lead equivalent non-critical work: ${JSON.stringify(rankedItems)}`)
+}
+if (rankedItems.findIndex((item) => item.id === "project-methods-project") > rankedItems.findIndex((item) => item.id === "project-english-project")) {
+  throw new Error("Manual subject order was not reflected in the focus queue")
 }
 
 console.warn("dashboard study summary check passed")

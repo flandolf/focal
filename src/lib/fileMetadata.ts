@@ -2,6 +2,24 @@ import { appDataDir } from "@tauri-apps/api/path"
 import { readTextFile, writeTextFile, exists, mkdir } from "@tauri-apps/plugin-fs"
 import type { FileTag } from "@/lib/types"
 
+export const FILE_TAGS: FileTag[] = [
+  "sac",
+  "notes",
+  "past-paper",
+  "exam",
+  "resource",
+  "other",
+]
+
+export const FILE_TAG_LABELS: Record<FileTag, string> = {
+  sac: "SAC",
+  notes: "Notes",
+  "past-paper": "Past paper",
+  exam: "Exam",
+  resource: "Resource",
+  other: "Other",
+}
+
 export interface FileMeta {
   tags?: FileTag[]
   isFavorite?: boolean

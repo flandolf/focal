@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react"
-import { VCE_SUBJECTS, type Subject, type Unit } from "@/lib/types"
+import { VCE_SUBJECTS, type DeadlineType, type Subject, type Unit } from "@/lib/types"
 import { getSubjectById } from "@/lib/utils"
 
 export interface AssessmentFormValues {
@@ -8,6 +8,8 @@ export interface AssessmentFormValues {
   icon?: string
   subjectId?: string
   unit?: Unit
+  deadline?: string
+  deadlineType?: DeadlineType
   isFavorite?: boolean
   isArchived?: boolean
   isFinished?: boolean
@@ -19,6 +21,8 @@ export interface AssessmentFormInitialValues {
   icon?: string
   subjectId?: string
   unit?: Unit
+  deadline?: string
+  deadlineType?: DeadlineType
   isFavorite?: boolean
   isArchived?: boolean
   isFinished?: boolean
@@ -42,6 +46,8 @@ export function useAssessmentForm({
   const [icon, setIcon] = useState(initialValues?.icon ?? "📁")
   const [subjectId, setSubjectId] = useState(initialValues?.subjectId ?? "")
   const [unit, setUnit] = useState<Unit | "">(initialValues?.unit ?? "")
+  const [deadline, setDeadline] = useState(initialValues?.deadline ?? "")
+  const [deadlineType, setDeadlineType] = useState<DeadlineType>(initialValues?.deadlineType ?? "assignment")
   const [isFavorite, setIsFavorite] = useState(initialValues?.isFavorite ?? false)
   const [isArchived, setIsArchived] = useState(initialValues?.isArchived ?? false)
   const [isFinished, setIsFinished] = useState(initialValues?.isFinished ?? false)
@@ -61,11 +67,13 @@ export function useAssessmentForm({
       icon,
       subjectId: subjectId || undefined,
       unit: unit || undefined,
+      deadline: deadline || undefined,
+      deadlineType,
       isFavorite,
       isArchived,
       isFinished,
     })
-  }, [name, description, icon, subjectId, unit, isFavorite, isArchived, isFinished, onSubmit])
+  }, [name, description, icon, subjectId, unit, deadline, deadlineType, isFavorite, isArchived, isFinished, onSubmit])
 
   return {
     // State
@@ -74,6 +82,8 @@ export function useAssessmentForm({
     icon, setIcon,
     subjectId, setSubjectId,
     unit, setUnit,
+    deadline, setDeadline,
+    deadlineType, setDeadlineType,
     isFavorite, setIsFavorite,
     isArchived, setIsArchived,
     isFinished, setIsFinished,

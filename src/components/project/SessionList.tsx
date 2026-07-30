@@ -40,7 +40,7 @@ export function SessionList({
         {onNewSession && (
           <Button variant="secondary" size="sm" onClick={onNewSession}>
             <Plus />
-            Plan Session
+            Plan session
           </Button>
         )}
       </div>

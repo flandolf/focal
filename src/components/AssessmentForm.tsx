@@ -1,17 +1,18 @@
 import { type FormEvent } from"react"
-import { Archive, CheckCircle2, Star } from"lucide-react"
+import { Archive, CalendarDays, CheckCircle2, Star } from"lucide-react"
 import { DialogBody, DialogFooter } from"@/components/ui/dialog"
 import { Button } from"@/components/ui/button"
 import { Input } from"@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
+ DatePickerField,
  EmojiPicker,
  FormField,
  SelectField,
  ToggleChip,
 } from"@/components/ui/form-controls"
 import { ASSESSMENT_ICONS, VCE_UNITS } from"@/lib/assessmentOptions"
-import { type Subject, type Unit } from"@/lib/types"
+import { type DeadlineType, type Subject, type Unit } from"@/lib/types"
 import { cn } from"@/lib/utils"
 import {
  useAssessmentForm,
@@ -46,6 +47,8 @@ export function AssessmentForm({
  icon, setIcon,
  subjectId, setSubjectId,
  unit, setUnit,
+ deadline, setDeadline,
+ deadlineType, setDeadlineType,
  isFavorite, setIsFavorite,
  isArchived, setIsArchived,
  isFinished, setIsFinished,
@@ -62,6 +65,17 @@ export function AssessmentForm({
  const handleSubmit = (event: FormEvent) => {
  event.preventDefault()
  submitForm()
+ }
+
+ const deadlineDate = deadline ? new Date(deadline) : undefined
+ const handleDeadlineChange = (date: Date | undefined) => {
+   if (!date) {
+     setDeadline("")
+     return
+   }
+   const deadlineAtEndOfDay = new Date(date)
+   deadlineAtEndOfDay.setHours(23, 59, 59, 999)
+   setDeadline(deadlineAtEndOfDay.toISOString())
  }
 
  return (
@@ -89,6 +103,27 @@ export function AssessmentForm({
 
  <div className="grid gap-4 sm:grid-cols-2">
  <SelectField
+ label="Assessment type"
+ value={deadlineType}
+ onValueChange={(value) => setDeadlineType(value as DeadlineType)}
+ options={[
+ { value:"assignment", label:"Assignment" },
+ { value:"sac", label:"SAC" },
+ { value:"exam", label:"Exam" },
+ ]}
+ />
+
+ <DatePickerField
+ label="Due date"
+ date={deadlineDate}
+ onDateChange={handleDeadlineChange}
+ placeholder="Choose due date"
+ clearLabel="Clear due date"
+ />
+ </div>
+
+ <div className="grid gap-4 sm:grid-cols-2">
+ <SelectField
  label="Subject"
  value={subjectId ||"_none"}
  onValueChange={(value) => setSubjectId(value ==="_none" ?"" : value)}
@@ -111,12 +146,21 @@ export function AssessmentForm({
  />
  </div>
 
+ {showStatusControls && (
  <EmojiPicker
  label="Icon"
  options={ASSESSMENT_ICONS}
  value={icon}
  onChange={setIcon}
  />
+ )}
+
+ {!showStatusControls && (
+ <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+ <CalendarDays className="h-4 w-4" />
+ The due date powers Today, Plan, and Review recommendations.
+ </div>
+ )}
 
  {showStatusControls && (
  <div className="flex flex-wrap items-center gap-2">

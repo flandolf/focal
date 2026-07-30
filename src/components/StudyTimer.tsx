@@ -64,6 +64,7 @@ interface StudyTimerProps {
     durationSeconds: number;
     projectId?: string;
     cycleNumber: number;
+    intent?: string;
   }) => Promise<StudySession>;
   onUpdateSession: (
     id: string,
@@ -111,6 +112,9 @@ const StudyTimerInner = memo(function StudyTimerInner({
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(() =>
     selectedProject?.subjectId ? [selectedProject.subjectId] : [],
   );
+  const [focusProjectId, setFocusProjectId] = useState<string | undefined>(selectedProject?.id);
+  const [focusProjectLabel, setFocusProjectLabel] = useState<string | undefined>(selectedProject?.name);
+  const [focusIntent, setFocusIntent] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(
     readStoredSessionId,
   );
@@ -169,7 +173,9 @@ const StudyTimerInner = memo(function StudyTimerInner({
   useEffect(() => {
     if (!selectedProject?.subjectId || activeSessionIdRef.current) return;
     setSelectedSubjectIds([selectedProject.subjectId]);
-  }, [selectedProject?.subjectId]);
+    setFocusProjectId(selectedProject.id);
+    setFocusProjectLabel(selectedProject.name);
+  }, [selectedProject?.id, selectedProject?.name, selectedProject?.subjectId]);
 
   useEffect(() => {
     setCachedPreference(TIMER_SETTINGS_KEY, JSON.stringify(settings), false);
@@ -189,6 +195,24 @@ const StudyTimerInner = memo(function StudyTimerInner({
       new CustomEvent("focal-focus-mode-changed", { detail: { active: open } }),
     );
   }, []);
+
+  useEffect(() => {
+    const handleFocusRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        subjectIds?: string[];
+        projectId?: string;
+        projectLabel?: string;
+        intent?: string;
+      }>).detail;
+      if (detail.subjectIds?.length) setSelectedSubjectIds(detail.subjectIds);
+      setFocusProjectId(detail.projectId);
+      setFocusProjectLabel(detail.projectLabel);
+      setFocusIntent(detail.intent ?? "");
+      setFocusView(true);
+    };
+    window.addEventListener("focal-focus-request", handleFocusRequest);
+    return () => window.removeEventListener("focal-focus-request", handleFocusRequest);
+  }, [setFocusView]);
 
   const completeActiveSession = useCallback(
     async (endedAt = new Date()) => {
@@ -300,10 +324,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
     selectedSubjectIds.includes(subject.id),
   );
   const subjectLabel = selectedSubjects[0]?.shortCode ?? "Choose subject";
-  const activeProjectId =
-    selectedProject?.subjectId && selectedSubjectIds.includes(selectedProject.subjectId)
-      ? selectedProject.id
-      : undefined;
+  const activeProjectId = focusProjectId;
   const canStartFocus = selectedSubjectIds.length > 0 && !saving;
   const timerActionLabel = saving
     ? "Saving…"
@@ -325,6 +346,13 @@ const StudyTimerInner = memo(function StudyTimerInner({
   const handleSubjectClick = (subjectId: string) => {
     const next = [subjectId];
     setSelectedSubjectIds(next);
+    if (selectedProject?.subjectId === subjectId) {
+      setFocusProjectId(selectedProject.id);
+      setFocusProjectLabel(selectedProject.name);
+    } else {
+      setFocusProjectId(undefined);
+      setFocusProjectLabel(undefined);
+    }
     const sessionId = activeSessionIdRef.current;
     if (!sessionId) return;
     void onUpdateSession(sessionId, { subjectIds: next }).then(() => {
@@ -343,6 +371,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
       durationSeconds,
       projectId: activeProjectId,
       cycleNumber: cycles + 1,
+      intent: focusIntent,
     });
     activeSessionIdRef.current = session.id;
     activeSessionRef.current = session;
@@ -520,7 +549,9 @@ const StudyTimerInner = memo(function StudyTimerInner({
           cycles={cycles}
           activeSessionId={activeSessionId}
           subjectLabel={subjectLabel}
-          projectLabel={selectedProject?.name}
+          projectLabel={focusProjectLabel}
+          intent={focusIntent}
+          onIntentChange={setFocusIntent}
           onSearch={onSearch}
           onSettings={onSettings}
           onToggle={handleToggle}

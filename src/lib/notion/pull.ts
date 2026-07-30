@@ -26,9 +26,22 @@ import {
 import { findSubjectIdFromValues } from "@/lib/notion/subjectMatch"
 
 const CONFLICT_RECHECK_DELAYS_MS = [500, 1_000] as const
+const LOCAL_WRITE_ECHO_GRACE_MS = 5_000
 
 type RefreshNotionPage = (pageId: string) => Promise<NotionPage>
 type Wait = (delayMs: number) => Promise<void>
+
+export function chooseNotionConflictSide(
+  localUpdatedAt?: string,
+  notionLastEditedTime?: string,
+): "local" | "notion" | null {
+  const localTime = localUpdatedAt ? new Date(localUpdatedAt).getTime() : Number.NaN
+  const notionTime = notionLastEditedTime ? new Date(notionLastEditedTime).getTime() : Number.NaN
+  if (!Number.isFinite(localTime) || !Number.isFinite(notionTime)) return null
+  // A Notion timestamp immediately after a local edit is commonly Focal's own
+  // write becoming visible. Prefer local briefly; clearly later Notion edits win.
+  return notionTime > localTime + LOCAL_WRITE_ECHO_GRACE_MS ? "notion" : "local"
+}
 
 function resetPullState(ctx: SyncCtx): void {
   ctx.created.length = 0
@@ -58,7 +71,7 @@ function recordSkippedReason(ctx: SyncCtx, reason: string | undefined): void {
   }
 }
 
-function eventUpdatesFromSnapshot(snapshot: NotionSyncSnapshot): EventUpdates {
+export function eventUpdatesFromSnapshot(snapshot: NotionSyncSnapshot): EventUpdates {
   const updates: EventUpdates = {
     title: String(snapshot.title ?? ""),
     startTime: String(snapshot.startTime ?? ""),
@@ -70,7 +83,7 @@ function eventUpdatesFromSnapshot(snapshot: NotionSyncSnapshot): EventUpdates {
   return updates
 }
 
-function sessionUpdatesFromSnapshot(
+export function sessionUpdatesFromSnapshot(
   snapshot: NotionSyncSnapshot,
   existing: StudySession,
   currentPrimarySubjectId?: string | null,
@@ -106,6 +119,58 @@ function sessionUpdatesFromSnapshot(
     }
   }
   return updates
+}
+
+export function rebaseNotionConflictUpdates(
+  kind: "event" | "session",
+  conflictingFields: readonly string[],
+  page: NotionPage,
+  current: CalendarEvent | StudySession,
+  settings: NotionCalendarSettings,
+  subjects: Subject[],
+  resolution: "local" | "notion",
+): EventUpdates | SessionUpdates {
+  const source = current.source?.type === "notion" ? current.source : undefined
+  if (kind === "event") {
+    const event = current as CalendarEvent
+    const remote = toEventFromPage(page, settings, subjects, findSubjectIdFromValues)
+    const localSnapshot = eventSyncSnapshot(event, settings)
+    const remoteSnapshot = eventSyncSnapshot(remote, settings)
+    const merge = source?.syncSnapshot
+      ? mergeNotionSyncSnapshots(source.syncSnapshot, localSnapshot, remoteSnapshot)
+      : { merged: {}, conflictingFields: ["record"] }
+    const fields = conflictingFields.includes("record") || merge.conflictingFields.includes("record")
+      ? ["record"]
+      : [...new Set([...conflictingFields, ...merge.conflictingFields])]
+    return eventUpdatesFromSnapshot(resolveNotionSyncSnapshot(
+      merge.merged,
+      resolution === "local" ? localSnapshot : remoteSnapshot,
+      fields,
+    ))
+  }
+
+  const session = current as StudySession
+  const remote = toSessionFromPage(page, settings, subjects, findSubjectIdFromValues)
+  if (!remote) throw new Error("The Notion page no longer has a valid date")
+  const localSnapshot = sessionSyncSnapshot(session, settings, subjects)
+  const remoteSnapshot = sessionSyncSnapshot(remote, settings, subjects)
+  const merge = source?.syncSnapshot
+    ? mergeNotionSyncSnapshots(source.syncSnapshot, localSnapshot, remoteSnapshot)
+    : { merged: {}, conflictingFields: ["record"] }
+  const fields = conflictingFields.includes("record") || merge.conflictingFields.includes("record")
+    ? ["record"]
+    : [...new Set([...conflictingFields, ...merge.conflictingFields])]
+  const currentPrimarySubjectId = typeof localSnapshot.subjectId === "string" ? localSnapshot.subjectId : null
+  return sessionUpdatesFromSnapshot(
+    resolveNotionSyncSnapshot(
+      merge.merged,
+      resolution === "local" ? localSnapshot : remoteSnapshot,
+      fields,
+    ),
+    session,
+    currentPrimarySubjectId,
+    remote.completedAt,
+  )
 }
 
 function pullEvent(
@@ -186,6 +251,24 @@ function pullEvent(
         }
 
         const conflictingFields = merge?.conflictingFields ?? ["record"]
+        const automaticSide = chooseNotionConflictSide(existing.updated_at, page.last_edited_time)
+        if (automaticSide) {
+          const automaticSnapshot = resolveNotionSyncSnapshot(
+            merge?.merged ?? {},
+            automaticSide === "local" ? localSnapshot : remoteSnapshot,
+            conflictingFields,
+          )
+          ctx.updatedEvents.set(existing.id, {
+            ...ctx.updatedEvents.get(existing.id),
+            ...eventUpdatesFromSnapshot(automaticSnapshot),
+            source: remoteSource,
+          })
+          if (!localBodyChanged && notionSnapshotsEqual(automaticSnapshot, remoteSnapshot)) {
+            ctx.pulledEventIds.add(existing.id)
+            ctx.acknowledgedEventIds.add(existing.id)
+          }
+          return
+        }
         const localResolutionSnapshot = resolveNotionSyncSnapshot(
           merge?.merged ?? {},
           localSnapshot,
@@ -356,6 +439,29 @@ function pullSession(
           }
 
           const conflictingFields = merge?.conflictingFields ?? ["record"]
+          const automaticSide = chooseNotionConflictSide(existing.updated_at, page.last_edited_time)
+          if (automaticSide) {
+            const automaticSnapshot = resolveNotionSyncSnapshot(
+              merge?.merged ?? {},
+              automaticSide === "local" ? localSnapshot : remoteSnapshot,
+              conflictingFields,
+            )
+            ctx.updatedSessions.set(existing.id, {
+              ...ctx.updatedSessions.get(existing.id),
+              ...sessionUpdatesFromSnapshot(
+                automaticSnapshot,
+                existing,
+                currentPrimarySubjectId,
+                session.completedAt,
+              ),
+              source: remoteSource,
+            })
+            if (!localBodyChanged && notionSnapshotsEqual(automaticSnapshot, remoteSnapshot)) {
+              ctx.pulledSessionIds.add(existing.id)
+              ctx.acknowledgedSessionIds.add(existing.id)
+            }
+            return
+          }
           const localResolutionSnapshot = resolveNotionSyncSnapshot(
             merge?.merged ?? {},
             localSnapshot,

@@ -40,6 +40,7 @@ interface ProjectDetailProps {
   availableProjects?: Project[]
   onExport?: () => void
   onSaveAsTemplate?: () => void
+  onStartFocus?: () => void
 }
 
 export const ProjectDetail = memo(function ProjectDetail({
@@ -48,6 +49,7 @@ export const ProjectDetail = memo(function ProjectDetail({
   onUpdateNotes, onAddChecklistItem, onToggleChecklistItem, onRemoveChecklistItem,
   onAddDependency, onRemoveDependency, onOpenProject, availableProjects,
   onExport, onSaveAsTemplate,
+  onStartFocus,
 }: ProjectDetailProps) {
   const {
     files, loading, error, loadFiles, addFiles, renameFile, moveFileToFolder, deleteFiles,
@@ -651,6 +653,8 @@ export const ProjectDetail = memo(function ProjectDetail({
         hasPendingChanges={hasPendingChanges}
         onExport={onExport}
         onSaveAsTemplate={onSaveAsTemplate}
+        onPlanSession={onNewSession}
+        onStartFocus={onStartFocus}
       />
 
       {/* Notes, Checklist & Dependencies — shared bordered container */}

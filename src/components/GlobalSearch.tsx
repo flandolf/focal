@@ -167,7 +167,7 @@ export function GlobalSearch({
  onNewSession && {
  type:"action" as const,
  id:"new-session",
- label:"New study session",
+ label:"Plan study session",
  hint:"Plan focused study time",
  aliases: ["study","focus","revision","timer","pomodoro"],
  shortcut: `${modKeyLabel} ⇧ S`,
@@ -177,7 +177,7 @@ export function GlobalSearch({
  onNewEvent && {
  type:"action" as const,
  id:"new-event",
- label:"New calendar item",
+ label:"New event",
  hint:"Add a deadline, class, or reminder",
  aliases: ["calendar","deadline","due","reminder","schedule"],
  shortcut: `${modKeyLabel} ⇧ N`,
@@ -548,7 +548,7 @@ export function GlobalSearch({
  role="option"
  aria-selected={selectedIndex === index}
  variant="ghost"
- className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === index &&"bg-accent")}
+ className={cn("group h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === index &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(index)}
  onClick={() => handleSelect(action)}
  >
@@ -600,7 +600,7 @@ export function GlobalSearch({
  role="option"
  aria-selected={selectedIndex === globalIdx}
  variant="ghost"
- className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
+ className={cn("group h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"project", data: project })
@@ -666,7 +666,7 @@ export function GlobalSearch({
  role="option"
  aria-selected={selectedIndex === globalIdx}
  variant="ghost"
- className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
+ className={cn("group h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"session", data: session })
@@ -713,7 +713,7 @@ export function GlobalSearch({
  role="option"
  aria-selected={selectedIndex === globalIdx}
  variant="ghost"
- className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
+ className={cn("group h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"event", data: event })
@@ -783,7 +783,7 @@ export function GlobalSearch({
  role="option"
  aria-selected={selectedIndex === globalIdx}
  variant="ghost"
- className={cn("h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
+ className={cn("group h-auto min-h-12 w-full justify-start rounded-none px-4 py-2.5 text-left whitespace-normal", selectedIndex === globalIdx &&"bg-accent")}
  onMouseEnter={() => setSelectedIndex(globalIdx)}
  onClick={() =>
  handleSelect({ type:"file", data: result })

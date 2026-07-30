@@ -26,7 +26,9 @@ export function buildTodayOverview(
   events: CalendarEvent[],
   now = new Date(),
 ) {
-  const activeProjects = projects.filter((project) => !project.isFinished)
+  const activeProjects = projects.filter(
+    (project) => !project.isFinished && !project.isArchived,
+  )
   const projectsWithDeadlines = activeProjects.filter((project) => project.deadline)
   const isPastDeadline = (project: Project) => (
     project.deadline ? parseISO(project.deadline).getTime() < now.getTime() : false
@@ -128,7 +130,12 @@ export function buildTodayOverview(
     dueThisWeek,
     completedSessions: completedSessionItems.length,
     totalStudyHours: Math.round((totalStudyMinutes / 60) * 10) / 10,
-    priorityItems: getPriorityItems({ projects, sessions, events }),
+    priorityItems: getPriorityItems({
+      projects,
+      sessions,
+      events,
+      now: now.getTime(),
+    }),
     planningSubjects: Array.from(subjectsById.values()),
     recentActivity: [...recentSessions, ...recentEvents]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())

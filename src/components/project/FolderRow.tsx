@@ -14,17 +14,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import type { FileTag } from "@/lib/types"
-
-const ALL_TAGS: FileTag[] = ["sac", "notes", "past-paper", "exam", "resource", "other"]
-
-const TAG_LABELS: Record<FileTag, string> = {
-  "sac": "SAC",
-  "notes": "Notes",
-  "past-paper": "Past Paper",
-  "exam": "Exam",
-  "resource": "Resource",
-  "other": "Other",
-}
+import { FILE_TAG_LABELS, FILE_TAGS } from "@/lib/fileMetadata"
 
 interface FolderRowProps {
   name: string
@@ -156,7 +146,7 @@ function FolderRowInner({ name, fileCount, totalFileCount, onClick, onTagAll, is
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-36 gap-1 p-1">
-                  {ALL_TAGS.map((tag) => (
+                  {FILE_TAGS.map((tag) => (
                     <Button
                       variant="ghost"
                       size="xs"
@@ -168,7 +158,7 @@ function FolderRowInner({ name, fileCount, totalFileCount, onClick, onTagAll, is
                       }}
                       className="w-full justify-start capitalize"
                     >
-                      {TAG_LABELS[tag]}
+                      {FILE_TAG_LABELS[tag]}
                     </Button>
                   ))}
                 </PopoverContent>
@@ -191,12 +181,12 @@ function FolderRowInner({ name, fileCount, totalFileCount, onClick, onTagAll, is
                 Tag all files
               </ContextMenuSubTrigger>
               <ContextMenuSubContent className="w-32">
-                {ALL_TAGS.map((tag) => (
+                {FILE_TAGS.map((tag) => (
                   <CtxMenuItem
                     key={tag}
                     onSelect={() => onTagAll(tag)}
                   >
-                    {TAG_LABELS[tag]}
+                    {FILE_TAG_LABELS[tag]}
                   </CtxMenuItem>
                 ))}
               </ContextMenuSubContent>
