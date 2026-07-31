@@ -63,6 +63,12 @@ export interface AnalyticsData {
   hasData: boolean
 }
 
+export interface StudyPeriodComparison {
+  currentMinutes: number
+  previousMinutes: number
+  changePercent: number | null
+}
+
 function getSessionMinutes(session: StudySession): number {
   return getSessionEffectiveMinutes(session)
 }
@@ -109,6 +115,54 @@ function splitMinutesAcrossSubjects(minutes: number, subjectIds: string[]): numb
   const base = Math.floor(minutes / subjectIds.length)
   const remainder = minutes % subjectIds.length
   return subjectIds.map((_, index) => base + (index < remainder ? 1 : 0))
+}
+
+export function getStudyPeriodComparison(
+  sessions: StudySession[],
+  projects: Project[],
+  range: AnalyticsRange,
+  subjectIds?: ReadonlySet<string>,
+  now = Date.now(),
+): StudyPeriodComparison | null {
+  if (range === 0) return null
+
+  const currentStart = new Date(now)
+  currentStart.setHours(0, 0, 0, 0)
+  currentStart.setDate(currentStart.getDate() - (range - 1))
+  const previousStart = new Date(currentStart)
+  previousStart.setDate(previousStart.getDate() - range)
+  const projectsById = new Map(projects.map((project) => [project.id, project]))
+
+  let currentMinutes = 0
+  let previousMinutes = 0
+  for (const session of sessions) {
+    if (session.status !== "completed") continue
+    const start = getSessionAnalyticsStart(session)
+    if (!Number.isFinite(start) || start < previousStart.getTime() || start > now) continue
+    const minutes = getSessionMinutes(session)
+    if (minutes <= 0) continue
+
+    const resolvedSubjectIds = getSessionSubjectIds(
+      session,
+      session.projectId ? projectsById.get(session.projectId) : undefined,
+    )
+    const subjects = resolvedSubjectIds.length > 0 ? resolvedSubjectIds : ["_unassigned"]
+    const includedMinutes = splitMinutesAcrossSubjects(minutes, subjects).reduce(
+      (total, share, index) => total + (subjectIds == null || subjectIds.has(subjects[index]) ? share : 0),
+      0,
+    )
+
+    if (start >= currentStart.getTime()) currentMinutes += includedMinutes
+    else previousMinutes += includedMinutes
+  }
+
+  return {
+    currentMinutes,
+    previousMinutes,
+    changePercent: previousMinutes > 0
+      ? Math.round(((currentMinutes - previousMinutes) / previousMinutes) * 100)
+      : null,
+  }
 }
 
 export function getTimeTrends(

@@ -18,7 +18,7 @@ import type { ListItem } from "@/components/project/FileTree"
 import { SessionList } from "@/components/project/SessionList"
 import { ProjectChecklistPanel } from "@/components/project/ProjectChecklistPanel"
 import { ProjectDependenciesPanel } from "@/components/project/ProjectDependenciesPanel"
-import { AutoRenameButton } from "@/components/AutoRenameButton"
+import { AutoRenameButton } from "@/components/project/AutoRenameButton"
 import { notifyProjectActionError } from "@/components/project/shared"
 import { getErrorMessage } from "@/lib/utils"
 

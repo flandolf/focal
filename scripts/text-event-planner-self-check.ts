@@ -1,4 +1,4 @@
-import { parseTextEventResponse } from "../src/components/TextEventPlanner"
+import { parseTextEventResponse } from "../src/components/planning/TextEventPlanner"
 import type { Project, Subject } from "../src/lib/types"
 
 function assertEqual<T>(actual: T, expected: T, message: string): void {

@@ -809,7 +809,7 @@ assert(
 )
 const notionOutboxSource = await fetch(new URL("../src/lib/notion/outbox.ts", import.meta.url)).then((response) => response.text())
 assert(notionOutboxSource.includes("records.payload ="), "Notion acknowledgements must not clear an intent for a newer saved record")
-const conflictDialogSource = await fetch(new URL("../src/components/NotionConflictDialog.tsx", import.meta.url)).then((response) => response.text())
+const conflictDialogSource = await fetch(new URL("../src/components/sync/NotionConflictDialog.tsx", import.meta.url)).then((response) => response.text())
 assert(conflictDialogSource.includes("h-[min(90dvh,46rem)]"), "the manual resolver must have a bounded viewport")
 assert(conflictDialogSource.includes('className="min-h-0 flex-1"'), "the conflict list must own the scrollable remaining height")
 assert(conflictDialogSource.includes("aria-pressed={resolution ==="), "manual resolution choices must expose their selected state")

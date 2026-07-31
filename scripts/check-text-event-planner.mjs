@@ -4,7 +4,7 @@ import { createServer } from "vite"
 const server = await createServer({ appType: "custom", server: { middlewareMode: true } })
 
 try {
-  const { parseTextEventResponse } = await server.ssrLoadModule("/src/components/TextEventPlanner.tsx")
+  const { parseTextEventResponse } = await server.ssrLoadModule("/src/components/planning/TextEventPlanner.tsx")
   const drafts = parseTextEventResponse(`Here you go:\n\`\`\`json
     {"events":[
       {"title":"Methods revision","item_type":"event","date":"2026-06-23","start_time":"3:30pm","duration":"1h 30m","event_type":"homework"},

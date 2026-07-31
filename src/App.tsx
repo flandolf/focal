@@ -75,12 +75,12 @@ import {
   clearConflicts,
 } from "@/lib/sync/engine";
 import type { SyncTable } from "@/lib/sync/types";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Sidebar } from "@/components/Sidebar";
-import { TitleBar } from "@/components/TitleBar";
-import type { EventDialogProps } from "@/components/EventDialog";
-import { NotionSyncIndicator } from "@/components/NotionSyncIndicator";
-import { SupabaseSyncIndicator } from "@/components/SupabaseSyncIndicator";
+import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
+import { Sidebar } from "@/components/shell/Sidebar";
+import { TitleBar } from "@/components/shell/TitleBar";
+import type { EventDialogProps } from "@/components/planning/EventDialog";
+import { NotionSyncIndicator } from "@/components/sync/NotionSyncIndicator";
+import { SupabaseSyncIndicator } from "@/components/sync/SupabaseSyncIndicator";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -99,7 +99,7 @@ const TimetableView = lazy(() =>
   })),
 );
 const SettingsView = lazy(() =>
-  import("@/components/SettingsView").then((m) => ({
+  import("@/components/settings/SettingsView").then((m) => ({
     default: m.SettingsView,
   })),
 );
@@ -109,22 +109,22 @@ const AnalyticsView = lazy(() =>
   })),
 );
 const AIAssistantPanel = lazy(() =>
-  import("@/components/AIAssistantPanel").then((m) => ({
+  import("@/components/assistant/AIAssistantPanel").then((m) => ({
     default: m.AIAssistantPanel,
   })),
 );
-const ProjectDetail = lazy(() => import("@/components/ProjectDetail").then((m) => ({ default: m.ProjectDetail })));
-const HomeView = lazy(() => import("@/components/HomeView").then((m) => ({ default: m.HomeView })));
-const ProjectDialog = lazy(() => import("@/components/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
-const ProjectTemplateDialog = lazy(() => import("@/components/ProjectTemplateDialog").then((m) => ({ default: m.ProjectTemplateDialog })));
-const StudySessionDialog = lazy(() => import("@/components/StudySessionDialog").then((m) => ({ default: m.StudySessionDialog })));
-const GlobalSearch = lazy(() => import("@/components/GlobalSearch").then((m) => ({ default: m.GlobalSearch })));
-const DataExport = lazy(() => import("@/components/DataExport").then((m) => ({ default: m.DataExport })));
-const CustomSubjects = lazy(() => import("@/components/CustomSubjects").then((m) => ({ default: m.CustomSubjects })));
-const NotionConflictDialog = lazy(() => import("@/components/NotionConflictDialog").then((m) => ({ default: m.NotionConflictDialog })));
-const EventDialog = lazy(() => import("@/components/EventDialog").then((m) => ({ default: m.EventDialog })));
+const ProjectDetail = lazy(() => import("@/components/project/ProjectDetail").then((m) => ({ default: m.ProjectDetail })));
+const HomeView = lazy(() => import("@/components/home/HomeView").then((m) => ({ default: m.HomeView })));
+const ProjectDialog = lazy(() => import("@/components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+const ProjectTemplateDialog = lazy(() => import("@/components/project/ProjectTemplateDialog").then((m) => ({ default: m.ProjectTemplateDialog })));
+const StudySessionDialog = lazy(() => import("@/components/planning/StudySessionDialog").then((m) => ({ default: m.StudySessionDialog })));
+const GlobalSearch = lazy(() => import("@/components/shell/GlobalSearch").then((m) => ({ default: m.GlobalSearch })));
+const DataExport = lazy(() => import("@/components/settings/DataExport").then((m) => ({ default: m.DataExport })));
+const CustomSubjects = lazy(() => import("@/components/settings/CustomSubjects").then((m) => ({ default: m.CustomSubjects })));
+const NotionConflictDialog = lazy(() => import("@/components/sync/NotionConflictDialog").then((m) => ({ default: m.NotionConflictDialog })));
+const EventDialog = lazy(() => import("@/components/planning/EventDialog").then((m) => ({ default: m.EventDialog })));
 const KeyboardShortcutsDialog = lazy(() =>
-  import("@/components/KeyboardShortcutsDialog").then((m) => ({
+  import("@/components/shell/KeyboardShortcutsDialog").then((m) => ({
     default: m.KeyboardShortcutsDialog,
   })),
 );

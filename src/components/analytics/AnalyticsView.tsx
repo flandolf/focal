@@ -4,11 +4,20 @@ import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
 import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area"
 import { Card } from"@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { getAnalyticsData, getConsistencyForTimeTrends, type AnalyticsRange } from"@/lib/analytics"
+import {
+ getAnalyticsData,
+ getConsistencyForTimeTrends,
+ getStudyPeriodComparison,
+ type AnalyticsRange,
+ type ConsistencyDay,
+ type SubjectMinutes,
+ type StudyTimePoint,
+ type TimeOfDayBucket,
+} from"@/lib/analytics"
 import type { CalendarEvent, PriorityItem, Project, StudySession } from"@/lib/types"
 import { cn, getSubjectById } from"@/lib/utils"
 import { getPriorityItems, readFocusPriorities } from "@/lib/studyPriority"
-import { ArrowRight, Play, Target } from "lucide-react"
+import { ArrowRight, Download, Play, Target } from "lucide-react"
 import { getSubjectColor } from"@/lib/chartTheme"
 import {
  MOTION_DURATION,
@@ -57,6 +66,81 @@ function formatMinutesLong(m: number) {
  return rem > 0 ? `${h}h ${rem}m` : `${h}h`
 }
 
+function formatDay(date: string) {
+ return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+ weekday:"short",
+ month:"short",
+ day:"numeric",
+ })
+}
+
+function formatHour(hour: number) {
+ return new Date(2000, 0, 1, hour).toLocaleTimeString(undefined, {
+ hour:"numeric",
+ minute:"2-digit",
+ })
+}
+
+function formatComparison(
+ comparison: ReturnType<typeof getStudyPeriodComparison>,
+ range: AnalyticsRange,
+ filterActive: boolean,
+) {
+ const filtered = filterActive ?" · filtered" :""
+ if (comparison == null) return filterActive ?"filtered" : undefined
+ if (comparison.previousMinutes === 0) {
+ return comparison.currentMinutes > 0 ? `new vs previous ${range}d${filtered}` : `no change${filtered}`
+ }
+ const change = comparison.changePercent ?? 0
+ return `${change > 0 ?"+" :""}${change}% vs previous ${range}d${filtered}`
+}
+
+function getHighlights(
+ breakdown: SubjectMinutes[],
+ days: ConsistencyDay[],
+ timeOfDay: TimeOfDayBucket[],
+) {
+ const bestDay = days.reduce<ConsistencyDay | null>(
+ (best, day) => day.minutes > (best?.minutes ?? 0) ? day : best,
+ null,
+ )
+ const peakHour = timeOfDay.reduce<TimeOfDayBucket | null>(
+ (best, bucket) => bucket.minutes > (best?.minutes ?? 0) ? bucket : best,
+ null,
+ )
+ return {
+ bestDay: bestDay && bestDay.minutes > 0 ? bestDay : null,
+ peakHour: peakHour && peakHour.minutes > 0 ? peakHour : null,
+ topSubjectId: breakdown[0]?.subjectId ?? null,
+ }
+}
+
+function exportAnalyticsCsv(points: StudyTimePoint[], range: AnalyticsRange) {
+ const rows = ["date,subject,minutes,hours"]
+ for (const point of points) {
+ const subject = getSubjectById(point.subjectId)?.name ??"Unassigned"
+ rows.push([
+ point.date,
+ csvEscape(subject),
+ point.minutes,
+ Math.round((point.minutes / 60) * 100) / 100,
+ ].join(","))
+ }
+ const blob = new Blob(["\uFEFF", rows.join("\n")], { type:"text/csv;charset=utf-8" })
+ const url = URL.createObjectURL(blob)
+ const anchor = document.createElement("a")
+ anchor.href = url
+ anchor.download = `focal-analytics-${range === 0 ?"all" : `${range}d`}-${new Date().toISOString().slice(0, 10)}.csv`
+ document.body.appendChild(anchor)
+ anchor.click()
+ anchor.remove()
+ URL.revokeObjectURL(url)
+}
+
+function csvEscape(value: string) {
+ return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
 const AnalyticsViewInner = memo(function AnalyticsViewInner({
  sessions,
  projects,
@@ -92,11 +176,13 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
 
  const isFilterActive = selectedSubjects !== null
  const activeSet = useMemo(
- () => selectedSubjects ?? new Set(allSubjectIds),
+ () => selectedSubjects == null
+ ? new Set(allSubjectIds)
+ : new Set(allSubjectIds.filter((subjectId) => selectedSubjects.has(subjectId))),
  [selectedSubjects, allSubjectIds],
  )
 
- const selectionState:"all" |"partial" = !isFilterActive || selectedSubjects.size === allSubjectIds.length
+ const selectionState:"all" |"partial" = !isFilterActive || activeSet.size === allSubjectIds.length
  ?"all"
  :"partial"
 
@@ -156,6 +242,18 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  : 0,
  [filteredTotalMinutes, filteredConsistency.days.length],
  )
+ const periodComparison = useMemo(
+ () => getStudyPeriodComparison(sessions, projects, range, isFilterActive ? activeSet : undefined),
+ [activeSet, isFilterActive, projects, range, sessions],
+ )
+ const highlights = useMemo(
+ () => getHighlights(filteredBreakdown, filteredConsistency.days, filteredTimeOfDay),
+ [filteredBreakdown, filteredConsistency.days, filteredTimeOfDay],
+ )
+
+ const handleExport = useCallback(() => {
+ exportAnalyticsCsv(filteredTimeTrends, range)
+ }, [filteredTimeTrends, range])
 
  const handleToggleSubject = useCallback(
  (sid: string) => {
@@ -199,10 +297,21 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  {/* Header row */}
  <motion.div
  variants={staggerItem}
- className="flex items-center justify-between"
+ className="flex flex-wrap items-center justify-between gap-3"
  >
  <h2 className="text-lg font-semibold">Review</h2>
+ <div className="flex items-center gap-2">
+ <Button
+ type="button"
+ size="sm"
+ variant="outline"
+ onClick={handleExport}
+ disabled={filteredTimeTrends.length === 0}
+ >
+ <Download /> Export CSV
+ </Button>
  <RangeToggle value={range} onChange={setRange} reduceMotion={reduceMotion} />
+ </div>
  </motion.div>
  <motion.div variants={staggerItem}>
  <ReviewDecisions items={decisions} onNewSession={onNewSession} onSelectProject={onSelectProject} onStartFocus={onStartFocus} />
@@ -214,6 +323,9 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  daysStudied={filteredConsistency.stats.totalStudyDays}
  totalDays={filteredConsistency.days.length}
  currentStreak={filteredConsistency.stats.currentStreak}
+ longestStreak={filteredConsistency.stats.longestStreak}
+ comparison={periodComparison}
+ range={range}
  filterActive={isFilterActive}
  reduceMotion={reduceMotion}
  />
@@ -232,6 +344,10 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  />
  </motion.div>
  )}
+
+ <motion.div variants={staggerItem}>
+ <AnalyticsHighlights {...highlights} />
+ </motion.div>
 
  {/* Chart grid: crossfade on range change, cards stagger on mount */}
  <motion.div variants={staggerItem} className="relative">
@@ -309,7 +425,7 @@ function ReviewDecisions({
  <h3 className="flex items-center gap-2 text-sm font-semibold"><Target className="size-4 text-primary" />Decide what changes next</h3>
  <p className="mt-1 text-sm text-muted-foreground">These are the gaps your calendar and reflections say need a decision.</p>
  </div>
- <Button size="sm" variant="outline" onClick={onNewSession}>Plan a recovery session</Button>
+ <Button size="sm" variant="outline" onClick={() => onNewSession()}>Plan a recovery session</Button>
  </div>
  <div className="mt-3 grid gap-2 min-[900px]:grid-cols-3">
  {items.length > 0 ? items.map((item) => (
@@ -376,6 +492,9 @@ function KpiStrip({
  daysStudied,
  totalDays,
  currentStreak,
+ longestStreak,
+ comparison,
+ range,
  filterActive,
  reduceMotion,
 }: {
@@ -384,6 +503,9 @@ function KpiStrip({
  daysStudied: number
  totalDays: number
  currentStreak: number
+ longestStreak: number
+ comparison: ReturnType<typeof getStudyPeriodComparison>
+ range: AnalyticsRange
  filterActive: boolean
  reduceMotion: boolean
 }) {
@@ -392,7 +514,7 @@ function KpiStrip({
  <KpiCard
  label="Total time"
  value={formatMinutesShort(totalMinutes)}
- sub={filterActive ?"filtered" : undefined}
+ sub={formatComparison(comparison, range, filterActive)}
  reduceMotion={reduceMotion}
  />
  <KpiCard
@@ -409,8 +531,41 @@ function KpiStrip({
  <KpiCard
  label="Current streak"
  value={`${currentStreak}d`}
+ sub={`best ${longestStreak}d`}
  reduceMotion={reduceMotion}
  />
+ </div>
+ )
+}
+
+function AnalyticsHighlights({
+ bestDay,
+ peakHour,
+ topSubjectId,
+}: {
+ bestDay: { date: string; minutes: number } | null
+ peakHour: { hour: number; minutes: number } | null
+ topSubjectId: string | null
+}) {
+ const topSubject = topSubjectId ? getSubjectById(topSubjectId) : null
+ return (
+ <Card className="p-4">
+ <h3 className="text-sm font-semibold">Highlights</h3>
+ <div className="mt-3 grid gap-3 sm:grid-cols-3">
+ <Highlight label="Most productive day" value={bestDay ? formatDay(bestDay.date) : "No study yet"} detail={bestDay ? formatMinutesLong(bestDay.minutes) : undefined} />
+ <Highlight label="Peak study hour" value={peakHour ? formatHour(peakHour.hour) : "No pattern yet"} detail={peakHour ? formatMinutesLong(peakHour.minutes) : undefined} />
+ <Highlight label="Most studied subject" value={topSubject?.name ?? (topSubjectId ? "Unassigned" : "No subject yet")} />
+ </div>
+ </Card>
+ )
+}
+
+function Highlight({ label, value, detail }: { label: string; value: string; detail?: string }) {
+ return (
+ <div className="rounded-lg border border-border/60 bg-background/35 px-3 py-2.5">
+ <p className="text-caption text-muted-foreground">{label}</p>
+ <p className="mt-1 truncate text-sm font-medium">{value}</p>
+ {detail ? <p className="text-caption tabular-nums text-muted-foreground">{detail}</p> : null}
  </div>
  )
 }

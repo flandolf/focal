@@ -36,13 +36,13 @@ assert(blocksSingleKeyShortcut(dialogTarget), "single-key shortcuts must stay in
 assert(!blocksSingleKeyShortcut(pageTarget), "single-key shortcuts must remain available on the page")
 
 const assessmentRowSource = await fetch(
-  new URL("../src/components/AssessmentRow.tsx", import.meta.url),
+  new URL("../src/components/project/AssessmentRow.tsx", import.meta.url),
 ).then((response) => response.text())
 assert(assessmentRowSource.includes('tabIndex={0}'), "assessment rows must be keyboard focusable")
 assert(assessmentRowSource.includes('event.key !== "Enter" && event.key !== " "'), "assessment rows must support Enter and Space")
 
 const titleBarSource = await fetch(
-  new URL("../src/components/TitleBar.tsx", import.meta.url),
+  new URL("../src/components/shell/TitleBar.tsx", import.meta.url),
 ).then((response) => response.text())
 assert(titleBarSource.includes('aria-label="Create new item"'), "primary creation actions must remain globally discoverable")
 assert(titleBarSource.includes("onNewAssessment={onNewAssessment}"), "the title bar must expose new assessments")

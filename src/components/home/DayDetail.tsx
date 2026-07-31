@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react"
+import { useMemo, type ComponentType, type ReactNode } from "react"
 import { format, parseISO, differenceInDays } from "date-fns"
-import { X, Check, ChevronDown, ChevronRight, CheckCircle2, Trash2, Pencil } from "lucide-react"
+import { X, Check, ChevronRight, CheckCircle2, Trash2, Pencil, CalendarClock, BookOpen, CalendarDays } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
@@ -10,8 +10,11 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { formatDeadline, getSubjectById, getEventTypeInfo, getSessionEffectiveMinutes, getSessionSubjectIds, cn } from "@/lib/utils"
-import { groupSessionsBySubject } from "@/lib/groupSessions"
 import type { CalendarEvent, Project, StudySession } from "@/lib/types"
+
+function formatStartTime(startTime: string): string {
+  return format(parseISO(startTime), "h:mm a")
+}
 
 function formatTimeRange(startTime: string, endTime?: string) {
   const startLabel = format(parseISO(startTime), "h:mm a")
@@ -75,9 +78,146 @@ interface DayDetailProps {
   onSetCalendarItemsCompleted?: (itemIds: { eventIds: string[]; sessionIds: string[] }, isCompleted: boolean) => void
 }
 
-type CompletedDayItem =
+type DayItem =
   | { kind: "event"; item: CalendarEvent }
   | { kind: "session"; item: StudySession }
+
+type DayItemView = {
+  id: string
+  title: string
+  timeLabel: string
+  timeDetail?: string
+  metaLabel: string
+  accentColor?: string
+  kindLabel: string
+  kindColor?: string
+  selected: boolean
+  onToggleSelection: () => void
+  onOpen: () => void
+  selection: { eventIds: string[]; sessionIds: string[] }
+  markComplete: boolean
+}
+
+function buildDayItemView(
+  dayItem: DayItem,
+  projects: Project[],
+  selectedEventIdSet: Set<string>,
+  selectedSessionIdSet: Set<string>,
+  onToggleEventSelection: (eventId: string) => void,
+  onToggleSessionSelection: (sessionId: string) => void,
+  onSelectEvent: (event: CalendarEvent) => void,
+  onSelectSession: (session: StudySession) => void,
+): DayItemView {
+  if (dayItem.kind === "event") {
+    const event = dayItem.item
+    const subject = getSubjectById(event.subjectId)
+    const eventInfo = getEventTypeInfo(event.eventType)
+    const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
+    return {
+      id: event.id,
+      title: event.title,
+      timeLabel: isMultiDay && event.endTime
+        ? "Multi-day"
+        : formatStartTime(event.startTime),
+      timeDetail: isMultiDay && event.endTime
+        ? formatMultiDayEventMeta(event.startTime, event.endTime)
+        : event.endTime
+          ? formatTimeRange(event.startTime, event.endTime)
+          : undefined,
+      metaLabel: [event.location, subject?.shortCode].filter(Boolean).join(" · "),
+      accentColor: subject?.color ?? eventInfo.color,
+      kindLabel: eventInfo.label,
+      kindColor: eventInfo.color,
+      selected: selectedEventIdSet.has(event.id),
+      onToggleSelection: () => onToggleEventSelection(event.id),
+      onOpen: () => onSelectEvent(event),
+      selection: { eventIds: [event.id], sessionIds: [] },
+      markComplete: !event.isFinished,
+    }
+  }
+
+  const session = dayItem.item
+  const project = session.projectId
+    ? projects.find((candidate) => candidate.id === session.projectId)
+    : undefined
+  const subjectIds = getSessionSubjectIds(session, project)
+  const primarySubject = getSubjectById(subjectIds[0])
+  const subjects = subjectIds
+    .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
+    .join(", ")
+  const duration = formatDuration(getSessionEffectiveMinutes(session))
+  return {
+    id: session.id,
+    title: session.title,
+    timeLabel: formatStartTime(session.startTime),
+    timeDetail: session.endTime
+      ? `${formatTimeRange(session.startTime, session.endTime)} · ${duration}`
+      : duration,
+    metaLabel: [
+      project?.name ?? subjects,
+      session.schedule.blocks.length > 1
+        ? `${session.schedule.blocks.length} blocks`
+        : undefined,
+    ].filter(Boolean).join(" · "),
+    accentColor: primarySubject?.color,
+    kindLabel: session.status === "in-progress" ? "In progress" : "Session",
+    kindColor: session.status === "in-progress" ? undefined : primarySubject?.color,
+    selected: selectedSessionIdSet.has(session.id),
+    onToggleSelection: () => onToggleSessionSelection(session.id),
+    onOpen: () => onSelectSession(session),
+    selection: { eventIds: [], sessionIds: [session.id] },
+    markComplete: session.status !== "completed",
+  }
+}
+
+function sortDayItems(items: DayItem[]): DayItem[] {
+  return [...items].sort(
+    (a, b) => parseISO(a.item.startTime).getTime() - parseISO(b.item.startTime).getTime(),
+  )
+}
+
+function DaySection({
+  title,
+  count,
+  icon: Icon,
+  muted = false,
+  children,
+}: {
+  title: string
+  count: number
+  icon?: ComponentType<{ className?: string }>
+  muted?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div className={cn(muted && "opacity-85")}>
+      <div className="mb-1.5 flex items-center gap-2 px-0.5">
+        {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />}
+        <p className="text-xs font-semibold text-foreground/85">{title}</p>
+        <p className="text-micro tabular-nums text-muted-foreground">
+          {count} {count === 1 ? "item" : "items"}
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-border/45 bg-background/30">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function KindBadge({ label, color }: { label: string; color?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[9px] font-medium leading-none whitespace-nowrap",
+        !color && "bg-muted/70 text-muted-foreground",
+      )}
+      style={color ? { backgroundColor: color + "18", color } : undefined}
+    >
+      {label}
+    </span>
+  )
+}
 
 export function DayDetail({
   selectedDate,
@@ -106,50 +246,177 @@ export function DayDetail({
     [events, dateKey],
   )
   const hasItems = deadlines.length > 0 || sessions.length > 0 || dayEvents.length > 0
-  const currentSessions = useMemo(
-    () => sessions.filter((session) => session.status !== "completed"),
-    [sessions],
+  const uncompletedItems = useMemo<DayItem[]>(
+    () => sortDayItems([
+      ...sessions
+        .filter((session) => session.status !== "completed")
+        .map((session) => ({ kind: "session" as const, item: session })),
+      ...dayEvents
+        .filter((event) => !event.isFinished)
+        .map((event) => ({ kind: "event" as const, item: event })),
+    ]),
+    [dayEvents, sessions],
   )
-  const subjectGroups = useMemo(
-    () => groupSessionsBySubject(currentSessions, projects),
-    [currentSessions, projects],
-  )
-  const completedItems = useMemo<CompletedDayItem[]>(
-    () => [
+  const completedItems = useMemo<DayItem[]>(
+    () => sortDayItems([
       ...sessions
         .filter((session) => session.status === "completed")
         .map((session) => ({ kind: "session" as const, item: session })),
       ...dayEvents
         .filter((event) => event.isFinished)
         .map((event) => ({ kind: "event" as const, item: event })),
-    ].sort(
-      (a, b) =>
-        parseISO(a.item.startTime).getTime() - parseISO(b.item.startTime).getTime(),
-    ),
+    ]),
     [dayEvents, sessions],
   )
-  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(() => new Set(subjectGroups.map((g) => g.subjectId)))
-  const toggleSubject = (subjectId: string) => {
-    setExpandedSubjects((prev) => {
-      const next = new Set(prev)
-      if (next.has(subjectId)) next.delete(subjectId)
-      else next.add(subjectId)
-      return next
-    })
-  }
+  const calendarItemCount = sessions.length + dayEvents.length
+  const completedCount = completedItems.length
+  const progressPct = calendarItemCount > 0
+    ? Math.round((completedCount / calendarItemCount) * 100)
+    : 0
+
+  const renderDayItemList = (items: DayItem[], isCompleted: boolean) => (
+    <div className="divide-y divide-border/30">
+      {items.map((dayItem) => {
+        const view = buildDayItemView(
+          dayItem,
+          projects,
+          selectedEventIdSet,
+          selectedSessionIdSet,
+          onToggleEventSelection,
+          onToggleSessionSelection,
+          onSelectEvent,
+          onSelectSession,
+        )
+        return (
+          <ContextMenu key={`${dayItem.kind}-${view.id}`}>
+            <div className="group relative flex items-stretch">
+              <ContextMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    if (calendarSelectionMode) {
+                      view.onToggleSelection()
+                      return
+                    }
+                    view.onOpen()
+                  }}
+                  className={cn(
+                    "relative h-auto min-h-[3.25rem] flex-1 rounded-none px-3 py-2.5 text-left hover:bg-accent/35",
+                    view.selected && "bg-primary/10 hover:bg-primary/12",
+                    isCompleted && "hover:bg-background/55",
+                  )}
+                >
+                  {view.accentColor && (
+                    <span
+                      className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-full"
+                      style={{ backgroundColor: view.accentColor }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <div className="grid w-full min-w-0 grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 sm:grid-cols-[5rem_minmax(0,1fr)_auto]">
+                    <div className="flex min-w-0 items-start gap-1.5 pl-1">
+                      {calendarSelectionMode && (
+                        <span
+                          className={cn(
+                            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                            view.selected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background/50",
+                          )}
+                          aria-hidden="true"
+                        >
+                          {view.selected && <Check className="h-3 w-3" />}
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <span className="block truncate text-xs font-semibold tabular-nums text-foreground/90" title={view.timeLabel}>
+                          {view.timeLabel}
+                        </span>
+                        {view.timeDetail && (
+                          <span className="mt-0.5 block truncate text-[10px] leading-3 tabular-nums text-muted-foreground" title={view.timeDetail}>
+                            {view.timeDetail}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 truncate text-xs font-medium text-foreground" title={view.title}>
+                          {view.title}
+                        </span>
+                        <KindBadge label={view.kindLabel} color={view.kindColor} />
+                      </div>
+                      {view.metaLabel && (
+                        <span className="mt-0.5 block truncate text-micro leading-4 text-muted-foreground" title={view.metaLabel}>
+                          {view.metaLabel}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      {isCompleted && (
+                        <div className="flex items-center gap-1 text-success">
+                          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span className="hidden text-[10px] font-medium min-[420px]:inline">Done</span>
+                        </div>
+                      )}
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/45 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground/70" aria-hidden="true" />
+                    </div>
+                  </div>
+                </Button>
+              </ContextMenuTrigger>
+              {!isCompleted && onSetCalendarItemsCompleted && !calendarSelectionMode && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="my-auto mr-1 h-7 w-7 shrink-0 self-center text-muted-foreground/60 opacity-0 transition-opacity hover:bg-success/10 hover:text-success group-hover:opacity-100 focus-visible:opacity-100"
+                  aria-label={`Mark ${view.title} complete`}
+                  onClick={() => onSetCalendarItemsCompleted(view.selection, true)}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+            <ContextMenuContent className="w-40">
+              <CtxMenuItem onSelect={view.onOpen}>
+                <Pencil className="h-4 w-4" />
+                Edit
+              </CtxMenuItem>
+              {onSetCalendarItemsCompleted && (
+                <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted(view.selection, view.markComplete)}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  {view.markComplete ? "Mark complete" : "Mark current"}
+                </CtxMenuItem>
+              )}
+              <CtxMenuSep />
+              <CtxMenuItem
+                variant="destructive"
+                onSelect={() => onDeleteCalendarItems?.(view.selection)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </CtxMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        )
+      })}
+    </div>
+  )
 
   return (
-    <div className="rounded-lg border bg-muted/20 p-3">
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <div className="rounded-xl border bg-muted/20 p-3.5 shadow-sm">
+      <div className="mb-3.5 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold">
+          <p className="text-sm font-semibold tracking-tight">
             {format(parseISO(selectedDate), "EEEE")}
           </p>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {format(parseISO(selectedDate), "MMMM d")}
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {format(parseISO(selectedDate), "MMMM d, yyyy")}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {(dayEvents.length > 0 || sessions.length > 0) && (
             <Button
               variant={calendarSelectionMode ? "secondary" : "ghost"}
@@ -175,22 +442,39 @@ export function DayDetail({
           </Button>
         </div>
       </div>
-      <div className="mb-3 grid grid-cols-3 gap-1.5 text-center">
-        <div className="rounded-lg bg-background/42 px-2 py-1.5">
-          <p className="text-xs font-semibold tabular-nums">{deadlines.length}</p>
-          <p className="text-xs text-muted-foreground">due</p>
+
+      <div className="mb-3.5 grid grid-cols-3 gap-2">
+        <div className="rounded-lg border border-border/35 bg-background/45 px-2 py-2 text-center">
+          <p className="text-sm font-semibold tabular-nums">{deadlines.length}</p>
+          <p className="text-[10px] text-muted-foreground">due</p>
         </div>
-        <div className="rounded-lg bg-background/42 px-2 py-1.5">
-          <p className="text-xs font-semibold tabular-nums">{dayEvents.length}</p>
-          <p className="text-xs text-muted-foreground">events</p>
+        <div className="rounded-lg border border-border/35 bg-background/45 px-2 py-2 text-center">
+          <p className="text-sm font-semibold tabular-nums">{dayEvents.length}</p>
+          <p className="text-[10px] text-muted-foreground">events</p>
         </div>
-        <div className="rounded-lg bg-background/42 px-2 py-1.5">
-          <p className="text-xs font-semibold tabular-nums">{sessions.length}</p>
-          <p className="text-xs text-muted-foreground">sessions</p>
+        <div className="rounded-lg border border-border/35 bg-background/45 px-2 py-2 text-center">
+          <p className="text-sm font-semibold tabular-nums">{sessions.length}</p>
+          <p className="text-[10px] text-muted-foreground">sessions</p>
         </div>
       </div>
+
+      {calendarItemCount > 0 && (
+        <div className="mb-3.5">
+          <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+            <span>{completedCount} of {calendarItemCount} done</span>
+            <span className="tabular-nums">{progressPct}%</span>
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-background/60">
+            <div
+              className="h-full rounded-full bg-success/70 transition-[width] duration-300"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {calendarSelectionMode && (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/8 px-2.5 py-2">
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/8 px-2.5 py-2">
           <p className="text-xs font-medium text-primary">
             Pick items below, or select the whole day.
           </p>
@@ -201,415 +485,62 @@ export function DayDetail({
       )}
 
       {hasItems ? (
-        <div className="space-y-2">
-          {deadlines.map((p) => {
-            const subject = getSubjectById(p.subjectId)
-            return (
-              <Button
-                key={p.id}
-                variant="outline"
-                onClick={() => onSelectProject(p.id)}
-                className="h-auto w-full justify-start whitespace-normal p-2 text-left"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium truncate">{p.icon} {p.name}</p>
-                    <p className="text-micro text-muted-foreground mt-0.5">
-                      {formatDeadline(p.deadline!)}
-                    </p>
-                  </div>
-                  {subject && (
-                    <div
-                      className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium shrink-0"
-                      style={{
-                        backgroundColor: subject.color + "18",
-                        color: subject.color,
-                      }}
-                    >
-                      {subject.shortCode}
-                    </div>
-                  )}
-                </div>
-              </Button>
-            )
-          })}
-          {subjectGroups.map((group) => {
-            const isExpanded = expandedSubjects.has(group.subjectId)
-            const sessionLabel = group.count === 1 ? "session" : "sessions"
-            return (
-              <div key={group.subjectId} className="rounded-xl border border-border/40 bg-background/20 overflow-hidden">
-                <Button
-                  variant="ghost"
-                  onClick={() => toggleSubject(group.subjectId)}
-                  className="h-auto w-full justify-start px-3 py-2.5 text-left"
-                >
-                  <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
-                  <span className="text-xs font-semibold" style={{ color: group.color }}>
-                    {group.shortCode}
-                  </span>
-                  <span className="text-xs font-medium text-foreground/80">
-                    {group.count} {sessionLabel}
-                  </span>
-                  <span className="text-micro text-muted-foreground tabular-nums">
-                    · {formatDuration(group.totalMinutes)}
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "ml-auto h-3.5 w-3.5 text-muted-foreground/50 transition-transform",
-                      isExpanded && "rotate-180",
-                    )}
-                  />
-                </Button>
-                {isExpanded && group.projectGroups.map((pg) => (
-                  <div key={pg.projectId ?? "__none__"} className="border-t border-border/30">
-                    {group.projectGroups.length > 1 && (
-                      <div className="px-3 pt-2 pb-1">
-                        <p className="text-micro font-medium text-muted-foreground/70">
-                          {pg.projectName}
-                          <span className="text-muted-foreground/40 ml-1">· {pg.count} {pg.count === 1 ? "session" : "sessions"} · {formatDuration(pg.totalMinutes)}</span>
-                        </p>
-                      </div>
-                    )}
-                    <div className="space-y-1 px-2 pb-2 pt-1">
-                      {pg.sessions.map((s) => {
-                        const project = s.projectId ? projects.find((p) => p.id === s.projectId) : undefined
-                        const subjects = getSessionSubjectIds(s, project)
-                          .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
-                          .join(", ")
-                        const selected = selectedSessionIdSet.has(s.id)
-                        return (
-                          <ContextMenu key={s.id}>
-                            <ContextMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              if (calendarSelectionMode) {
-                                onToggleSessionSelection(s.id)
-                                return
-                              }
-                              onSelectSession(s)
-                            }}
-                            className={cn(
-                              "h-auto w-full justify-start whitespace-normal p-2 text-left",
-                              selected
-                                ? "border-primary/65 bg-primary/10"
-                                : "border-transparent",
-                              s.status === "completed" && "opacity-75 hover:opacity-95",
-                            )}
-                          >
-                            <div className="flex items-start gap-2">
-                              {calendarSelectionMode && (
-                                <span
-                                  className={cn(
-                                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                                    selected
-                                      ? "border-primary bg-primary text-primary-foreground"
-                                      : "border-border bg-background/50",
-                                  )}
-                                  aria-hidden="true"
-                                >
-                                  {selected && <Check className="h-3 w-3" />}
-                                </span>
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="min-w-0 truncate text-xs font-medium">{s.title}</p>
-                                  {s.status !== "planned" && (
-                                    <span className={cn(
-                                      "inline-flex h-3.5 shrink-0 items-center rounded-sm px-1 text-[9px] font-medium leading-none whitespace-nowrap",
-                                      s.status === "completed"
-                                        ? "bg-success/15 text-success"
-                                        : "bg-primary/12 text-primary",
-                                    )}>
-                                      {s.status === "completed" ? "Done" : "Active"}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-micro text-muted-foreground mt-0.5">
-                                  {project?.name ?? subjects}
-                                </p>
-                                <p className="mt-1 text-micro font-medium tabular-nums text-muted-foreground">
-                                  {formatTimeRange(s.startTime, s.endTime)} · {formatDuration(getSessionEffectiveMinutes(s))}
-                                  {s.schedule.blocks.length > 1 ? ` · ${s.schedule.blocks.length} blocks` : ""}
-                                </p>
-                              </div>
-                            </div>
-                          </Button>
-                            </ContextMenuTrigger>
-                            <ContextMenuContent className="w-40">
-                              <CtxMenuItem onSelect={() => onSelectSession(s)}>
-                                <Pencil className="h-4 w-4" />
-                                Edit
-                              </CtxMenuItem>
-                              {onSetCalendarItemsCompleted && (
-                                <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [], sessionIds: [s.id] }, s.status !== "completed")}>
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  {s.status === "completed" ? "Mark current" : "Mark complete"}
-                                </CtxMenuItem>
-                              )}
-                              <CtxMenuSep />
-                              <CtxMenuItem
-                                variant="destructive"
-                                onSelect={() => onDeleteCalendarItems?.({ eventIds: [], sessionIds: [s.id] })}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </CtxMenuItem>
-                            </ContextMenuContent>
-                          </ContextMenu>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          })}
-          {(() => {
-            const upcomingEvents = dayEvents.filter((e) => !e.isFinished)
-            return (
-              <>
-                {upcomingEvents.map((event) => {
-                  const subject = getSubjectById(event.subjectId)
-                  const eventInfo = getEventTypeInfo(event.eventType)
-                  const selected = selectedEventIdSet.has(event.id)
-                  const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
+        <div className="space-y-3">
+          {deadlines.length > 0 && (
+            <DaySection title="Due" count={deadlines.length} icon={CalendarClock}>
+              <div className="divide-y divide-border/30">
+                {deadlines.map((p) => {
+                  const subject = getSubjectById(p.subjectId)
                   return (
-                    <ContextMenu key={event.id}>
-                      <ContextMenuTrigger asChild>
                     <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (calendarSelectionMode) {
-                          onToggleEventSelection(event.id)
-                          return
-                        }
-                        onSelectEvent(event)
-                      }}
-                      className={cn(
-                        "h-auto w-full justify-start whitespace-normal p-2 text-left",
-                        selected
-                          ? "border-primary/65 bg-primary/10"
-                          : "border-border/70"
-                      )}
+                      key={p.id}
+                      variant="ghost"
+                      onClick={() => onSelectProject(p.id)}
+                      className="group h-auto min-h-[3.25rem] w-full justify-start rounded-none px-3 py-2.5 text-left hover:bg-accent/35"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 items-start gap-2">
-                          {calendarSelectionMode && (
-                            <span
-                              className={cn(
-                                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                                selected
-                                  ? "border-primary bg-primary text-primary-foreground"
-                                  : "border-border bg-background/50"
-                              )}
-                              aria-hidden="true"
-                            >
-                              {selected && <Check className="h-3 w-3" />}
-                            </span>
-                          )}
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-medium">{event.title}</p>
-                            <p className="text-micro text-muted-foreground mt-0.5">
-                              {isMultiDay && event.endTime
-                                ? formatMultiDayEventMeta(event.startTime, event.endTime)
-                                : `${formatTimeRange(event.startTime, event.endTime)}${event.location ? ` · ${event.location}` : ""}`}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          {subject && (
-                            <span
-                              className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                              style={{
-                                backgroundColor: subject.color + "18",
-                                color: subject.color,
-                              }}
-                            >
-                              {subject.shortCode}
-                            </span>
-                          )}
+                      <div className="flex w-full min-w-0 items-center gap-2.5">
+                        {subject && (
                           <span
-                            className="text-micro px-1.5 py-0.5 rounded whitespace-nowrap font-medium"
-                            style={{
-                              backgroundColor: eventInfo.color + "18",
-                              color: eventInfo.color,
-                            }}
-                          >
-                            {eventInfo.label}
-                          </span>
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: subject.color }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium">{p.icon} {p.name}</p>
+                          <p className="mt-0.5 text-micro text-muted-foreground">
+                            {formatDeadline(p.deadline!)}
+                          </p>
                         </div>
+                        {subject && (
+                          <KindBadge label={subject.shortCode} color={subject.color} />
+                        )}
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/45 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                       </div>
                     </Button>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent className="w-40">
-                        <CtxMenuItem onSelect={() => onSelectEvent(event)}>
-                          <Pencil className="h-4 w-4" />
-                          Edit
-                        </CtxMenuItem>
-                        {onSetCalendarItemsCompleted && (
-                          <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted({ eventIds: [event.id], sessionIds: [] }, !event.isFinished)}>
-                            <CheckCircle2 className="h-4 w-4" />
-                            {event.isFinished ? "Mark current" : "Mark complete"}
-                          </CtxMenuItem>
-                        )}
-                        <CtxMenuSep />
-                        <CtxMenuItem
-                          variant="destructive"
-                          onSelect={() => onDeleteCalendarItems?.({ eventIds: [event.id], sessionIds: [] })}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </CtxMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
                   )
                 })}
-                {completedItems.length > 0 && (
-                  <div className="pt-1.5">
-                    <div className="flex items-baseline gap-2 px-2 pb-2">
-                      <p className="text-sm font-semibold text-foreground/90">Completed</p>
-                      <p className="text-xs tabular-nums text-muted-foreground">
-                        {completedItems.length} {completedItems.length === 1 ? "item" : "items"}
-                      </p>
-                    </div>
-                    <div className="divide-y divide-border/35 border-y border-border/45">
-                      {completedItems.map((completed) => {
-                        const view = completed.kind === "event"
-                          ? (() => {
-                              const event = completed.item
-                              const subject = getSubjectById(event.subjectId)
-                              const eventInfo = getEventTypeInfo(event.eventType)
-                              const isMultiDay = event.endTime && format(parseISO(event.startTime), "yyyy-MM-dd") !== format(parseISO(event.endTime), "yyyy-MM-dd")
-                              return {
-                                id: event.id,
-                                title: event.title,
-                                timeLabel: isMultiDay && event.endTime
-                                  ? formatMultiDayEventMeta(event.startTime, event.endTime)
-                                  : formatTimeRange(event.startTime, event.endTime),
-                                metaLabel: [eventInfo.label, event.location, subject?.shortCode]
-                                  .filter(Boolean)
-                                  .join(" · "),
-                                selected: selectedEventIdSet.has(event.id),
-                                onToggleSelection: () => onToggleEventSelection(event.id),
-                                onOpen: () => onSelectEvent(event),
-                                selection: { eventIds: [event.id], sessionIds: [] },
-                              }
-                            })()
-                          : (() => {
-                              const session = completed.item
-                              const project = session.projectId
-                                ? projects.find((candidate) => candidate.id === session.projectId)
-                                : undefined
-                              const subjects = getSessionSubjectIds(session, project)
-                                .map((subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId)
-                                .join(", ")
-                              return {
-                                id: session.id,
-                                title: session.title,
-                                timeLabel: formatTimeRange(session.startTime, session.endTime),
-                                metaLabel: [
-                                  project?.name ?? subjects,
-                                  formatDuration(getSessionEffectiveMinutes(session)),
-                                  session.schedule.blocks.length > 1
-                                    ? `${session.schedule.blocks.length} blocks`
-                                    : undefined,
-                                ].filter(Boolean).join(" · "),
-                                selected: selectedSessionIdSet.has(session.id),
-                                onToggleSelection: () => onToggleSessionSelection(session.id),
-                                onOpen: () => onSelectSession(session),
-                                selection: { eventIds: [], sessionIds: [session.id] },
-                              }
-                            })()
-                        return (
-                          <ContextMenu key={`${completed.kind}-${view.id}`}>
-                            <ContextMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                onClick={() => {
-                                  if (calendarSelectionMode) {
-                                    view.onToggleSelection()
-                                    return
-                                  }
-                                  view.onOpen()
-                                }}
-                                className={cn(
-                                  "group h-auto min-h-11 w-full rounded-none px-2 py-2 text-left hover:bg-background/45",
-                                  view.selected && "bg-primary/10 hover:bg-primary/12",
-                                )}
-                              >
-                                <div className="grid w-full min-w-0 grid-cols-[7.5rem_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[7.75rem_minmax(0,1fr)_auto]">
-                                  <div className="flex min-w-0 items-center gap-1.5">
-                                    {calendarSelectionMode && (
-                                      <span
-                                        className={cn(
-                                          "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                                          view.selected
-                                            ? "border-primary bg-primary text-primary-foreground"
-                                            : "border-border bg-background/50",
-                                        )}
-                                        aria-hidden="true"
-                                      >
-                                        {view.selected && <Check className="h-3 w-3" />}
-                                      </span>
-                                    )}
-                                    <span className="min-w-0 truncate text-xs font-medium tabular-nums text-muted-foreground" title={view.timeLabel}>
-                                      {view.timeLabel}
-                                    </span>
-                                  </div>
+              </div>
+            </DaySection>
+          )}
 
-                                  <div className="min-w-0">
-                                    <span className="block truncate text-xs font-semibold leading-4 text-foreground/90" title={view.title}>
-                                      {view.title}
-                                    </span>
-                                    {view.metaLabel && (
-                                      <span className="block truncate text-micro leading-4 text-muted-foreground" title={view.metaLabel}>
-                                        {view.metaLabel}
-                                      </span>
-                                    )}
-                                  </div>
+          {uncompletedItems.length > 0 && (
+            <DaySection title="Schedule" count={uncompletedItems.length} icon={CalendarDays}>
+              {renderDayItemList(uncompletedItems, false)}
+            </DaySection>
+          )}
 
-                                  <div className="flex shrink-0 items-center gap-1 text-success">
-                                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                    <span className="hidden text-xs font-medium min-[420px]:inline">Done</span>
-                                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/55 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-                                  </div>
-                                </div>
-                              </Button>
-                            </ContextMenuTrigger>
-                            <ContextMenuContent className="w-40">
-                              <CtxMenuItem onSelect={view.onOpen}>
-                                <Pencil className="h-4 w-4" />
-                                Edit
-                              </CtxMenuItem>
-                              {onSetCalendarItemsCompleted && (
-                                <CtxMenuItem onSelect={() => onSetCalendarItemsCompleted(view.selection, false)}>
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  Mark current
-                                </CtxMenuItem>
-                              )}
-                              <CtxMenuSep />
-                              <CtxMenuItem
-                                variant="destructive"
-                                onSelect={() => onDeleteCalendarItems?.(view.selection)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </CtxMenuItem>
-                            </ContextMenuContent>
-                          </ContextMenu>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </>
-            )
-          })()}
+          {completedItems.length > 0 && (
+            <DaySection title="Completed" count={completedItems.length} icon={BookOpen} muted>
+              {renderDayItemList(completedItems, true)}
+            </DaySection>
+          )}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-border bg-background/24 px-3 py-3">
-          <p className="text-xs text-muted-foreground">No calendar items scheduled.</p>
+        <div className="rounded-xl border border-dashed border-border/70 bg-background/30 px-4 py-5 text-center">
+          <CalendarDays className="mx-auto mb-2 h-5 w-5 text-muted-foreground/50" aria-hidden="true" />
+          <p className="text-xs font-medium text-foreground/80">Nothing scheduled</p>
+          <p className="mt-0.5 text-micro text-muted-foreground">Sessions and events for this day will show up here.</p>
         </div>
       )}
     </div>

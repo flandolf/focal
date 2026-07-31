@@ -37,7 +37,7 @@ export function EmptyAnalytics({ onNewSession }: EmptyAnalyticsProps) {
       </motion.p>
       <motion.div variants={staggerItem} className="mt-2">
         <Button
-          onClick={onNewSession}
+          onClick={() => onNewSession()}
           size="sm"
           className="gap-1.5"
           {...pressable(reduceMotion)}
