@@ -259,7 +259,7 @@ export function getConsistencyData(
 
   const endDate = new Date()
   const earliestCompletedStart = completed.reduce<number | null>((earliest, session) => {
-    const start = new Date(session.startTime).getTime()
+    const start = getSessionAnalyticsStart(session)
     if (Number.isNaN(start)) return earliest
     return earliest == null ? start : Math.min(earliest, start)
   }, null)

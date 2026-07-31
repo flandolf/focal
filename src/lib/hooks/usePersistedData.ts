@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
+import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { mutatePersistedArray, readPersistedArray, writePersistedArray } from "@/lib/storage/database"
 import type { CoreDataFile } from "@/lib/storage/records"
 
 /**
- * Generic hook for reading/writing a JSON array from the Tauri app-data directory.
+ * Generic hook for reading/writing a persisted record array.
  * Normalises each raw row on load, applies an optional post-load filter, and
  * listens to `focal-sync-data-changed` events so external sync writes are reflected
  * in React state without reloading the page.
@@ -33,10 +34,8 @@ export function usePersistedData<T>({
   const [error, setError] = useState<string | null>(null)
 
   // Refs for callbacks so changes don't trigger re-fetches.
-  const normalizeRef = useRef(normalize)
-  const onLoadRef = useRef(onLoad)
-  useEffect(() => { normalizeRef.current = normalize })
-  useEffect(() => { onLoadRef.current = onLoad })
+  const normalizeRef = useLatestRef(normalize)
+  const onLoadRef = useLatestRef(onLoad)
 
   const refresh = useCallback(async () => {
     try {
@@ -54,7 +53,7 @@ export function usePersistedData<T>({
     } finally {
       setLoading(false)
     }
-  }, [fileName])
+  }, [fileName, normalizeRef, onLoadRef])
 
   const save = useCallback(async (updated: T[]) => {
     await writePersistedArray(fileName, updated)
@@ -67,7 +66,7 @@ export function usePersistedData<T>({
     ))
     setData(updated)
     return updated
-  }, [fileName])
+  }, [fileName, normalizeRef])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect, @typescript-eslint/no-floating-promises

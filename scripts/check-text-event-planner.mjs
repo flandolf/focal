@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { createServer } from "vite"
 
-const server = await createServer({ appType: "custom", server: { middlewareMode: true } })
+const server = await createServer({ appType: "custom", server: { middlewareMode: true, ws: false } })
 
 try {
   const { parseTextEventResponse } = await server.ssrLoadModule("/src/components/planning/TextEventPlanner.tsx")

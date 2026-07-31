@@ -5,6 +5,7 @@ import {
   combineDateAndTime,
   formatTime12,
   getSessionEffectiveMinutes,
+  parseNotionSource,
   sortProjectsByDeadline,
 } from "../src/lib/utils.ts"
 import { normalizeRename } from "../src/lib/autoRename.ts"
@@ -178,9 +179,6 @@ check(getSessionEffectiveMinutes(overlappingBlocks) === 90, "overlapping study b
 
 // ── utils.combineDateAndTime ─────────────────────────────────────────────────────
 
-// Source only guards on dateParts.length, timeParts.length >= 2, integer parts,
-// and a non-NaN Date. It deliberately does not validate calendar rolls (Feb 30
-// → March) or extra time parts — only those four guards are in scope.
 const combined = combineDateAndTime("2026-08-08", "13:45")
 check(
   combined?.getFullYear() === 2026 && combined?.getMonth() === 7 && combined?.getDate() === 8
@@ -190,6 +188,8 @@ check(
 check(combineDateAndTime("bad", "13:45") === null, "a non-integer date part must return null")
 check(combineDateAndTime("2026-08-08", "x:y") === null, "a non-integer time part must return null")
 check(combineDateAndTime("2026-08-08", "9") === null, "a single-part time must return null")
+check(combineDateAndTime("2026-02-30", "13:45") === null, "a rolled calendar date must return null")
+check(combineDateAndTime("2026-08-08", "24:00") === null, "a rolled clock time must return null")
 
 // ── utils.formatTime12 ───────────────────────────────────────────────────────────
 
@@ -213,6 +213,15 @@ check(
 )
 check(parseQuickLinks({ not: "an array" }).length === 0, "non-array input must yield an empty list")
 check(parseQuickLinks(null).length === 0, "null input must yield an empty list")
+check(
+  parseQuickLinks([{ id: "bad", label: "Script", url: "javascript:alert(1)", icon: "book", color: "#fff" }]).length === 0,
+  "unsafe URL schemes must not pass persisted quick-link validation",
+)
+
+check(
+  parseNotionSource({ type: "notion", id: "page", syncSnapshot: ["not-a-record"] })?.syncSnapshot === undefined,
+  "array-shaped Notion sync snapshots must be rejected",
+)
 
 // ── groupSessions.getCalendarSessionIndicators ───────────────────────────────────
 

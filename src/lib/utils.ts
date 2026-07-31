@@ -8,7 +8,7 @@ export function generateId(): string {
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 export function cn(...inputs: ClassValue[]) {
@@ -324,7 +324,13 @@ export function combineDateAndTime(dateValue: string, timeValue: string): Date |
   }
 
   const date = new Date(year, month - 1, day, hours, minutes, 0, 0)
-  return Number.isNaN(date.getTime()) ? null : date
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day
+    && date.getHours() === hours
+    && date.getMinutes() === minutes
+    ? date
+    : null
 }
 
 export function formatTime12(time24: string): string {

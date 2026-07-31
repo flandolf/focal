@@ -300,8 +300,9 @@ export async function resolveConflictKeepLocal(table: SyncTable, rowId: string):
   await retryFailedItem(table, rowId)
 }
 
-export function dismissConflict(_table?: SyncTable, _rowId?: string): void {
-  emitStatus({ conflicts: null })
+export function dismissConflict(table: SyncTable, rowId: string): void {
+  const conflicts = snapshot.conflicts?.filter((conflict) => conflict.table !== table || conflict.rowId !== rowId)
+  emitStatus({ conflicts: conflicts?.length ? conflicts : null })
 }
 
 export function clearConflicts(): void {
@@ -631,9 +632,12 @@ async function applyRemoteChanges(changes: RemoteSyncChange[], accountId: string
         putRecords.push({ entity: table, rowId: change.row_id, payload })
       }
     }
-    await suppressRecordOutbox(putRecords)
-    await writeLocalDataArray(fileName, [...byId.values()])
-    await clearRecordOutboxSuppressions(putRecords)
+    try {
+      await suppressRecordOutbox(putRecords)
+      await writeLocalDataArray(fileName, [...byId.values()])
+    } finally {
+      await clearRecordOutboxSuppressions(putRecords)
+    }
     for (const record of putRecords) {
       await recordNotionUpsertIntent(table, record.rowId, record.payload as unknown as LocalRecord)
     }
@@ -772,7 +776,7 @@ function applyUserSettings(settings: UserSettings): void {
   setReasoningExclude(Boolean(settings.reasoning_exclude))
   if (settings.provider) setProvider(settings.provider)
   if (settings.ollama_base_url) setOllamaBaseUrl(settings.ollama_base_url)
-  if (settings.ollama_model) setOllamaModel(settings.ollama_model)
+  if (typeof settings.ollama_model === "string") setOllamaModel(settings.ollama_model)
   if (settings.assistant_personality) setAssistantPersonality(settings.assistant_personality as AssistantPersonality)
   setAssistantCustomInstructions(settings.assistant_custom_instructions ?? "")
   if (settings.quick_links) setCachedPreference(QUICK_LINKS_STORAGE_KEY, JSON.stringify(settings.quick_links), true)

@@ -216,7 +216,10 @@ export function setAutoRenameUseFileContent(enabled: boolean): void {
 }
 
 export function getReasoningEffort(): ReasoningEffort {
-  return (getString(KEYS.reasoningEffort) as ReasoningEffort | null) ?? "medium"
+  const value = getString(KEYS.reasoningEffort)
+  return value === "xhigh" || value === "high" || value === "medium" || value === "low" || value === "minimal" || value === "none"
+    ? value
+    : "medium"
 }
 
 export function setReasoningEffort(effort: ReasoningEffort): void {
@@ -224,8 +227,8 @@ export function setReasoningEffort(effort: ReasoningEffort): void {
 }
 
 export function getReasoningMaxTokens(): number {
-  const val = getString(KEYS.reasoningMaxTokens)
-  return val ? parseInt(val, 10) : 8000
+  const value = Number(getString(KEYS.reasoningMaxTokens))
+  return Number.isSafeInteger(value) && value > 0 ? value : 8000
 }
 
 export function setReasoningMaxTokens(tokens: number): void {
@@ -309,13 +312,13 @@ export function setProjectsRootPath(path: string | null): void {
   }
 }
 
-export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; max_tokens?: number; exclude?: boolean } } {
+export function getReasoningConfig(): { reasoning?: { effort?: ReasoningEffort; maxTokens?: number; exclude?: boolean } } {
   const effort = getReasoningEffort()
   if (effort === "none") return {}
   return {
     reasoning: {
       effort,
-      max_tokens: getReasoningMaxTokens(),
+      maxTokens: getReasoningMaxTokens(),
       exclude: getReasoningExclude() || undefined,
     },
   }

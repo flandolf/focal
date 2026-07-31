@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { Session, User } from "@supabase/supabase-js"
+import type { Session } from "@supabase/supabase-js"
 import { isSupabaseConfigured } from "@/lib/supabase/client"
 import {
   getSupabaseSession,
@@ -100,7 +100,7 @@ export function useSupabaseAuth() {
   return useMemo(() => ({
     configured: isSupabaseConfigured,
     session,
-    user: session?.user ?? null as User | null,
+    user: session?.user ?? null,
     loading,
     error,
     signIn,
@@ -108,4 +108,3 @@ export function useSupabaseAuth() {
     signOut,
   }), [session, loading, error, signIn, signUp, signOut])
 }
-

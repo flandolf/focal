@@ -280,4 +280,13 @@ assertEqual(
 )
 localDatabase.close()
 
+const engineSource = await fetch(new URL("../src/lib/sync/engine.ts", import.meta.url)).then((response) => response.text())
+for (const required of [
+  "conflict.table !== table || conflict.rowId !== rowId",
+  "finally {\n      await clearRecordOutboxSuppressions(putRecords)",
+  "typeof settings.ollama_model === \"string\"",
+]) {
+  if (!engineSource.includes(required)) throw new Error(`Sync engine reliability guard is missing: ${required}`)
+}
+
 console.warn("sync change-log self-check passed")

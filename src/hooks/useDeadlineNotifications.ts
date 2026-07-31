@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { parseISO, differenceInHours } from "date-fns"
+import { parseISO } from "date-fns"
 import {
   isPermissionGranted,
   requestPermission,
@@ -112,7 +112,7 @@ function createProjectNotification(project: Project, now: Date): StudyNotificati
   const deadlineDate = parseISO(project.deadline)
   if (Number.isNaN(deadlineDate.getTime())) return null
 
-  const hoursUntil = differenceInHours(deadlineDate, now)
+  const hoursUntil = (deadlineDate.getTime() - now.getTime()) / 3_600_000
   const leadWindow = getLeadWindow(hoursUntil)
   if (!leadWindow) return null
 
@@ -136,7 +136,7 @@ function createEventNotification(event: CalendarEvent, now: Date): StudyNotifica
   const eventDate = parseISO(event.startTime)
   if (Number.isNaN(eventDate.getTime())) return null
 
-  const hoursUntil = differenceInHours(eventDate, now)
+  const hoursUntil = (eventDate.getTime() - now.getTime()) / 3_600_000
   const leadWindow = getLeadWindow(hoursUntil)
   if (!leadWindow) return null
 
@@ -159,7 +159,7 @@ function createSessionNotification(session: StudySession, now: Date): StudyNotif
   const sessionDate = parseISO(session.startTime)
   if (Number.isNaN(sessionDate.getTime())) return null
 
-  const hoursUntil = differenceInHours(sessionDate, now)
+  const hoursUntil = (sessionDate.getTime() - now.getTime()) / 3_600_000
   const leadWindow = getLeadWindow(hoursUntil)
   if (!leadWindow || leadWindow === "soon") return null
 
@@ -183,11 +183,14 @@ async function dispatchNotifications(notifications: StudyNotification[], now: Da
   const dayKey = getLocalDayKey(now)
   let dailyAlertCount = state.dailyCounts[dayKey] ?? 0
   let dailyNativeCount = state.dailyNativeCounts[dayKey] ?? 0
-  const canSendNative = await canSendNativeNotifications()
 
   const dueNotifications = notifications
     .filter((notification) => !(state.sent[notification.id] ?? []).includes(notification.leadWindow))
     .sort((a, b) => a.hoursUntil - b.hoursUntil)
+  if (dueNotifications.length === 0 || dailyAlertCount >= MAX_ALERTS_PER_DAY) return
+
+  const canSendNative = dailyNativeCount < MAX_NATIVE_NOTIFICATIONS_PER_DAY
+    && await canSendNativeNotifications()
 
   for (const notification of dueNotifications) {
     if (dailyAlertCount >= MAX_ALERTS_PER_DAY) break

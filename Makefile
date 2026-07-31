@@ -16,9 +16,9 @@ help:
 	@echo "  make install        Copy built .app to /Applications"
 	@echo ""
 	@echo "Quality:"
-	@echo "  make lint           ESLint check"
-	@echo "  make lint-fix       ESLint auto-fix"
-	@echo "  make typecheck      TypeScript check (tsc --noEmit)"
+	@echo "  make lint           Oxlint check"
+	@echo "  make lint-fix       Oxlint auto-fix"
+	@echo "  make typecheck      TypeScript check (app + Vite config)"
 	@echo "  make check          lint + typecheck (CI gate)"
 	@echo ""
 	@echo "Release:"
@@ -28,7 +28,7 @@ help:
 	@echo "Maintenance:"
 	@echo "  make clean          Remove dist + bundled .app"
 	@echo "  make distclean      clean + remove src-tauri/target/"
-	@echo "  make format         ESLint auto-fix"
+	@echo "  make format         Oxlint auto-fix"
 
 # Detect CPU count for cargo parallelism
 UNAME_S := $(shell uname -s)

@@ -1,5 +1,4 @@
 import type { Subject } from "@/lib/types"
-import { normaliseToken } from "@/lib/notion/schema"
 
 function getSubjectAliases(subject: Subject): string[] {
   const base = [
@@ -29,22 +28,29 @@ function getSubjectAliases(subject: Subject): string[] {
   return [...base, ...(aliases[subject.id] ?? [])]
 }
 
+function normalisePhrase(value: string): string {
+  return value.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim()
+}
+
 function findSubjectIdFromText(value: string | undefined, subjects: Subject[]): string | undefined {
   if (!value) return undefined
-  const normalized = normaliseToken(value)
+  const normalized = normalisePhrase(value)
   if (!normalized) return undefined
 
-  const exact = subjects.find((subject) => (
-    getSubjectAliases(subject).some((alias) => normaliseToken(alias) === normalized)
-  ))
-  if (exact) return exact.id
+  const candidates = subjects.flatMap((subject) => getSubjectAliases(subject).map((alias) => ({
+    subjectId: subject.id,
+    alias: normalisePhrase(alias),
+  })))
+  const exact = candidates
+    .filter((candidate) => candidate.alias === normalized)
+    .sort((a, b) => a.subjectId.localeCompare(b.subjectId))[0]
+  if (exact) return exact.subjectId
 
-  return subjects.find((subject) => (
-    getSubjectAliases(subject).some((alias) => {
-      const normalizedAlias = normaliseToken(alias)
-      return normalizedAlias.length >= 3 && normalized.includes(normalizedAlias)
-    })
-  ))?.id
+  const padded = ` ${normalized} `
+  return candidates
+    .filter((candidate) => candidate.alias.length >= 3 && padded.includes(` ${candidate.alias} `))
+    .sort((a, b) => b.alias.length - a.alias.length || a.subjectId.localeCompare(b.subjectId))[0]
+    ?.subjectId
 }
 
 export function findSubjectIdFromValues(values: string[], subjects: Subject[]): string | undefined {

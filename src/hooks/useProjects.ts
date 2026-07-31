@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { join } from "@tauri-apps/api/path"
 import { toast } from "sonner"
 import type { Project, ProjectChecklistItem, ProjectTemplate, DeadlineType, Unit } from "@/lib/types"
-import { sanitiseFolderName, generateId, sortProjectsByDeadline, safeString, safeStringOpt, safeBool, safeBoolOpt, safeDateMeta, safeStringArray } from "@/lib/utils"
+import { sanitiseFolderName, generateId, sortProjectsByDeadline, isRecord, safeString, safeStringOpt, safeBool, safeBoolOpt, safeDateMeta, safeStringArray } from "@/lib/utils"
 import { DEFAULT_SUBFOLDERS } from "@/lib/types"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
@@ -56,7 +56,7 @@ const VALID_UNITS: readonly string[] = ["1", "2", "3", "4"]
 const VALID_DEADLINE_TYPES: readonly string[] = ["sac", "exam", "assignment"]
 
 function normaliseProject(raw: unknown): Project {
-  const obj = raw as Record<string, unknown>
+  const obj = isRecord(raw) ? raw : {}
   const meta = safeDateMeta(obj)
   return {
     id: safeString(obj, "id", `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`),
@@ -541,9 +541,8 @@ export function useProjects() {
         text: item.text,
         completed: false,
       }))
-      const current = [...projectsRef.current, project]
       const updatedProject = { ...project, checklist, updated_at: new Date().toISOString() }
-      const updated = current.map((p) => p.id === project.id ? updatedProject : p)
+      const updated = projectsRef.current.map((p) => p.id === project.id ? updatedProject : p)
       await saveProjects(updated)
       await recordLocalUpsert("projects", updatedProject)
       return updatedProject

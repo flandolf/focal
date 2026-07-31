@@ -175,7 +175,7 @@ export async function generateRenames(
 }
 
 export async function loadProjectFiles(projectFolderPath: string): Promise<FileInfo[]> {
-  return await invoke<FileInfo[]>("get_project_files", {
+  return invoke<FileInfo[]>("get_project_files", {
     projectName: projectFolderPath,
     recursive: true,
   })
