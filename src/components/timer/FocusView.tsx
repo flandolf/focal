@@ -11,7 +11,7 @@ import {
   SkipForward,
   Timer,
 } from "lucide-react";
-import { TitleBar } from "@/components/TitleBar";
+import { TitleBar } from "@/components/shell/TitleBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

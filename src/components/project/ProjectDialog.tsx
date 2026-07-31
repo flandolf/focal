@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dialog"
 import { Link, FolderOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { AssessmentForm } from "@/components/AssessmentForm"
+import { AssessmentForm } from "@/components/project/AssessmentForm"
 import type { DeadlineType, Project, Subject, Unit } from "@/lib/types"
 
 interface ProjectDialogProps {

@@ -62,7 +62,7 @@ import {
   getLocalDateValue,
   formatTime12,
 } from "@/lib/utils";
-import { TextEventPlanner } from "@/components/TextEventPlanner";
+import { TextEventPlanner } from "@/components/planning/TextEventPlanner";
 import type { PrepBalanceItem } from "@/lib/planning";
 import { buildTodayOverview } from "@/features/home/todayOverview";
 import {
@@ -80,6 +80,7 @@ import type {
 } from "@/lib/types";
 import { CalendarGrid } from "@/components/home/CalendarGrid";
 import { DayDetail } from "@/components/home/DayDetail";
+import { QuickLinks } from "@/components/home/QuickLinks";
 import { StudyPriorities } from "@/components/home/StudyPriorities";
 import { RecentActivity } from "@/components/home/RecentActivity";
 
@@ -933,39 +934,23 @@ export const HomeView = memo(function HomeView({
             </DropdownMenu>
           </div>
 
-          <Card size="sm" className="mb-4 border-primary/20 bg-primary/[0.035]">
-            <CardContent className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center">
-              <div className="flex min-w-0 flex-1 items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Play className="size-4" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">Next focus</p>
-                  {nextFocus ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="link"
-                        className="mt-0.5 block h-auto max-w-full justify-start truncate p-0 text-left text-sm font-medium"
-                        onClick={() => handlePrioritySelect(nextFocus)}
-                      >
-                        {nextFocus.title}
-                      </Button>
-                      <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
-                        {nextFocus.reason}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      Add a due date or plan a session to create your queue.
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border/50 px-2.5 py-1.5">
+            <span className="shrink-0 text-xs font-medium text-muted-foreground">
+              Next focus
+            </span>
+            {nextFocus ? (
+              <>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto max-w-[min(100%,18rem)] truncate p-0 text-sm font-medium"
+                  onClick={() => handlePrioritySelect(nextFocus)}
+                >
+                  {nextFocus.title}
+                </Button>
                 {nextFocusSubject && (
                   <span
-                    className="rounded-md px-2 py-1 text-sm font-medium"
+                    className="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums"
                     style={{
                       backgroundColor: `${nextFocusSubject.color}18`,
                       color: nextFocusSubject.color,
@@ -974,109 +959,121 @@ export const HomeView = memo(function HomeView({
                     {nextFocusSubject.shortCode}
                   </span>
                 )}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <Settings2 />
-                      Priorities
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-[min(26rem,calc(100vw-2rem))] p-3">
-                    <PopoverHeader>
-                      <PopoverTitle>Focus priorities</PopoverTitle>
-                      <PopoverDescription>
-                        Ranked subjects and pinned events influence the next-focus queue; urgent work still stays visible.
-                      </PopoverDescription>
-                    </PopoverHeader>
-                    <div className="mt-2 space-y-4">
-                      <section aria-labelledby="priority-subjects-heading">
-                        <h3 id="priority-subjects-heading" className="mb-2 text-sm font-semibold">
-                          Subjects
-                        </h3>
-                        {effectiveSubjectOrder.length > 0 ? (
-                          <div className="space-y-1">
-                            {effectiveSubjectOrder.map((subjectId, index) => {
-                              const subject = prioritySubjects.find((item) => item.id === subjectId);
-                              if (!subject) return null;
-                              return (
-                                <div key={subjectId} className="flex items-center gap-2 rounded-md border px-2 py-1.5">
-                                  <span className="w-5 text-center text-sm font-semibold tabular-nums text-muted-foreground">
-                                    {index + 1}
+                <span className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:inline">
+                  {nextFocus.reason}
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                Add a due date or plan a session to build your queue.
+              </span>
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Focus priorities"
+                  >
+                    <Settings2 />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[min(26rem,calc(100vw-2rem))] p-3">
+                  <PopoverHeader>
+                    <PopoverTitle>Focus priorities</PopoverTitle>
+                    <PopoverDescription>
+                      Ranked subjects and pinned events influence the next-focus queue; urgent work still stays visible.
+                    </PopoverDescription>
+                  </PopoverHeader>
+                  <div className="mt-2 space-y-4">
+                    <section aria-labelledby="priority-subjects-heading">
+                      <h3 id="priority-subjects-heading" className="mb-2 text-sm font-semibold">
+                        Subjects
+                      </h3>
+                      {effectiveSubjectOrder.length > 0 ? (
+                        <div className="space-y-1">
+                          {effectiveSubjectOrder.map((subjectId, index) => {
+                            const subject = prioritySubjects.find((item) => item.id === subjectId);
+                            if (!subject) return null;
+                            return (
+                              <div key={subjectId} className="flex items-center gap-2 rounded-md border px-2 py-1.5">
+                                <span className="w-5 text-center text-sm font-semibold tabular-nums text-muted-foreground">
+                                  {index + 1}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate text-sm">{subject.name}</span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  disabled={index === 0}
+                                  onClick={() => movePrioritySubject(subjectId, -1)}
+                                  aria-label={`Move ${subject.name} up`}
+                                >
+                                  <ArrowUp />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  disabled={index === effectiveSubjectOrder.length - 1}
+                                  onClick={() => movePrioritySubject(subjectId, 1)}
+                                  aria-label={`Move ${subject.name} down`}
+                                >
+                                  <ArrowDown />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No active subjects yet.</p>
+                      )}
+                    </section>
+                    <section aria-labelledby="priority-events-heading">
+                      <h3 id="priority-events-heading" className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <Pin className="size-4" />
+                        Pinned events
+                      </h3>
+                      {pinnableEvents.length > 0 ? (
+                        <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                          {pinnableEvents.map((event) => {
+                            const checked = focusPriorities.pinnedEventIds.includes(event.id);
+                            return (
+                              <label key={event.id} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={() => togglePinnedEvent(event.id)}
+                                  aria-label={`Prioritise ${event.title}`}
+                                  className="mt-0.5"
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium">{event.title}</span>
+                                  <span className="block text-sm text-muted-foreground">
+                                    {format(parseISO(event.startTime), "EEE d MMM")}
                                   </span>
-                                  <span className="min-w-0 flex-1 truncate text-sm">{subject.name}</span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    disabled={index === 0}
-                                    onClick={() => movePrioritySubject(subjectId, -1)}
-                                    aria-label={`Move ${subject.name} up`}
-                                  >
-                                    <ArrowUp />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    disabled={index === effectiveSubjectOrder.length - 1}
-                                    onClick={() => movePrioritySubject(subjectId, 1)}
-                                    aria-label={`Move ${subject.name} down`}
-                                  >
-                                    <ArrowDown />
-                                  </Button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No active subjects yet.</p>
-                        )}
-                      </section>
-                      <section aria-labelledby="priority-events-heading">
-                        <h3 id="priority-events-heading" className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                          <Pin className="size-4" />
-                          Pinned events
-                        </h3>
-                        {pinnableEvents.length > 0 ? (
-                          <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
-                            {pinnableEvents.map((event) => {
-                              const checked = focusPriorities.pinnedEventIds.includes(event.id);
-                              return (
-                                <label key={event.id} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={() => togglePinnedEvent(event.id)}
-                                    aria-label={`Prioritise ${event.title}`}
-                                    className="mt-0.5"
-                                  />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-medium">{event.title}</span>
-                                    <span className="block text-sm text-muted-foreground">
-                                      {format(parseISO(event.startTime), "EEE d MMM")}
-                                    </span>
-                                  </span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No events in the next 30 days.</p>
-                        )}
-                      </section>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <Button
-                  size="sm"
-                  disabled={!nextFocus || nextFocus.subjectIds.length === 0}
-                  onClick={() => nextFocus && onStartFocus(nextFocus)}
-                >
-                  <Play />
-                  Start focus
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No events in the next 30 days.</p>
+                      )}
+                    </section>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button
+                size="xs"
+                disabled={!nextFocus || nextFocus.subjectIds.length === 0}
+                onClick={() => nextFocus && onStartFocus(nextFocus)}
+              >
+                <Play />
+                Start
+              </Button>
+            </div>
+          </div>
 
           {overdueProjects.length > 0 && (
             <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2">
@@ -1137,6 +1134,8 @@ export const HomeView = memo(function HomeView({
             </Card>
 
             <div className="space-y-4">
+              <QuickLinks />
+
               {selectedDate && (
                 <DayDetail
                   selectedDate={selectedDate}

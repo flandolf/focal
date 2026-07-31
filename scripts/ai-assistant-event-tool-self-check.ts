@@ -1,4 +1,4 @@
-import { extractFollowUpPrompts } from "../src/components/AIAssistantPanel"
+import { extractFollowUpPrompts } from "../src/components/assistant/AIAssistantPanel"
 import {
   buildAssistantOverview,
   buildStudyOverviewToolResult,

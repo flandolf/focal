@@ -1,6 +1,7 @@
 import {
   getConsistencyData,
   getConsistencyForTimeTrends,
+  getStudyPeriodComparison,
   getSubjectBreakdown,
   getSubjectCompletion,
   getTimeOfDayBySubject,
@@ -78,6 +79,39 @@ const shifted = updateStudySession(session("shifted", "2020-01-01T08:00:00Z"), {
 const shiftedBreakdown = getSubjectBreakdown([shifted], [], 7)
 if (shiftedBreakdown[0]?.minutes !== 60) {
   throw new Error(`Actual interval was excluded by its old planned date: ${JSON.stringify(shiftedBreakdown)}`)
+}
+
+const comparisonNow = new Date(2026, 6, 31, 12).getTime()
+const completedAt = (id: string, subjectId: string, start: Date, minutes: number) =>
+  updateStudySession(session(id, start.toISOString()), {
+    status: "completed",
+    subjectIds: [subjectId],
+    activeDurations: [{
+      start: start.toISOString(),
+      end: new Date(start.getTime() + minutes * 60_000).toISOString(),
+    }],
+  })
+const comparisonSessions = [
+  completedAt("current-eng", "eng", new Date(2026, 6, 29, 9), 60),
+  completedAt("current-mm", "mm", new Date(2026, 6, 30, 9), 90),
+  completedAt("previous-eng", "eng", new Date(2026, 6, 22, 9), 30),
+]
+const comparison = getStudyPeriodComparison(comparisonSessions, [], 7, undefined, comparisonNow)
+if (comparison?.currentMinutes !== 150 || comparison.previousMinutes !== 30 || comparison.changePercent !== 400) {
+  throw new Error(`Period comparison was incorrect: ${JSON.stringify(comparison)}`)
+}
+const englishComparison = getStudyPeriodComparison(
+  comparisonSessions,
+  [],
+  7,
+  new Set(["eng"]),
+  comparisonNow,
+)
+if (englishComparison?.currentMinutes !== 60 || englishComparison.previousMinutes !== 30 || englishComparison.changePercent !== 100) {
+  throw new Error(`Filtered period comparison was incorrect: ${JSON.stringify(englishComparison)}`)
+}
+if (getStudyPeriodComparison(comparisonSessions, [], 0, undefined, comparisonNow) !== null) {
+  throw new Error("All-time analytics should not invent a previous period")
 }
 
 console.warn("analytics completion check passed")
