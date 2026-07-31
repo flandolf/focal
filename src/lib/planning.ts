@@ -1,18 +1,5 @@
 import { getSessionEffectiveMinutes, getSessionSubjectIds } from "@/lib/utils"
-import type { CalendarEvent, PriorityUrgency, Project, StudySession } from "@/lib/types"
-
-export interface PrepBalanceItem {
-  subjectId: string
-  shortCode: string
-  name: string
-  color: string
-  assessmentCount: number
-  plannedMinutes: number
-  nextTitle?: string
-  nextDate?: Date
-  projectId?: string
-  event?: CalendarEvent
-}
+import type { PriorityUrgency, Project, StudySession } from "@/lib/types"
 
 export function getCompletedStudyMinutesBySubject(
   sessions: StudySession[],

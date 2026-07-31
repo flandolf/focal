@@ -214,6 +214,7 @@ export function useStudySessions() {
     return {
       created,
       updated: itemsToUpdate.flatMap((item) => {
+        if (!appliedUpdateIds.has(item.id)) return []
         const session = updated.find((candidate) => candidate.id === item.id)
         return session ? [session] : []
       }),

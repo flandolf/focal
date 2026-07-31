@@ -82,7 +82,7 @@ type DayItem =
   | { kind: "event"; item: CalendarEvent }
   | { kind: "session"; item: StudySession }
 
-type DayItemView = {
+interface DayItemView {
   id: string
   title: string
   timeLabel: string

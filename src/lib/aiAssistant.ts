@@ -22,7 +22,6 @@ import {
   type ChatMessage,
   type ChatCompletionResult,
   type JsonSchemaSpec,
-  type Provider,
   type ToolDefinition,
 } from "@/lib/providers"
 import { isUserAbort } from "@/lib/providers/shared"
@@ -30,13 +29,6 @@ import type { Project, StudySession, Subject } from "@/lib/types"
 import { getLocalDateValue } from "@/lib/utils"
 
 // --- Errors --------------------------------------------------------------
-
-export class AiCancelledError extends Error {
-  constructor(message = "Request was cancelled") {
-    super(message)
-    this.name = "AiCancelledError"
-  }
-}
 
 export class AiConfigurationError extends Error {
   constructor(message: string) {
@@ -140,9 +132,8 @@ export type ChatTurn = ChatMessage
  * inherit reasoning + abort + provider-not-configured handling without
  * re-implementing the wrapper.
  *
- * Throws `AiCancelledError` when `signal` was aborted. Throws
- * `AiConfigurationError` when the provider is missing required fields so the
- * UI can render the "go to Settings" hint without parsing error strings.
+ * Throws `AiConfigurationError` when the provider is missing required fields,
+ * so the UI can render the "go to Settings" hint without parsing error strings.
  */
 export async function aiChatCompletion(opts: {
   messages: ChatTurn[]
@@ -178,7 +169,7 @@ export async function aiChatCompletionResult(opts: {
     ...(opts.tools ? { tools: opts.tools } : {}),
     ...(typeof opts.temperature === "number" ? { temperature: opts.temperature } : {}),
     ...(typeof opts.maxTokens === "number" ? { maxTokens: opts.maxTokens } : {}),
-    ...(provider.supportsReasoning ? getReasoningConfig().reasoning ?? {} : {}),
+    ...(provider.supportsReasoning ? getReasoningConfig() : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   }
   return provider.chatCompletion(request)
@@ -239,11 +230,6 @@ export const VCE_JSON_FORMAT_GUARD =
   "Respond with strict JSON matching the provided schema only. " +
   "Unknown strings use \"\"; empty arrays use []; never null. " +
   "No markdown fences, no prose outside the JSON, no extra keys."
-
-/** Get the active provider with a typed narrowed return for callers. */
-export function activeProvider(): Provider {
-  return getActiveProvider()
-}
 
 // --- Auto-derived user context -----------------------------------------
 

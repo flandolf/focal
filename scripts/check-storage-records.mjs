@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import {
   coreRecordKind,
+  isCoreDataFile,
   parseStoredPayloads,
   prepareStoredRecords,
 } from "../src/lib/storage/records.ts"
@@ -18,6 +19,7 @@ const prepared = prepareStoredRecords([
 assert(prepared[0]?.id === "project-1", "record ids must be preserved")
 assert(prepared[1]?.id === "legacy:1", "legacy rows need deterministic fallback ids")
 assert(coreRecordKind("sessions.json") === "study_sessions", "session storage mapping changed")
+assert(!isCoreDataFile("toString"), "inherited object properties must not pass as core data files")
 
 const parsed = parseStoredPayloads([
   { payload: prepared[0].payload },

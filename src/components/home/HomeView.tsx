@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { format, isSameMonth, parseISO, differenceInDays } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   Clock,
   AlertCircle,
@@ -53,7 +53,6 @@ import {
 } from "@/components/ui/popover";
 import {
   formatDeadline,
-  getDeadlineTypeInfo,
   getSubjectById,
   getEventTypeInfo,
   getSessionSubjectIds,
@@ -63,7 +62,6 @@ import {
   formatTime12,
 } from "@/lib/utils";
 import { TextEventPlanner } from "@/components/planning/TextEventPlanner";
-import type { PrepBalanceItem } from "@/lib/planning";
 import { buildTodayOverview } from "@/features/home/todayOverview";
 import {
   FOCUS_PRIORITIES_KEY,
@@ -83,21 +81,6 @@ import { DayDetail } from "@/components/home/DayDetail";
 import { QuickLinks } from "@/components/home/QuickLinks";
 import { StudyPriorities } from "@/components/home/StudyPriorities";
 import { RecentActivity } from "@/components/home/RecentActivity";
-
-interface MonthBriefItem {
-  id: string;
-  title: string;
-  meta: string;
-  date: Date;
-  color: string;
-  kind: "assessment" | "session" | "event";
-  projectId?: string;
-  session?: StudySession;
-  event?: CalendarEvent;
-}
-
-const CALENDAR_SESSION_COLOR = "var(--primary)";
-const PREP_COMPLETED_CREDIT_WINDOW_DAYS = 7;
 
 interface HomeViewProps {
   projects: Project[];
@@ -197,7 +180,6 @@ export const HomeView = memo(function HomeView({
 
   const {
     activeProjects,
-    projectsWithDeadlines,
     overdueProjects,
     dueThisWeek,
     completedSessions,
@@ -398,322 +380,6 @@ export const HomeView = memo(function HomeView({
     } finally {
       setEventBatchSaving(false);
     }
-  };
-
-  const monthAgendaStart = isSameMonth(currentMonth, now)
-    ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    : (() => {
-        const d = new Date(currentMonth);
-        d.setDate(1);
-        d.setHours(0, 0, 0, 0);
-        return d;
-      })();
-  const isMonthItemVisible = (date: Date) =>
-    date >= monthAgendaStart &&
-    (() => {
-      const d = new Date(currentMonth);
-      d.setMonth(d.getMonth() + 1, 0);
-      d.setHours(23, 59, 59, 999);
-      return d;
-    })() >= date;
-
-  const monthBriefItems: MonthBriefItem[] = [
-    ...projectsWithDeadlines
-      .filter(
-        (project) =>
-          project.deadline && isMonthItemVisible(parseISO(project.deadline)),
-      )
-      .map((project) => {
-        const subject = getSubjectById(project.subjectId);
-        return {
-          id: `assessment-${project.id}`,
-          title: project.name,
-          meta: `${project.deadlineType ? getDeadlineTypeInfo(project.deadlineType).label : "Assessment"} · ${formatDeadline(project.deadline!)}`,
-          date: parseISO(project.deadline!),
-          color: subject?.color ?? "var(--primary)",
-          kind: "assessment" as const,
-          projectId: project.id,
-        };
-      }),
-    ...(() => {
-      const plannedSessions = sessions.filter(
-        (session) =>
-          session.status === "planned" &&
-          isMonthItemVisible(parseISO(session.startTime)),
-      );
-      const subjectDayMap = new Map<
-        string,
-        {
-          count: number;
-          totalMinutes: number;
-          date: Date;
-          subjectId: string;
-          projectName: string;
-        }
-      >();
-      for (const session of plannedSessions) {
-        const project = session.projectId
-          ? projects.find((candidate) => candidate.id === session.projectId)
-          : undefined;
-        const subjectIds = getSessionSubjectIds(session, project);
-        const dateKey = format(parseISO(session.startTime), "yyyy-MM-dd");
-        const durationMinutes = getSessionEffectiveMinutes(session);
-        const sessionContext =
-          project?.name ??
-          (subjectIds
-            .map(
-              (subjectId) => getSubjectById(subjectId)?.shortCode ?? subjectId,
-            )
-            .join(", ") ||
-            "Study session");
-        const minutesPerSubject = durationMinutes / (subjectIds.length || 1);
-        for (const subjectId of subjectIds) {
-          const key = `${dateKey}-${subjectId}`;
-          const existing = subjectDayMap.get(key);
-          if (existing) {
-            existing.count++;
-            existing.totalMinutes += minutesPerSubject;
-          } else {
-            subjectDayMap.set(key, {
-              count: 1,
-              totalMinutes: minutesPerSubject,
-              date: parseISO(session.startTime),
-              subjectId,
-              projectName: sessionContext,
-            });
-          }
-        }
-      }
-      return Array.from(subjectDayMap.entries()).map(([, group]) => {
-        const subject = getSubjectById(group.subjectId);
-        const totalHours = Math.round(group.totalMinutes / 6) / 10;
-        const hourLabel =
-          totalHours >= 1
-            ? `${totalHours}h`
-            : `${Math.round(group.totalMinutes)}m`;
-        const meta =
-          group.count > 1
-            ? `${group.count} sessions · ${hourLabel} · ${group.projectName}`
-            : `${hourLabel} · ${group.projectName}`;
-        return {
-          id: `session-${group.subjectId}-${format(group.date, "yyyy-MM-dd")}`,
-          title: subject?.shortCode ?? group.subjectId,
-          meta,
-          date: group.date,
-          color: subject?.color ?? CALENDAR_SESSION_COLOR,
-          kind: "session" as const,
-        };
-      });
-    })(),
-    ...events
-      .filter(
-        (event) =>
-          !event.isFinished && isMonthItemVisible(parseISO(event.startTime)),
-      )
-      .map((event) => {
-        const subject = getSubjectById(event.subjectId);
-        const eventInfo = getEventTypeInfo(event.eventType);
-        const startDate = parseISO(event.startTime);
-        const isMultiDay =
-          event.endTime &&
-          format(startDate, "yyyy-MM-dd") !==
-            format(parseISO(event.endTime), "yyyy-MM-dd");
-        let meta: string;
-        if (isMultiDay && event.endTime) {
-          const endDate = parseISO(event.endTime);
-          const dayCount = differenceInDays(endDate, startDate) + 1;
-          meta = `${eventInfo.label} · ${format(startDate, "MMM d")}–${format(endDate, "MMM d")} · All day (${dayCount}d)`;
-        } else {
-          const startStr = format(startDate, "MMM d, h:mm a");
-          const endStr = event.endTime
-            ? format(parseISO(event.endTime), "h:mm a")
-            : null;
-          meta = endStr
-            ? `${eventInfo.label} · ${startStr} – ${endStr}`
-            : `${eventInfo.label} · ${startStr}`;
-        }
-        return {
-          id: `event-${event.id}`,
-          title: event.title,
-          meta,
-          date: startDate,
-          color: subject?.color ?? eventInfo.color,
-          kind: "event" as const,
-          event,
-        };
-      }),
-  ].sort((a, b) => a.date.getTime() - b.date.getTime());
-  const _monthBriefPreview = monthBriefItems.slice(0, 4);
-  const monthStudyMinutes = sessions
-    .filter(
-      (session) =>
-        session.status === "planned" &&
-        isMonthItemVisible(parseISO(session.startTime)),
-    )
-    .reduce((total, session) => {
-      const minutes = getSessionEffectiveMinutes(session);
-      return total + minutes;
-    }, 0);
-  const _monthStudyHours = Math.round((monthStudyMinutes / 60) * 10) / 10;
-  const _monthBusyDays = new Set(
-    monthBriefItems.map((item) => format(item.date, "yyyy-MM-dd")),
-  ).size;
-  const _monthAssessments = monthBriefItems.filter(
-    (item) => item.kind === "assessment",
-  ).length;
-  const prepBalanceBySubject = new Map<string, PrepBalanceItem>();
-
-  const ensurePrepBalanceItem = (subjectId: string) => {
-    const existing = prepBalanceBySubject.get(subjectId);
-    if (existing) return existing;
-    const subject = getSubjectById(subjectId);
-    const nextItem: PrepBalanceItem = {
-      subjectId,
-      shortCode: subject?.shortCode ?? subjectId,
-      name: subject?.name ?? subjectId,
-      color: subject?.color ?? "var(--primary)",
-      assessmentCount: 0,
-      plannedMinutes: 0,
-    };
-    prepBalanceBySubject.set(subjectId, nextItem);
-    return nextItem;
-  };
-
-  const applyNextPrepItem = (
-    item: PrepBalanceItem,
-    title: string,
-    date: Date,
-    source: { projectId?: string; event?: CalendarEvent },
-  ) => {
-    if (!item.nextDate || date < item.nextDate) {
-      item.nextTitle = title;
-      item.nextDate = date;
-      item.projectId = source.projectId;
-      item.event = source.event;
-    }
-  };
-
-  const hasVisibleAssessmentDueWithinPrepWindow = (
-    subjectId: string,
-    sessionStart: Date,
-  ) => {
-    const windowEnd = new Date(
-      sessionStart.getTime() +
-        PREP_COMPLETED_CREDIT_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-    );
-    const projectMatch = projectsWithDeadlines.some((project) => {
-      if (!project.deadline || project.subjectId !== subjectId) return false;
-      const dueDate = parseISO(project.deadline);
-      return (
-        isMonthItemVisible(dueDate) &&
-        dueDate >= sessionStart &&
-        dueDate <= windowEnd
-      );
-    });
-    if (projectMatch) return true;
-
-    return events.some((event) => {
-      if (
-        event.isFinished ||
-        event.eventType === "event" ||
-        event.subjectId !== subjectId
-      )
-        return false;
-      const dueDate = parseISO(event.startTime);
-      return (
-        isMonthItemVisible(dueDate) &&
-        dueDate >= sessionStart &&
-        dueDate <= windowEnd
-      );
-    });
-  };
-
-  projectsWithDeadlines.forEach((project) => {
-    if (!project.deadline || !project.subjectId) return;
-    const deadlineDate = parseISO(project.deadline);
-    if (!isMonthItemVisible(deadlineDate)) return;
-    const item = ensurePrepBalanceItem(project.subjectId);
-    item.assessmentCount += 1;
-    applyNextPrepItem(item, project.name, deadlineDate, {
-      projectId: project.id,
-    });
-  });
-
-  events.forEach((event) => {
-    if (event.isFinished || event.eventType === "event" || !event.subjectId)
-      return;
-    const eventDate = parseISO(event.startTime);
-    if (!isMonthItemVisible(eventDate)) return;
-    const item = ensurePrepBalanceItem(event.subjectId);
-    item.assessmentCount += 1;
-    applyNextPrepItem(item, event.title, eventDate, { event });
-  });
-
-  sessions.forEach((session) => {
-    if (session.status !== "planned" && session.status !== "completed") return;
-    const sessionStart = parseISO(session.startTime);
-    const project = session.projectId
-      ? projects.find((candidate) => candidate.id === session.projectId)
-      : undefined;
-    const subjectIds = getSessionSubjectIds(session, project);
-    if (subjectIds.length === 0) return;
-    const creditedSubjectIds =
-      session.status === "planned"
-        ? subjectIds
-        : subjectIds.filter((subjectId) =>
-            hasVisibleAssessmentDueWithinPrepWindow(subjectId, sessionStart),
-          );
-    if (session.status === "planned" && !isMonthItemVisible(sessionStart))
-      return;
-    const minutes = getSessionEffectiveMinutes(session);
-    const minutesPerSubject = minutes / subjectIds.length;
-    creditedSubjectIds.forEach((subjectId) => {
-      ensurePrepBalanceItem(subjectId).plannedMinutes += minutesPerSubject;
-    });
-  });
-
-  const prepBalanceItems = Array.from(prepBalanceBySubject.values())
-    .filter((item) => item.assessmentCount > 0)
-    .sort((a, b) => {
-      const pressureDelta = b.assessmentCount - a.assessmentCount;
-      if (pressureDelta !== 0) return pressureDelta;
-      const studyDelta = a.plannedMinutes - b.plannedMinutes;
-      if (studyDelta !== 0) return studyDelta;
-      return a.shortCode.localeCompare(b.shortCode);
-    })
-    .slice(0, 4);
-  const _prepBalanceNeedsAttention = prepBalanceItems.filter(
-    (item) => item.plannedMinutes < item.assessmentCount * 90,
-  ).length;
-
-  const _handleMonthBriefSelect = (item: MonthBriefItem) => {
-    if (item.projectId) {
-      onSelectProject(item.projectId);
-      return;
-    }
-    if (item.session) {
-      onSelectSession(item.session);
-      return;
-    }
-    if (item.event) {
-      onSelectEvent(item.event);
-      return;
-    }
-    // Grouped session item — navigate to the day
-    setSelectedDate(format(item.date, "yyyy-MM-dd"));
-    clearEventSelection();
-  };
-
-  const _handlePrepBalanceSelect = (item: PrepBalanceItem) => {
-    if (item.projectId) {
-      onSelectProject(item.projectId);
-      return;
-    }
-    if (item.event) {
-      onSelectEvent(item.event);
-      return;
-    }
-    onNewSession(selectedCalendarDate);
   };
 
   const handlePrevMonth = () =>

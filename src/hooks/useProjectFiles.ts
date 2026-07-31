@@ -6,7 +6,6 @@ import { toast } from "sonner"
 
 import type { FileInfo, FileTag } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
-import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { PROJECTS_DIR_CHANGED_EVENT } from "@/hooks/useProjectsDirectoryWatcher"
 import {
   setFileTags,
@@ -38,15 +37,11 @@ export const SORT_COMPARATORS: Record<SortKey, (a: FileInfo, b: FileInfo) => num
 
 /** Lightweight hash to detect whether the file list has changed without merging metadata. */
 function computeFilesHash(files: FileInfo[]): string {
-  let totalSize = 0
-  let maxModified = 0
-  const paths: string[] = []
-  for (const f of files) {
-    totalSize += f.size
-    maxModified = Math.max(maxModified, f.modified)
-    paths.push(f.path)
-  }
-  return `${files.length}:${totalSize}:${maxModified}:${paths.sort().join("|")}`
+  return JSON.stringify(
+    [...files]
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map(({ path, size, modified }) => [path, size, modified]),
+  )
 }
 
 function updateFileTags(file: FileInfo, tags: FileTag[]): FileInfo {
@@ -68,6 +63,7 @@ export function useProjectFiles(projectName: string | null) {
   const [removedFiles, setRemovedFiles] = useState<FileInfo[]>([])
   const filesHashRef = useRef<string>("")
   const filesRef = useRef<FileInfo[]>([])
+  const loadFilesRef = useRef<((options?: { silent?: boolean; notifyOnChange?: boolean }) => Promise<void>) | null>(null)
   const changedPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const removedFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isLoadingFiles = useRef(false)
@@ -101,7 +97,7 @@ export function useProjectFiles(projectName: string | null) {
         silent: pendingOptions.current
           ? (pendingOptions.current.silent === true && options?.silent === true)
           : (options?.silent === true),
-        notifyOnChange: pendingOptions.current?.notifyOnChange ?? options?.notifyOnChange,
+        notifyOnChange: pendingOptions.current?.notifyOnChange === true || options?.notifyOnChange === true,
       }
       return
     }
@@ -115,6 +111,7 @@ export function useProjectFiles(projectName: string | null) {
         projectName,
         recursive: true,
       })
+      if (loadedProjectRef.current !== projectName) return
       setError(null)
       // Normalize subfolder separator (Rust uses \ on Windows)
       for (const f of result) {
@@ -155,6 +152,7 @@ export function useProjectFiles(projectName: string | null) {
         }
       }
     } catch (e) {
+      if (loadedProjectRef.current !== projectName) return
       console.error("Failed to load files:", e)
       setError(getErrorMessage(e))
     } finally {
@@ -164,10 +162,14 @@ export function useProjectFiles(projectName: string | null) {
       if (pendingOptions.current) {
         const opts = pendingOptions.current
         pendingOptions.current = null
-        await loadFiles(opts)
+        await loadFilesRef.current?.(opts)
       }
     }
   }, [projectName])
+
+  useEffect(() => {
+    loadFilesRef.current = loadFiles
+  }, [loadFiles])
 
   const reloadFileMetadata = useCallback(async () => {
     filesHashRef.current = ""
@@ -385,20 +387,18 @@ export function useProjectFiles(projectName: string | null) {
   }, [files, reloadFileMetadata])
 
   /** Listen for global filesystem changes and reload this project's files. */
-  const loadFilesRef = useLatestRef(loadFiles)
-
   useEffect(() => {
     if (!projectName) return
 
     const handleDirChange = () => {
-      void loadFilesRef.current({ silent: true, notifyOnChange: true })
+      void loadFilesRef.current?.({ silent: true, notifyOnChange: true })
     }
 
     window.addEventListener(PROJECTS_DIR_CHANGED_EVENT, handleDirChange)
     return () => {
       window.removeEventListener(PROJECTS_DIR_CHANGED_EVENT, handleDirChange)
     }
-  }, [projectName, loadFilesRef])
+  }, [projectName])
 
   /** Refresh immediately when the window regains focus. */
   useEffect(() => {

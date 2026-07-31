@@ -15,18 +15,7 @@ export interface AssessmentFormValues {
   isFinished?: boolean
 }
 
-export interface AssessmentFormInitialValues {
-  name?: string
-  description?: string
-  icon?: string
-  subjectId?: string
-  unit?: Unit
-  deadline?: string
-  deadlineType?: DeadlineType
-  isFavorite?: boolean
-  isArchived?: boolean
-  isFinished?: boolean
-}
+export type AssessmentFormInitialValues = Partial<AssessmentFormValues>
 
 export interface UseAssessmentFormOptions {
   customSubjects: Subject[]
@@ -63,7 +52,7 @@ export function useAssessmentForm({
 
     onSubmit({
       name: name.trim(),
-      description: description.trim() ? description.trim() : undefined,
+      description: description.trim() || undefined,
       icon,
       subjectId: subjectId || undefined,
       unit: unit || undefined,

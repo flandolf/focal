@@ -14,7 +14,6 @@ export function useProjectsDirectoryWatcher(
   onChange?: () => void,
 ) {
   const onChangeRef = useRef(onChange)
-  const unwatchPromiseRef = useRef<Promise<(() => void) | undefined> | undefined>(undefined)
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -23,6 +22,7 @@ export function useProjectsDirectoryWatcher(
   useEffect(() => {
     let cancelled = false
     let timeout: ReturnType<typeof setTimeout> | null = null
+    let unwatch: (() => void) | undefined
 
     const setup = async () => {
       // watch is a Tauri-plugin command; it fails gracefully in browser dev mode.
@@ -30,7 +30,7 @@ export function useProjectsDirectoryWatcher(
       try {
         const projectsDir = projectsRoot ?? await invoke<string>("get_projects_directory")
         if (!projectsDir) return
-        unwatchPromiseRef.current = watch(
+        unwatch = await watch(
           projectsDir,
           () => {
             if (timeout) {
@@ -46,9 +46,9 @@ export function useProjectsDirectoryWatcher(
           },
           { recursive: true },
         )
-        const unwatch = await unwatchPromiseRef.current
         if (cancelled) {
           unwatch?.()
+          unwatch = undefined
         }
       } catch (e) {
         console.error("Failed to watch projects directory:", e)
@@ -62,9 +62,7 @@ export function useProjectsDirectoryWatcher(
       if (timeout) {
         clearTimeout(timeout)
       }
-      if (unwatchPromiseRef.current) {
-        void unwatchPromiseRef.current.then((unwatch) => unwatch?.())
-      }
+      unwatch?.()
     }
   }, [projectsRoot])
 }

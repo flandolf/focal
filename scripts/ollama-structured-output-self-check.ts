@@ -1,4 +1,5 @@
 import { normalizeStructuredJson, recoverFromModelDrift, validateJsonRootShape } from "../src/lib/providers/shared"
+import { getReasoningConfig } from "../src/lib/settings"
 
 function assertJsonEqual(actual: unknown, expected: unknown, message: string): void {
   const actualJson = JSON.stringify(actual)
@@ -53,5 +54,30 @@ if (!normalized.matches || !normalized.recovered) {
   throw new Error("normalized structured JSON should recover fenced object wrappers")
 }
 assertJsonEqual(JSON.parse(normalized.content), { events: [{ title: "Methods SAC" }] }, "normalized content should be parseable recovered JSON")
+
+const storedSettings = new Map([
+  ["focal-reasoning-effort", "low"],
+  ["focal-reasoning-max-tokens", "1234"],
+])
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: { getItem: (key: string) => storedSettings.get(key) ?? null },
+})
+const reasoning = getReasoningConfig().reasoning
+if (reasoning?.effort !== "low" || reasoning.maxTokens !== 1234 || "max_tokens" in reasoning) {
+  throw new Error(`reasoning settings did not use the provider request shape: ${JSON.stringify(reasoning)}`)
+}
+storedSettings.set("focal-reasoning-effort", "invalid")
+storedSettings.set("focal-reasoning-max-tokens", "NaN")
+const fallbackReasoning = getReasoningConfig().reasoning
+if (fallbackReasoning?.effort !== "medium" || fallbackReasoning.maxTokens !== 8000) {
+  throw new Error("invalid persisted reasoning settings must use safe defaults")
+}
+Reflect.deleteProperty(globalThis, "localStorage")
+
+const assistantSource = await fetch(new URL("../src/lib/aiAssistant.ts", import.meta.url)).then((response) => response.text())
+if (!assistantSource.includes("provider.supportsReasoning ? getReasoningConfig() : {}")) {
+  throw new Error("AI completions must keep reasoning settings nested under the request reasoning field")
+}
 
 console.warn("ollama structured output check passed")

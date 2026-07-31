@@ -1,11 +1,10 @@
 import type { CalendarEvent, NotionSyncSnapshot, StudySession, Subject } from "@/lib/types"
 import type { NotionCalendarSettings } from "@/lib/settings"
-import type { EventUpdates, NotionPage, NotionProperty, SessionUpdates, SyncCtx } from "@/lib/notion/schema"
+import type { EventUpdates, NotionPage, SessionUpdates, SyncCtx } from "@/lib/notion/schema"
 import {
   getPageKind,
   getFocalId,
   getFocalKind,
-  getPageTitle,
   getPropertyDateForEvent,
   getNotionSource,
   pageMatchesEvent,
@@ -175,10 +174,7 @@ export function rebaseNotionConflictUpdates(
 
 function pullEvent(
   page: NotionPage,
-  title: string,
   startTime: string,
-  endTime: string | undefined,
-  properties: Record<string, NotionProperty>,
   existingEvents: CalendarEvent[],
   eventBySourceId: Map<string, CalendarEvent>,
   settings: NotionCalendarSettings,
@@ -361,10 +357,7 @@ function pullEvent(
 
 function pullSession(
   page: NotionPage,
-  title: string,
   startTime: string,
-  endTime: string | undefined,
-  properties: Record<string, NotionProperty>,
   existingSessions: StudySession[],
   sessionBySourceId: Map<string, StudySession>,
   settings: NotionCalendarSettings,
@@ -590,8 +583,7 @@ export function pullFromNotion(
   for (const page of pages) {
     const properties = page.properties ?? {}
     const kind = getFocalKind(page) ?? getPageKind(properties, settings)
-    const title = getPageTitle(properties, settings.titleProperty)
-    const { startTime, endTime, skippedReason } = getPropertyDateForEvent(properties, settings)
+    const { startTime, skippedReason } = getPropertyDateForEvent(properties, settings)
 
     if (!startTime) {
       ctx.skipped += 1
@@ -601,9 +593,9 @@ export function pullFromNotion(
     recordSkippedReason(ctx, skippedReason)
 
     if (kind === "session") {
-      pullSession(page, title, startTime, endTime, properties, existingSessions, sessionBySourceId, settings, subjects, ctx)
+      pullSession(page, startTime, existingSessions, sessionBySourceId, settings, subjects, ctx)
     } else {
-      pullEvent(page, title, startTime, endTime, properties, existingEvents, eventBySourceId, settings, subjects, ctx)
+      pullEvent(page, startTime, existingEvents, eventBySourceId, settings, subjects, ctx)
     }
   }
 }

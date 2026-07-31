@@ -37,10 +37,6 @@ function getSubjectInfo(subjectId: string): { shortCode: string; color: string }
     color: subject?.color ?? SUBJECT_COLOR_FALLBACK,
   }
 }
-function getDurationMinutes(session: StudySession): number {
-  return getSessionEffectiveMinutes(session)
-}
-
 /**
  * For a list of sessions on a single day, produce one indicator per unique subject.
  * Used by CalendarGrid to render compact subject bars instead of per-session bars.
@@ -61,7 +57,7 @@ export function getCalendarSessionIndicators(
     const subjectIds = getSessionSubjectIds(session, project)
     if (subjectIds.length === 0) continue
 
-    const minutesPerSubject = getDurationMinutes(session) / subjectIds.length
+    const minutesPerSubject = getSessionEffectiveMinutes(session) / subjectIds.length
 
     for (const subjectId of subjectIds) {
       const entry = bySubject.get(subjectId)
@@ -117,7 +113,7 @@ export function groupSessionsBySubject(
     const subjectIds = getSessionSubjectIds(session, project)
     if (subjectIds.length === 0) continue
 
-    const minutesPerSubject = getDurationMinutes(session) / subjectIds.length
+    const minutesPerSubject = getSessionEffectiveMinutes(session) / subjectIds.length
 
     for (const subjectId of subjectIds) {
       const entry = bySubject.get(subjectId)
@@ -155,13 +151,13 @@ function buildProjectGroups(sessions: StudySession[], projects: Project[]): Sess
     const existing = byProject.get(key)
     if (existing) {
       existing.sessions.push(session)
-      existing.totalMinutes += getDurationMinutes(session)
+      existing.totalMinutes += getSessionEffectiveMinutes(session)
     } else {
       byProject.set(key, {
         projectId: project?.id,
         projectName: project?.name ?? "Study session",
         sessions: [session],
-        totalMinutes: getDurationMinutes(session),
+        totalMinutes: getSessionEffectiveMinutes(session),
       })
     }
   }

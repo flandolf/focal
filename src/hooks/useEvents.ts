@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react"
 import type { CalendarEvent, EventType } from "@/lib/types"
-import { generateId, safeString, safeStringOpt, safeBool, safeDateMeta, parseCalendarEventSource, stableJsonStringify } from "@/lib/utils"
+import { generateId, isRecord, safeString, safeStringOpt, safeBool, safeDateMeta, parseCalendarEventSource, stableJsonStringify } from "@/lib/utils"
 import { usePersistedData } from "@/lib/hooks/usePersistedData"
 import { useLatestRef } from "@/lib/hooks/useLatestRef"
 import { recordLocalSoftDelete, recordLocalUpsert } from "@/lib/sync/engine"
@@ -30,7 +30,7 @@ function markPastEventsFinished(events: CalendarEvent[], now = Date.now()): Cale
 }
 
 function normaliseEvent(raw: unknown): CalendarEvent {
-  const obj = raw as Record<string, unknown>
+  const obj = isRecord(raw) ? raw : {}
   const eventType = VALID_EVENT_TYPES.includes(String(obj.eventType)) ? (obj.eventType as EventType) : "event"
   const meta = safeDateMeta(obj)
   return {
@@ -90,6 +90,7 @@ export function useEvents() {
     if (existing) return null
 
     const now = new Date().toISOString()
+    const isFinished = eventHasPassed(data)
     const event: CalendarEvent = {
       id: generateId(),
       title: data.title,
@@ -100,8 +101,8 @@ export function useEvents() {
       subjectId: data.subjectId,
       location: data.location,
       source: data.source,
-      isFinished: eventHasPassed(data),
-      finishedAt: eventHasPassed(data) ? now : undefined,
+      isFinished,
+      finishedAt: isFinished ? now : undefined,
       created_at: now,
       updated_at: now,
     }
@@ -122,21 +123,24 @@ export function useEvents() {
     source?: CalendarEvent["source"]
   }[]) => {
     const createdAt = new Date().toISOString()
-    const newEvents: CalendarEvent[] = items.map((data) => ({
-      id: generateId(),
-      title: data.title,
-      description: data.description,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      eventType: data.eventType,
-      subjectId: data.subjectId,
-      location: data.location,
-      source: data.source,
-      isFinished: eventHasPassed(data),
-      finishedAt: eventHasPassed(data) ? createdAt : undefined,
-      created_at: createdAt,
-      updated_at: createdAt,
-    }))
+    const newEvents: CalendarEvent[] = items.map((data) => {
+      const isFinished = eventHasPassed(data)
+      return {
+        id: generateId(),
+        title: data.title,
+        description: data.description,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        eventType: data.eventType,
+        subjectId: data.subjectId,
+        location: data.location,
+        source: data.source,
+        isFinished,
+        finishedAt: isFinished ? createdAt : undefined,
+        created_at: createdAt,
+        updated_at: createdAt,
+      }
+    })
     const existingFingerprints = new Set(
       eventsRef.current.map(calendarEventFingerprint),
     )
@@ -296,6 +300,7 @@ export function useEvents() {
     return {
       created,
       updated: itemsToUpdate.flatMap((item) => {
+        if (!appliedUpdateIds.has(item.id)) return []
         const event = updated.find((candidate) => candidate.id === item.id)
         return event ? [event] : []
       }),

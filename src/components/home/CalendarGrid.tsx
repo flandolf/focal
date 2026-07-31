@@ -966,7 +966,6 @@ export function CalendarGrid({
                   {dayMultiDayEvents.length > 0 && (
                     <div className="mb-1 w-full space-y-0.5">
                       {dayMultiDayEvents.map((event) => {
-                        const _position = getMultiDayPosition(event, dateKey);
                         const color = getEventTypeInfo(event.eventType).color;
                         return (
                           <ContextMenu key={event.id}>

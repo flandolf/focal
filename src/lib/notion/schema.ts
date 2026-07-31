@@ -299,6 +299,7 @@ export function toEventType(value: string | undefined): EventType {
   const normalized = normaliseToken(value)
   if (normalized === "sac") return "sac"
   if (normalized === "exam") return "exam"
+  if (normalized === "event") return "event"
   if (normalized === "homework") return "homework"
   if (normalized === "other") return "other"
   if (normalized === "practicesac" || normalized === "practiceassessment" || normalized === "practicetest") {
@@ -311,16 +312,18 @@ export function toEventType(value: string | undefined): EventType {
 export function toNotionType(value: EventType): string {
   switch (value) {
     case "homework":
-    case "assignment":
       return "Homework"
+    case "assignment":
+      return "Assignment"
     case "sac":
       return "SAC"
     case "exam":
       return "Exam"
     case "practice-sac":
       return "Practice SAC"
-    case "other":
     case "event":
+      return "Event"
+    case "other":
     default:
       return "Other"
   }
@@ -687,6 +690,7 @@ export function notionPageFingerprint(
   const kind = getFocalKind(page) ?? getPageKind(properties, settings)
   return [
     kind,
+    kind === "event" ? getEventTypeFromPage(properties, settings) : "",
     getPageTitle(properties, settings.titleProperty),
     String(new Date(startTime).getTime()),
     String(new Date(endTime ?? startTime).getTime()),
@@ -828,9 +832,10 @@ export function toEventFromPage(
   const properties = page.properties ?? {}
   const title = getPageTitle(properties, settings.titleProperty)
   const { startTime, endTime } = getPropertyDateForEvent(properties, settings)
+  if (!startTime) throw new Error("The Notion page no longer has a valid date")
   const event = {
     title,
-    startTime: startTime!,
+    startTime,
     endTime,
     eventType: getEventTypeFromPage(properties, settings),
     subjectId: getEventSubjectId(properties, title, settings, subjects, findSubjectIdFromValues),

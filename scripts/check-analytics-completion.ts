@@ -80,6 +80,13 @@ const shiftedBreakdown = getSubjectBreakdown([shifted], [], 7)
 if (shiftedBreakdown[0]?.minutes !== 60) {
   throw new Error(`Actual interval was excluded by its old planned date: ${JSON.stringify(shiftedBreakdown)}`)
 }
+const rescheduled = updateStudySession(session("rescheduled", "2100-01-01T08:00:00Z"), {
+  status: "completed",
+  activeDurations: [{ start: yesterday.toISOString(), end: yesterdayEnd.toISOString() }],
+})
+if (getConsistencyData([rescheduled], 0).stats.totalMinutes !== 60) {
+  throw new Error("All-time consistency omitted an actual interval before its planned date")
+}
 
 const comparisonNow = new Date(2026, 6, 31, 12).getTime()
 const completedAt = (id: string, subjectId: string, start: Date, minutes: number) =>

@@ -24,6 +24,9 @@ import {
   sameInstant,
   sessionFingerprint,
   sessionSyncSnapshot,
+  toEventFromPage,
+  toEventType,
+  toNotionType,
 } from "../src/lib/notion/schema"
 import { findSubjectIdFromValues } from "../src/lib/notion/subjectMatch"
 import { buildPageChildrenForSync, notionWriteRetryDelay } from "../src/lib/notion/push"
@@ -41,7 +44,7 @@ import {
   preserveNewerEventChanges,
   preserveNewerSessionChanges,
 } from "../src/hooks/useNotionSync"
-import { VCE_SUBJECTS, type CalendarEvent } from "../src/lib/types"
+import { VCE_SUBJECTS, type CalendarEvent, type EventType } from "../src/lib/types"
 import { stableJsonStringify } from "../src/lib/utils"
 
 function assert(condition: boolean, message: string): void {
@@ -113,6 +116,22 @@ const notionSettings = {
   completedProperty: "Complete",
   subjectProperty: "Subject",
 }
+const eventTypes: EventType[] = ["sac", "exam", "assignment", "event", "homework", "other", "practice-sac"]
+for (const eventType of eventTypes) {
+  assert(toEventType(toNotionType(eventType)) === eventType, `${eventType} must round-trip through Notion type labels`)
+}
+assert(
+  findSubjectIdFromValues(["English Language essay"], VCE_SUBJECTS) === "eng-lang",
+  "subject inference must prefer the longest matching phrase",
+)
+assert(
+  findSubjectIdFromValues(["Geography homework"], VCE_SUBJECTS) === "geo",
+  "subject inference must not match short aliases inside words",
+)
+assert(
+  findSubjectIdFromValues(["Engineering project"], VCE_SUBJECTS) === undefined,
+  "subject inference must respect word boundaries",
+)
 assert(
   JSON.stringify(createTextProperty("select", undefined)) === JSON.stringify({ select: null }),
   "clearing a Focal subject must explicitly clear a Notion select",
@@ -162,6 +181,33 @@ const distinctPlan = planDuplicateNotionPages(
   notionSettings,
 )
 assert(distinctPlan.archiveIds.size === 0, "distinct tagged Focal items must not be collapsed by matching content")
+const taggedExam = {
+  id: "tagged-exam",
+  properties: {
+    ...commonProperties,
+    Type: { type: "select", select: { name: "Exam" } },
+    [FOCAL_ID_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: "exam-1" }] },
+    [FOCAL_KIND_PROPERTY]: { type: "rich_text", rich_text: [{ plain_text: "event" }] },
+  },
+}
+const untaggedHomework = {
+  id: "untagged-homework",
+  properties: {
+    ...commonProperties,
+    Type: { type: "select", select: { name: "Homework" } },
+  },
+}
+assert(
+  planDuplicateNotionPages([taggedExam, untaggedHomework], new Set(), new Set(), notionSettings).archiveIds.size === 0,
+  "different event types must not be collapsed as duplicate Notion pages",
+)
+let missingEventDateRejected = false
+try {
+  toEventFromPage({ id: "missing-date", properties: {} }, notionSettings, [], findSubjectIdFromValues)
+} catch {
+  missingEventDateRejected = true
+}
+assert(missingEventDateRejected, "Notion events with cleared dates must be rejected")
 
 const localEvent: CalendarEvent = {
   id: "event-1",
