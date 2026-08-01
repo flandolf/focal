@@ -29,5 +29,6 @@ tauri-plugin-notification = "2"
 futures-util = "0.3"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-sql = { version = "2.4.0", features = ["sqlite"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1", features = ["rt"] }
 tauri-plugin-updater = "2"
