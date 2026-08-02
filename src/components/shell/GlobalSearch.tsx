@@ -383,7 +383,7 @@ export function GlobalSearch({
 
  useEffect(() => {
  const timer = setTimeout(
- () => search(query, projects, sessions, events),
+ () => { void search(query, projects, sessions, events) },
  200,
  );
  return () => clearTimeout(timer);
