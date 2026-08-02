@@ -121,6 +121,7 @@ pub fn run() {
             {
                 eprintln!("could not normalize the legacy migration checksum: {error}");
             }
+            commands::chatgpt::start(app.handle()).map_err(std::io::Error::other)?;
             Ok(())
         })
         .plugin(tauri_plugin_notification::init())
@@ -134,6 +135,8 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_shell::init())
+        .manage(commands::chatgpt::ChatGptSidecar::default())
         .manage(commands::ollama::OllamaRequests::default())
         .invoke_handler(tauri::generate_handler![
             commands::files::move_files_to_project,
@@ -168,6 +171,11 @@ pub fn run() {
             commands::window::window_set_zoom,
             commands::vcaa::fetch_vcaa_exam_timetable,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                commands::chatgpt::stop(app);
+            }
+        });
 }

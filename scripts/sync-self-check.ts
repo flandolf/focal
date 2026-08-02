@@ -280,7 +280,9 @@ assertEqual(
 )
 localDatabase.close()
 
-const engineSource = await fetch(new URL("../src/lib/sync/engine.ts", import.meta.url)).then((response) => response.text())
+const engineSource = await fetch(new URL("../src/lib/sync/engine.ts", import.meta.url))
+  .then((response) => response.text())
+  .then((source) => source.replace(/\r\n/g, "\n"))
 for (const required of [
   "conflict.table !== table || conflict.rowId !== rowId",
   "finally {\n      await clearRecordOutboxSuppressions(putRecords)",

@@ -36,6 +36,15 @@
     "os:default",
     "sql:default",
     "sql:allow-execute",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/focal-chatgpt",
+          "sidecar": true
+        }
+      ]
+    },
     "updater:default"
   ]
 }

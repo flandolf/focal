@@ -6,10 +6,12 @@
  * talk to `getActiveProvider()` instead of hardcoding OpenRouter.
  */
 import {
+  getChatGPTModel,
   getModel,
   getOllamaBaseUrl,
   getOllamaModel,
   getProvider,
+  setChatGPTModel,
   setModel,
   setOllamaBaseUrl,
   setOllamaModel,
@@ -17,6 +19,7 @@ import {
 } from "@/lib/settings"
 import { openrouterProvider } from "@/lib/providers/openrouter"
 import { ollamaProvider } from "@/lib/providers/ollama"
+import { chatgptProvider } from "@/lib/providers/chatgpt"
 import type { Provider } from "@/lib/providers/types"
 
 export const DEFAULT_PROVIDER_ID = "openrouter"
@@ -24,9 +27,10 @@ export const DEFAULT_PROVIDER_ID = "openrouter"
 const PROVIDERS: Record<string, Provider> = {
   [openrouterProvider.id]: openrouterProvider,
   [ollamaProvider.id]: ollamaProvider,
+  [chatgptProvider.id]: chatgptProvider,
 }
 
-export { openrouterProvider, ollamaProvider }
+export { openrouterProvider, ollamaProvider, chatgptProvider }
 
 const FALLBACK_PROVIDER: Provider = openrouterProvider
 
@@ -64,6 +68,7 @@ export function setActiveProvider(id: string): void {
 export function getEffectiveModel(): string {
   const active = getActiveProvider()
   if (active.id === ollamaProvider.id) return getOllamaModel()
+  if (active.id === chatgptProvider.id) return getChatGPTModel()
   return getModel()
 }
 
@@ -73,6 +78,8 @@ export function setEffectiveModel(value: string): void {
   const trimmed = value.trim()
   if (active.id === ollamaProvider.id) {
     setOllamaModel(trimmed)
+  } else if (active.id === chatgptProvider.id) {
+    setChatGPTModel(trimmed)
   } else {
     setModel(trimmed)
   }

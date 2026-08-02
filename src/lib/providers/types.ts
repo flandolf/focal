@@ -33,6 +33,8 @@ export interface ChatMessage {
   content: string
   toolCalls?: ToolCall[]
   toolName?: string
+  /** Provider call id used to associate a tool result with its assistant call. */
+  toolCallId?: string
 }
 
 export interface ReasoningConfig {

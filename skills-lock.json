@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skill/SKILL.md",
       "computedHash": "ada9c434d56c794352ccd5c7a6901e5ebb4b7f3b7fe42e8c17c2c4b96c3735c8"
+    },
+    "login-with-chatgpt": {
+      "source": "opencoredev/login-with-chatgpt",
+      "sourceType": "github",
+      "skillPath": "skills/login-with-chatgpt/SKILL.md",
+      "computedHash": "b5f2ff103a1f9f714a7b27b0f71b34bea00502f2a8fcbb2c5644fc4f4f204baf"
     }
   }
 }

@@ -4,9 +4,9 @@
   "version": "0.9.6",
   "identifier": "com.andy.focal",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun run build:chatgpt-sidecar && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run build:chatgpt-sidecar && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -21,11 +21,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://*.supabase.co wss://*.supabase.co https://openrouter.ai"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://*.supabase.co wss://*.supabase.co https://openrouter.ai https:"
     }
   },
   "bundle": {
     "active": true,
+    "externalBin": [
+      "binaries/focal-chatgpt"
+    ],
     "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [

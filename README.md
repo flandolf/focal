@@ -37,6 +37,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 ### Focus & Review
 
 - **Customisable Pomodoro** — work / break / long-break durations, full-screen Focus view, recovery dialog on reopen, overtime study mode, post-session reflection (confidence 1–5, blockers, next-action).
+- **VCE prep packs** — add type-specific SAC, exam, or assignment preparation steps to an assessment, with checklist progress, completed study time, deadline countdown, and latest confidence in one place.
 - **AI Auto Rename** proposes consistent, descriptive filenames for dumped files (optionally using file-content snippets as context).
 - **Analytics** — total time, daily average, streak, study-time trend, subject breakdown, completion rate, efficiency, time-of-day, and consistency heatmap across 7d / 30d / 3mo / 1yr / All.
 - **Global search** (⌘K / Ctrl K) and a dense keyboard-shortcut layer everywhere.
@@ -57,7 +58,7 @@ Manage coursework files, plan sessions around a configurable timetable, and trac
 | Frontend | React 19 · TypeScript (strict) · Tailwind v4 · Radix primitives · Recharts · Framer Motion · Sonner · `lucide-react` · `react-day-picker` · `date-fns` |
 | Desktop shell | Tauri v2 (Rust) — SQLite local database · device-only credential storage · filesystem watcher · dialogs · notifications · updater |
 | Type & colour | Sora Variable (display) · Geist (UI) · single-accent palette, dark and light modes equally considered |
-| AI | OpenRouter or local Ollama, with structured output and tool calling (Auto Rename, Text-to-Events) |
+| AI | OpenRouter, local Ollama, or Login with ChatGPT, with structured output (Auto Rename, Text-to-Events) |
 | Cloud | Optional Supabase Auth + a compacted Postgres change log + Realtime, backed by a durable SQLite outbox. Notion rows carry stable Focal identity fields. |
 
 ---
@@ -114,6 +115,10 @@ Focal works locally without signing in. To enable multi-device sync:
 5. Run `bun run dev` or `bun run tauri dev`, then sign in from Settings → Account.
 
 Do not put a Supabase service-role or secret key in `.env` — the desktop client only uses the publishable key. Notion is a separate, optional calendar integration; enable it from Settings → Notion Sync after creating an integration token.
+
+### Login with ChatGPT
+
+Focal uses `@opencoredev/loginwithchatgpt-*` through a local Bun sidecar by default. The sidecar is compiled and bundled by `bun run tauri dev` / `bun run tauri build`, listens only on `localhost:41731`, and persists its encrypted session store under Focal's app-data directory. The ChatGPT model picker is populated from the signed-in account and uses a current Codex client version so newer account models can be returned; no OpenAI API key is used. A hosted handler remains supported by setting `VITE_CHATGPT_BASE_PATH` to its `/api/chatgpt` URL before building and configuring its `LWC_SECRET`, `LWC_CLIENT_VERSION`, allowed origins, and shared session store.
 
 ---
 

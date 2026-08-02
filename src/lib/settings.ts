@@ -6,6 +6,7 @@ export type { TimetableConfig } from "@/lib/types"
 const KEYS = {
   apiKey: "focal-openrouter-key",
   model: "focal-openrouter-model",
+  chatgptModel: "focal-chatgpt-model",
   // ponytail: provider plumbing — see src/lib/providers/* + PROVIDERS.md.
   provider: "focal-ai-provider",
   ollamaBaseUrl: "focal-ollama-base-url",
@@ -37,6 +38,7 @@ const NON_SYNCABLE_PREFERENCE_KEYS = new Set<string>([
   KEYS.notionToken,
   KEYS.projectsRootPath,
   KEYS.ollamaBaseUrl,
+  KEYS.chatgptModel,
   "focal-app-scale",
   "focal-project-templates",
   "focal-pomodoro-settings",
@@ -180,6 +182,15 @@ export function getModel(): string {
 
 export function setModel(model: string): void {
   setString(KEYS.model, model)
+}
+
+/** ChatGPT models are account-specific, so keep the last choice on this device. */
+export function getChatGPTModel(): string {
+  return getString(KEYS.chatgptModel, "")
+}
+
+export function setChatGPTModel(model: string): void {
+  setString(KEYS.chatgptModel, model)
 }
 
 /** Active AI provider id (e.g. 'openrouter', 'ollama'). Defaults to OpenRouter. */

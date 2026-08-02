@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion"
 import { invoke } from "@tauri-apps/api/core"
+import { LoginWithChatGPT } from "@opencoredev/loginwithchatgpt-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -45,11 +46,13 @@ import {
   setEffectiveModel,
   listProviders,
   setActiveProvider,
+  chatgptProvider,
   ollamaProvider,
   openrouterProvider,
   type Provider,
   type ModelInfo,
 } from "@/lib/providers"
+import { chatGPTFetch, getChatGPTBasePath } from "@/lib/providers/chatgpt"
 import { chooseOllamaModel, pullOllamaModel } from "@/lib/providers/ollama"
 import { notifyUserSettingsChanged } from "@/lib/sync/engine"
 import type { AssistantPersonality, ReasoningEffort } from "@/lib/settings"
@@ -348,6 +351,7 @@ export function AIModelSection() {
   )
   const isOpenRouter = providerId === openrouterProvider.id
   const isOllama = providerId === ollamaProvider.id
+  const isChatGPT = providerId === chatgptProvider.id
 
   useEffect(() => {
     let cancelled = false
@@ -370,6 +374,17 @@ export function AIModelSection() {
               notifyUserSettingsChanged()
             }
           }
+          if (isChatGPT) {
+            const currentModel = getEffectiveModel()
+            const nextModel = items.some((item) => item.id === currentModel)
+              ? currentModel
+              : items[0]?.id
+            if (nextModel && nextModel !== currentModel) {
+              setModelState(nextModel)
+              setEffectiveModel(nextModel)
+              notifyUserSettingsChanged()
+            }
+          }
           setModelsLoading(false)
         })
         .catch((e: unknown) => {
@@ -384,7 +399,7 @@ export function AIModelSection() {
       cancelled = true
       clearTimeout(timeout)
     }
-  }, [activeProvider, isOllama, ollamaBaseUrl])
+  }, [activeProvider, isChatGPT, isOllama, ollamaBaseUrl])
 
   useEffect(() => () => pullController.current?.abort(), [])
 
@@ -579,6 +594,31 @@ export function AIModelSection() {
         </div>
       </section>
 
+      {isChatGPT && (
+        <section className="rounded-lg border bg-card p-4">
+          <div className="min-w-0">
+            <h2 className="text-sm font-medium">ChatGPT account</h2>
+            <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
+              Connect your ChatGPT account to use its plan. Focal never receives your password; requests and files pass through the configured proxy.
+            </p>
+          </div>
+          {getChatGPTBasePath() ? (
+            <div className="mt-3">
+              <LoginWithChatGPT
+                basePath={getChatGPTBasePath()}
+                fetch={chatGPTFetch}
+                consent={{ appName: "Focal" }}
+                onAuthenticated={() => { void handleRefreshModels() }}
+              />
+            </div>
+          ) : (
+            <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+              This build has no ChatGPT proxy configured. Set <code className="font-mono text-[10px]">VITE_CHATGPT_BASE_PATH</code> and rebuild Focal.
+            </p>
+          )}
+        </section>
+      )}
+
       {isOpenRouter && (
         <section className="rounded-lg border bg-card p-4">
           <div className="flex items-start justify-between gap-3">
@@ -748,10 +788,12 @@ export function AIModelSection() {
             <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
               {isOpenRouter
                 ? "Showing only models that support structured output and file uploads."
-                : "Installed models on the local Ollama server. Use the refresh button to re-query after pulling new models."}
+                : isChatGPT
+                  ? "Models available to the connected ChatGPT account."
+                  : "Installed models on the local Ollama server. Use the refresh button to re-query after pulling new models."}
             </p>
           </div>
-          {isOllama && (
+          {(isOllama || isChatGPT) && (
             <Button
               type="button"
               onClick={handleRefreshModels}
@@ -855,7 +897,9 @@ export function AIModelSection() {
                   <p className="py-6 text-center text-xs text-muted-foreground">
                     {isOllama
                       ? "No installed models. Run `ollama pull <model>` and click refresh."
-                      : "No models match your search."}
+                      : isChatGPT
+                        ? "Connect your ChatGPT account above to load its models."
+                        : "No models match your search."}
                   </p>
                 ) : (
                   modelRows
@@ -916,7 +960,9 @@ export function AIModelSection() {
             <div className="min-w-0">
               <h2 className="text-sm font-medium">Reasoning Tokens</h2>
               <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
-                Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1).
+                {isChatGPT
+                  ? "Choose the reasoning effort sent to ChatGPT's Codex models."
+                  : "Enable step-by-step reasoning for supported models (OpenAI o-series, Anthropic Claude, Gemini, DeepSeek R1)."}
               </p>
             </div>
             <Button
@@ -971,7 +1017,7 @@ export function AIModelSection() {
             ))}
           </div>
 
-          {reasoningEffort !== "none" && (
+          {!isChatGPT && reasoningEffort !== "none" && (
             <>
               <label className="mt-3 block text-caption text-muted-foreground/70" htmlFor="reasoning-max-tokens">
                 Max Tokens (Anthropic models)

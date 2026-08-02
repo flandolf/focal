@@ -27,6 +27,20 @@ import {
  TooltipContent,
  TooltipTrigger,
 } from"@/components/ui/tooltip";
+import { Marker, MarkerContent, MarkerIcon } from"@/components/ui/marker";
+import {
+ Message as ChatMessage,
+ MessageContent,
+ MessageHeader,
+} from"@/components/ui/message";
+import {
+ MessageScroller,
+ MessageScrollerButton,
+ MessageScrollerContent,
+ MessageScrollerItem,
+ MessageScrollerProvider,
+ MessageScrollerViewport,
+} from"@/components/ui/message-scroller";
 import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area";
 import { TRANSITION, staggerContainer, staggerItem } from"@/lib/motion";
 import { cn, getEventTypeInfo, getLocalDateValue } from"@/lib/utils";
@@ -77,6 +91,7 @@ import {
  readOptionalStringArray,
  SESSION_DRAFT_SCHEMA,
  toolDisplayName,
+ toolFailureText,
  toolDoneText,
  toolRunningText,
  type DraftEvent,
@@ -370,7 +385,6 @@ export function AIAssistantPanel({
  } | null>(null);
  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
  const sendAbortRef = useRef<AbortController | null>(null);
- const scrollRef = useRef<HTMLDivElement | null>(null);
  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
  const [width, setWidth] = useState<number>(() =>
@@ -535,14 +549,6 @@ export function AIAssistantPanel({
  return dollars < 0.001 ?"<$0.001" : `~$${dollars.toFixed(3)}`;
  })()
  : null;
-
- useEffect(() => {
- if (!scrollRef.current) return;
- scrollRef.current.scrollTo({
- top: scrollRef.current.scrollHeight,
- behavior: reduceMotion ?"auto" :"smooth",
- });
- }, [messages, pending, reduceMotion]);
 
  useEffect(() => {
  if (!open || providerMissing) return;
@@ -984,6 +990,7 @@ export function AIAssistantPanel({
  agentMessages.push({
  role:"tool",
  toolName: toolCall.name,
+ toolCallId: toolCall.id,
  content: toolResult ??"No action taken.",
  });
  } catch (error) {
@@ -1003,8 +1010,13 @@ export function AIAssistantPanel({
  ),
  );
  }
- throw error;
- }
+  agentMessages.push({
+  role:"tool",
+  toolName: toolCall.name,
+  toolCallId: toolCall.id,
+  content: `Tool error: ${toolFailureText(toolCall.name, error)}`,
+  });
+  }
  }
  }
  if (usedTool) {
@@ -1504,12 +1516,12 @@ ${text}`,
  </Button>
  </div>
  </div>
- </div>      <ScrollArea
-        viewportRef={scrollRef}
-        className="flex min-h-0 flex-1 flex-col px-3 py-3"
-      >
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col justify-between gap-5">
+  </div>      <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+        <MessageScroller className="flex-1">
+          <MessageScrollerViewport>
+            <MessageScrollerContent aria-busy={pending} className="px-3 py-3">
+              {messages.length === 0 ? (
+                <div className="flex min-h-full flex-col justify-between gap-5">
  <div className="pt-2">
  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border bg-background/45 text-primary">
  <Brain className="h-4 w-4" />
@@ -1572,40 +1584,49 @@ ${text}`,
  </motion.button>
  ))}
  </motion.div>
- </div>          </div>
-        ) : (
-          <div className="flex h-full flex-col gap-3">
- {messages.map((m) => (
- <Bubble
- key={m.id}
- message={m}
- isCopied={copiedMessageId === m.id}
- canRegenerate={
- m.role ==="assistant" &&
- !m.pending &&
- !m.cancelled &&
- !m.toolActivity &&
- !pending
- }
- onCopy={() => void handleCopy(m.id, m.content)}
- onRegenerate={() => void regenerate(m.id)}
- onCreateFromDraft={
- m.draft
- ? () => void handleCreateFromDraft(m.id, m.draft)
- : undefined
- }
- onDiscardDraft={
- m.draft ? () => handleDiscardDraft(m.id) : undefined
- }
- onFollowUp={
- m.id === latestAssistantMessageId
- ? (prompt) => void send(prompt)
- : undefined
- }
- />          ))}
-        </div>
-        )}
-      </ScrollArea>
+  </div>                </div>
+              ) : (
+                messages.map((m) => (
+                  <MessageScrollerItem
+                    key={m.id}
+                    messageId={m.id}
+                    scrollAnchor={m.role === "user"}
+                    className="w-full"
+                  >
+                    <Bubble
+                      message={m}
+                      isCopied={copiedMessageId === m.id}
+                      canRegenerate={
+                        m.role === "assistant" &&
+                        !m.pending &&
+                        !m.cancelled &&
+                        !m.toolActivity &&
+                        !pending
+                      }
+                      onCopy={() => void handleCopy(m.id, m.content)}
+                      onRegenerate={() => void regenerate(m.id)}
+                      onCreateFromDraft={
+                        m.draft
+                          ? () => void handleCreateFromDraft(m.id, m.draft)
+                          : undefined
+                      }
+                      onDiscardDraft={
+                        m.draft ? () => handleDiscardDraft(m.id) : undefined
+                      }
+                      onFollowUp={
+                        m.id === latestAssistantMessageId
+                          ? (prompt) => void send(prompt)
+                          : undefined
+                      }
+                    />
+                  </MessageScrollerItem>
+                ))
+              )}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton aria-label="Scroll to latest message" />
+        </MessageScroller>
+      </MessageScrollerProvider>
 
  <AnimatePresence>
  {error && (
@@ -1652,12 +1673,12 @@ ${text}`,
  e.preventDefault();
  handleSubmit();
  }}
- className="shrink-0 border-t border-sidebar-border/80 p-3"
+ className="shrink-0 border-t border-sidebar-border/80 bg-background/20 px-3 pb-3 pt-2.5"
  >
  <div
  className={cn(
-"flex items-end gap-2 rounded-xl border border-input bg-background/55 p-1.5 transition-colors",
-"focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/45 dark:bg-input/25",
+ "rounded-2xl border border-sidebar-border/90 bg-background/70 p-2 shadow-sm transition-[border-color,box-shadow]",
+ "focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/10 dark:bg-input/20",
  providerMissing &&"opacity-70",
  )}
  >
@@ -1673,25 +1694,30 @@ ${text}`,
  ? `Ask about ${contextRefs.project.name}`
  :"Ask about deadlines, sessions, or study strategy"
  }
+ aria-label="Ask the Focal assistant"
  disabled={providerMissing || pending}
  rows={2}
- className="min-h-11 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+ className="max-h-32 min-h-12 w-full resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-2 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-0"
  />
- <div className="flex flex-col items-end gap-1.5">
- {costDisplay && (
+ <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-sidebar-border/60 px-1 pt-1.5">
+ <div className="flex min-w-0 items-center gap-1.5 text-micro text-muted-foreground">
+ <Sparkles className="h-3 w-3 shrink-0 text-primary" />
+ {costDisplay ? (
  <span
- className="inline-flex items-center gap-1 rounded-full border border-sidebar-border/80 bg-background/45 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
  title="Ceiling estimate · flat rate; actual cost depends on the active model"
  aria-label={`Estimated cost ${costDisplay}`}
  >
- {costDisplay}
+ {costDisplay} estimate
  </span>
+ ) : (
+ <span className="truncate">AI assistant</span>
  )}
+ </div>
  <Button
  type="submit"
- size="icon-sm"
+ size="icon"
  disabled={!input.trim() || pending || providerMissing}
- className="text-primary-foreground"
+ className="size-8 rounded-xl text-primary-foreground shadow-sm"
  aria-label="Send"
  >
  {pending ? (
@@ -1703,9 +1729,10 @@ ${text}`,
  </div>
  </div>
  {!providerMissing && (
- <p className="mt-1.5 px-1 text-micro text-muted-foreground">
- Enter to send · Shift + Enter for a new line
- </p>
+ <div className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-muted-foreground/75">
+ <span>Enter to send</span>
+ <span>Shift + Enter for a new line</span>
+ </div>
  )}
  </form>
  </motion.aside>
@@ -1912,100 +1939,101 @@ function Bubble({
  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
  animate={{ opacity: 1, y: 0 }}
  transition={reduceMotion ? { duration: 0 } : TRANSITION.view}
- className={cn(
-"group/bubble relative flex",
- isUser ?"justify-end" :"justify-start",
- )}
+ className="w-full"
  >
- <div
- className={cn(
-"min-w-0 max-w-[88%] rounded-xl px-3 py-2 text-sm leading-relaxed",
- isUser
- ?"bg-primary text-primary-foreground"
- : isToolActivity
- ?"border border-sidebar-border/70 bg-muted/30 text-muted-foreground"
- : message.cancelled
- ?"border border-sidebar-border bg-muted/35 italic text-muted-foreground"
- :"border border-sidebar-border/75 bg-background/55 text-foreground",
- )}
- >
- {isToolActivity && message.toolActivity ? (
- <span className="inline-flex min-w-0 items-center gap-2 text-xs font-medium">
- {toolDone ? (
- <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
- ) : toolFailed ? (
- <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
- ) : (
- <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
- )}
- <span className="truncate">{message.content}</span>
- <span className="rounded bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
- {message.toolActivity.name}
- </span>
- </span>
- ) : (
- !isUser &&
- !message.pending &&
- !message.cancelled &&
- !hasDraft && (
- <div className="mb-1.5 flex items-center gap-1.5 text-micro font-medium text-muted-foreground">
- <Wand2 className="h-3 w-3 text-primary" />
- Assistant
- </div>
- )
- )}
- {isToolActivity ? null : message.pending ? (
- <span className="inline-flex items-center gap-2 text-muted-foreground">
- <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
- Thinking
- </span>
- ) : isUser ? (
- <p className="whitespace-pre-wrap wrap-break-word">
- {message.content}
- </p>
- ) : (
- <div className="focal-ai-markdown">
- <ReactMarkdown components={MARKDOWN_COMPONENTS}>
- {message.content}
- </ReactMarkdown>
- {message.content.length === 0 && (
- <span className="ml-0 inline-flex text-muted-foreground motion-safe:animate-pulse">
- ▍
- </span>
- )}
- </div>
- )}
+ <ChatMessage align={isUser ? "end" : "start"}>
+  <MessageContent className="max-w-[88%] gap-1.5">
+  {!isUser && !isToolActivity && !message.pending && !message.cancelled && !hasDraft && (
+  <MessageHeader className="px-3">
+  <Wand2 className="mr-1.5 h-3 w-3 text-primary" />
+  Assistant
+  </MessageHeader>
+  )}
 
- {hasDraft && message.draft && (
- <DraftCard
- draft={message.draft}
- onCreate={onCreateFromDraft}
- onDiscard={onDiscardDraft}
- />
- )}
+  {isToolActivity && message.toolActivity ? (
+  <Marker className="rounded-xl border border-sidebar-border/70 bg-muted/30 px-3 py-2 text-xs font-medium">
+  <MarkerIcon>
+  {toolDone ? (
+  <CheckCircle2 className="text-primary" />
+  ) : toolFailed ? (
+  <AlertCircle className="text-destructive" />
+  ) : (
+  <Loader2 className="animate-spin text-primary" />
+  )}
+  </MarkerIcon>
+  <MarkerContent className="flex min-w-0 items-center gap-2">
+  <span className="truncate">{message.content}</span>
+  <span className="rounded bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+  {message.toolActivity.name}
+  </span>
+  </MarkerContent>
+  </Marker>
+  ) : message.pending ? (
+  <Marker role="status" className="rounded-xl border border-sidebar-border/75 bg-background/55 px-3 py-2">
+  <MarkerIcon>
+  <Loader2 className="animate-spin text-primary" />
+  </MarkerIcon>
+  <MarkerContent>Thinking</MarkerContent>
+  </Marker>
+  ) : (
+  <div
+  className={cn(
+  "group/bubble relative min-w-0 rounded-xl px-3 py-2 text-sm leading-relaxed",
+  isUser
+  ?"bg-primary text-primary-foreground"
+  : message.cancelled
+  ?"border border-sidebar-border bg-muted/35 italic text-muted-foreground"
+  :"border border-sidebar-border/75 bg-background/55 text-foreground",
+  )}
+  >
+  {isUser ? (
+  <p className="whitespace-pre-wrap wrap-break-word">
+  {message.content}
+  </p>
+  ) : (
+  <div className="focal-ai-markdown">
+  <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+  {message.content}
+  </ReactMarkdown>
+  {message.content.length === 0 && (
+  <span className="ml-0 inline-flex text-muted-foreground motion-safe:animate-pulse">
+  ▍
+  </span>
+  )}
+  </div>
+  )}
 
- {onFollowUp && message.followUps && message.followUps.length > 0 && (
- <div className="mt-2.5 flex flex-col items-start gap-1.5 border-t border-sidebar-border/70 pt-2.5">
- {message.followUps.map((prompt) => (
- <Button
- key={prompt}
- type="button"
- onClick={() => onFollowUp(prompt)}
- variant="secondary"
- size="sm"
- className="h-auto max-w-full text-left whitespace-normal"
- >
- {prompt}
- </Button>          ))}
-        </div>
-        )}
- {!isUser && !isToolActivity && !message.pending && !message.cancelled && (
- <div
- className={cn(
-"absolute bottom-1 right-1 flex items-center gap-0.5 rounded-md border border-sidebar-border bg-background/85 px-0.5 py-0.5 opacity-0 backdrop-blur-sm transition-opacity",
-"group-hover/bubble:opacity-100 focus-within:opacity-100",
- )}
- >
+  {hasDraft && message.draft && (
+  <DraftCard
+  draft={message.draft}
+  onCreate={onCreateFromDraft}
+  onDiscard={onDiscardDraft}
+  />
+  )}
+
+  {onFollowUp && message.followUps && message.followUps.length > 0 && (
+  <div className="mt-2.5 flex flex-col items-start gap-1.5 border-t border-sidebar-border/70 pt-2.5">
+  {message.followUps.map((prompt) => (
+  <Button
+  key={prompt}
+  type="button"
+  onClick={() => onFollowUp(prompt)}
+  variant="secondary"
+  size="sm"
+  className="h-auto max-w-full text-left whitespace-normal"
+  >
+  {prompt}
+  </Button>
+  ))}
+  </div>
+  )}
+  {!isUser && !message.cancelled && (
+  <div
+  className={cn(
+  "absolute bottom-1 right-1 flex items-center gap-0.5 rounded-md border border-sidebar-border bg-background/85 px-0.5 py-0.5 opacity-0 backdrop-blur-sm transition-opacity",
+  "group-hover/bubble:opacity-100 focus-within:opacity-100",
+  )}
+  >
  <Tooltip>
  <TooltipTrigger asChild>
  <Button
@@ -2041,9 +2069,12 @@ function Bubble({
  </TooltipTrigger>
  <TooltipContent side="bottom">Regenerate</TooltipContent>
  </Tooltip>
- </div>
- )}
- </div>
+  </div>
+  )}
+  </div>
+  )}
+  </MessageContent>
+ </ChatMessage>
  </motion.div>
  );
 }
