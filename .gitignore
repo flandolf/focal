@@ -28,6 +28,7 @@ dist-ssr
 .codex
 .agents
 .mcp.json
+.audit/
 
 .env
 supabase/.temp/
