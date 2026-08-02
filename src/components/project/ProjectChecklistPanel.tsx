@@ -12,20 +12,25 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { Project } from "@/lib/types";
+import { buildVcePrepSummary, getMissingVcePrepSteps } from "@/lib/vcePrep";
+import type { Project, StudySession } from "@/lib/types";
 
 interface ProjectChecklistPanelProps {
   project: Project;
+  sessions: StudySession[];
   onUpdateNotes: (notes: string) => void;
   onAddChecklistItem: (text: string) => void;
+  onAddChecklistItems: (texts: string[]) => void | Promise<void>;
   onToggleChecklistItem: (itemId: string) => void;
   onRemoveChecklistItem: (itemId: string) => void;
 }
 
 export function ProjectChecklistPanel({
   project,
+  sessions,
   onUpdateNotes,
   onAddChecklistItem,
+  onAddChecklistItems,
   onToggleChecklistItem,
   onRemoveChecklistItem,
 }: ProjectChecklistPanelProps) {
@@ -43,10 +48,49 @@ export function ProjectChecklistPanel({
   const completedCount =
     project.checklist?.filter((item) => item.completed).length ?? 0;
   const totalCount = project.checklist?.length ?? 0;
+  const vceSummary = buildVcePrepSummary(project, sessions);
+  const missingPrepSteps = getMissingVcePrepSteps(project);
+  const dueLabel = vceSummary.daysUntilDeadline === null
+    ? "No due date"
+    : vceSummary.daysUntilDeadline < 0
+      ? `${Math.abs(vceSummary.daysUntilDeadline)}d overdue`
+      : vceSummary.daysUntilDeadline === 0
+        ? "Due today"
+        : `Due in ${vceSummary.daysUntilDeadline}d`;
+
+  const handleAddPrepSteps = () => {
+    if (missingPrepSteps.length === 0) return;
+    void onAddChecklistItems(missingPrepSteps);
+  };
 
   return (
     <div>
       <div className="px-4 pt-2 min-[1200px]:px-5">
+        {project.deadlineType && (
+          <div className="mb-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-semibold">VCE prep</span>
+              <span className="text-muted-foreground">{dueLabel}</span>
+            </div>
+            <div className="mt-1.5 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+              <span><strong className="text-foreground">{vceSummary.completedChecklistCount}/{vceSummary.totalChecklistCount}</strong> steps</span>
+              <span><strong className="text-foreground">{Math.round(vceSummary.completedStudyMinutes / 6) / 10}h</strong> studied</span>
+              <span><strong className="text-foreground">{vceSummary.latestConfidence ? `${vceSummary.latestConfidence}/5` : "—"}</strong> confidence</span>
+            </div>
+            {missingPrepSteps.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="mt-2"
+                onClick={handleAddPrepSteps}
+              >
+                Add {missingPrepSteps.length} VCE prep step{missingPrepSteps.length === 1 ? "" : "s"}
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Notes Section */}
         <div>
           <Button

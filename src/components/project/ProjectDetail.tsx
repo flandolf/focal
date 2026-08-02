@@ -32,6 +32,7 @@ interface ProjectDetailProps {
   onNewSession?: () => void
   onUpdateNotes?: (notes: string) => void
   onAddChecklistItem?: (text: string) => void
+  onAddChecklistItems?: (texts: string[]) => void | Promise<void>
   onToggleChecklistItem?: (itemId: string) => void
   onRemoveChecklistItem?: (itemId: string) => void
   onAddDependency?: (dependsOnId: string) => void
@@ -47,6 +48,7 @@ export const ProjectDetail = memo(function ProjectDetail({
   project, sessions, onFilesChanged, onOpenSettings, onToggleFinished,
   onSelectSession, onNewSession,
   onUpdateNotes, onAddChecklistItem, onToggleChecklistItem, onRemoveChecklistItem,
+  onAddChecklistItems,
   onAddDependency, onRemoveDependency, onOpenProject, availableProjects,
   onExport, onSaveAsTemplate,
   onStartFocus,
@@ -624,7 +626,7 @@ export const ProjectDetail = memo(function ProjectDetail({
     }
   }, [selectedFiles, deleteFiles, onFilesChanged])
 
-  const hasChecklist = onUpdateNotes && onAddChecklistItem && onToggleChecklistItem && onRemoveChecklistItem
+  const hasChecklist = onUpdateNotes && onAddChecklistItem && onAddChecklistItems && onToggleChecklistItem && onRemoveChecklistItem
   const hasDependencies = onAddDependency && onRemoveDependency && onOpenProject && availableProjects
 
   return (
@@ -663,8 +665,10 @@ export const ProjectDetail = memo(function ProjectDetail({
           {hasChecklist && (
             <ProjectChecklistPanel
               project={project}
+              sessions={sessions}
               onUpdateNotes={(notes) => onUpdateNotes(notes)}
               onAddChecklistItem={(text) => onAddChecklistItem(text)}
+              onAddChecklistItems={(texts) => onAddChecklistItems(texts)}
               onToggleChecklistItem={(itemId) => onToggleChecklistItem(itemId)}
               onRemoveChecklistItem={(itemId) => onRemoveChecklistItem(itemId)}
             />

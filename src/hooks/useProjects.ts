@@ -425,6 +425,35 @@ export function useProjects() {
     if (updatedProject) await recordLocalUpsert("projects", updatedProject)
   }, [projectsRef, saveProjects])
 
+  const addChecklistItems = useCallback(async (projectId: string, texts: string[]) => {
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project) throw new Error("Project not found")
+
+    const existingTexts = new Set(
+      (project.checklist ?? []).map((item) => item.text.trim().replace(/\s+/g, " ").toLowerCase()),
+    )
+    const items = texts
+      .map((text) => text.trim())
+      .filter((text) => text.length > 0)
+      .filter((text, index, values) => {
+        const key = text.replace(/\s+/g, " ").toLowerCase()
+        return !existingTexts.has(key) && values.findIndex((value) => value.replace(/\s+/g, " ").toLowerCase() === key) === index
+      })
+      .map((text) => ({ id: generateId(), text, completed: false }))
+    if (items.length === 0) return 0
+
+    const updated = projectsRef.current.map((p) =>
+      p.id === projectId
+        ? { ...p, checklist: [...(p.checklist ?? []), ...items], updated_at: new Date().toISOString() }
+        : p,
+    )
+    await saveProjects(updated)
+    projectsRef.current = updated
+    const updatedProject = updated.find((p) => p.id === projectId)
+    if (updatedProject) await recordLocalUpsert("projects", updatedProject)
+    return items.length
+  }, [projectsRef, saveProjects])
+
   const toggleChecklistItem = useCallback(async (projectId: string, itemId: string) => {
     const project = projectsRef.current.find((p) => p.id === projectId)
     if (!project?.checklist) return
@@ -568,6 +597,7 @@ export function useProjects() {
     addCustomSubfolder,
     removeCustomSubfolder,
     addChecklistItem,
+    addChecklistItems,
     toggleChecklistItem,
     removeChecklistItem,
     addDependency,

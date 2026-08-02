@@ -7,6 +7,9 @@ import {
   formatProjectLine,
   parseLooseEventCreateRequest,
   prepareStudySessionUpdate,
+  toolDoneText,
+  toolDisplayName,
+  toolFailureText,
 } from "../src/features/assistant/agent"
 import { normalizeStudySession } from "../src/lib/studySessions"
 
@@ -81,6 +84,9 @@ if (reply.content !== "Start with Methods.") throw new Error(`Unexpected cleaned
 if (reply.followUps.length !== 2 || reply.followUps[0] !== "Plan that session for me") {
   throw new Error(`Unexpected follow-ups: ${reply.followUps.join(", ")}`)
 }
+if (toolDisplayName("get_study_sessions") !== "get study sessions") throw new Error("tool label lost word spacing")
+if (toolDoneText("delete_event") !== "Deleted event") throw new Error("delete tool completion label is unclear")
+if (toolFailureText("list_deadlines", new Error("provider unavailable")) !== "list deadlines failed: provider unavailable.") throw new Error("tool failure text is not recoverable")
 
 if (!draft) throw new Error("expected loose event draft")
 if (draft.title !== "Math Methods SAC") throw new Error(`bad title: ${draft.title}`)

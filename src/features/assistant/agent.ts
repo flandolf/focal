@@ -1694,7 +1694,13 @@ export function executeReadOnlyFocalToolCall(
 }
 
 export function toolDisplayName(name: string): string {
- return name.replace(/_/g,"");
+ return name.replace(/_/g," ").trim();
+}
+
+export function toolFailureText(name: string, error: unknown): string {
+ const detail = error instanceof Error ? error.message.trim() : "";
+ const suffix = detail ? `: ${detail.slice(0, 240)}` : "";
+ return `${toolDisplayName(name)} failed${suffix}.`;
 }
 
 export function toolRunningText(name: string): string {
@@ -1719,6 +1725,7 @@ export function toolDoneText(name: string): string {
  return `Created ${label.replace(/^create /,"")}`;
  if (name.startsWith("update_"))
  return `Updated ${label.replace(/^update /,"")}`;
- if (name.startsWith("delete_")) return `Ran ${label}`;
+ if (name.startsWith("delete_"))
+ return `Deleted ${label.replace(/^delete /,"")}`;
  return `Used ${label}`;
 }

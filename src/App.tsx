@@ -189,6 +189,7 @@ function App() {
     bulkFinish,
     bulkDelete,
     addChecklistItem,
+    addChecklistItems,
     toggleChecklistItem,
     removeChecklistItem,
     addDependency,
@@ -1722,6 +1723,19 @@ function App() {
     [selectedId, addChecklistItem],
   );
 
+  const handleAddChecklistItems = useCallback(
+    async (texts: string[]) => {
+      if (!selectedId || texts.length === 0) return;
+      try {
+        const count = await addChecklistItems(selectedId, texts);
+        if (count > 0) toast.success(`${count} VCE prep step${count === 1 ? "" : "s"} added`);
+      } catch (e) {
+        toast.error(`Failed to add prep steps: ${String(e)}`);
+      }
+    },
+    [addChecklistItems, selectedId],
+  );
+
   const handleToggleChecklistItem = useCallback(
     async (itemId: string) => {
       if (!selectedId) return;
@@ -2127,6 +2141,7 @@ function App() {
                         onNewSession={handleOpenNewSession}
                         onUpdateNotes={handleUpdateNotes}
                         onAddChecklistItem={handleAddChecklistItem}
+                        onAddChecklistItems={handleAddChecklistItems}
                         onToggleChecklistItem={handleToggleChecklistItem}
                         onRemoveChecklistItem={handleRemoveChecklistItem}
                         onAddDependency={handleAddDependency}
