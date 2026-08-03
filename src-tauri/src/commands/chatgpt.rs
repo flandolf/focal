@@ -72,15 +72,29 @@ pub fn start(_app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 #[cfg(desktop)]
-pub fn stop(app: &tauri::AppHandle) {
-    if let Some(state) = app.try_state::<ChatGptSidecar>() {
-        if let Ok(mut child) = state.child.lock() {
-            if let Some(child) = child.take() {
-                let _ = child.kill();
-            }
-        }
+pub fn stop(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<ChatGptSidecar>()
+        .ok_or_else(|| "ChatGPT sidecar state is unavailable".to_owned())?;
+    let child = state
+        .child
+        .lock()
+        .map_err(|_| "ChatGPT sidecar state is unavailable".to_owned())?
+        .take();
+    if let Some(child) = child {
+        child
+            .kill()
+            .map_err(|error| format!("could not stop ChatGPT sidecar: {error}"))?;
     }
+    Ok(())
 }
 
 #[cfg(not(desktop))]
-pub fn stop(_app: &tauri::AppHandle) {}
+pub fn stop(_app: &tauri::AppHandle) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stop_chatgpt_sidecar(app: tauri::AppHandle) -> Result<(), String> {
+    stop(&app)
+}

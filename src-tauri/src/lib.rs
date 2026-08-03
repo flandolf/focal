@@ -166,6 +166,7 @@ pub fn run() {
             commands::notion::create_notion_calendar_page,
             commands::notion::delete_notion_page,
             commands::notion::update_notion_calendar_page,
+            commands::chatgpt::stop_chatgpt_sidecar,
             commands::ollama::ollama_request,
             commands::ollama::cancel_ollama_request,
             commands::window::window_set_zoom,
@@ -175,7 +176,9 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
-                commands::chatgpt::stop(app);
+                if let Err(error) = commands::chatgpt::stop(app) {
+                    eprintln!("could not stop ChatGPT sidecar on exit: {error}");
+                }
             }
         });
 }

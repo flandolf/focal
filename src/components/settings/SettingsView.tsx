@@ -14,6 +14,7 @@ import {
  RefreshCw,
 } from"lucide-react";
 import { check } from"@tauri-apps/plugin-updater";
+import { invoke } from"@tauri-apps/api/core";
 import { toast } from"sonner";
 import { Button } from"@/components/ui/button";
 import { ScrollArea } from"@/components/ui/scroll-area";
@@ -224,6 +225,7 @@ export function SettingsView({
  if (!install) return;
 
  setInstallingUpdate(true);
+ await invoke("stop_chatgpt_sidecar");
  let downloaded = 0;
  let contentLength = 0;
  const toastId = toast.loading("Downloading update...");
