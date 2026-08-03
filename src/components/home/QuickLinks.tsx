@@ -116,7 +116,7 @@ export function QuickLinks() {
 
  return (
  <>
- <div>
+ <section className="border-t border-border/70 pt-4">
  <div className="flex items-center justify-between mb-3">
  <h3 className="flex items-center gap-2 text-sm font-semibold">
  <Link className="h-3.5 w-3.5 text-muted-foreground" />
@@ -168,12 +168,12 @@ export function QuickLinks() {
  onClick={() => void openUrl(link.url).catch(() => {
  toast.error(`Couldn't open "${link.label}". Check the saved URL and try again.`)
  })}
- variant="outline"
- className="h-14 w-full min-w-0 justify-start gap-2.5 border-border/70 pl-2.5 pr-8 text-left whitespace-normal hover:border-border"
+ variant="ghost"
+ className="h-14 w-full min-w-0 justify-start gap-2.5 pl-2.5 pr-8 text-left whitespace-normal"
  style={{ backgroundColor: link.color +"0D" }}
  aria-label={`Open ${link.label}: ${destination}`}
  >
- <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-current/15" style={{ color: link.color, backgroundColor: link.color +"12" }}>
+ <span className="flex size-8 shrink-0 items-center justify-center rounded-md" style={{ color: link.color, backgroundColor: link.color +"12" }}>
  <IconComp className="h-4 w-4" />
  </span>
  <span className="min-w-0 flex-1">
@@ -196,7 +196,7 @@ export function QuickLinks() {
  })}
  </motion.div>
  )}
- </div>
+ </section>
 
  <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
  <DialogContent className="sm:max-w-lg">

@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts"
-import { Card } from "@/components/ui/card"
 import type { TimeOfDayBucket } from "@/lib/analytics"
 
 interface TimeOfDayChartProps {
@@ -49,7 +48,7 @@ export function TimeOfDayChart({ data }: TimeOfDayChartProps) {
   }
 
   return (
-    <Card className="p-4">
+    <section className="border-t border-border/70 pt-5">
       <h3 className="text-sm font-semibold mb-4">Study Time of Day</h3>
       {hasData ? (
         <ResponsiveContainer width="100%" height={200}>
@@ -105,6 +104,6 @@ export function TimeOfDayChart({ data }: TimeOfDayChartProps) {
           ? `Peak hour ${peakHour === 0 ? "12 AM" : peakHour < 12 ? `${peakHour} AM` : peakHour === 12 ? "12 PM" : `${peakHour - 12} PM`}.`
           : "No study time recorded."}
       </p>
-    </Card>
+    </section>
   )
 }

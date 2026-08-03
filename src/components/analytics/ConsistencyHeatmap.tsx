@@ -3,7 +3,6 @@ import type { KeyboardEvent, MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence, useMotionValue, useReducedMotion } from "framer-motion"
 import { format } from "date-fns"
-import { Card } from "@/components/ui/card"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { getHeatColor } from "@/lib/chartTheme"
 import { cn } from "@/lib/utils"
@@ -183,7 +182,7 @@ export function ConsistencyHeatmap({ days, stats }: ConsistencyHeatmapProps) {
   const hasAnyData = stats.totalStudyDays > 0
 
   return (
-    <Card className="p-4">
+    <section className="border-t border-border/70 pt-5">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Study Consistency</h3>
@@ -362,6 +361,6 @@ export function ConsistencyHeatmap({ days, stats }: ConsistencyHeatmapProps) {
         </AnimatePresence>,
         document.body,
       )}
-    </Card>
+    </section>
   )
 }

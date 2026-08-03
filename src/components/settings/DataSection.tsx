@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils"
 import { getProjectsRootPath, setProjectsRootPath } from "@/lib/settings"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface DataSectionProps {
   onOpenExport?: () => void
@@ -213,14 +212,13 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
   const isBusy = importing || scanning || linking
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>Data</CardTitle>
-        <CardDescription>
+    <section className="border-t border-border/70 pt-5">
+      <div>
+        <h2 className="text-sm font-medium">Data</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
           Move your files in and out of Focal.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
 
       {/* Projects root folder setting */}
       <div className="mt-4 rounded-lg border border-border/60 bg-background/30 p-3">
@@ -373,7 +371,6 @@ export function DataSection({ onOpenExport, onProjectsRootChanged, onScanAndImpo
           )
         })}
       </div>
-      </CardContent>
-    </Card>
+    </section>
   )
 }

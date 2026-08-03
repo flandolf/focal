@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts"
-import { Card } from "@/components/ui/card"
 import { getSubjectColor } from "@/lib/chartTheme"
 import { getSubjectById } from "@/lib/utils"
 import type { StudyTimePoint } from "@/lib/analytics"
@@ -105,15 +104,15 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
 
   if (chartData.length === 0) {
     return (
-      <Card className="p-4">
+      <section className="border-t border-border/70 pt-5">
         <h3 className="text-sm font-semibold mb-1">Study Time Trends</h3>
         <p className="text-xs text-muted-foreground">No study data for this period.</p>
-      </Card>
+      </section>
     )
   }
 
   return (
-    <Card className="p-4">
+    <section className="border-t border-border/70 pt-5">
       <h3 className="text-sm font-semibold mb-4">Study Time Trends</h3>
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -191,6 +190,6 @@ export function StudyTimeTrendChart({ data }: StudyTimeTrendChartProps) {
           : ""}
         .
       </p>
-    </Card>
+    </section>
   )
 }

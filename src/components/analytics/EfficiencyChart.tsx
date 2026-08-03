@@ -1,5 +1,4 @@
 import { useMemo } from "react"
-import { Card } from "@/components/ui/card"
 import { getSubjectColor } from "@/lib/chartTheme"
 import { getSubjectById } from "@/lib/utils"
 import type { EfficiencyPoint } from "@/lib/analytics"
@@ -13,15 +12,15 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
 
   if (data.length === 0) {
     return (
-      <Card className="p-4">
+      <section className="border-t border-border/70 pt-5">
         <h3 className="text-sm font-semibold mb-1">Study Efficiency</h3>
         <p className="text-xs text-muted-foreground">No completed sessions for this period.</p>
-      </Card>
+      </section>
     )
   }
 
   return (
-    <Card className="p-4">
+    <section className="border-t border-border/70 pt-5">
       <h3 className="text-sm font-semibold mb-4">Study Efficiency</h3>
       <p className="text-xs text-muted-foreground mb-4">
         Minutes studied vs. confidence level (1-5)
@@ -104,6 +103,6 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
           .join("")}
         .
       </p>
-    </Card>
+    </section>
   )
 }

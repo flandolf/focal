@@ -22,7 +22,7 @@ export function SubjectsSection({
   const visibleCount = subjects.length - hiddenSubjectCount
 
   return (
-    <section className="rounded-lg border bg-card p-4">
+    <section className="border-t border-border/70 pt-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-medium">Visible Subjects</h2>

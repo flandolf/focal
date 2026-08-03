@@ -143,7 +143,7 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
 
   return (
     <div className="flex flex-col gap-3">
-      <section className="rounded-lg border bg-card p-4">
+      <section className="border-t border-border/70 pt-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">Notion Calendar Sync</h2>
@@ -271,7 +271,7 @@ export function NotionSection({ onSyncNotionCalendar, lastSyncTime }: NotionSect
         </AnimatePresence>
       </section>
 
-      <section className="rounded-lg border bg-card p-4">
+      <section className="border-t border-border/70 pt-5">
         <div className="grid gap-2">
           <label className="text-caption text-muted-foreground/70" htmlFor="notion-token">Integration token</label>
           <Input

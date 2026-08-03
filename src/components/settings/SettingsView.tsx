@@ -407,7 +407,7 @@ export function SettingsView({
  </nav>
 
  <ScrollArea className="min-h-0 flex-1 overflow-hidden">
- <div className="px-6 py-6">
+ <div className="mx-auto w-full max-w-4xl px-6 py-7 min-[1200px]:px-8">
  <AnimatePresence mode="wait">
  <motion.div
  key={activeSection}

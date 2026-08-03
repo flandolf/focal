@@ -560,7 +560,7 @@ export function AIModelSection() {
 
   return (
     <div className="flex flex-col gap-3">
-      <section className="rounded-lg border bg-card p-4">
+      <section className="border-t border-border/70 pt-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">AI Provider</h2>
@@ -595,7 +595,7 @@ export function AIModelSection() {
       </section>
 
       {isChatGPT && (
-        <section className="rounded-lg border bg-card p-4">
+        <section className="border-t border-border/70 pt-5">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">ChatGPT account</h2>
             <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
@@ -620,7 +620,7 @@ export function AIModelSection() {
       )}
 
       {isOpenRouter && (
-        <section className="rounded-lg border bg-card p-4">
+        <section className="border-t border-border/70 pt-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="flex items-center gap-1.5 text-sm font-medium">
@@ -703,7 +703,7 @@ export function AIModelSection() {
       )}
 
       {isOllama && (
-        <section className="rounded-lg border bg-card p-4">
+        <section className="border-t border-border/70 pt-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="flex items-center gap-1.5 text-sm font-medium">
@@ -781,7 +781,7 @@ export function AIModelSection() {
         </section>
       )}
 
-      <section className="rounded-lg border bg-card p-4">
+      <section className="border-t border-border/70 pt-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-medium">AI Model</h2>
@@ -910,7 +910,7 @@ export function AIModelSection() {
         )}
       </section>
 
-      <section className="rounded-lg border bg-card p-4">
+      <section className="border-t border-border/70 pt-5">
         <div>
           <h2 className="text-sm font-medium">Assistant personality</h2>
           <p className="mt-1 text-xs text-muted-foreground/70 text-wrap-balance">
@@ -955,7 +955,7 @@ export function AIModelSection() {
       </section>
 
       {activeProvider.supportsReasoning && (
-        <section className="rounded-lg border bg-card p-4">
+        <section className="border-t border-border/70 pt-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-sm font-medium">Reasoning Tokens</h2>

@@ -1942,7 +1942,7 @@ function App() {
                 signedIn={Boolean(supabaseAuth.user)}
               />}
             </TitleBar>
-            <div className="relative z-10 flex min-h-0 flex-1 gap-2 p-2 min-[1200px]:gap-3 min-[1200px]:px-3 min-[1200px]:pb-3">
+            <div className="relative z-10 flex min-h-0 flex-1">
               {!settingsView && <motion.div
                 layout
                 className="min-h-0 h-full shrink-0"
@@ -1997,7 +1997,7 @@ function App() {
               <motion.main
                 layout
                 transition={layoutTransition}
-                className="min-w-0 flex-1 overflow-hidden rounded-lg"
+                className="min-w-0 flex-1 overflow-hidden bg-background"
               >
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.div

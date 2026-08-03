@@ -3,13 +3,6 @@ import { Moon, Sun, Monitor, Minus, Plus } from "lucide-react";
 import type { ThemeMode } from "@/lib/themes";
 import { isMacOS } from "@/lib/platform";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 interface ModeOption {
   value: ThemeMode;
@@ -76,15 +69,15 @@ export function AppearanceSection({
   }, [onZoomChange]);
 
   return (
-    <div className="space-y-4">
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Mode</CardTitle>
-          <CardDescription>
+    <div className="space-y-7">
+      <section className="border-t border-border/70 pt-5">
+        <div>
+          <h2 className="text-sm font-medium">Mode</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
             System follows your OS. Light and dark work everywhere.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex gap-2">
+          </p>
+        </div>
+        <div className="mt-4 flex gap-2">
           {MODE_OPTIONS.map(({ value, icon: Icon, label }) => (
             <ModeButton
               key={value}
@@ -94,24 +87,24 @@ export function AppearanceSection({
               label={label}
             />
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card size="sm">
-        <CardHeader className="grid-cols-[1fr_auto]">
+      <section className="border-t border-border/70 pt-5">
+        <div className="grid grid-cols-[1fr_auto] gap-4">
           <div>
-            <CardTitle>Zoom</CardTitle>
-            <CardDescription>
+            <h2 className="text-sm font-medium">Zoom</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
               Adjust the overall app scale. Keyboard: {shortcutModifier}+= to
               zoom in, {shortcutModifier}+- to zoom out, {shortcutModifier}+0
               to reset.
-            </CardDescription>
+            </p>
           </div>
           <span className="font-mono text-xs tabular-nums text-muted-foreground">
             {Math.round(zoom * 100)}%
           </span>
-        </CardHeader>
-        <CardContent className="flex items-center gap-2">
+        </div>
+        <div className="mt-4 flex items-center gap-2">
           <Button
             type="button"
             onClick={handleZoomOut}
@@ -150,8 +143,8 @@ export function AppearanceSection({
           >
             Reset
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

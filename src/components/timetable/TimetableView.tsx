@@ -366,7 +366,7 @@ export const TimetableView = memo(function TimetableView({
 
   if (config.entries.length === 0) {
     return (
-      <ScrollArea className="h-full border bg-background">
+      <ScrollArea className="h-full bg-background">
         <div className="p-5 min-[1200px]:p-8">
           <div className="mx-auto max-w-6xl">
             <h1 className="text-xl font-semibold tracking-tight">Plan</h1>
@@ -393,7 +393,7 @@ export const TimetableView = memo(function TimetableView({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden border bg-background">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <header className="shrink-0 border-b border-border/70 px-4 py-3 min-[1200px]:px-6 min-[1200px]:py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">

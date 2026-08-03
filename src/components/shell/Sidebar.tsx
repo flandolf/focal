@@ -417,7 +417,7 @@ export const Sidebar = memo(function Sidebar({
     <aside
       aria-label="Assessment navigation"
       className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm transition-[background-color,border-color,box-shadow]",
+        "relative flex h-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[background-color,border-color]",
         isDragOver && "border-primary/40 ring-2 ring-ring/50 ring-inset",
       )}
       onDragEnter={handleDragEnter}
@@ -449,7 +449,7 @@ export const Sidebar = memo(function Sidebar({
             isCollapsed && "justify-center gap-1.5",
           )}
         >
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-sidebar-border bg-background/70 text-foreground shadow-xs">
+          <span className="flex size-7 shrink-0 items-center justify-center text-foreground">
             <CircleDot className="size-3.5" aria-hidden="true" />
           </span>
           <CollapsibleBlock show={!isCollapsed}>
@@ -479,7 +479,6 @@ export const Sidebar = memo(function Sidebar({
             variant="default"
             onClick={onNewProject}
             className={cn(
-              "shadow-xs",
               isCollapsed ? "size-8 rounded-lg" : "w-full justify-center",
             )}
             size={isCollapsed ? "icon" : "sm"}
@@ -514,8 +513,7 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "w-full text-muted-foreground",
             !isCollapsed && "justify-start",
-            homeSelected &&
-              "bg-sidebar-accent text-sidebar-accent-foreground shadow-xs",
+            homeSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
           )}
           size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Today (H)" : undefined}
@@ -537,8 +535,7 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "w-full text-muted-foreground",
             !isCollapsed && "justify-start",
-            timetableSelected &&
-              "bg-sidebar-accent text-sidebar-accent-foreground shadow-xs",
+            timetableSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
           )}
           size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Plan (T)" : undefined}
@@ -560,8 +557,7 @@ export const Sidebar = memo(function Sidebar({
           className={cn(
             "w-full text-muted-foreground",
             !isCollapsed && "justify-start",
-            analyticsSelected &&
-              "bg-sidebar-accent text-sidebar-accent-foreground shadow-xs",
+            analyticsSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
           )}
           size={isCollapsed ? "icon" : "default"}
           title={isCollapsed ? "Review (A)" : undefined}
@@ -576,10 +572,8 @@ export const Sidebar = memo(function Sidebar({
 
         <div
           className={cn(
-            "overflow-hidden rounded-lg border transition-[background-color,border-color,box-shadow]",
-            libraryOpen
-              ? "border-sidebar-border/80 bg-background/35 shadow-xs"
-              : "border-transparent",
+            "overflow-hidden rounded-md transition-colors",
+            libraryOpen && "bg-background/35",
           )}
         >
           <Button
@@ -637,7 +631,7 @@ export const Sidebar = memo(function Sidebar({
                   size={isCollapsed ? "icon-xs" : "xs"}
                   className={cn(
                     isCollapsed ? undefined : "w-full justify-start",
-                    filterMode === mode && "shadow-xs",
+                    filterMode === mode && "font-medium",
                   )}
                   title={isCollapsed ? label : undefined}
                   aria-label={isCollapsed ? label : undefined}
@@ -783,7 +777,7 @@ export const Sidebar = memo(function Sidebar({
           ) : (
             <div
               className={cn(
-                "mx-1 mt-2 flex flex-col items-center justify-center rounded-lg border border-dashed border-sidebar-border bg-background/30 text-center",
+                "mx-1 mt-2 flex flex-col items-center justify-center border-y border-dashed border-sidebar-border text-center",
                 isCollapsed ? "px-1 py-4" : "px-4 py-6",
               )}
             >
@@ -817,7 +811,7 @@ export const Sidebar = memo(function Sidebar({
         (onBulkArchive ?? onBulkUnarchive) &&
         onBulkFinish &&
         onBulkDelete && (
-          <div className="mx-2 mb-2 flex items-center gap-1.5 rounded-md border bg-card p-1.5">
+          <div className="mx-2 mb-2 flex items-center gap-1.5 border-y bg-background/40 p-1.5">
             <span className="px-2 text-xs font-medium tabular-nums">
               {selectedCount} selected
             </span>

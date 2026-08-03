@@ -108,7 +108,7 @@ export function VcaaExamImportSection({
   }
 
   return (
-    <section className="rounded-lg border bg-card p-4">
+    <section className="border-t border-border/70 pt-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-medium">VCAA exam timetable</h2>

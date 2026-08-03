@@ -1,5 +1,4 @@
 import { useMemo } from "react"
-import { Card } from "@/components/ui/card"
 import { getSubjectColor } from "@/lib/chartTheme"
 import { getSubjectById } from "@/lib/utils"
 import type { SubjectMinutes } from "@/lib/analytics"
@@ -41,15 +40,15 @@ export function SubjectBreakdownChart({ data }: SubjectBreakdownChartProps) {
 
   if (data.length === 0) {
     return (
-      <Card className="p-4">
+      <section className="border-t border-border/70 pt-5">
         <h3 className="text-sm font-semibold mb-1">Subject Breakdown</h3>
         <p className="text-xs text-muted-foreground">No study data for this period.</p>
-      </Card>
+      </section>
     )
   }
 
   return (
-    <Card className="p-4">
+    <section className="border-t border-border/70 pt-5">
       <h3 className="text-sm font-semibold mb-4">Subject Breakdown</h3>
 
       <div className="flex items-center gap-6">
@@ -115,6 +114,6 @@ export function SubjectBreakdownChart({ data }: SubjectBreakdownChartProps) {
           .join("")}
         .
       </p>
-    </Card>
+    </section>
   )
 }

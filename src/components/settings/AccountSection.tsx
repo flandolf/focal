@@ -527,7 +527,7 @@ export function AccountSection({
           Sync is disabled in this build. Set the Supabase environment variables to enable it.
         </p>
       ) : email ? (
-        <section className="rounded-lg border bg-card p-4">
+        <section className="border-t border-border/70 pt-5">
           {/* Header: identity + quiet status */}
           <div className="flex items-center justify-between gap-2">
             <p className="min-w-0 truncate text-sm font-medium">{email}</p>

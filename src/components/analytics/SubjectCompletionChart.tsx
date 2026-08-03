@@ -1,4 +1,3 @@
-import { Card } from "@/components/ui/card"
 import { getSubjectColor } from "@/lib/chartTheme"
 import { getSubjectById } from "@/lib/utils"
 import type { SubjectCompletion } from "@/lib/analytics"
@@ -10,15 +9,15 @@ interface SubjectCompletionChartProps {
 export function SubjectCompletionChart({ data }: SubjectCompletionChartProps) {
   if (data.length === 0) {
     return (
-      <Card className="p-4">
+      <section className="border-t border-border/70 pt-5">
         <h3 className="text-sm font-semibold mb-1">Completion Rate</h3>
         <p className="text-xs text-muted-foreground">No session data for this period.</p>
-      </Card>
+      </section>
     )
   }
 
   return (
-    <Card className="p-4">
+    <section className="border-t border-border/70 pt-5">
       <h3 className="text-sm font-semibold mb-4">Completion Rate by Subject</h3>
 
       <div className="space-y-3">
@@ -68,6 +67,6 @@ export function SubjectCompletionChart({ data }: SubjectCompletionChartProps) {
           .join("")}
         .
       </p>
-    </Card>
+    </section>
   )
 }

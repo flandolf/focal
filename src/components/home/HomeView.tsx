@@ -34,7 +34,6 @@ import {
   getCurrentPeriodInfo,
 } from "@/lib/timetable";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -768,9 +767,8 @@ export const HomeView = memo(function HomeView({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 min-[1200px]:gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
-            <Card size="sm">
-              <CardContent>
+          <div className="grid grid-cols-1 gap-x-7 gap-y-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
+            <section className="min-w-0 border-t border-border/70 pt-4">
                 <div className="flex h-full flex-col gap-4">
                 <CalendarGrid
                   currentMonth={currentMonth}
@@ -796,10 +794,9 @@ export const HomeView = memo(function HomeView({
                 />
 
                 </div>
-              </CardContent>
-            </Card>
+            </section>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <QuickLinks />
 
               {selectedDate && (
@@ -847,7 +844,7 @@ export const HomeView = memo(function HomeView({
                     .sort((a, b) => a.startTime.localeCompare(b.startTime));
                   const periodInfo = getCurrentPeriodInfo(periods, now);
                   return (
-                    <div className="rounded-lg bg-background p-3 ring-1 ring-border">
+                    <section className="border-t border-border/70 pt-4">
                       <h3 className="mb-2.5 flex items-center gap-1.5 text-sm font-semibold">
                         <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                         Today&apos;s Timetable · Day {dayLabel}
@@ -861,7 +858,7 @@ export const HomeView = memo(function HomeView({
                           <ArrowRight />
                         </Button>
                       </h3>
-                      <div className="space-y-1">
+                      <div className="divide-y divide-border/50 border-y border-border/60">
                         {periods.map((period, idx) => {
                           const subject = getSubjectById(period.subject);
                           const isCurrent =
@@ -875,10 +872,10 @@ export const HomeView = memo(function HomeView({
                             <div
                               key={idx}
                               className={cn(
-                                "relative flex items-center gap-2 rounded-md px-2.5 py-1.5",
+                                "relative flex items-center gap-2 px-2.5 py-2",
                                 isCurrent
-                                  ? "bg-primary/10 ring-1 ring-primary/30"
-                                  : "bg-muted",
+                                  ? "bg-primary/10"
+                                  : "bg-transparent",
                               )}
                             >
                               {/* Subject color accent bar */}
@@ -964,7 +961,7 @@ export const HomeView = memo(function HomeView({
                             </span>
                           </div>
                         )}
-                    </div>
+                    </section>
                   );
                 })()}
 

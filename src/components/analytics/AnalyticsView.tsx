@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback, memo } from"react"
 import type { ReactNode } from"react"
 import { motion, AnimatePresence, useReducedMotion } from"framer-motion"
 import { ScrollArea, ScrollBar } from"@/components/ui/scroll-area"
-import { Card } from"@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
  getAnalyticsData,
@@ -272,7 +271,10 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  return (
  <ScrollArea className="h-full">
  <div className="space-y-5 px-6 py-5 min-[1200px]:px-8 min-[1200px]:py-6">
- <h2 className="text-lg font-semibold">Review</h2>
+ <div className="border-b border-border/70 pb-4">
+ <h1 className="text-xl font-semibold tracking-tight">Review</h1>
+ <p className="mt-1 text-sm text-muted-foreground">Study patterns, follow-through, and the decisions that matter next.</p>
+ </div>
  <ReviewDecisions items={decisions} onNewSession={onNewSession} onSelectProject={onSelectProject} onStartFocus={onStartFocus} />
  <div className="h-72 rounded-lg border"><EmptyAnalytics onNewSession={onNewSession} /></div>
  </div>
@@ -297,9 +299,12 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  {/* Header row */}
  <motion.div
  variants={staggerItem}
- className="flex flex-wrap items-center justify-between gap-3"
+ className="flex flex-wrap items-end justify-between gap-3 border-b border-border/70 pb-4"
  >
- <h2 className="text-lg font-semibold">Review</h2>
+ <div>
+ <h1 className="text-xl font-semibold tracking-tight">Review</h1>
+ <p className="mt-1 text-sm text-muted-foreground">Study patterns, follow-through, and the decisions that matter next.</p>
+ </div>
  <div className="flex items-center gap-2">
  <Button
  type="button"
@@ -363,7 +368,7 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  variants={staggerContainer(0.05, 0)}
  initial={reduceMotion ? false :"initial"}
  animate={reduceMotion ? undefined :"animate"}
- className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-2"
+ className="grid grid-cols-1 gap-x-7 gap-y-6 min-[900px]:grid-cols-2"
  >
  <motion.div
  variants={staggerItem}
@@ -419,7 +424,7 @@ function ReviewDecisions({
  onStartFocus: (item: PriorityItem) => void
 }) {
  return (
- <Card className="p-4">
+ <section className="border-t border-border/70 pt-5">
  <div className="flex flex-wrap items-start justify-between gap-3">
  <div>
  <h3 className="flex items-center gap-2 text-sm font-semibold"><Target className="size-4 text-primary" />Decide what changes next</h3>
@@ -427,9 +432,9 @@ function ReviewDecisions({
  </div>
  <Button size="sm" variant="outline" onClick={() => onNewSession()}>Plan a recovery session</Button>
  </div>
- <div className="mt-3 grid gap-2 min-[900px]:grid-cols-3">
+ <div className="mt-3 grid divide-y divide-border/50 border-y border-border/60 min-[900px]:grid-cols-3 min-[900px]:divide-x min-[900px]:divide-y-0">
  {items.length > 0 ? items.map((item) => (
- <div key={item.id} className="flex min-w-0 items-center gap-2 rounded-lg border bg-background p-3">
+ <div key={item.id} className="flex min-w-0 items-center gap-2 p-3">
  <div className="min-w-0 flex-1">
  <p className="truncate text-sm font-medium">{item.title}</p>
  <p className="line-clamp-2 text-sm text-muted-foreground">{item.reason}</p>
@@ -439,7 +444,7 @@ function ReviewDecisions({
  </div>
  )) : <p className="text-sm text-muted-foreground">Nothing is overdue or flagged by a low-confidence reflection.</p>}
  </div>
- </Card>
+ </section>
  )
 }
 
@@ -455,7 +460,7 @@ function RangeToggle({
  reduceMotion: boolean
 }) {
  return (
- <div className="flex gap-0.5 rounded-xl border border-border/70 bg-background/55 p-0.5">
+ <div className="flex gap-0.5 rounded-md border border-border/70 bg-background/55 p-0.5">
  {RANGE_OPTIONS.map((opt) => {
  const isActive = value === opt.value
  return (
@@ -510,7 +515,7 @@ function KpiStrip({
  reduceMotion: boolean
 }) {
  return (
- <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+ <div className="grid grid-cols-2 divide-x divide-y divide-border/50 border-y border-border/60 sm:grid-cols-4 sm:divide-y-0">
  <KpiCard
  label="Total time"
  value={formatMinutesShort(totalMinutes)}
@@ -549,20 +554,20 @@ function AnalyticsHighlights({
 }) {
  const topSubject = topSubjectId ? getSubjectById(topSubjectId) : null
  return (
- <Card className="p-4">
+ <section className="border-t border-border/70 pt-5">
  <h3 className="text-sm font-semibold">Highlights</h3>
- <div className="mt-3 grid gap-3 sm:grid-cols-3">
+ <div className="mt-3 grid divide-y divide-border/50 border-y border-border/60 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
  <Highlight label="Most productive day" value={bestDay ? formatDay(bestDay.date) : "No study yet"} detail={bestDay ? formatMinutesLong(bestDay.minutes) : undefined} />
  <Highlight label="Peak study hour" value={peakHour ? formatHour(peakHour.hour) : "No pattern yet"} detail={peakHour ? formatMinutesLong(peakHour.minutes) : undefined} />
  <Highlight label="Most studied subject" value={topSubject?.name ?? (topSubjectId ? "Unassigned" : "No subject yet")} />
  </div>
- </Card>
+ </section>
  )
 }
 
 function Highlight({ label, value, detail }: { label: string; value: string; detail?: string }) {
  return (
- <div className="rounded-lg border border-border/60 bg-background/35 px-3 py-2.5">
+ <div className="px-3 py-2.5">
  <p className="text-caption text-muted-foreground">{label}</p>
  <p className="mt-1 truncate text-sm font-medium">{value}</p>
  {detail ? <p className="text-caption tabular-nums text-muted-foreground">{detail}</p> : null}
@@ -584,9 +589,8 @@ function KpiCard({
  return (
  <motion.div
  whileHover={hoverLift(reduceMotion)}
- className="relative rounded-lg"
+ className="relative px-4 py-3 transition-colors hover:bg-accent/20"
  >
- <Card className="px-4 py-3">
  <div className="text-2xl font-semibold tabular-nums leading-tight">
  {value}
  </div>
@@ -596,7 +600,6 @@ function KpiCard({
  <span className="text-muted-foreground/70"> · {sub}</span>
  ) : null}
  </div>
- </Card>
  </motion.div>
  )
 }
