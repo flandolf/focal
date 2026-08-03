@@ -1,18 +1,41 @@
 #[cfg(desktop)]
-use std::sync::Mutex;
+use std::{
+    sync::{Condvar, Mutex},
+    time::Duration,
+};
 
 use tauri::Manager;
 
 #[cfg(desktop)]
 use tauri_plugin_shell::{
-    process::{CommandEvent, CommandChild},
+    process::{CommandChild, CommandEvent},
     ShellExt,
 };
 
-#[derive(Default)]
 pub struct ChatGptSidecar {
     #[cfg(desktop)]
-    child: Mutex<Option<CommandChild>>,
+    process: Mutex<ChatGptProcess>,
+    #[cfg(desktop)]
+    terminated: Condvar,
+}
+
+#[cfg(desktop)]
+#[derive(Default)]
+struct ChatGptProcess {
+    child: Option<CommandChild>,
+    pid: Option<u32>,
+    running: bool,
+}
+
+impl Default for ChatGptSidecar {
+    fn default() -> Self {
+        Self {
+            #[cfg(desktop)]
+            process: Mutex::new(ChatGptProcess::default()),
+            #[cfg(desktop)]
+            terminated: Condvar::new(),
+        }
+    }
 }
 
 const ALLOWED_ORIGINS: &str =
@@ -30,7 +53,12 @@ pub fn start(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<ChatGptSidecar>()
         .ok_or_else(|| "ChatGPT sidecar state is unavailable".to_owned())?;
-    if state.child.lock().map_err(|_| "ChatGPT sidecar state is unavailable")?.is_some() {
+    if state
+        .process
+        .lock()
+        .map_err(|_| "ChatGPT sidecar state is unavailable")?
+        .running
+    {
         return Ok(());
     }
 
@@ -44,12 +72,17 @@ pub fn start(app: &tauri::AppHandle) -> Result<(), String> {
         .spawn()
         .map_err(|error| format!("could not start ChatGPT sidecar: {error}"))?;
 
-    state
-        .child
+    let pid = child.pid();
+    let mut process = state
+        .process
         .lock()
-        .map_err(|_| "ChatGPT sidecar state is unavailable")?
-        .replace(child);
+        .map_err(|_| "ChatGPT sidecar state is unavailable")?;
+    process.child = Some(child);
+    process.pid = Some(pid);
+    process.running = true;
+    drop(process);
 
+    let app = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = events.recv().await {
             match event {
@@ -57,7 +90,19 @@ pub fn start(app: &tauri::AppHandle) -> Result<(), String> {
                     eprintln!("[focal-chatgpt] {}", String::from_utf8_lossy(&line).trim())
                 }
                 CommandEvent::Error(error) => eprintln!("[focal-chatgpt] {error}"),
-                CommandEvent::Terminated(status) => eprintln!("[focal-chatgpt] terminated: {status:?}"),
+                CommandEvent::Terminated(status) => {
+                    eprintln!("[focal-chatgpt] terminated: {status:?}");
+                    if let Some(state) = app.try_state::<ChatGptSidecar>() {
+                        if let Ok(mut process) = state.process.lock() {
+                            if process.pid == Some(pid) {
+                                process.child.take();
+                                process.pid = None;
+                                process.running = false;
+                                state.terminated.notify_all();
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -76,15 +121,24 @@ pub fn stop(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<ChatGptSidecar>()
         .ok_or_else(|| "ChatGPT sidecar state is unavailable".to_owned())?;
-    let child = state
-        .child
+    let mut process = state
+        .process
         .lock()
-        .map_err(|_| "ChatGPT sidecar state is unavailable".to_owned())?
-        .take();
-    if let Some(child) = child {
+        .map_err(|_| "ChatGPT sidecar state is unavailable".to_owned())?;
+    if let Some(child) = process.child.take() {
         child
             .kill()
             .map_err(|error| format!("could not stop ChatGPT sidecar: {error}"))?;
+    }
+    if process.running {
+        let (next, timeout) = state
+            .terminated
+            .wait_timeout_while(process, Duration::from_secs(5), |process| process.running)
+            .map_err(|_| "ChatGPT sidecar state is unavailable".to_owned())?;
+        process = next;
+        if timeout.timed_out() && process.running {
+            return Err("ChatGPT sidecar did not stop within 5 seconds".to_owned());
+        }
     }
     Ok(())
 }
