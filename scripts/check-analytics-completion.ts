@@ -1,4 +1,5 @@
 import {
+  getAnalyticsData,
   getConsistencyData,
   getConsistencyForTimeTrends,
   getStudyPeriodComparison,
@@ -119,6 +120,11 @@ if (englishComparison?.currentMinutes !== 60 || englishComparison.previousMinute
 }
 if (getStudyPeriodComparison(comparisonSessions, [], 0, undefined, comparisonNow) !== null) {
   throw new Error("All-time analytics should not invent a previous period")
+}
+
+const previousPeriod = getAnalyticsData(comparisonSessions, [], 7, comparisonNow - 7 * 86_400_000)
+if (previousPeriod.consistency.stats.totalMinutes !== 30 || previousPeriod.timeTrends.length !== 1) {
+  throw new Error(`Previous analytics period was incorrect: ${JSON.stringify(previousPeriod.timeTrends)}`)
 }
 
 console.warn("analytics completion check passed")

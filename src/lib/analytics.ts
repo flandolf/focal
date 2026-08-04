@@ -91,21 +91,22 @@ function toDateString(timestamp: number): string {
   return `${year}-${month}-${day}`
 }
 
-function getRangeCutoff(range: AnalyticsRange): number {
+function getRangeCutoff(range: AnalyticsRange, periodEnd = Date.now()): number {
   if (range === 0) return 0
-  const start = new Date()
+  const start = new Date(periodEnd)
   start.setHours(0, 0, 0, 0)
   start.setDate(start.getDate() - (range - 1))
   return start.getTime()
 }
 
-function getCompletedSessions(sessions: StudySession[], range: AnalyticsRange): StudySession[] {
-  const cutoff = getRangeCutoff(range)
+function getCompletedSessions(sessions: StudySession[], range: AnalyticsRange, periodEnd = Date.now()): StudySession[] {
+  const cutoff = getRangeCutoff(range, periodEnd)
   return sessions.filter((s) => {
     if (s.status !== "completed") return false
     const start = getSessionAnalyticsStart(s)
     if (Number.isNaN(start)) return false
     if (cutoff > 0 && start < cutoff) return false
+    if (start > periodEnd) return false
     return true
   })
 }
@@ -169,8 +170,9 @@ export function getTimeTrends(
   sessions: StudySession[],
   projects: Project[],
   range: AnalyticsRange,
+  periodEnd = Date.now(),
 ): StudyTimePoint[] {
-  const completed = getCompletedSessions(sessions, range)
+  const completed = getCompletedSessions(sessions, range, periodEnd)
   const dayMap = new Map<string, Map<string, number>>()
 
   completed.forEach((session) => {
@@ -212,8 +214,9 @@ export function getSubjectBreakdown(
   sessions: StudySession[],
   projects: Project[],
   range: AnalyticsRange,
+  periodEnd = Date.now(),
 ): SubjectMinutes[] {
-  const completed = getCompletedSessions(sessions, range)
+  const completed = getCompletedSessions(sessions, range, periodEnd)
   const subjectMinutes = new Map<string, number>()
   let total = 0
 
@@ -245,8 +248,9 @@ export function getSubjectBreakdown(
 export function getConsistencyData(
   sessions: StudySession[],
   range: AnalyticsRange,
+  periodEnd = Date.now(),
 ): { days: ConsistencyDay[]; stats: ConsistencyStats } {
-  const completed = getCompletedSessions(sessions, range)
+  const completed = getCompletedSessions(sessions, range, periodEnd)
   const minutesByDay = new Map<string, number>()
 
   completed.forEach((session) => {
@@ -257,7 +261,7 @@ export function getConsistencyData(
     }
   })
 
-  const endDate = new Date()
+  const endDate = new Date(periodEnd)
   const earliestCompletedStart = completed.reduce<number | null>((earliest, session) => {
     const start = getSessionAnalyticsStart(session)
     if (Number.isNaN(start)) return earliest
@@ -265,7 +269,7 @@ export function getConsistencyData(
   }, null)
   const startDate = range === 0 && earliestCompletedStart != null
     ? new Date(earliestCompletedStart)
-    : new Date(range === 0 ? Date.now() : getRangeCutoff(range))
+    : new Date(range === 0 ? periodEnd : getRangeCutoff(range, periodEnd))
   startDate.setHours(0, 0, 0, 0)
 
   const days: ConsistencyDay[] = []
@@ -355,8 +359,9 @@ export function getTimeOfDayBySubject(
   sessions: StudySession[],
   projects: Project[],
   range: AnalyticsRange,
+  periodEnd = Date.now(),
 ): SubjectTimeOfDayBucket[] {
-  const completed = getCompletedSessions(sessions, range)
+  const completed = getCompletedSessions(sessions, range, periodEnd)
   const projectsById = new Map(projects.map((project) => [project.id, project]))
   const buckets = new Map<number, Map<string, number>>()
 
@@ -390,16 +395,16 @@ export function getSubjectCompletion(
   sessions: StudySession[],
   projects: Project[],
   range: AnalyticsRange,
+  periodEnd = Date.now(),
 ): SubjectCompletion[] {
-  const cutoff = getRangeCutoff(range)
-  const now = Date.now()
+  const cutoff = getRangeCutoff(range, periodEnd)
   const subjectStats = new Map<string, { completed: number; total: number }>()
 
   sessions.forEach((session) => {
     const start = getSessionAnalyticsStart(session)
     if (Number.isNaN(start)) return
     if (cutoff > 0 && start < cutoff) return
-    if (start > now) return
+    if (start > periodEnd) return
 
     const project = projects.find((p) => p.id === session.projectId)
     const subjectIds = getSessionSubjectIds(session, project)
@@ -428,8 +433,9 @@ export function getStudyEfficiency(
   sessions: StudySession[],
   projects: Project[],
   range: AnalyticsRange,
+  periodEnd = Date.now(),
 ): EfficiencyPoint[] {
-  const completed = getCompletedSessions(sessions, range)
+  const completed = getCompletedSessions(sessions, range, periodEnd)
   const subjectData = new Map<string, { totalMinutes: number; totalConfidence: number; count: number }>()
 
   completed.forEach((session) => {
@@ -467,14 +473,15 @@ export function getAnalyticsData(
   sessions: StudySession[],
   projects: Project[],
   range: AnalyticsRange,
+  periodEnd = Date.now(),
 ): AnalyticsData {
-  const timeTrends = getTimeTrends(sessions, projects, range)
-  const subjectBreakdown = getSubjectBreakdown(sessions, projects, range)
-  const consistency = getConsistencyData(sessions, range)
-  const timeOfDayBySubject = getTimeOfDayBySubject(sessions, projects, range)
+  const timeTrends = getTimeTrends(sessions, projects, range, periodEnd)
+  const subjectBreakdown = getSubjectBreakdown(sessions, projects, range, periodEnd)
+  const consistency = getConsistencyData(sessions, range, periodEnd)
+  const timeOfDayBySubject = getTimeOfDayBySubject(sessions, projects, range, periodEnd)
   const timeOfDay = aggregateTimeOfDay(timeOfDayBySubject)
-  const subjectCompletion = getSubjectCompletion(sessions, projects, range)
-  const efficiency = getStudyEfficiency(sessions, projects, range)
+  const subjectCompletion = getSubjectCompletion(sessions, projects, range, periodEnd)
+  const efficiency = getStudyEfficiency(sessions, projects, range, periodEnd)
 
   const hasData = sessions.some((s) => s.status === "completed")
 

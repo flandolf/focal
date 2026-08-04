@@ -16,7 +16,7 @@ import {
 import type { CalendarEvent, PriorityItem, Project, StudySession } from"@/lib/types"
 import { cn, getSubjectById } from"@/lib/utils"
 import { getPriorityItems, readFocusPriorities } from "@/lib/studyPriority"
-import { ArrowRight, Download, Play, Target } from "lucide-react"
+import { ArrowRight, ChevronLeft, ChevronRight, Download, Play, Target } from "lucide-react"
 import { getSubjectColor } from"@/lib/chartTheme"
 import {
  MOTION_DURATION,
@@ -45,10 +45,10 @@ interface AnalyticsViewProps {
 }
 
 const RANGE_OPTIONS: { value: AnalyticsRange; label: string }[] = [
- { value: 7, label:"7d" },
- { value: 30, label:"30d" },
- { value: 90, label:"3mo" },
- { value: 365, label:"1yr" },
+ { value: 7, label:"Week" },
+ { value: 30, label:"Month" },
+ { value: 90, label:"3 months" },
+ { value: 365, label:"Year" },
  { value: 0, label:"All" },
 ]
 
@@ -78,6 +78,23 @@ function formatHour(hour: number) {
  hour:"numeric",
  minute:"2-digit",
  })
+}
+
+function getPeriodEnd(range: AnalyticsRange, periodOffset: number) {
+ const end = new Date()
+ if (range !== 0 && periodOffset > 0) {
+ end.setDate(end.getDate() - range * periodOffset)
+ end.setHours(23, 59, 59, 999)
+ }
+ return end.getTime()
+}
+
+function formatPeriod(range: AnalyticsRange, periodEnd: number) {
+ if (range === 0) return "All time"
+ const start = new Date(periodEnd)
+ start.setDate(start.getDate() - (range - 1))
+ const format = (date: Date) => date.toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" })
+ return `${format(start)} – ${format(new Date(periodEnd))}`
 }
 
 function formatComparison(
@@ -150,6 +167,8 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
 }: AnalyticsViewProps) {
  const reduceMotion = useReducedMotion() === true
  const [range, setRange] = useState<AnalyticsRange>(30)
+ const [periodOffset, setPeriodOffset] = useState(0)
+ const periodEnd = useMemo(() => getPeriodEnd(range, periodOffset), [periodOffset, range])
  const [selectedSubjects, setSelectedSubjects] = useState<Set<string> | null>(null)
  const focusPriorities = useMemo(readFocusPriorities, [])
  const decisions = useMemo(
@@ -164,8 +183,8 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  )
 
  const data = useMemo(
- () => getAnalyticsData(sessions, projects, range),
- [sessions, projects, range],
+ () => getAnalyticsData(sessions, projects, range, periodEnd),
+ [sessions, projects, range, periodEnd],
  )
 
  const allSubjectIds = useMemo(
@@ -242,8 +261,8 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  [filteredTotalMinutes, filteredConsistency.days.length],
  )
  const periodComparison = useMemo(
- () => getStudyPeriodComparison(sessions, projects, range, isFilterActive ? activeSet : undefined),
- [activeSet, isFilterActive, projects, range, sessions],
+ () => getStudyPeriodComparison(sessions, projects, range, isFilterActive ? activeSet : undefined, periodEnd),
+ [activeSet, isFilterActive, periodEnd, projects, range, sessions],
  )
  const highlights = useMemo(
  () => getHighlights(filteredBreakdown, filteredConsistency.days, filteredTimeOfDay),
@@ -305,7 +324,7 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  <h1 className="text-xl font-semibold tracking-tight">Review</h1>
  <p className="mt-1 text-sm text-muted-foreground">Study patterns, follow-through, and the decisions that matter next.</p>
  </div>
- <div className="flex items-center gap-2">
+<div className="flex items-center gap-1">
  <Button
  type="button"
  size="sm"
@@ -315,7 +334,15 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  >
  <Download /> Export CSV
  </Button>
- <RangeToggle value={range} onChange={setRange} reduceMotion={reduceMotion} />
+ {range !== 0 && (
+<div className="flex items-center gap-1">
+ <Button type="button" size="icon-sm" variant="outline" onClick={() => setPeriodOffset((value) => value + 1)} aria-label="Previous period"><ChevronLeft /></Button>
+<span className="min-w-48 text-center text-xs tabular-nums text-muted-foreground">{formatPeriod(range, periodEnd)}</span>
+ {periodOffset > 0 && <Button type="button" size="xs" variant="ghost" onClick={() => setPeriodOffset(0)}>Today</Button>}
+ <Button type="button" size="icon-sm" variant="outline" disabled={periodOffset === 0} onClick={() => setPeriodOffset((value) => Math.max(0, value - 1))} aria-label="Next period"><ChevronRight /></Button>
+ </div>
+ )}
+ <RangeToggle value={range} onChange={(next) => { setRange(next); setPeriodOffset(0) }} reduceMotion={reduceMotion} />
  </div>
  </motion.div>
  <motion.div variants={staggerItem}>
@@ -358,7 +385,7 @@ const AnalyticsViewInner = memo(function AnalyticsViewInner({
  <motion.div variants={staggerItem} className="relative">
  <AnimatePresence mode="wait">
  <motion.div
- key={range}
+ key={`${range}-${periodOffset}`}
  initial={reduceMotion ? false : { opacity: 0 }}
  animate={{ opacity: 1 }}
  exit={{ opacity: 0 }}
@@ -460,7 +487,7 @@ function RangeToggle({
  reduceMotion: boolean
 }) {
  return (
- <div className="flex gap-0.5 rounded-md border border-border/70 bg-background/55 p-0.5">
+<div className="flex gap-px rounded-md border border-border/70 bg-background/55 p-px">
  {RANGE_OPTIONS.map((opt) => {
  const isActive = value === opt.value
  return (
@@ -476,7 +503,7 @@ function RangeToggle({
  : { type:"spring", stiffness: 520, damping: 34, mass: 0.65 }
  }
  className={cn(
-"rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+"rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
  isActive
  ?"bg-background text-foreground shadow-sm"
  :"text-muted-foreground hover:text-foreground",
