@@ -6,58 +6,59 @@ import {
   removePreference,
 } from "@/lib/storage/preferences"
 
-const CREDENTIAL_KEY = "focal-supabase-auth-session"
-let cachedValue: string | null | undefined
+function createSessionStorage(credentialKey: string): SupportedStorage {
+  let cachedValue: string | null | undefined
+  let operationQueue = Promise.resolve()
+  const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = operationQueue.then(operation, operation)
+    operationQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
 
-// Promise queue to serialize all operations and prevent race conditions
-let operationQueue = Promise.resolve()
-
-function enqueue<T>(operation: () => Promise<T>): Promise<T> {
-  const result = operationQueue.then(operation, operation)
-  operationQueue = result.then(() => undefined, () => undefined)
-  return result
-}
-
-export const supabaseSessionStorage: SupportedStorage = {
-  async getItem(key) {
-    return enqueue(async () => {
-      if (!isTauri()) return localStorage.getItem(key)
-      if (cachedValue !== undefined) return cachedValue
-      const legacy = localStorage.getItem(key)
-      const stored = await hydratePreferences([{
-        key: CREDENTIAL_KEY,
-        legacyValue: legacy,
-        syncable: false,
-      }])
-      localStorage.removeItem(key)
-      cachedValue = stored.get(CREDENTIAL_KEY) ?? null
-      return cachedValue
-    })
-  },
-
-  async setItem(key, value) {
-    return enqueue(async () => {
-      if (!isTauri()) {
-        localStorage.setItem(key, value)
-        return
-      }
-      if (cachedValue === value) return
-      await persistPreference(CREDENTIAL_KEY, value, false)
-      cachedValue = value
-    })
-  },
-
-  async removeItem(key) {
-    return enqueue(async () => {
-      if (!isTauri()) {
+  return {
+    async getItem(key) {
+      return enqueue(async () => {
+        if (!isTauri()) return localStorage.getItem(key)
+        if (cachedValue !== undefined) return cachedValue
+        const legacy = localStorage.getItem(key)
+        const stored = await hydratePreferences([{
+          key: credentialKey,
+          legacyValue: legacy,
+          syncable: false,
+        }])
         localStorage.removeItem(key)
-        return
-      }
-      if (cachedValue !== null) {
-        await removePreference(CREDENTIAL_KEY)
-        cachedValue = null
-      }
-      localStorage.removeItem(key)
-    })
-  },
+        cachedValue = stored.get(credentialKey) ?? null
+        return cachedValue
+      })
+    },
+
+    async setItem(key, value) {
+      return enqueue(async () => {
+        if (!isTauri()) {
+          localStorage.setItem(key, value)
+          return
+        }
+        if (cachedValue === value) return
+        await persistPreference(credentialKey, value, false)
+        cachedValue = value
+      })
+    },
+
+    async removeItem(key) {
+      return enqueue(async () => {
+        if (!isTauri()) {
+          localStorage.removeItem(key)
+          return
+        }
+        if (cachedValue !== null) {
+          await removePreference(credentialKey)
+          cachedValue = null
+        }
+        localStorage.removeItem(key)
+      })
+    },
+  }
 }
+
+export const supabaseSessionStorage = createSessionStorage("focal-supabase-auth-session")
+export const examTrackSessionStorage = createSessionStorage("focal-examtrack-auth-session")

@@ -10,14 +10,14 @@ Focal includes a first-class ExamTrack workspace with practice summaries, due-mi
 
 ExamTrack exam and SAC timers also mirror their lifecycle into Focal. Starting one creates an in-progress study session, pause/resume preserves exact active intervals, completion feeds normal Focal analytics, and discard removes the mirrored session. While ExamTrack owns a timer, Focal shows it in the study-timer slot and prevents a second local timer from starting.
 
-The two apps intentionally share Supabase instead of passing credentials or study data through URL parameters:
+The two apps intentionally keep separate Supabase projects. Each app holds a second, explicitly connected session for the other app's database:
 
-1. Apply both apps' Supabase migrations to one Supabase project.
-2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to that project in both deployments.
-3. Set Focal's `VITE_EXAMTRACK_URL` to ExamTrack's HTTPS Vercel production URL.
-4. Sign in to both apps with the same account.
+1. Apply Focal migrations only to the Focal project and ExamTrack migrations only to the ExamTrack project.
+2. Set Focal's `VITE_EXAMTRACK_URL`, `VITE_EXAMTRACK_SUPABASE_URL`, and `VITE_EXAMTRACK_SUPABASE_PUBLISHABLE_KEY` for the hosted ExamTrack app/project.
+3. Set ExamTrack's `VITE_FOCAL_SUPABASE_URL` and `VITE_FOCAL_SUPABASE_PUBLISHABLE_KEY` for the Focal project.
+4. Connect the separate account from each app's ExamTrack/Focal integration screen.
 
-Focal queries `attempts` and `mistakes` with the current user's short-lived Supabase session. ExamTrack's row-level-security policies enforce ownership, and the production integration rejects non-HTTPS ExamTrack URLs. Never use a Supabase service-role key in either client.
+Focal queries `attempts` and `mistakes` using the connected ExamTrack user's short-lived session. ExamTrack publishes timer transitions using the connected Focal user's short-lived session. Each database's row-level-security policies enforce ownership, and the production integration rejects non-HTTPS endpoints. Never use a Supabase service-role key in either client.
 
 **A fast, minimal desktop study organiser for VCE students.**
 

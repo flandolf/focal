@@ -2092,9 +2092,7 @@ function App() {
                     ) : examTrackView ? (
                       <Suspense fallback={<ViewFallback label="ExamTrack" />}>
                         <ExamTrackView
-                          userId={supabaseAuth.user?.id}
                           subjects={allSubjects}
-                          onOpenSettings={navigation.openSettings}
                           onCreateStudySessions={handleCreateStudySessions}
                         />
                       </Suspense>
