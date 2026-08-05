@@ -58,6 +58,13 @@ export interface NotionSource {
   syncSnapshot?: NotionSyncSnapshot;
 }
 
+export interface ExamTrackSource {
+  type: "examtrack";
+  id: string;
+  kind: "exam" | "sac";
+  subject: string;
+}
+
 export interface VcaaSource {
   type: "vcaa";
   id: string;
@@ -81,8 +88,8 @@ export interface StudySession {
     blockers?: string;
     nextAction?: string;
   };
-  createdVia: "manual" | "planner" | "assistant" | "notion";
-  integrations?: { notion?: NotionSource };
+  createdVia: "manual" | "planner" | "assistant" | "notion" | "examtrack";
+  integrations?: { notion?: NotionSource; examtrack?: ExamTrackSource };
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;

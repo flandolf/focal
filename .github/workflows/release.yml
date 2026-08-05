@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "app-v*"
+
+env:
+  VITE_EXAMTRACK_URL: https://vcetracker.vercel.app/
+
 jobs:
   verify:
     runs-on: ubuntu-22.04

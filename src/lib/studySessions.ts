@@ -1,5 +1,6 @@
 import type {
   ConfidenceScore,
+  ExamTrackSource,
   NotionSource,
   NotionSyncSnapshot,
   StudyInterval,
@@ -8,6 +9,7 @@ import type {
   StudySessionStatus,
   StudyTimeRange,
 } from "@/lib/types"
+import { VCE_SUBJECTS } from "@/lib/types"
 
 export const STUDY_SESSION_SCHEMA_VERSION = 2 as const
 
@@ -215,8 +217,27 @@ function parseNotionSource(value: unknown): NotionSource | undefined {
   }
 }
 
+function parseExamTrackSource(value: unknown): ExamTrackSource | undefined {
+  if (
+    !isRecord(value) || value.type !== "examtrack" || typeof value.id !== "string" ||
+    (value.kind !== "exam" && value.kind !== "sac") || typeof value.subject !== "string"
+  ) return undefined
+  return { type: "examtrack", id: value.id, kind: value.kind, subject: value.subject }
+}
+
+function examTrackSubjectId(source?: ExamTrackSource): string | undefined {
+  if (!source) return undefined
+  // ponytail: Built-in VCE subjects share stable names; custom cross-app subjects
+  // stay unassigned until both apps persist a shared subject id.
+  const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "")
+  const target = normalise(source.subject)
+  return VCE_SUBJECTS.find((subject) =>
+    normalise(subject.name) === target || normalise(subject.shortCode) === target
+  )?.id
+}
+
 function inferCreatedVia(raw: Record<string, unknown>, notion?: NotionSource): StudySession["createdVia"] {
-  if (raw.createdVia === "manual" || raw.createdVia === "planner" || raw.createdVia === "assistant" || raw.createdVia === "notion") {
+  if (raw.createdVia === "manual" || raw.createdVia === "planner" || raw.createdVia === "assistant" || raw.createdVia === "notion" || raw.createdVia === "examtrack") {
     return raw.createdVia
   }
   if (notion) return "notion"
@@ -277,12 +298,15 @@ export function normalizeStudySession(raw: unknown): StudySession {
   const hasReflection = Object.values(reflection).some((item) => item !== undefined)
   const integrationsValue = isRecord(value.integrations) ? value.integrations : undefined
   const notion = parseNotionSource(integrationsValue?.notion ?? value.source)
+  const examtrack = parseExamTrackSource(integrationsValue?.examtrack)
+  const rawSubjectIds = stringArray(value.subjectIds)
+  const integratedSubjectId = rawSubjectIds.length === 0 ? examTrackSubjectId(examtrack) : undefined
 
   return attachCompatibilityView({
     schemaVersion: STUDY_SESSION_SCHEMA_VERSION,
     id: optionalString(value.id) ?? `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     projectId: optionalString(value.projectId),
-    subjectIds: stringArray(value.subjectIds),
+    subjectIds: integratedSubjectId ? [integratedSubjectId] : rawSubjectIds,
     title: optionalString(value.title) ?? "Study Session",
     description: optionalString(value.description),
     topics: stringArray(value.topics),
@@ -290,7 +314,7 @@ export function normalizeStudySession(raw: unknown): StudySession {
     execution,
     reflection: hasReflection ? reflection : undefined,
     createdVia: inferCreatedVia(value, notion),
-    integrations: notion ? { notion } : undefined,
+    integrations: notion || examtrack ? { notion, examtrack } : undefined,
     created_at: optionalString(value.created_at) ?? now,
     updated_at: optionalString(value.updated_at) ?? now,
     deleted_at: typeof value.deleted_at === "string" || value.deleted_at === null ? value.deleted_at : null,

@@ -9,6 +9,9 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  VITE_EXAMTRACK_URL: https://vcetracker.vercel.app/
+
 jobs:
   check:
     runs-on: ubuntu-22.04

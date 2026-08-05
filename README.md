@@ -4,6 +4,21 @@
 
 # Focal
 
+## ExamTrack integration
+
+Focal includes a first-class ExamTrack workspace with practice summaries, due-mistake counts, secure drill-through to the hosted app, and an action that schedules a targeted review session in Focal.
+
+ExamTrack exam and SAC timers also mirror their lifecycle into Focal. Starting one creates an in-progress study session, pause/resume preserves exact active intervals, completion feeds normal Focal analytics, and discard removes the mirrored session. While ExamTrack owns a timer, Focal shows it in the study-timer slot and prevents a second local timer from starting.
+
+The two apps intentionally share Supabase instead of passing credentials or study data through URL parameters:
+
+1. Apply both apps' Supabase migrations to one Supabase project.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to that project in both deployments.
+3. Set Focal's `VITE_EXAMTRACK_URL` to ExamTrack's HTTPS Vercel production URL.
+4. Sign in to both apps with the same account.
+
+Focal queries `attempts` and `mistakes` with the current user's short-lived Supabase session. ExamTrack's row-level-security policies enforce ownership, and the production integration rejects non-HTTPS ExamTrack URLs. Never use a Supabase service-role key in either client.
+
 **A fast, minimal desktop study organiser for VCE students.**
 
 Manage coursework files, plan sessions around a configurable timetable, and track progress across subjects — all from a native desktop app.

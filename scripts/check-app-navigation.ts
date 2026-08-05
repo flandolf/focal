@@ -24,6 +24,8 @@ assert(
 
 const timetable = navigateTo(restored, { kind: "timetable" })
 assert(timetable.destination.kind === "timetable", "primary navigation must be mutually exclusive")
+const examTrack = navigateTo(timetable, { kind: "examtrack" })
+assert(examTrack.destination.kind === "examtrack", "ExamTrack must be a first-class destination")
 
 const inputTarget = { tagName: "INPUT" } as unknown as EventTarget
 const dialogTarget = {

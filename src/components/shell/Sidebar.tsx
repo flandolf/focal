@@ -19,6 +19,7 @@ import {
   CircleDot,
   FolderOpen,
   Home,
+  GraduationCap,
   Library,
   PanelLeftClose,
   PanelLeftOpen,
@@ -137,12 +138,14 @@ interface SidebarProps {
   homeSelected: boolean;
   timetableSelected: boolean;
   analyticsSelected: boolean;
+  examTrackSelected: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onSelect: (id: string) => void;
   onSelectHome: () => void;
   onSelectTimetable: () => void;
   onSelectAnalytics: () => void;
+  onSelectExamTrack: () => void;
   onDelete: (id: string) => void;
   onNewProject: () => void;
   onToggleFavorite?: (id: string) => void;
@@ -187,12 +190,14 @@ export const Sidebar = memo(function Sidebar({
   homeSelected,
   timetableSelected,
   analyticsSelected,
+  examTrackSelected,
   isCollapsed,
   onToggleCollapse,
   onSelect,
   onSelectHome,
   onSelectTimetable,
   onSelectAnalytics,
+  onSelectExamTrack,
   onDelete,
   onNewProject,
   onToggleFavorite,
@@ -567,6 +572,28 @@ export const Sidebar = memo(function Sidebar({
           <BarChart3 />
           <CollapsibleInline show={!isCollapsed} className="font-medium">
             Review
+          </CollapsibleInline>
+        </Button>
+
+        <Button
+          variant={examTrackSelected ? "secondary" : "ghost"}
+          onClick={() => {
+            setLibraryOpen(false);
+            onSelectExamTrack();
+          }}
+          className={cn(
+            "w-full text-muted-foreground",
+            !isCollapsed && "justify-start",
+            examTrackSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
+          )}
+          size={isCollapsed ? "icon" : "default"}
+          title={isCollapsed ? "ExamTrack" : undefined}
+          aria-label={isCollapsed ? "ExamTrack" : undefined}
+          aria-current={examTrackSelected ? "page" : undefined}
+        >
+          <GraduationCap />
+          <CollapsibleInline show={!isCollapsed} className="font-medium">
+            ExamTrack
           </CollapsibleInline>
         </Button>
 

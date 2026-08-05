@@ -5,6 +5,7 @@ export type AppDestination =
   | { kind: "project"; projectId: string }
   | { kind: "timetable" }
   | { kind: "analytics" }
+  | { kind: "examtrack" }
   | { kind: "settings" }
 
 const HOME: AppDestination = { kind: "home" }
@@ -49,6 +50,7 @@ export function useAppNavigation() {
   const selectHome = useCallback(() => navigate(HOME), [navigate])
   const selectTimetable = useCallback(() => navigate({ kind: "timetable" }), [navigate])
   const selectAnalytics = useCallback(() => navigate({ kind: "analytics" }), [navigate])
+  const selectExamTrack = useCallback(() => navigate({ kind: "examtrack" }), [navigate])
   const openSettings = useCallback(() => navigate({ kind: "settings" }), [navigate])
   const closeSettings = useCallback(() => {
     setState(closeSettingsDestination)
@@ -58,6 +60,7 @@ export function useAppNavigation() {
   const homeSelected = destination.kind === "home"
   const timetableView = destination.kind === "timetable"
   const analyticsView = destination.kind === "analytics"
+  const examTrackView = destination.kind === "examtrack"
   const settingsView = destination.kind === "settings"
 
   return useMemo(() => ({
@@ -66,11 +69,13 @@ export function useAppNavigation() {
     homeSelected,
     timetableView,
     analyticsView,
+    examTrackView,
     settingsView,
     selectProject,
     selectHome,
     selectTimetable,
     selectAnalytics,
+    selectExamTrack,
     openSettings,
     closeSettings,
   }), [
@@ -79,7 +84,9 @@ export function useAppNavigation() {
     destination,
     homeSelected,
     openSettings,
+    examTrackView,
     selectAnalytics,
+    selectExamTrack,
     selectHome,
     selectProject,
     selectedId,

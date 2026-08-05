@@ -108,6 +108,11 @@ const AnalyticsView = lazy(() =>
     default: m.AnalyticsView,
   })),
 );
+const ExamTrackView = lazy(() =>
+  import("@/components/examtrack/ExamTrackView").then((m) => ({
+    default: m.ExamTrackView,
+  })),
+);
 const AIAssistantPanel = lazy(() =>
   import("@/components/assistant/AIAssistantPanel").then((m) => ({
     default: m.AIAssistantPanel,
@@ -236,6 +241,7 @@ function App() {
     homeSelected,
     settingsView,
     analyticsView,
+    examTrackView,
     timetableView,
   } = navigation;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -496,6 +502,10 @@ function App() {
 
   const handleSelectAnalytics = useCallback(() => {
     navigation.selectAnalytics();
+  }, [navigation]);
+
+  const handleSelectExamTrack = useCallback(() => {
+    navigation.selectExamTrack();
   }, [navigation]);
 
   const handleSelectSettings = useCallback(() => {
@@ -1904,6 +1914,8 @@ function App() {
 
   const contentKey = settingsView
     ? "settings"
+    : examTrackView
+      ? "examtrack"
     : analyticsView
       ? "analytics"
       : timetableView
@@ -1961,11 +1973,13 @@ function App() {
                   selectedId={selectedId}
                   homeSelected={homeSelected}
                   analyticsSelected={analyticsView}
+                  examTrackSelected={examTrackView}
                   isCollapsed={sidebarCollapsed}
                   onToggleCollapse={handleToggleCollapse}
                   onSelect={handleSelectProject}
                   onSelectHome={handleSelectHome}
                   onSelectAnalytics={handleSelectAnalytics}
+                  onSelectExamTrack={handleSelectExamTrack}
                   onDelete={handleDeleteProject}
                   onNewProject={handleNewProject}
                   onToggleFavorite={handleToggleFavorite}
@@ -2073,6 +2087,15 @@ function App() {
                           }}
                           onScanAndImportProjects={scanAndImportProjects}
                           onLinkFolderAsProject={linkFolderAsProject}
+                        />
+                      </Suspense>
+                    ) : examTrackView ? (
+                      <Suspense fallback={<ViewFallback label="ExamTrack" />}>
+                        <ExamTrackView
+                          userId={supabaseAuth.user?.id}
+                          subjects={allSubjects}
+                          onOpenSettings={navigation.openSettings}
+                          onCreateStudySessions={handleCreateStudySessions}
                         />
                       </Suspense>
                     ) : timetableView ? (

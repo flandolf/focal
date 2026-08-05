@@ -8,10 +8,12 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
   ChevronDown,
   Coffee,
+  ExternalLink,
   Maximize2,
   Pause,
   Play,
@@ -34,6 +36,11 @@ import {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { setCachedPreference } from "@/lib/storage/preferences";
+import {
+  getActiveExamTrackTimer,
+  getExamTrackElapsedSeconds,
+  getExamTrackTimerUrl,
+} from "@/lib/examtrack";
 import {
   clampMinutes,
   closeRunningInterval,
@@ -129,6 +136,11 @@ const StudyTimerInner = memo(function StudyTimerInner({
       return false;
     }
   });
+  const externalSession = useMemo(
+    () => getActiveExamTrackTimer(sessions),
+    [sessions],
+  );
+  const [externalNow, setExternalNow] = useState(() => new Date());
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeSessionIdRef = useRef(activeSessionId);
@@ -157,6 +169,12 @@ const StudyTimerInner = memo(function StudyTimerInner({
   }, [state]);
 
   useEffect(() => {
+    if (!externalSession?.execution.intervals.some((interval) => !interval.end)) return;
+    const timer = window.setInterval(() => setExternalNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, [externalSession]);
+
+  useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
 
@@ -169,6 +187,28 @@ const StudyTimerInner = memo(function StudyTimerInner({
     const restoredSubjects = getActiveSessionSubjectIds(activeSessionId, sessions);
     if (restoredSubjects?.length) setSelectedSubjectIds(restoredSubjects);
   }, [activeSessionId, sessions]);
+
+  useEffect(() => {
+    if (!externalSession || !activeSessionId || !state.running || savingRef.current) return;
+    const session = activeSessionRef.current;
+    if (!session) return;
+    savingRef.current = true;
+    setSaving(true);
+    const end = new Date().toISOString();
+    const intervals = closeRunningInterval(session.execution.intervals, end);
+    const updates = {
+      execution: { state: "in-progress", intervals } as const,
+    };
+    void onUpdateSession(session.id, updates).then(() => {
+      activeSessionRef.current = { ...session, ...updates };
+      dispatch({ type: "TOGGLE" });
+    }).catch((error: unknown) => {
+      console.error("Failed to pause Focal while ExamTrack timer started:", error);
+    }).finally(() => {
+      savingRef.current = false;
+      setSaving(false);
+    });
+  }, [activeSessionId, externalSession, onUpdateSession, state.running]);
 
   useEffect(() => {
     if (!selectedProject?.subjectId || activeSessionIdRef.current) return;
@@ -325,7 +365,7 @@ const StudyTimerInner = memo(function StudyTimerInner({
   );
   const subjectLabel = selectedSubjects[0]?.shortCode ?? "Choose subject";
   const activeProjectId = focusProjectId;
-  const canStartFocus = selectedSubjectIds.length > 0 && !saving;
+  const canStartFocus = selectedSubjectIds.length > 0 && !saving && !externalSession;
   const timerActionLabel = saving
     ? "Saving…"
     : running
@@ -567,6 +607,60 @@ const StudyTimerInner = memo(function StudyTimerInner({
         document.body,
       )
     : null;
+
+  if (externalSession) {
+    const source = externalSession.integrations!.examtrack!;
+    const externalRunning = externalSession.execution.state === "in-progress"
+      && externalSession.execution.intervals.some((interval) => !interval.end);
+    const elapsed = formatTimer(getExamTrackElapsedSeconds(externalSession, externalNow));
+    const externalUrl = getExamTrackTimerUrl(source.kind);
+    const openTimer = () => {
+      if (externalUrl) void openUrl(externalUrl).catch((error) => console.error("Could not open ExamTrack timer:", error));
+    };
+
+    if (isCollapsed) {
+      return (
+        <div className="flex flex-col items-center gap-1 py-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onExpand}
+            aria-label="Expand ExamTrack timer"
+            title={`${source.kind === "exam" ? "Exam" : "SAC"} · ${elapsed}`}
+          >
+            <Timer />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={openTimer} disabled={!externalUrl} aria-label="Open timer in ExamTrack">
+            <ExternalLink />
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <section className="min-w-0 border-t border-sidebar-border/70" aria-label="ExamTrack timer">
+        <div className="space-y-3 p-3">
+          <div className="flex items-center gap-2">
+            <Badge variant={externalRunning ? "success" : "secondary"}>ExamTrack</Badge>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {externalRunning ? "Logging to Focal" : "Paused in ExamTrack"}
+            </span>
+          </div>
+          <div>
+            <p className="truncate text-sm font-medium">{externalSession.title}</p>
+            <p className="mt-1 font-heading text-3xl font-semibold tabular-nums">{elapsed}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {source.kind === "exam" ? "Exam timer" : "SAC timer"} · {source.subject}
+            </p>
+          </div>
+          <Button className="w-full" onClick={openTimer} disabled={!externalUrl}>
+            <ExternalLink />
+            Open in ExamTrack
+          </Button>
+        </div>
+      </section>
+    );
+  }
 
   if (isCollapsed) {
     return (
